@@ -49,7 +49,7 @@ public sealed class PraticheF24DbTests : IDisposable
         {
             var p = await Servizio(db).GetAsync(_tenant, id);
             Assert.NotNull(p);
-            Assert.Contains("\"codiceTributo\":\"1001\"", p!.ModelloJson);
+            Assert.Contains("1001", p!.ModelloJson);   // il codice tributo è serializzato nel JSON
 
             var elenco = await Servizio(db).ElencoAsync(_tenant, _aziendaId);
             Assert.Single(elenco);

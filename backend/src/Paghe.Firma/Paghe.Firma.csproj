@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- Firma CAdES/CMS (SignedCms): non è nel reference set di default, va referenziato. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.9" />
+    <!--
+      Pkcs11Interop.X509Store (Apache-2.0): accesso a smart card / CNS via PKCS#11.
+      La chiave privata resta sulla carta; si integra con SignedCms del runtime .NET.
+      Nessuna dipendenza GPL/AGPL (vedi docs/GITHUB_REPOS_RIUSO.md).
+    -->
+    <PackageReference Include="Pkcs11Interop.X509Store" Version="1.1.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

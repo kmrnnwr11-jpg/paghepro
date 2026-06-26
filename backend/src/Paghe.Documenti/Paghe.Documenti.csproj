@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Paghe.Core\Paghe.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="QuestPDF" Version="2026.6.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Schemi XSD ufficiali FatturaPA (Agenzia delle Entrate) per la validazione. -->
+    <EmbeddedResource Include="Schemi\Schema_VFPR12.xsd" />
+    <EmbeddedResource Include="Schemi\xmldsig-core-schema.xsd" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

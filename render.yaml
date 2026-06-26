@@ -1,0 +1,43 @@
+# ─────────────────────────────────────────────────────────────
+# Blueprint Render.com per Paghe SaaS (backend + frontend).
+# Su Render: New → Blueprint → seleziona questo repo.
+# Render legge questo file e crea i due servizi automaticamente.
+# Vedi DEPLOY.md per la guida completa passo-passo.
+# ─────────────────────────────────────────────────────────────
+
+services:
+  # 1) BACKEND — API .NET in Docker, con disco persistente per il database SQLite
+  - type: web
+    name: paghe-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter            # il disco persistente richiede un piano a pagamento (~7$/mese)
+    region: frankfurt        # data center in Europa
+    healthCheckPath: /swagger/v1/swagger.json
+    disk:
+      name: paghe-data
+      mountPath: /data       # qui vive paghe.db (lo stesso path del Dockerfile)
+      sizeGB: 1
+    envVars:
+      - key: ConnectionStrings__Default
+        value: Data Source=/data/paghe.db
+      - key: Jwt__Key
+        generateValue: true  # Render genera una chiave segreta forte e la tiene riservata
+
+  # 2) FRONTEND — sito statico (React/Vite). Punta all'URL del backend.
+  - type: web
+    name: paghe-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_API_URL
+        sync: false          # da impostare a mano = URL pubblico di paghe-api (es. https://paghe-api.onrender.com)
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

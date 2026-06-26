@@ -1,0 +1,39 @@
+# Integrazione telematica ufficiale
+
+Materiale di pianificazione per integrare il gestionale con i flussi telematici
+ufficiali italiani (Agenzia Entrate, ComUnica/Registro Imprese, INAIL, INPS, SUAP).
+
+Principio guida: **generare → validare → controllo ufficiale (JAR/web service) →
+firmare → inviare solo via canali ufficiali**. Mai simulare login o interfacce web.
+
+Data raccolta materiale: 2026-06-26.
+
+## Indice
+
+- [RIASSUNTO-FONTI-UFFICIALI.md](RIASSUNTO-FONTI-UFFICIALI.md) — sintesi fonti ufficiali, cosa si puo integrare, architettura consigliata, primo passo pratico.
+- [KIT-INTEGRAZIONE-AGENZIA-ENTRATE.md](KIT-INTEGRAZIONE-AGENZIA-ENTRATE.md) — contenuto del kit (JAR controlli, specifiche, manuali), cosa NON integrare come API privata, uso dei JAR.
+- [TODO-INTEGRAZIONE.md](TODO-INTEGRAZIONE.md) — piano tecnico modulo `ade-telematico`: generazione file (F24, CU), controlli JAR, Desktop Telematico, ricevute.
+- [TODO-COMUNICA-CAMERA-INAIL-INPS.md](TODO-COMUNICA-CAMERA-INAIL-INPS.md) — piano completo ComUnica/RI/REA, partita IVA AA7-AA9, INAIL, INPS, SUAP: canali, modello dati, backlog a fasi.
+
+## Stato implementazione (codice)
+
+Modulo `backend/src/Paghe.Core/AdeTelematico/` (puro dominio, nessun invio telematico):
+
+- [x] Modello F24 ordinario: contribuente/intermediario + sezioni Erario, INPS, Regioni, IMU/tributi locali, Altri enti (`ModelloF24.cs`).
+- [x] Controlli interni pre-JAR (TODO §7): codice fiscale (carattere di controllo), partita IVA (mod 10), importi `decimal`, quadratura/saldo (`ValidatoreFiscale.cs`, `ValidazioneF24.cs`).
+- [x] Macchina a stati della pratica telematica (`PraticaTelematica.cs`).
+- [x] Wrapper controlli ufficiali: interfaccia + costruzione argomenti `java -cp` + runner a processo (`ControlliUfficiali.cs`).
+- [x] **Import UNILAV** (Comunicazione Obbligatoria): legge l'XML, riconosce datore/lavoratore/rapporto e crea in automatico dipendente + rapporto senza inserimento manuale (`ImportazioneUnilav.cs`). Lettura namespace-agnostica e tollerante. Endpoint `POST /api/aziende/{id}/dipendenti/da-unilav`.
+- [x] **F24 dalle paghe**: costruisce l'F24 da versare dai cedolini (ritenute IRPEF 1001, addizionali 3802/3848, contributi INPS), con scadenza al 16 del mese successivo (`F24DaCedolini.cs`). Endpoint `POST /api/f24/da-paghe`.
+- [ ] **Tracciato telematico ufficiale F24 a lunghezza fissa (record A/M/V/Z)**: da implementare dalle specifiche ufficiali Agenzia Entrate (non nel repo). Per ora `BozzaLeggibileF24Writer` produce solo una bozza NON ufficiale per test (`TracciatoF24.cs`).
+- [ ] F24 da cedolini archiviati su DB (oggi gli importi si passano alla request); persistenza pratiche/ricevute, cartelle `export/`.
+- [ ] Allineare i nomi di campo del parser UNILAV su un tracciato reale (oggi su standard CO + candidati tolleranti).
+
+Flusso completo già percorribile: carica UNILAV → crea dipendente/rapporto → `POST /api/rapporti/{id}/cedolini` calcola e archivia il cedolino → `POST /api/f24/da-paghe` genera l'F24.
+
+Test: `backend/tests/Paghe.Tests/AdeTelematico/`.
+
+## Note
+
+- `TODO-AUTOMAZIONE-UFFICIALE.md` (invio/ricevute via Entratel - Multifile) e citato nel kit ma non ancora trascritto qui.
+- Gli asset binari ufficiali (JAR, XSD, ZIP, PDF, WSDL) NON sono in questo repo: vivono nel kit scaricato a parte. Qui c'e solo la documentazione/pianificazione.

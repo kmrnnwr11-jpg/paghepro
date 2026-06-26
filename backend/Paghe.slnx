@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Paghe.Api/Paghe.Api.csproj" />
+    <Project Path="src/Paghe.Core/Paghe.Core.csproj" />
+    <Project Path="src/Paghe.Demo/Paghe.Demo.csproj" />
+    <Project Path="src/Paghe.Documenti/Paghe.Documenti.csproj" />
+    <Project Path="src/Paghe.Firma/Paghe.Firma.csproj" />
+    <Project Path="src/Paghe.Persistence/Paghe.Persistence.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Paghe.Tests/Paghe.Tests.csproj" />
+  </Folder>
+</Solution>

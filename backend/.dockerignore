@@ -1,0 +1,8 @@
+# Non copiare nell'immagine artefatti di build e database locali
+**/bin/
+**/obj/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/.vs/
+**/.idea/

@@ -62,6 +62,16 @@ dotnet run --project src/Paghe.Demo -c Release
 - **F24 dalle paghe**: `F24DaCedolini` costruisce l'F24 da versare dai cedolini (ritenute
   IRPEF, addizionali, INPS). Endpoint `POST /api/f24/da-paghe`. Controlli interni F24
   (`ValidazioneF24`, `ValidatoreFiscale`). Tracciato ufficiale a lunghezza fissa ancora da fare.
+- **Trasmissione Fattura → SdI** (il "modem"): astrazioni `IFatturaSdiGateway` /
+  `IFirmaFatturaElettronica` in `Paghe.Core/Fatturazione/Trasmissione`, canali
+  `SdiGatewayManuale` (default, prepara il file) e `SdiGatewayProviderRest` (provider accreditato
+  via HttpClient), orchestrazione + persistenza stato/ricevute in `TrasmissioneFattureService`
+  (`TrasmissioneFatturaEntity`, `RicevutaSdiEntity`), deleghe intermediario in `DelegheService`
+  (`DelegaEntity`). Endpoint `POST /api/fatture/{id}/trasmetti`, `/ricevute`, `/deleghe`. Genera
+  l'XML, esegue i `ControlliSdi`, firma/delega, traccia stati RC/MC/NS/NE/DT, blocca i doppi invii.
+  Configurazione canale in sezione `Sdi` (default Manuale). Vedi
+  `docs/integrazione-ufficiale/MODULO-TRASMISSIONE-SDI.md`. Restano da fornire: account/ApiKey del
+  provider, firma CAdES locale reale (se non delegata), webhook ricevute, conservazione a norma.
 
 ## Prossimi lavori utili
 
@@ -72,7 +82,9 @@ Piano di completamento dettagliato (gap analysis, priorità, effort, sequenza): 
 2. Migrazioni EF Core (oggi `EnsureCreated`) + chiave JWT da secret in produzione.
 3. GDPR: cifratura dati sensibili (IBAN, malattia), audit log, retention.
 4. Generazione file ufficiali AA9/12, AA7/10, ComUnica e LIPE da specifiche pubbliche.
-5. Firma digitale CAdES/XAdES e trasmissione SdI per la fattura elettronica reale.
+5. Fattura SdI: infrastruttura di trasmissione **fatta** (gateway/firma/ricevute/deleghe);
+   restano account provider accreditato + ApiKey, firma CAdES locale reale (se non delegata
+   al provider), webhook ricevute e conservazione a norma.
 
 Integrazione telematica ufficiale (Agenzia Entrate, ComUnica/Registro Imprese, INAIL,
 INPS, SUAP): fonti, kit, modello dati e backlog a fasi in `docs/integrazione-ufficiale/`.

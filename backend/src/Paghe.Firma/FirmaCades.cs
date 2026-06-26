@@ -61,10 +61,10 @@ public static class FirmaCades
     public static bool Verifica(byte[] bustaP7m)
     {
         ArgumentNullException.ThrowIfNull(bustaP7m);
-        var cms = new SignedCms();
-        cms.Decode(bustaP7m);
         try
         {
+            var cms = new SignedCms();
+            cms.Decode(bustaP7m);
             cms.CheckSignature(verifySignatureOnly: true);
             return true;
         }

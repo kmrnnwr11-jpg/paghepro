@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.AdeTelematico;
 using Paghe.Core.Calcolo;
 using Paghe.Core.Domain;
 using Paghe.Persistence.Entities;
@@ -75,6 +76,46 @@ public sealed class CedoliniService
         _db.Cedolini.Add(entity);
         await _db.SaveChangesAsync(ct);
         return entity;
+    }
+
+    /// <summary>
+    /// Costruisce l'F24 da versare per un'azienda raccogliendo automaticamente i cedolini
+    /// archiviati del periodo (ritenute IRPEF, addizionali regionale/comunale, contributi INPS).
+    /// Il territorio delle addizionali è preso dal rapporto di lavoro di ciascun cedolino.
+    /// </summary>
+    public async Task<ModelloF24> GeneraF24DelMeseAsync(
+        Guid tenantId, Guid aziendaId, int anno, int mese,
+        string matricolaInps, string codiceSedeInps = "", CancellationToken ct = default)
+    {
+        var azienda = await _db.Aziende
+            .FirstOrDefaultAsync(a => a.Id == aziendaId && a.TenantId == tenantId, ct)
+            ?? throw new ArgumentException("Azienda non trovata per il tenant indicato.");
+
+        var cedolini = await _db.Cedolini
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno && c.Mese == mese)
+            .ToListAsync(ct);
+        if (cedolini.Count == 0)
+            throw new ArgumentException($"Nessun cedolino archiviato per il periodo {mese:00}/{anno}.");
+
+        var rapportoIds = cedolini.Select(c => c.RapportoLavoroId).Distinct().ToList();
+        var rapporti = await _db.Rapporti
+            .Where(r => r.TenantId == tenantId && rapportoIds.Contains(r.Id))
+            .ToDictionaryAsync(r => r.Id, ct);
+
+        var righe = cedolini.Select(c =>
+        {
+            rapporti.TryGetValue(c.RapportoLavoroId, out var rap);
+            return new RigaPagaPerF24(
+                c.IrpefNetta, c.AddizionaleRegionale, c.AddizionaleComunale,
+                c.ContributiDipendente, c.ContributiDatore,
+                rap?.Regione ?? "", rap?.CodiceCatastaleComune ?? "");
+        }).ToList();
+
+        var sostituto = new DatiSostitutoImposta(
+            azienda.CodiceFiscale ?? azienda.PartitaIva ?? "",
+            azienda.RagioneSociale, matricolaInps, codiceSedeInps);
+
+        return F24DaCedolini.Costruisci(sostituto, righe, anno, mese);
     }
 
     public Task<CedolinoEntity?> GetAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>

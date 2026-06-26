@@ -112,18 +112,21 @@ public sealed class TrasmissioneFattureService
             .FirstOrDefaultAsync(x => x.Id == trasmissioneId && x.TenantId == tenantId, ct)
             ?? throw new ArgumentException("Trasmissione non trovata per il tenant indicato.");
 
-        // NB: Id lasciato al valore di default così EF la traccia come Added (chiave Guid generata
-        // in inserimento). Valorizzarlo qui, su un parent già esistente, la farebbe interpretare
-        // come Modified provocando un UPDATE su una riga inesistente.
-        t.Ricevute.Add(new RicevutaSdiEntity
+        // La ricevuta è una nuova riga: la si traccia esplicitamente come Added (con chiave generata),
+        // senza affidarsi alla rilevazione dalla collection del parent — che su questo grafo veniva
+        // interpretata come UPDATE, provocando una DbUpdateConcurrencyException (0 righe modificate).
+        var ricevuta = new RicevutaSdiEntity
         {
+            Id = Guid.NewGuid(),
             TrasmissioneFatturaId = t.Id,
             Tipo = input.Tipo,
             CodiceEsito = input.CodiceEsito,
             Descrizione = input.Descrizione,
             ContenutoGrezzo = input.ContenutoGrezzo,
             RicevutaIl = DateTimeOffset.UtcNow,
-        });
+        };
+        t.Ricevute.Add(ricevuta);
+        _db.Entry(ricevuta).State = EntityState.Added;
 
         t.Stato = MappaturaRicevuteSdi.DaTipo(input.Tipo, input.CodiceEsito).ToString();
         t.UltimoAggiornamento = DateTimeOffset.UtcNow;

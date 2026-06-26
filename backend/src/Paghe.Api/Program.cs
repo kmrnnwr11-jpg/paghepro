@@ -156,6 +156,8 @@ app.MapGet("/", () => Results.Ok(new
         "POST /api/fatture/calcola",
         "POST /api/fatture/xml",
         "POST /api/fatture/valida",
+        "POST /api/fatture/firma         (CAdES .xml.p7m)",
+        "POST /api/firma/cades           (firma file: PFX o CNS/smart card)",
         "POST /api/bilancio/riclassifica",
         "POST /api/contabilita/iva/liquidazione",
         "POST /api/aziende            (richiede Bearer token)",
@@ -180,6 +182,7 @@ app.MapGet("/", () => Results.Ok(new
         "POST /api/rapporti/{id}/cedolini",
         "GET  /api/rapporti/{id}/cedolini",
         "GET  /api/cedolini/{id}",
+        "POST /api/aziende/{id}/f24/mese",
         "POST /api/cedolini/pdf",
         "POST /api/fatture/pdf",
         "GET  /api/fatture/{id}/pdf"
@@ -725,6 +728,36 @@ secured.MapGet("/api/cedolini/{id:guid}", async (Guid id, CedoliniService svc, C
 {
     var c = await svc.GetAsync(TenantCorrente(user), id);
     return c is null ? Results.NotFound(new { errore = "Cedolino non trovato." }) : Results.Ok(c);
+});
+
+// Genera l'F24 del mese pescando in automatico i cedolini archiviati dell'azienda.
+secured.MapPost("/api/aziende/{aziendaId:guid}/f24/mese",
+    async (Guid aziendaId, F24MeseRequest req, CedoliniService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var f24 = await svc.GeneraF24DelMeseAsync(
+            TenantCorrente(user), aziendaId, req.Anno, req.Mese, req.MatricolaInps, req.CodiceSedeInps ?? "");
+        var esito = ValidazioneF24.Verifica(f24);
+        return Results.Ok(new
+        {
+            f24.DataVersamento,
+            f24.TotaleDebiti,
+            f24.TotaleCrediti,
+            f24.SaldoFinale,
+            valido = esito.Valido,
+            errori = esito.Errori,
+            f24.Erario,
+            f24.Inps,
+            f24.Regioni,
+            f24.TributiLocali,
+            bozza = new BozzaLeggibileF24Writer().Genera(f24),
+        });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
 });
 
 // --- Documenti PDF -----------------------------------------------------------------

@@ -72,6 +72,15 @@ dotnet run --project src/Paghe.Demo -c Release
   Configurazione canale in sezione `Sdi` (default Manuale). Vedi
   `docs/integrazione-ufficiale/MODULO-TRASMISSIONE-SDI.md`. Restano da fornire: account/ApiKey del
   provider, firma CAdES locale reale (se non delegata), webhook ricevute, conservazione a norma.
+- **Firma digitale CAdES-BES** (busta `.xml.p7m`): modulo `backend/src/Paghe.Firma`. Engine
+  `FirmaCades` su `SignedCms` (SHA-256 + attributo `SigningCertificateV2`), nessuna dipendenza
+  GPL. Firmatari dietro `IFirmatoreDigitale`: `FirmatorePfx` (certificato software/firma remota)
+  e **`FirmatoreCns`** (smart card / **CNS** via PKCS#11 con `Pkcs11Interop.X509Store`, Apache-2.0;
+  la chiave resta sulla carta). Adapter `FirmaCadesLocale` collegato al seam
+  `IFirmaFatturaElettronica` della trasmissione SdI. Endpoint `POST /api/firma/cades` (upload PFX
+  o PIN CNS) e `POST /api/fatture/firma` (XML FatturaPA → valida → `.xml.p7m`). Config sezione
+  `Firma` (`PfxPath`/`PfxPassword` oppure `Cns:Pkcs11LibraryPath`). La firma CNS richiede il
+  middleware PKCS#11 + carta sulla macchina che firma (desktop/agente locale, non backend cloud).
 
 ## Prossimi lavori utili
 
@@ -82,9 +91,9 @@ Piano di completamento dettagliato (gap analysis, priorità, effort, sequenza): 
 2. Migrazioni EF Core (oggi `EnsureCreated`) + chiave JWT da secret in produzione.
 3. GDPR: cifratura dati sensibili (IBAN, malattia), audit log, retention.
 4. Generazione file ufficiali AA9/12, AA7/10, ComUnica e LIPE da specifiche pubbliche.
-5. Fattura SdI: infrastruttura di trasmissione **fatta** (gateway/firma/ricevute/deleghe);
-   restano account provider accreditato + ApiKey, firma CAdES locale reale (se non delegata
-   al provider), webhook ricevute e conservazione a norma.
+5. Fattura SdI: infrastruttura di trasmissione **fatta** (gateway/ricevute/deleghe) e **firma
+   CAdES locale reale fatta** (`Paghe.Firma`, PFX + CNS/smart card); restano account provider
+   accreditato + ApiKey, marche temporali (CAdES-T), webhook ricevute e conservazione a norma.
 
 Integrazione telematica ufficiale (Agenzia Entrate, ComUnica/Registro Imprese, INAIL,
 INPS, SUAP): fonti, kit, modello dati e backlog a fasi in `docs/integrazione-ufficiale/`.

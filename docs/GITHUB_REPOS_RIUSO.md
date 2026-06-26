@@ -10,6 +10,22 @@ progetti poco mantenuti.
 |---|---|---:|---|---|
 | PDF cedolino/fattura | [QuestPDF/QuestPDF](https://github.com/QuestPDF/QuestPDF) | Community / commerciale | `backend/src/Paghe.Documenti` | Ottimo per layout PDF. Prima della produzione verificare se si rientra nella Community License o serve licenza paid. |
 
+## Firma digitale (CAdES .p7m + CNS/smart card) — valutato e integrato il 2026-06-26
+
+Obiettivo: firma CAdES-BES (`.xml.p7m`) per la fattura elettronica e firma con
+**CNS / smart card** del titolare. Modulo `backend/src/Paghe.Firma`.
+
+| Componente | Repository / fonte | Licenza | Decisione |
+|---|---|---:|---|
+| Engine CAdES/CMS | `System.Security.Cryptography.Pkcs` (`SignedCms`) | runtime .NET (MIT) | ✅ **Usato.** Base della busta `.p7m` con digest SHA-256 e attributo `SigningCertificateV2`. Nessuna dipendenza esterna rischiosa. |
+| Accesso CNS/smart card | [Pkcs11Interop](https://github.com/Pkcs11Interop/Pkcs11Interop) + [Pkcs11Interop.X509Store](https://github.com/Pkcs11Interop/Pkcs11Interop.X509Store) | **Apache-2.0** | ✅ **Usato** per `FirmatoreCns`. Parla con il middleware PKCS#11 della carta; la chiave privata resta sul chip. Si integra con `SignedCms`. |
+| Firma XAdES/CAdES alternativa | [ctt-gob-es/FirmaXadesNet](https://github.com/ctt-gob-es/FirmaXadesNet) / [FirmaCadesNet](https://github.com/ctt-gob-es/FirmaCadesNet) e fork .NET Core | **GPL-3.0** | ❌ **Scartata.** Copyleft forte: vietata nel SaaS senza decisione legale esplicita (vedi Regola di sicurezza). |
+
+> Nota CNS: la firma con smart card richiede il middleware PKCS#11 (file `.so`/`.dll`/`.dylib`),
+> il lettore e la carta **sulla macchina che firma**. Funziona in contesto desktop o tramite
+> agente locale, non in un backend cloud dove la carta è assente: in SaaS la firma lato server
+> si fa con certificato PFX o firma remota (QTSP/HSM).
+
 ## Da integrare con priorita alta
 
 | Area | Repository | Licenza | Decisione |

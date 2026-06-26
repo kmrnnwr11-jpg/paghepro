@@ -45,7 +45,7 @@ e *valida* correttamente, ma non è ancora *configurabile*, *sicuro* o *usabile 
 > È il "finto" più grosso del sistema attuale: oggi i valori sono esempi cablati nel codice.
 
 ### 3. Fatturazione — completare il ciclo 🔴
-- [ ] **Firma digitale** CAdES/XAdES (.xml.p7m) — richiede certificato (smart card/HSM/firma remota) — **M**
+- [x] **Firma digitale** CAdES-BES (.xml.p7m) — modulo `Paghe.Firma` (`SignedCms` + SHA-256 + SigningCertificateV2). Firmatari: PFX/firma remota (`FirmatorePfx`) e **smart card/CNS** via PKCS#11 (`FirmatoreCns`, libreria Apache-2.0). Endpoint `POST /api/firma/cades` e `POST /api/fatture/firma`; integra il seam `IFirmaFatturaElettronica` della trasmissione SdI. Restano: marche temporali (CAdES-T), validazione catena/OCSP, certificato qualificato reale in produzione.
 - [ ] **Trasmissione/ricezione SdI** (canale SdICoop web service, o via intermediario) — **L**
 - [ ] **Fatture passive** (ciclo acquisti): ricezione, registrazione, riconciliazione — **M**
 - [ ] **Note di credito/debito**, **autofattura/reverse charge**, **bollo**, **ritenute**, **cassa previdenziale** — **M**

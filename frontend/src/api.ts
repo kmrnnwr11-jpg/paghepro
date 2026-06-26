@@ -59,6 +59,29 @@ export interface Cedolino {
   totaleCompetenze: number; totaleTrattenute: number; nettoInBusta: number;
   costoAzienda: number; quotaTfr: number; righe: VoceCedolino[];
 }
+export interface Fattura {
+  id: string; numero: string; anno?: number; data?: string;
+  cessionarioDenominazione?: string; totaleDocumento: number;
+}
+export interface RigaFatturaInput {
+  descrizione: string; quantita: number; prezzoUnitario: number; aliquotaIva: number;
+}
+export interface NuovaFattura {
+  data: string;
+  cessionario: {
+    denominazione: string; partitaIva?: string; codiceFiscale?: string;
+    indirizzo: string; cap: string; comune: string; provincia: string; nazione?: string;
+  };
+  righe: RigaFatturaInput[];
+}
+export interface Trasmissione {
+  id: string; stato: string; identificativoSdi?: string | null;
+  nomeFileXml?: string; firmato?: boolean; provider?: string; messaggioErrore?: string | null;
+}
+export interface Delega {
+  id: string; aziendaId: string; tipoAdempimento: string; stato: string;
+  dataInizio: string; dataFine?: string | null; riferimento?: string | null;
+}
 
 // --- Endpoint ---
 export const api = {
@@ -87,4 +110,37 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ rapporto, cartellino }),
     }),
+
+  // --- Fatturazione e trasmissione SdI ---
+  fatture: (aziendaId: string) => req<Fattura[]>(`/api/aziende/${aziendaId}/fatture`),
+  creaFattura: (aziendaId: string, f: NuovaFattura) =>
+    req<{ id: string; numero: string; totaleDocumento: number }>(
+      `/api/aziende/${aziendaId}/fatture`,
+      { method: "POST", body: JSON.stringify(f) },
+    ),
+  trasmetti: (fatturaId: string) =>
+    req<Trasmissione>(`/api/fatture/${fatturaId}/trasmetti`, { method: "POST" }),
+  // GET trasmissione: 404 (mai trasmessa) → null invece di errore.
+  trasmissione: async (fatturaId: string): Promise<Trasmissione | null> => {
+    try {
+      return await req<Trasmissione>(`/api/fatture/${fatturaId}/trasmissione`);
+    } catch {
+      return null;
+    }
+  },
+  registraRicevuta: (trasmissioneId: string, tipo: string, codiceEsito?: string) =>
+    req<{ id: string; stato: string }>(`/api/trasmissioni/${trasmissioneId}/ricevute`, {
+      method: "POST",
+      body: JSON.stringify({ tipo, codiceEsito }),
+    }),
+  aggiornaEsito: (trasmissioneId: string) =>
+    req<{ id: string; stato: string }>(`/api/trasmissioni/${trasmissioneId}/aggiorna-esito`, {
+      method: "POST",
+    }),
+  fatturaXml: (fatturaId: string) => req<string>(`/api/fatture/${fatturaId}/xml`),
+
+  // --- Deleghe intermediario ---
+  deleghe: () => req<Delega[]>("/api/deleghe"),
+  creaDelega: (d: { aziendaId: string; tipoAdempimento: string; dataInizio: string; riferimento?: string }) =>
+    req<Delega>("/api/deleghe", { method: "POST", body: JSON.stringify(d) }),
 };

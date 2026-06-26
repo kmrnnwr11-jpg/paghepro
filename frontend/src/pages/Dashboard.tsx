@@ -5,6 +5,7 @@ import { Dipendente } from "./Dipendente";
 import { Presenze } from "./Presenze";
 import { BustaPaga } from "./BustaPaga";
 import { Elaborazione } from "./Elaborazione";
+import { Fatture } from "./Fatture";
 
 type SectionKey =
   | "dashboard"
@@ -15,6 +16,7 @@ type SectionKey =
   | "cedolini"
   | "calcolo"
   | "adempimenti"
+  | "fatture"
   | "contabilita"
   | "documenti"
   | "elaborazioni"
@@ -35,6 +37,7 @@ const primaryNav: NavItem[] = [
   { key: "presenze", icon: "🗓️", label: "Presenze" },
   { key: "cedolini", icon: "📄", label: "Cedolini" },
   { key: "adempimenti", icon: "📨", label: "Adempimenti" },
+  { key: "fatture", icon: "🧾", label: "Fatturazione" },
   { key: "contabilita", icon: "📒", label: "Contabilità" },
   { key: "documenti", icon: "📁", label: "Documenti" },
 ];
@@ -75,6 +78,7 @@ const sectionTitle: Record<SectionKey, string> = {
   cedolini: "Cedolini",
   calcolo: "Calcolo cedolino",
   adempimenti: "Adempimenti",
+  fatture: "Fatturazione",
   contabilita: "Contabilità",
   documenti: "Documenti",
   elaborazioni: "Elaborazione cedolini",
@@ -578,6 +582,7 @@ function ModuleScreen({
   if (active === "presenze") return <Presenze />;
   if (active === "elaborazioni") return <Elaborazione />;
   if (active === "adempimenti") return <DeadlinesPanel onNavigate={onNavigate} />;
+  if (active === "fatture") return <Fatture />;
   if (active === "contabilita") return <AccountingPanel />;
   if (active === "documenti") return <DocumentsPanel onNavigate={onNavigate} />;
   if (active === "f24") return <F24Panel />;

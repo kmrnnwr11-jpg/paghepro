@@ -1,0 +1,114 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Paghe.Core.AdeTelematico;
+using Paghe.Persistence;
+using Paghe.Persistence.Entities;
+
+namespace Paghe.Tests.AdeTelematico;
+
+/// <summary>
+/// Integrazione su SQLite: l'F24 del mese deve raccogliere i cedolini archiviati dell'azienda
+/// e aggregare IRPEF, addizionali e contributi INPS.
+/// </summary>
+public sealed class F24DelMeseDbTests : IDisposable
+{
+    private readonly SqliteConnection _connection;
+
+    public F24DelMeseDbTests()
+    {
+        _connection = new SqliteConnection("DataSource=:memory:");
+        _connection.Open();
+        using var db = NuovoContesto();
+        db.Database.EnsureCreated();
+    }
+
+    private PagheDbContext NuovoContesto() =>
+        new(new DbContextOptionsBuilder<PagheDbContext>().UseSqlite(_connection).Options);
+
+    [Fact]
+    public async Task Genera_f24_del_mese_da_cedolini_archiviati()
+    {
+        var tenant = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        var rapporto1 = Guid.NewGuid();
+        var rapporto2 = Guid.NewGuid();
+
+        var dipendente1 = Guid.NewGuid();
+        var dipendente2 = Guid.NewGuid();
+
+        await using (var db = NuovoContesto())
+        {
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId, TenantId = tenant, RagioneSociale = "Acme Srl",
+                PartitaIva = "01234567897", CodiceFiscale = "01234567897",
+                Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
+            });
+            db.Dipendenti.AddRange(
+                new DipendenteEntity { Id = dipendente1, TenantId = tenant, CodiceFiscale = "RSSMRA85T10A562S", Nome = "Mario", Cognome = "Rossi" },
+                new DipendenteEntity { Id = dipendente2, TenantId = tenant, CodiceFiscale = "VRDLGI80A01F205X", Nome = "Luigi", Cognome = "Verdi" });
+            db.Rapporti.AddRange(
+                Rapporto(rapporto1, tenant, aziendaId, dipendente1),
+                Rapporto(rapporto2, tenant, aziendaId, dipendente2));
+            db.Cedolini.AddRange(
+                Cedolino(tenant, aziendaId, rapporto1, irpef: 300m, addReg: 20m, addCom: 10m, inpsDip: 150m, inpsDat: 450m),
+                Cedolino(tenant, aziendaId, rapporto2, irpef: 200m, addReg: 15m, addCom: 5m, inpsDip: 100m, inpsDat: 300m));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NuovoContesto())
+        {
+            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            var f24 = await svc.GeneraF24DelMeseAsync(tenant, aziendaId, 2026, 6, matricolaInps: "1234567890", codiceSedeInps: "7100");
+
+            Assert.Equal(500m, f24.Erario.Single(e => e.CodiceTributo == "1001").ImportoDebito);
+            Assert.Equal(35m, f24.Regioni.Single().ImportoDebito);
+            Assert.Equal(15m, f24.TributiLocali.Single().ImportoDebito);
+            Assert.Equal(1000m, f24.Inps.Single().ImportoDebito);
+            Assert.Equal("06/2026", f24.Inps.Single().PeriodoDa);
+            Assert.True(ValidazioneF24.Verifica(f24).Valido);
+        }
+    }
+
+    [Fact]
+    public async Task Senza_cedolini_del_mese_segnala()
+    {
+        var tenant = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        await using (var db = NuovoContesto())
+        {
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId, TenantId = tenant, RagioneSociale = "Acme Srl", PartitaIva = "01234567897",
+                Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NuovoContesto())
+        {
+            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                svc.GeneraF24DelMeseAsync(tenant, aziendaId, 2026, 6, "1234567890"));
+        }
+    }
+
+    private static RapportoLavoroEntity Rapporto(Guid id, Guid tenant, Guid aziendaId, Guid dipendenteId) => new()
+    {
+        Id = id, TenantId = tenant, AziendaId = aziendaId, DipendenteId = dipendenteId,
+        CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3", Qualifica = "Impiegato",
+        Regione = "12", CodiceCatastaleComune = "F205", DataAssunzione = new DateOnly(2020, 1, 1),
+    };
+
+    private static CedolinoEntity Cedolino(
+        Guid tenant, Guid aziendaId, Guid rapportoId,
+        decimal irpef, decimal addReg, decimal addCom, decimal inpsDip, decimal inpsDat) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = tenant, AziendaId = aziendaId, RapportoLavoroId = rapportoId,
+        Anno = 2026, Mese = 6,
+        IrpefNetta = irpef, AddizionaleRegionale = addReg, AddizionaleComunale = addCom,
+        ContributiDipendente = inpsDip, ContributiDatore = inpsDat, CalcolatoIl = DateTime.UtcNow,
+    };
+
+    public void Dispose() => _connection.Dispose();
+}

@@ -24,12 +24,13 @@ Modulo `backend/src/Paghe.Core/AdeTelematico/` (puro dominio, nessun invio telem
 - [x] Macchina a stati della pratica telematica (`PraticaTelematica.cs`).
 - [x] Wrapper controlli ufficiali: interfaccia + costruzione argomenti `java -cp` + runner a processo (`ControlliUfficiali.cs`).
 - [x] **Import UNILAV** (Comunicazione Obbligatoria): legge l'XML, riconosce datore/lavoratore/rapporto e crea in automatico dipendente + rapporto senza inserimento manuale (`ImportazioneUnilav.cs`). Lettura namespace-agnostica e tollerante. Endpoint `POST /api/aziende/{id}/dipendenti/da-unilav`.
-- [x] **F24 dalle paghe**: costruisce l'F24 da versare dai cedolini (ritenute IRPEF 1001, addizionali 3802/3848, contributi INPS), con scadenza al 16 del mese successivo (`F24DaCedolini.cs`). Endpoint `POST /api/f24/da-paghe`.
+- [x] **F24 dalle paghe**: costruisce l'F24 da versare dai cedolini (ritenute IRPEF 1001, addizionali 3802/3848, contributi INPS), con scadenza al 16 del mese successivo (`F24DaCedolini.cs`). Endpoint `POST /api/f24/da-paghe` (importi nella request).
+- [x] **F24 del mese da DB**: pesca in automatico i cedolini archiviati di un'azienda per anno/mese e li aggrega (`CedoliniService.GeneraF24DelMeseAsync`). Endpoint `POST /api/aziende/{id}/f24/mese`.
 - [ ] **Tracciato telematico ufficiale F24 a lunghezza fissa (record A/M/V/Z)**: da implementare dalle specifiche ufficiali Agenzia Entrate (non nel repo). Per ora `BozzaLeggibileF24Writer` produce solo una bozza NON ufficiale per test (`TracciatoF24.cs`).
-- [ ] F24 da cedolini archiviati su DB (oggi gli importi si passano alla request); persistenza pratiche/ricevute, cartelle `export/`.
+- [ ] Persistenza pratiche/ricevute F24, cartelle `export/`.
 - [ ] Allineare i nomi di campo del parser UNILAV su un tracciato reale (oggi su standard CO + candidati tolleranti).
 
-Flusso completo già percorribile: carica UNILAV → crea dipendente/rapporto → `POST /api/rapporti/{id}/cedolini` calcola e archivia il cedolino → `POST /api/f24/da-paghe` genera l'F24.
+Flusso completo verificato end-to-end (live + test): carica UNILAV (`POST /api/aziende/{id}/dipendenti/da-unilav`) → crea dipendente/rapporto → `POST /api/rapporti/{id}/cedolini` calcola e archivia il cedolino → `POST /api/aziende/{id}/f24/mese` genera l'F24 del periodo dai cedolini archiviati.
 
 Test: `backend/tests/Paghe.Tests/AdeTelematico/`.
 

@@ -44,7 +44,7 @@ public sealed class DelegheService
             DataFine = input.DataFine,
             Riferimento = input.Riferimento,
             Note = input.Note,
-            CreataIl = DateTimeOffset.UtcNow,
+            CreataIl = DateTime.UtcNow,
         };
         _db.Deleghe.Add(entity);
         await _db.SaveChangesAsync(ct);

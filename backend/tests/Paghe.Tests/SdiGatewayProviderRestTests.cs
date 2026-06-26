@@ -65,6 +65,20 @@ public sealed class SdiGatewayProviderRestTests
         Assert.Contains("invoices/X", handler.LastRequest!.RequestUri!.ToString());
     }
 
+    [Fact]
+    public async Task Simulato_TrasmetteEConsegnaEsito()
+    {
+        var gateway = new SdiGatewaySimulato();
+
+        var risultato = await gateway.TrasmettiAsync(NuovaFattura());
+        Assert.Equal(StatoTrasmissioneSdi.Inviata, risultato.Stato);
+        Assert.False(string.IsNullOrWhiteSpace(risultato.IdentificativoSdi));
+
+        var esito = await gateway.InterrogaEsitoAsync(risultato.IdentificativoSdi!);
+        Assert.NotNull(esito);
+        Assert.Equal(StatoTrasmissioneSdi.ConsegnataSdi, esito!.Stato);
+    }
+
     private static FatturaDaTrasmettere NuovaFattura() =>
         new(Guid.NewGuid(), "IT01234567890_00001.xml", Encoding.UTF8.GetBytes("<xml/>"), Firmato: false);
 

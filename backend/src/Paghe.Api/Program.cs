@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,7 @@ builder.Services.AddScoped<FattureService>();
 builder.Services.AddScoped<ParametriNormativiService>();
 builder.Services.AddScoped<AnagraficheLavoroService>();
 builder.Services.AddScoped<CedoliniService>();
+builder.Services.AddScoped<PraticheF24Service>();
 builder.Services.AddScoped<PraticheAperturaPartitaIvaService>();
 builder.Services.AddScoped<ContabilitaIvaService>();
 
@@ -49,19 +51,26 @@ var firmaOptions = new FirmaOptions();
 builder.Configuration.GetSection("Firma").Bind(firmaOptions);
 builder.Services.AddSingleton(firmaOptions);
 
-if (sdiOptions.Provider.Equals("Rest", StringComparison.OrdinalIgnoreCase))
+// Canale "Sdi": "Rest" (provider accreditato), "Simulato" (demo, ciclo completo senza invio reale),
+// "Manuale" (default, prepara il file da firmare/caricare).
+switch (sdiOptions.Provider.ToLowerInvariant())
 {
-    builder.Services.AddHttpClient<IFatturaSdiGateway, SdiGatewayProviderRest>();
-    if (sdiOptions.FirmaLocale)
-        // Firma CAdES locale reale (Paghe.Firma): PFX o smart card/CNS. Se non configurata, l'errore è esplicito.
-        builder.Services.AddScoped<IFirmaFatturaElettronica, FirmaCadesLocale>();
-    else
+    case "rest":
+        builder.Services.AddHttpClient<IFatturaSdiGateway, SdiGatewayProviderRest>();
+        if (sdiOptions.FirmaLocale)
+            // Firma CAdES locale reale (Paghe.Firma): PFX o smart card/CNS. Se non configurata, l'errore è esplicito.
+            builder.Services.AddScoped<IFirmaFatturaElettronica, FirmaCadesLocale>();
+        else
+            builder.Services.AddScoped<IFirmaFatturaElettronica, FirmaDelegataAlProvider>();
+        break;
+    case "simulato":
+        builder.Services.AddScoped<IFatturaSdiGateway, SdiGatewaySimulato>();
         builder.Services.AddScoped<IFirmaFatturaElettronica, FirmaDelegataAlProvider>();
-}
-else
-{
-    builder.Services.AddScoped<IFatturaSdiGateway, SdiGatewayManuale>();
-    builder.Services.AddScoped<IFirmaFatturaElettronica, FirmaDelegataAlProvider>();
+        break;
+    default: // "manuale"
+        builder.Services.AddScoped<IFatturaSdiGateway, SdiGatewayManuale>();
+        builder.Services.AddScoped<IFirmaFatturaElettronica, FirmaDelegataAlProvider>();
+        break;
 }
 builder.Services.AddScoped<TrasmissioneFattureService>();
 builder.Services.AddScoped<DelegheService>();
@@ -183,6 +192,11 @@ app.MapGet("/", () => Results.Ok(new
         "GET  /api/rapporti/{id}/cedolini",
         "GET  /api/cedolini/{id}",
         "POST /api/aziende/{id}/f24/mese",
+        "POST /api/aziende/{id}/f24/mese/salva",
+        "GET  /api/aziende/{id}/f24",
+        "GET  /api/f24/{id}",
+        "POST /api/f24/{id}/stato",
+        "POST /api/f24/{id}/esporta",
         "POST /api/cedolini/pdf",
         "POST /api/fatture/pdf",
         "GET  /api/fatture/{id}/pdf"
@@ -753,6 +767,79 @@ secured.MapPost("/api/aziende/{aziendaId:guid}/f24/mese",
             f24.TributiLocali,
             bozza = new BozzaLeggibileF24Writer().Genera(f24),
         });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
+// --- F24: archiviazione pratica, stato ed export per Desktop Telematico -------------
+secured.MapPost("/api/aziende/{aziendaId:guid}/f24/mese/salva",
+    async (Guid aziendaId, F24MeseRequest req, PraticheF24Service svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var p = await svc.GeneraEArchiviaDelMeseAsync(
+            TenantCorrente(user), aziendaId, req.Anno, req.Mese, req.MatricolaInps, req.CodiceSedeInps ?? "");
+        return Results.Created($"/api/f24/{p.Id}", new
+        {
+            p.Id, p.Anno, p.Mese, p.DataVersamento, p.TotaleDebiti, p.SaldoFinale, p.Stato, p.Valido,
+        });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
+secured.MapGet("/api/aziende/{aziendaId:guid}/f24",
+    async (Guid aziendaId, PraticheF24Service svc, ClaimsPrincipal user) =>
+        Results.Ok((await svc.ElencoAsync(TenantCorrente(user), aziendaId)).Select(p => new
+        {
+            p.Id, p.Anno, p.Mese, p.DataVersamento, p.TotaleDebiti, p.SaldoFinale, p.Stato, p.Valido,
+        })));
+
+secured.MapGet("/api/f24/{id:guid}", async (Guid id, PraticheF24Service svc, ClaimsPrincipal user) =>
+{
+    var p = await svc.GetAsync(TenantCorrente(user), id);
+    if (p is null)
+        return Results.NotFound(new { errore = "Pratica F24 non trovata." });
+    return Results.Ok(new
+    {
+        p.Id, p.Anno, p.Mese, p.DataVersamento,
+        p.TotaleDebiti, p.TotaleCrediti, p.SaldoFinale,
+        p.Stato, p.Valido, p.Bozza,
+        modello = JsonSerializer.Deserialize<JsonElement>(p.ModelloJson),
+    });
+});
+
+secured.MapPost("/api/f24/{id:guid}/stato",
+    async (Guid id, CambiaStatoF24Request req, PraticheF24Service svc, ClaimsPrincipal user) =>
+{
+    if (!Enum.TryParse<StatoPraticaTelematica>(req.Stato, out var nuovo))
+        return Results.BadRequest(new { errore = $"Stato non valido: {req.Stato}." });
+    try
+    {
+        var p = await svc.CambiaStatoAsync(TenantCorrente(user), id, nuovo);
+        return Results.Ok(new { p.Id, p.Stato });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
+secured.MapPost("/api/f24/{id:guid}/esporta", async (Guid id, PraticheF24Service svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        string file = await svc.EsportaAsync(TenantCorrente(user), id, "export");
+        return Results.Ok(new { file = Path.GetFullPath(file) });
     }
     catch (ArgumentException ex)
     {

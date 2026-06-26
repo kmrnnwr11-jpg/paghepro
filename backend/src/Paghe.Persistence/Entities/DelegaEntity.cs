@@ -29,5 +29,5 @@ public class DelegaEntity
     public string? Riferimento { get; set; }
     public string? Note { get; set; }
 
-    public DateTimeOffset CreataIl { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime CreataIl { get; set; } = DateTime.UtcNow;
 }

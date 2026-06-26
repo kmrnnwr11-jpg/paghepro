@@ -66,8 +66,11 @@ public sealed class PraticaTelematica
     public StatoPraticaTelematica Stato { get; private set; } = StatoPraticaTelematica.Bozza;
 
     /// <summary>Vero se dallo stato corrente è ammesso transitare verso <paramref name="nuovo"/>.</summary>
-    public bool PuoTransizionareA(StatoPraticaTelematica nuovo) =>
-        Transizioni.TryGetValue(Stato, out var ammessi) && Array.IndexOf(ammessi, nuovo) >= 0;
+    public bool PuoTransizionareA(StatoPraticaTelematica nuovo) => PuoTransizionare(Stato, nuovo);
+
+    /// <summary>Vero se è ammessa la transizione tra due stati qualsiasi (utile per pratiche persistite).</summary>
+    public static bool PuoTransizionare(StatoPraticaTelematica da, StatoPraticaTelematica a) =>
+        Transizioni.TryGetValue(da, out var ammessi) && Array.IndexOf(ammessi, a) >= 0;
 
     /// <summary>Applica la transizione, lanciando se non ammessa dallo stato corrente.</summary>
     public void Transiziona(StatoPraticaTelematica nuovo)

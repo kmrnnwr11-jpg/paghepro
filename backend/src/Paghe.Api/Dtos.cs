@@ -117,6 +117,9 @@ public sealed record F24MeseRequest(
     string MatricolaInps,
     string? CodiceSedeInps = null);
 
+/// <summary>Cambio di stato di una pratica F24 (valore di StatoPraticaTelematica).</summary>
+public sealed record CambiaStatoF24Request(string Stato);
+
 /// <summary>Richiesta di generazione dell'F24 da versare a partire dagli importi delle paghe.</summary>
 public sealed record F24DaPagheRequest(
     DatiSostitutoImposta Sostituto,

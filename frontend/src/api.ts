@@ -139,6 +139,39 @@ export const api = {
     }),
   fatturaXml: (fatturaId: string) => req<string>(`/api/fatture/${fatturaId}/xml`),
 
+  // --- Firma digitale CAdES (.p7m) ---
+  // Firma un file: con certificato software (pfx + password) oppure con smart card/CNS (pin).
+  // Risponde con la busta .p7m come blob da scaricare.
+  firmaCades: async (
+    file: File,
+    opts: { pfx?: File; password?: string; pin?: string } = {},
+  ): Promise<{ blob: Blob; filename: string }> => {
+    const form = new FormData();
+    form.append("file", file);
+    if (opts.pfx) form.append("pfx", opts.pfx);
+    if (opts.password) form.append("password", opts.password);
+    if (opts.pin) form.append("pin", opts.pin);
+
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${BASE}/api/firma/cades`, { method: "POST", body: form, headers });
+    if (!res.ok) {
+      let messaggio = `Errore ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.errore) messaggio = body.errore as string;
+      } catch {
+        /* corpo non JSON */
+      }
+      throw new Error(messaggio);
+    }
+    const blob = await res.blob();
+    // Il backend nomina il file aggiungendo ".p7m" al nome originale.
+    return { blob, filename: `${file.name}.p7m` };
+  },
+
   // --- Deleghe intermediario ---
   deleghe: () => req<Delega[]>("/api/deleghe"),
   creaDelega: (d: { aziendaId: string; tipoAdempimento: string; dataInizio: string; riferimento?: string }) =>

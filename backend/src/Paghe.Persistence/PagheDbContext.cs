@@ -41,6 +41,7 @@ public class PagheDbContext : DbContext
     public DbSet<TrasmissioneFatturaEntity> TrasmissioniFatture => Set<TrasmissioneFatturaEntity>();
     public DbSet<RicevutaSdiEntity> RicevuteSdi => Set<RicevutaSdiEntity>();
     public DbSet<DelegaEntity> Deleghe => Set<DelegaEntity>();
+    public DbSet<PraticaF24Entity> PraticheF24 => Set<PraticaF24Entity>();
 
     /// <summary>
     /// Compatibilità per il database SQLite di sviluppo creato con EnsureCreated:
@@ -208,6 +209,28 @@ public class PagheDbContext : DbContext
             CREATE INDEX IF NOT EXISTS "IX_Deleghe_AziendaId" ON "Deleghe" ("AziendaId");
             CREATE INDEX IF NOT EXISTS "IX_Deleghe_TenantId_AziendaId_TipoAdempimento"
                 ON "Deleghe" ("TenantId", "AziendaId", "TipoAdempimento");
+            """);
+
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "PraticheF24" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_PraticheF24" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "AziendaId" TEXT NOT NULL,
+                "Anno" INTEGER NOT NULL,
+                "Mese" INTEGER NOT NULL,
+                "DataVersamento" TEXT NOT NULL,
+                "TotaleDebiti" TEXT NOT NULL,
+                "TotaleCrediti" TEXT NOT NULL,
+                "SaldoFinale" TEXT NOT NULL,
+                "Stato" TEXT NOT NULL,
+                "Valido" INTEGER NOT NULL,
+                "ModelloJson" TEXT NOT NULL,
+                "Bozza" TEXT NOT NULL,
+                "CreataIl" TEXT NOT NULL,
+                "UltimoAggiornamento" TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_PraticheF24_TenantId_AziendaId_Anno_Mese"
+                ON "PraticheF24" ("TenantId", "AziendaId", "Anno", "Mese");
             """);
     }
 
@@ -412,6 +435,16 @@ public class PagheDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.AziendaId, x.TipoAdempimento });
             e.HasOne(x => x.Azienda).WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // --- Pratiche F24 (telematico) ---
+        mb.Entity<PraticaF24Entity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.AziendaId, x.Anno, x.Mese });
+            e.Property(x => x.TotaleDebiti).HasPrecision(15, 2);
+            e.Property(x => x.TotaleCrediti).HasPrecision(15, 2);
+            e.Property(x => x.SaldoFinale).HasPrecision(15, 2);
         });
     }
 }

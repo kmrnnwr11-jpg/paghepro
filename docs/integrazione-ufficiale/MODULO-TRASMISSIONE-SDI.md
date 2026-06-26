@@ -19,8 +19,10 @@ Il principio è **generare → controllare → firmare → inviare solo via cana
   - `NomeFileFatturaPa`: nome file ufficiale `ITxxxxxxxxxxx_<progressivo>.xml`.
   - `MappaturaRicevuteSdi`: mappa i tipi di notifica SdI (RC/MC/NS/NE/DT) negli stati.
 - **Implementazioni canale** (`Paghe.Persistence/Trasmissione/`):
-  - `SdiGatewayManuale` (default): non invia in rete, prepara il file da firmare e caricare sul
+  - `SdiGatewayManuale` (default produzione): non invia in rete, prepara il file da firmare e caricare sul
     portale "Fatture e Corrispettivi" o da consegnare all'intermediario. Utilizzabile **subito**, senza credenziali.
+  - `SdiGatewaySimulato` (default sviluppo): riproduce l'intero ciclo (Inviata → Consegnata) **senza
+    invio reale**, per provare il flusso end-to-end e gli esiti senza un account provider.
   - `SdiGatewayProviderRest`: client REST generico verso un provider accreditato (Aruba, Fatture
     in Cloud, Acube, Openapi, ...). Usa `HttpClient` con auth Bearer; mappa la risposta JSON.
 - **Firma**:
@@ -44,7 +46,8 @@ Il principio è **generare → controllare → firmare → inviare solo via cana
 
 ## Configurazione (appsettings / secret)
 
-Default = canale manuale (nessun invio in rete). Per passare a un provider reale:
+Default: `Simulato` in sviluppo (ciclo completo per demo), `Manuale` in produzione (prepara il file).
+Per passare a un provider reale:
 
 ```json
 {

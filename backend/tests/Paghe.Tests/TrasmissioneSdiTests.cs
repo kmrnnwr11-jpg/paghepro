@@ -158,6 +158,28 @@ public sealed class TrasmissioneSdiTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Elenco_e_GetPerFattura_OrdinanoSenzaErrori()
+    {
+        // Regressione: l'ordinamento per timestamp deve funzionare sul provider SQLite
+        // (DateTimeOffset non è ordinabile in ORDER BY su SQLite, DateTime sì).
+        var tenant = Guid.NewGuid();
+        var aziendaId = await CreaAziendaAsync(tenant);
+        var fatturaId = await CreaFatturaAsync(tenant, aziendaId);
+
+        await using (var db = NuovoContesto())
+            await Servizio(db, new RisultatoTrasmissioneSdi(StatoTrasmissioneSdi.Inviata, "SDI-1"))
+                .TrasmettiAsync(tenant, fatturaId);
+
+        await using (var db = NuovoContesto())
+        {
+            var svc = Servizio(db, new RisultatoTrasmissioneSdi(StatoTrasmissioneSdi.Inviata));
+            var elenco = await svc.ElencoAsync(tenant);
+            Assert.Single(elenco);
+            Assert.NotNull(await svc.GetPerFatturaAsync(tenant, fatturaId));
+        }
+    }
+
     private async Task<Guid> CreaAziendaAsync(Guid tenant)
     {
         await using var db = NuovoContesto();

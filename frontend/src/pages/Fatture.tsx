@@ -124,6 +124,17 @@ export function Fatture() {
     }
   }
 
+  async function aggiornaEsito(fatturaId: string, trasmissioneId: string) {
+    setErrore(null);
+    try {
+      const r = await api.aggiornaEsito(trasmissioneId);
+      setTrasm((m) => ({ ...m, [fatturaId]: { ...(m[fatturaId] as Trasmissione), stato: r.stato } }));
+      setInfo(`Esito aggiornato → ${statoLabel[r.stato] ?? r.stato}`);
+    } catch (e) {
+      setErrore((e as Error).message);
+    }
+  }
+
   async function scaricaXml(fatturaId: string, numero: string) {
     try {
       const xml = await api.fatturaXml(fatturaId);
@@ -232,6 +243,9 @@ export function Fatture() {
                           <button className="mini-action" type="button" onClick={() => void scaricaXml(f.id, f.numero)}>XML</button>
                           {!t && (
                             <button className="mini-action" type="button" onClick={() => void trasmetti(f.id)}>Trasmetti</button>
+                          )}
+                          {t && t.stato === "Inviata" && (
+                            <button className="mini-action" type="button" onClick={() => void aggiornaEsito(f.id, t.id)}>Aggiorna esito</button>
                           )}
                           {t && (t.stato === "Inviata" || t.stato === "PreparataInvioManuale") && (
                             <>

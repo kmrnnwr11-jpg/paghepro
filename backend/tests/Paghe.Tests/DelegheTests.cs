@@ -86,7 +86,21 @@ public sealed class DelegheTests : IDisposable
         }
     }
 
-    private async Task<Guid> CreaAziendaAsync(Guid tenant)
+    [Fact]
+  public async Task Elenco_OrdinaSenzaErrori()
+  {
+    // Regressione SQLite: ordinamento per timestamp (CreataIl) deve essere DateTime, non DateTimeOffset.
+    var tenant = Guid.NewGuid();
+    var aziendaId = await CreaAziendaAsync(tenant);
+
+    await using (var db = NuovoContesto())
+      await new DelegheService(db).CreaAsync(tenant, new DelegaInput(aziendaId, "FatturaElettronica", new DateOnly(2026, 1, 1)));
+
+    await using (var db = NuovoContesto())
+      Assert.Single(await new DelegheService(db).ElencoAsync(tenant));
+  }
+
+  private async Task<Guid> CreaAziendaAsync(Guid tenant)
     {
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity

@@ -77,7 +77,7 @@ public sealed class TrasmissioneFattureService
         var risultato = await _gateway.TrasmettiAsync(
             new FatturaDaTrasmettere(fatturaId, firmata.NomeFile, firmata.Contenuto, firmata.Firmato), ct);
 
-        var ora = DateTimeOffset.UtcNow;
+        var ora = DateTime.UtcNow;
         var entity = new TrasmissioneFatturaEntity
         {
             Id = Guid.NewGuid(),
@@ -123,13 +123,13 @@ public sealed class TrasmissioneFattureService
             CodiceEsito = input.CodiceEsito,
             Descrizione = input.Descrizione,
             ContenutoGrezzo = input.ContenutoGrezzo,
-            RicevutaIl = DateTimeOffset.UtcNow,
+            RicevutaIl = DateTime.UtcNow,
         };
         t.Ricevute.Add(ricevuta);
         _db.Entry(ricevuta).State = EntityState.Added;
 
         t.Stato = MappaturaRicevuteSdi.DaTipo(input.Tipo, input.CodiceEsito).ToString();
-        t.UltimoAggiornamento = DateTimeOffset.UtcNow;
+        t.UltimoAggiornamento = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         return t;
     }
@@ -151,7 +151,7 @@ public sealed class TrasmissioneFattureService
 
         t.Stato = esito.Stato.ToString();
         if (esito.CodiceEsito is not null) t.CodiceErrore = esito.CodiceEsito;
-        t.UltimoAggiornamento = DateTimeOffset.UtcNow;
+        t.UltimoAggiornamento = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         return t;
     }

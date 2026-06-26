@@ -30,9 +30,9 @@ public class TrasmissioneFatturaEntity
     public string? CodiceErrore { get; set; }
     public string? MessaggioErrore { get; set; }
 
-    public DateTimeOffset CreataIl { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? InviataIl { get; set; }
-    public DateTimeOffset UltimoAggiornamento { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime CreataIl { get; set; } = DateTime.UtcNow;
+    public DateTime? InviataIl { get; set; }
+    public DateTime UltimoAggiornamento { get; set; } = DateTime.UtcNow;
 
     public List<RicevutaSdiEntity> Ricevute { get; set; } = new();
 }
@@ -54,5 +54,5 @@ public class RicevutaSdiEntity
     /// <summary>Contenuto grezzo della notifica (XML SdI), per conservazione/audit.</summary>
     public string? ContenutoGrezzo { get; set; }
 
-    public DateTimeOffset RicevutaIl { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime RicevutaIl { get; set; } = DateTime.UtcNow;
 }

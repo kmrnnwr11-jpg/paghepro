@@ -1,34 +1,5 @@
 import { useEffect, useState } from "react";
-import { getToken } from "../api";
-
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:5171";
-
-interface ConfigSdi {
-  modalita: string;
-  provider: string;
-  baseUrl: string;
-  apiKeyImpostata: boolean;
-  endpointInvio: string;
-  endpointEsito: string;
-  campoId: string;
-  campoStato: string;
-  firmaLocale: boolean;
-  attivo: boolean;
-}
-
-async function chiama<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers as Record<string, string>),
-    },
-  });
-  if (!res.ok) throw new Error(`Errore ${res.status}`);
-  return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
-}
+import { api, type ConfigSdi } from "../api";
 
 const providerPreset: Record<string, { provider: string; baseUrl: string; nota: string }> = {
   aruba: { provider: "Aruba", baseUrl: "https://api.fatturazioneelettronica.aruba.it/", nota: "Diffuso, economico, assistenza in italiano." },
@@ -46,7 +17,7 @@ export function CollegaProvider() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    chiama<ConfigSdi>("/api/configurazione-sdi")
+    api.configSdi()
       .then(setCfg)
       .catch((e) => setErrore(e instanceof Error ? e.message : "Errore"));
   }, []);
@@ -82,10 +53,7 @@ export function CollegaProvider() {
         firmaLocale: cfg.firmaLocale,
         attivo: cfg.attivo,
       };
-      const aggiornata = await chiama<ConfigSdi>("/api/configurazione-sdi", {
-        method: "PUT",
-        body: JSON.stringify(body),
-      });
+      const aggiornata = await api.salvaConfigSdi(body);
       setCfg(aggiornata);
       setApiKey("");
       setSalvato(true);
@@ -100,7 +68,7 @@ export function CollegaProvider() {
     setBusy(true);
     setErrore(null);
     try {
-      const r = await chiama<{ ok: boolean; messaggio: string }>("/api/configurazione-sdi/verifica", { method: "POST" });
+      const r = await api.verificaConfigSdi();
       setVerifica(r);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Errore");

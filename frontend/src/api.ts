@@ -114,6 +114,10 @@ export interface NuovoDurc {
 export interface NuovoPromemoria {
   titolo: string; dataScadenza: string; aziendaId?: string; descrizione?: string; giorniPreavviso?: number;
 }
+export interface EsitoInvioPromemoria {
+  inviato: boolean; canale: string; destinatario: string; dettaglio: string;
+  messaggio: string; testoBreve: string;
+}
 export interface VoceBilancio {
   codice: string; descrizione: string; voce: string; importo: number;
 }
@@ -323,4 +327,28 @@ export const api = {
   durcAzienda: (aziendaId: string) => req<Durc[]>(`/api/aziende/${aziendaId}/durc`),
   registraDurc: (aziendaId: string, d: NuovoDurc) =>
     req<Durc>(`/api/aziende/${aziendaId}/durc`, { method: "POST", body: JSON.stringify(d) }),
+  // Invia/prepara un promemoria su un canale: "Email" | "Sms" | "WhatsApp" | "Manuale" (omesso = default).
+  inviaPromemoria: (id: string, canale?: string, destinatario?: string) =>
+    req<EsitoInvioPromemoria>(`/api/scadenzario/${id}/invia`, {
+      method: "POST",
+      body: JSON.stringify({ canale, destinatario }),
+    }),
+
+  // --- Configurazione SdI self-service (collega provider) ---
+  configSdi: () => req<ConfigSdi>("/api/configurazione-sdi"),
+  salvaConfigSdi: (c: SalvaConfigSdi) =>
+    req<ConfigSdi>("/api/configurazione-sdi", { method: "PUT", body: JSON.stringify(c) }),
+  verificaConfigSdi: () =>
+    req<{ ok: boolean; messaggio: string }>("/api/configurazione-sdi/verifica", { method: "POST" }),
 };
+
+export interface ConfigSdi {
+  modalita: string; provider: string; baseUrl: string; apiKeyImpostata: boolean;
+  endpointInvio: string; endpointEsito: string; campoId: string; campoStato: string;
+  firmaLocale: boolean; attivo: boolean;
+}
+export interface SalvaConfigSdi {
+  modalita: string; provider?: string; baseUrl?: string; apiKey?: string | null;
+  endpointInvio?: string; endpointEsito?: string; campoId?: string; campoStato?: string;
+  firmaLocale: boolean; attivo: boolean;
+}

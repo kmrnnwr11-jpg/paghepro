@@ -75,8 +75,17 @@ dotnet run --project src/Paghe.Demo -c Release
   (rigenera + elenca con `giorniAllaScadenza`/`urgenza`), `POST /api/scadenzario/rigenera`,
   `POST /api/scadenzario` (manuale), `GET /api/scadenzario/{id}`, `POST /api/scadenzario/{id}/stato`,
   `POST /api/aziende/{id}/durc`, `GET /api/aziende/{id}/durc`. UI: pagina **Scadenzario** nella SPA
-  (contatori scaduti/in scadenza, messaggio copiabile, form registrazione DURC). Isolato per tenant.
-  L'invio email reale (SMTP) dei messaggi resta da abilitare: oggi il testo è pronto da copiare/inviare.
+  (contatori scaduti/in scadenza, messaggio copiabile, form registrazione DURC, invio multi-canale).
+  Isolato per tenant.
+- **Canali di notifica** (`Paghe.Core/Notifiche`): astrazione `INotificatore` + `NotificheService`
+  per recapitare promemoria/solleciti su **Email** (SMTP, `NotificatoreEmailSmtp`), **SMS**
+  (gateway sagomato Twilio, `NotificatoreSms`) e **WhatsApp** (Meta Cloud API, `NotificatoreWhatsApp`),
+  con default **`NotificatoreManuale`** (non invia, prepara solo il testo). `FormattatoreNotifiche`
+  produce la versione breve per SMS/WhatsApp. Canale e credenziali in sezione config `Notifiche`
+  (default `Manuale`); i sender HTTP sono typed-client (testabili con handler finto, senza rete).
+  Endpoint `POST /api/scadenzario/{id}/invia` (`canale` + `destinatario`): invia o prepara, e segna
+  il promemoria `Inviato`. **Da fornire per l'invio reale**: SMTP, account Twilio (SMS), WhatsApp
+  Business Meta + template approvati (i messaggi business-initiated fuori finestra 24h li richiedono).
 - **Import UNILAV**: `ImportazioneUnilav` legge la Comunicazione Obbligatoria XML (lettura
   namespace-agnostica) e crea in automatico dipendente + rapporto. Endpoint
   `POST /api/aziende/{id}/dipendenti/da-unilav`.

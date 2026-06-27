@@ -216,3 +216,6 @@ public sealed record CreaPromemoriaRequest(
 
 /// <summary>Cambio stato di un promemoria: Aperto, Inviato, Completato o Annullato.</summary>
 public sealed record CambiaStatoPromemoriaRequest(string Stato);
+
+/// <summary>Invio di un promemoria su un canale (Email/Sms/WhatsApp); se omesso usa il canale di default.</summary>
+public sealed record InviaPromemoriaRequest(string? Canale = null, string? Destinatario = null);

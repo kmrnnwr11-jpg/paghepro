@@ -12,6 +12,7 @@ using Paghe.Core.Contabilita;
 using Paghe.Core.Domain;
 using Paghe.Core.Fatturazione;
 using Paghe.Core.Fatturazione.Trasmissione;
+using Paghe.Core.Notifiche;
 using Paghe.Core.Parametri;
 using Paghe.Documenti;
 using Paghe.Firma;
@@ -88,6 +89,18 @@ switch (sdiOptions.Provider.ToLowerInvariant())
 }
 builder.Services.AddScoped<TrasmissioneFattureService>();
 builder.Services.AddScoped<DelegheService>();
+
+// Canali di notifica per promemoria/solleciti (sezione "Notifiche"): Manuale (default, non invia),
+// Email (SMTP), Sms (gateway sagomato Twilio), WhatsApp (Meta Cloud API). Sono registrati tutti:
+// il canale effettivo si sceglie per richiesta o dal default in configurazione.
+var notificheOptions = new NotificheOptions();
+builder.Configuration.GetSection("Notifiche").Bind(notificheOptions);
+builder.Services.AddSingleton(notificheOptions);
+builder.Services.AddSingleton<NotificatoreManuale>();
+builder.Services.AddScoped<NotificatoreEmailSmtp>();
+builder.Services.AddHttpClient<NotificatoreSms>();
+builder.Services.AddHttpClient<NotificatoreWhatsApp>();
+builder.Services.AddScoped<NotificheService>();
 
 // Autenticazione JWT: il tenant è derivato dai claim del token firmato, non da un header.
 builder.Services.AddScoped<AuthService>();
@@ -282,6 +295,7 @@ app.MapGet("/", () => Results.Ok(new
         "POST /api/scadenzario",
         "GET  /api/scadenzario/{id}",
         "POST /api/scadenzario/{id}/stato",
+        "POST /api/scadenzario/{id}/invia",
         "POST /api/cedolini/pdf",
         "POST /api/fatture/pdf",
         "GET  /api/fatture/{id}/pdf"
@@ -1363,6 +1377,34 @@ secured.MapPost("/api/scadenzario/{id:guid}/stato",
     }
     catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
     catch (InvalidOperationException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+});
+
+// Invia il promemoria su un canale (Email/Sms/WhatsApp) o lo prepara (Manuale).
+// Se l'invio va a buon fine e il promemoria è ancora Aperto, lo segna Inviato.
+secured.MapPost("/api/scadenzario/{id:guid}/invia",
+    async (Guid id, InviaPromemoriaRequest req, ScadenzarioService scad, NotificheService notifiche, ClaimsPrincipal user) =>
+{
+    var tenantId = TenantCorrente(user);
+    var p = await scad.GetAsync(tenantId, id);
+    if (p is null)
+        return Results.NotFound(new { errore = "Promemoria non trovato." });
+
+    var canale = string.IsNullOrWhiteSpace(req.Canale) ? (CanaleNotifica?)null : Canali.Parse(req.Canale);
+    var messaggio = FormattatoreNotifiche.DaTesto(p.Titolo, p.Messaggio);
+    var esito = await notifiche.InviaAsync(canale, req.Destinatario, messaggio);
+
+    if (esito.Inviato && p.Stato == "Aperto")
+        await scad.CambiaStatoAsync(tenantId, id, "Inviato");
+
+    return Results.Ok(new
+    {
+        esito.Inviato,
+        canale = esito.Canale.ToString(),
+        esito.Destinatario,
+        esito.Dettaglio,
+        messaggio = messaggio.Corpo,
+        testoBreve = messaggio.TestoBreve,
+    });
 });
 
 // Collegamento self-service del provider SdI (configurazione per tenant).

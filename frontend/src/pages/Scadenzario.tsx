@@ -42,6 +42,8 @@ export function Scadenzario() {
   const [caricando, setCaricando] = useState(false);
   const [documento, setDocumento] = useState<Promemoria | null>(null);
   const [copiato, setCopiato] = useState(false);
+  const [destinatario, setDestinatario] = useState("");
+  const [esitoInvio, setEsitoInvio] = useState<string | null>(null);
 
   // Form nuovo DURC
   const [aziendaDurc, setAziendaDurc] = useState("");
@@ -118,6 +120,19 @@ export function Scadenzario() {
       setScadenzaDurc("");
       setInfo("DURC registrato: il promemoria di rinnovo è stato generato.");
       await carica();
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Errore");
+    }
+  }
+
+  async function invia(canale: string) {
+    if (!documento) return;
+    setEsitoInvio(null);
+    setErrore(null);
+    try {
+      const r = await api.inviaPromemoria(documento.id, canale, destinatario || undefined);
+      setEsitoInvio(r.inviato ? `✓ Inviato via ${r.canale}. ${r.dettaglio}` : `⚠ ${r.dettaglio}`);
+      if (r.inviato) await carica();
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Errore");
     }
@@ -238,7 +253,7 @@ export function Scadenzario() {
             <div className="card-title-row">
               <div>
                 <h2>{documento.titolo}</h2>
-                <p>Messaggio precompilato — copialo e invialo via email/PEC</p>
+                <p>Messaggio precompilato — copialo, oppure invialo via Email / SMS / WhatsApp</p>
               </div>
               <div className="actions-row">
                 <button className="btn secondary" type="button" onClick={() => copiaMessaggio(documento.messaggio)}>
@@ -250,6 +265,30 @@ export function Scadenzario() {
               </div>
             </div>
             <textarea readOnly value={documento.messaggio} rows={10} />
+            <label className="field">
+              <span>Destinatario (email, oppure numero con prefisso es. +39333…)</span>
+              <input
+                value={destinatario}
+                onChange={(e) => setDestinatario(e.target.value)}
+                placeholder="mario@studio.it  ·  +393331112233"
+              />
+            </label>
+            <div className="actions-row">
+              <button className="btn primary" type="button" onClick={() => invia("Email")}>
+                ✉️ Invia email
+              </button>
+              <button className="btn primary" type="button" onClick={() => invia("Sms")}>
+                💬 Invia SMS
+              </button>
+              <button className="btn primary" type="button" onClick={() => invia("WhatsApp")}>
+                🟢 Invia WhatsApp
+              </button>
+            </div>
+            {esitoInvio && <div className="alert info">{esitoInvio}</div>}
+            <p className="muted">
+              Se un canale non è ancora configurato, il sistema lo segnala qui: i messaggi restano pronti da
+              copiare. Le credenziali (SMTP / Twilio / Meta) si impostano nella sezione “Notifiche”.
+            </p>
           </section>
         )}
       </div>

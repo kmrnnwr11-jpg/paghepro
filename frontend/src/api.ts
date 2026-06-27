@@ -349,7 +349,18 @@ export const api = {
       `/api/aziende/${aziendaId}/dipendenti`,
       { method: "POST", body: JSON.stringify(d) },
     ),
+
+  // --- Dichiarazioni: Fase 1 Certificazione Unica (bozza) ---
+  cuBozza: (rapportoId: string, anno: number) =>
+    req<CuBozza>(`/api/rapporti/${rapportoId}/cu/${anno}`),
 };
+
+export interface CuBozza {
+  codiceFiscale: string; nominativo: string; anno: number; numeroCedolini: number;
+  totaleImponibileIrpef: number; totaleRitenuteIrpef: number;
+  totaleAddizionaleRegionale: number; totaleAddizionaleComunale: number;
+  totaleImponibileInps: number; totaleNetto: number;
+}
 
 export interface DipendenteRapporto {
   rapportoId: string; dipendenteId: string; nominativo: string;

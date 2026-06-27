@@ -109,8 +109,8 @@ l'agente lavora sul codice:
   adempimenti; l'invio agli enti avviene tramite provider accreditato o il canale del
   professionista."*
 - [ ] 🧑 Decidi il prezzo (es. canone mensile per studio + per azienda gestita).
-- [ ] 🔧 L'agente prepara: pagina di presentazione, testo del disclaimer ("valori da validare
-  con professionista"), bozza di Termini di Servizio.
+- [x] 🔧 L'agente prepara: posizionamento, disclaimer, bozza Termini di Servizio, listino.
+  *(fatto: cartella `docs/commerciale/` — POSIZIONAMENTO, DISCLAIMER, TERMINI-DI-SERVIZIO-BOZZA, LISTINO-PREZZI)*
 - [ ] 🧑 Fai rivedere Termini/Privacy a un legale o usa template affidabili. 💶 ~0–500 €.
 
 ⏱️ 1 settimana · 💶 0–500 € · ✅ **Fatto quando:** hai un foglio con offerta, prezzo,
@@ -122,11 +122,14 @@ disclaimer e termini.
 **Obiettivo:** il software regge clienti veri senza perdere dati.
 **Perché:** oggi il database si crea "in modo da sviluppo"; in produzione serve il metodo giusto.
 
-- [ ] 🔧 Migrazioni EF Core (sostituire `EnsureCreated`) — aggiornamenti DB sicuri.
-- [ ] 🔧 Chiave JWT e password DB come **segreti** (non nel codice).
-- [ ] 🔧 Deploy stabile (server/hosting) + **backup automatici** del database.
-- [ ] 🔧 Log di base e pagina "stato del sistema".
-- [ ] 🧑 Scegli dove ospitarlo (un server cloud). 💶 ~50–300 €/anno.
+- [~] 🔧 Migrazioni EF Core (sostituire `EnsureCreated`) — **infrastruttura pronta**
+  (factory `PagheDbContextFactory` + pacchetti EF; `dotnet ef` verificato). La generazione
+  dello snapshot è **rimandata a schema stabile** (un comando, vedi `docs/PRODUZIONE.md` §2).
+- [x] 🔧 Chiave JWT come **segreto**: in Production rifiuta default/chiavi deboli (verificato a
+  runtime). Stringa di connessione da variabile d'ambiente. Vedi `docs/PRODUZIONE.md` §1.
+- [x] 🔧 **Backup automatici**: script `scripts/backup-db.sh` (SQLite/PostgreSQL, rotazione 14).
+- [x] 🔧 Pagina "stato del sistema": endpoint `GET /health` (già presente). Log: vedi §5.
+- [ ] 🧑 Scegli dove ospitarlo (un server cloud) e segui la checklist `docs/PRODUZIONE.md`. 💶 ~50–300 €/anno.
 
 ⏱️ 1–1,5 mesi (🔧) · 💶 ~50–300 €/anno hosting · ✅ **Fatto quando:** il software è online,
 con backup, e si aggiorna senza cancellare i dati.

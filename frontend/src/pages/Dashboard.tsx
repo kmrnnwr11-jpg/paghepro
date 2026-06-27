@@ -3,6 +3,7 @@ import { Aziende } from "./Aziende";
 import { Cedolino } from "./Cedolino";
 import { Dipendente } from "./Dipendente";
 import { Dipendenti } from "./Dipendenti";
+import { CertificazioneUnica } from "./CertificazioneUnica";
 import { Presenze } from "./Presenze";
 import { BustaPaga } from "./BustaPaga";
 import { Elaborazione } from "./Elaborazione";
@@ -605,7 +606,7 @@ function ModuleScreen({
   if (active === "bilancio") return <Bilancio />;
   if (active === "documenti") return <DocumentsPanel onNavigate={onNavigate} />;
   if (active === "f24") return <F24Panel />;
-  if (active === "cu") return <CuPanel />;
+  if (active === "cu") return <CertificazioneUnica />;
   if (active === "impostazioni") return <SettingsPanel />;
   if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;
@@ -825,55 +826,6 @@ function F24Panel() {
         </div>
       </aside>
     </div>
-  );
-}
-
-function CuPanel() {
-  const rows = [
-    ["Mario Bianchi", "BNCMRA88C15F205X", "Pronta", "green"],
-    ["Sara Conti", "CNTSRA90M55F205X", "Pronta", "green"],
-    ["Luca Ferri", "FRRLCU91A10F205Z", "Da controllare", "amber"],
-    ["Elena Romano", "RMNLNE89P45F205Q", "In bozza", "blue"],
-  ];
-
-  return (
-    <section className="glass-card page-card">
-      <div className="card-title-row">
-        <div>
-          <h1>Certificazione Unica</h1>
-          <p>Anno d'imposta 2025 · controllo e invio telematico</p>
-        </div>
-        <button className="btn primary" type="button">Prepara invio</button>
-      </div>
-      <div className="metric-strip">
-        <Metric label="CU totali" value="42" />
-        <Metric label="Pronte" value="39" />
-        <Metric label="Da controllare" value="3" />
-        <Metric label="Scarti" value="0" />
-      </div>
-      <div className="table-wrap">
-        <table className="data-table spacious">
-          <thead>
-            <tr>
-              <th>Percipiente</th>
-              <th>Codice fiscale</th>
-              <th>Stato</th>
-              <th className="right">Azioni</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(([name, fiscalCode, state, tone]) => (
-              <tr key={fiscalCode}>
-                <td><strong>{name}</strong></td>
-                <td className="num">{fiscalCode}</td>
-                <td><span className={`status-pill ${tone}`}>{state}</span></td>
-                <td className="right"><button className="mini-action" type="button">Apri</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
   );
 }
 

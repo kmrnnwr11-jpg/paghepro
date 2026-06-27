@@ -51,7 +51,14 @@ dotnet run --project src/Paghe.Demo -c Release
 - **Autenticazione JWT**: `POST /api/auth/registra` e `/api/auth/login` emettono un token; gli
   endpoint dati sono nel gruppo `secured` (`RequireAuthorization`). Il tenant deriva dal claim
   `tenant_id` del token (helper `TenantCorrente(ClaimsPrincipal)`), non più da un header.
-  Password con PBKDF2 (`PasswordHasher`). Chiave JWT in `Jwt:Key` (config) con default di sviluppo.
+  Password con PBKDF2 (`PasswordHasher`). Chiave JWT in `Jwt:Key`: **in ambiente Production**
+  `TokenService.ChiaveJwt` rifiuta il default di sviluppo e le chiavi < 32 byte (avvio bloccato,
+  verificato a runtime); in sviluppo usa il default. Da fornire via secret/`Jwt__Key`.
+- **Fondamenta produzione (Fase 2) + commerciale (Fase 1)**: infrastruttura migrazioni EF pronta
+  (`PagheDbContextFactory` + pacchetti Design/Sqlite; `dotnet ef` ok) — snapshot da generare a
+  schema stabile; script `scripts/backup-db.sh` (SQLite/PostgreSQL, rotazione); checklist
+  `docs/PRODUZIONE.md`; documenti commerciali in `docs/commerciale/` (posizionamento, disclaimer,
+  bozza Termini di Servizio, listino). Piano completo in `PIANO.md`, guida agente in `AGENTS.md`.
 - Pratiche apertura P.IVA / Camera di Commercio / ComUnica con checklist adempimenti e
   persistenza tenant-isolata (`PraticheAperturaPartitaIvaService`).
 - Liquidazione IVA vendite/acquisti con registri di periodo (`CalcoloLiquidazioneIva`) e

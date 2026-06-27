@@ -34,7 +34,42 @@ public sealed class TokenService
         return new JsonWebTokenHandler().CreateToken(descriptor);
     }
 
-    /// <summary>Chiave di firma JWT da configurazione, con default per lo sviluppo.</summary>
-    public static string ChiaveJwt(IConfiguration config) =>
-        config["Jwt:Key"] ?? "dev-secret-da-cambiare-in-produzione-almeno-32-byte!!";
+    /// <summary>Default di sviluppo: usato SOLO fuori produzione, mai in ambiente Production.</summary>
+    internal const string ChiaveSviluppo = "dev-secret-da-cambiare-in-produzione-almeno-32-byte!!";
+
+    /// <summary>Lunghezza minima (byte) richiesta per la chiave HMAC-SHA256.</summary>
+    private const int LunghezzaMinima = 32;
+
+    /// <summary>
+    /// Chiave di firma JWT da configurazione (<c>Jwt:Key</c>). In ambiente Production è
+    /// obbligatoria una chiave robusta da secret/variabile d'ambiente: il default di sviluppo
+    /// e le chiavi troppo corte vengono rifiutati con un errore esplicito.
+    /// </summary>
+    public static string ChiaveJwt(IConfiguration config) => ChiaveJwt(config, AmbienteProduzione());
+
+    /// <summary>Variante testabile: l'ambiente è passato esplicitamente.</summary>
+    public static string ChiaveJwt(IConfiguration config, bool produzione)
+    {
+        var chiave = config["Jwt:Key"];
+
+        if (string.IsNullOrWhiteSpace(chiave) || chiave == ChiaveSviluppo)
+        {
+            if (produzione)
+                throw new InvalidOperationException(
+                    "Chiave JWT mancante o di sviluppo: in produzione configurare 'Jwt:Key' " +
+                    "(almeno 32 byte) tramite secret o variabile d'ambiente (es. Jwt__Key).");
+            return ChiaveSviluppo;
+        }
+
+        if (Encoding.UTF8.GetByteCount(chiave) < LunghezzaMinima)
+            throw new InvalidOperationException(
+                $"La chiave JWT 'Jwt:Key' deve essere di almeno {LunghezzaMinima} byte.");
+
+        return chiave;
+    }
+
+    private static bool AmbienteProduzione() =>
+        string.Equals(
+            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+            "Production", StringComparison.OrdinalIgnoreCase);
 }

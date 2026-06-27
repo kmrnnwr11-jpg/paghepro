@@ -72,16 +72,19 @@ public static class F24DaCedolini
         var locali = new List<VoceImuTributiLocali>();
         var inps = new List<VoceInps>();
 
+        // Rateazione nel formato "00MM" (mese di competenza) richiesto dai tributi 1001/3802/3848.
+        string rata = $"00{mesePeriodo:00}";
+
         decimal irpef = Arrotondamento.Euro(righe.Sum(r => r.RitenutaIrpef));
         if (irpef > 0m)
-            erario.Add(new VoceErario(codici.RitenuteIrpefLavoroDipendente, annoPeriodo, ImportoDebito: irpef));
+            erario.Add(new VoceErario(codici.RitenuteIrpefLavoroDipendente, annoPeriodo, ImportoDebito: irpef, Rateazione: rata));
 
         foreach (var g in righe
                      .Where(r => r.AddizionaleRegionale > 0m && !string.IsNullOrWhiteSpace(r.CodiceRegione))
                      .GroupBy(r => r.CodiceRegione))
         {
             decimal tot = Arrotondamento.Euro(g.Sum(r => r.AddizionaleRegionale));
-            regioni.Add(new VoceRegioni(g.Key, codici.AddizionaleRegionale, annoPeriodo, ImportoDebito: tot));
+            regioni.Add(new VoceRegioni(g.Key, codici.AddizionaleRegionale, annoPeriodo, ImportoDebito: tot, Rateazione: rata));
         }
 
         foreach (var g in righe
@@ -89,16 +92,18 @@ public static class F24DaCedolini
                      .GroupBy(r => r.CodiceComuneCatastale))
         {
             decimal tot = Arrotondamento.Euro(g.Sum(r => r.AddizionaleComunale));
-            locali.Add(new VoceImuTributiLocali(g.Key, codici.AddizionaleComunaleSaldo, annoPeriodo, ImportoDebito: tot, Saldo: true));
+            // Per l'addizionale comunale 3848 i flag IMU (acconto/saldo) non si usano; serve la rateazione "00MM".
+            locali.Add(new VoceImuTributiLocali(g.Key, codici.AddizionaleComunaleSaldo, annoPeriodo, ImportoDebito: tot, Rateazione: rata));
         }
 
         decimal contributi = Arrotondamento.Euro(righe.Sum(r => r.ContributiInpsDipendente + r.ContributiInpsDatore));
         if (contributi > 0m)
         {
+            // DM10: periodo di riferimento "da" = MMAAAA; periodo "a" non si valorizza (resta a zero).
             string periodo = $"{mesePeriodo:00}/{annoPeriodo}";
             inps.Add(new VoceInps(
                 sostituto.CodiceSedeInps, codici.CausaleInps, sostituto.MatricolaInps,
-                periodo, periodo, ImportoDebito: contributi));
+                periodo, PeriodoA: null, ImportoDebito: contributi));
         }
 
         return new ModelloF24

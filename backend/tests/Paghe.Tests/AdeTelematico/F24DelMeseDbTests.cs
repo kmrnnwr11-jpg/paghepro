@@ -41,7 +41,7 @@ public sealed class F24DelMeseDbTests : IDisposable
             db.Aziende.Add(new AziendaEntity
             {
                 Id = aziendaId, TenantId = tenant, RagioneSociale = "Acme Srl",
-                PartitaIva = "01234567897", CodiceFiscale = "01234567897",
+                PartitaIva = "01234560017", CodiceFiscale = "01234560017",
                 Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             });
             db.Dipendenti.AddRange(
@@ -79,7 +79,7 @@ public sealed class F24DelMeseDbTests : IDisposable
         {
             db.Aziende.Add(new AziendaEntity
             {
-                Id = aziendaId, TenantId = tenant, RagioneSociale = "Acme Srl", PartitaIva = "01234567897",
+                Id = aziendaId, TenantId = tenant, RagioneSociale = "Acme Srl", PartitaIva = "01234560017",
                 Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             });
             await db.SaveChangesAsync();

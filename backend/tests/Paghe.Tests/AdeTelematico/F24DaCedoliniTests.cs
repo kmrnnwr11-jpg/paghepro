@@ -6,7 +6,7 @@ namespace Paghe.Tests.AdeTelematico;
 public class F24DaCedoliniTests
 {
     private static readonly DatiSostitutoImposta Sostituto =
-        new("01234567897", "Acme Srl", MatricolaInps: "1234567890", CodiceSedeInps: "7100");
+        new("01234560017", "Acme Srl", MatricolaInps: "1234567890", CodiceSedeInps: "7100");
 
     [Fact]
     public void Costruisce_f24_da_due_paghe()

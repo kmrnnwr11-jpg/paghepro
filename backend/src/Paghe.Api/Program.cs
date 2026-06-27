@@ -42,6 +42,7 @@ builder.Services.AddScoped<PraticheF24Service>();
 builder.Services.AddScoped<PraticheAperturaPartitaIvaService>();
 builder.Services.AddScoped<ContabilitaIvaService>();
 builder.Services.AddScoped<BilancioService>();
+builder.Services.AddScoped<UniEmensService>();
 builder.Services.AddScoped<ScadenzarioService>();
 builder.Services.AddScoped<ConfigurazioneSdiService>();
 
@@ -992,6 +993,33 @@ secured.MapPost("/api/aziende/{aziendaId:guid}/f24/mese",
             f24.Regioni,
             f24.TributiLocali,
             bozza = new BozzaLeggibileF24Writer().Genera(f24),
+        });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
+// Genera il flusso UniEmens (denuncia mensile INPS) dai cedolini archiviati dell'azienda.
+// BOZZA: il file va validato col software di controllo ufficiale INPS prima dell'invio.
+secured.MapPost("/api/aziende/{aziendaId:guid}/uniemens/mese",
+    async (Guid aziendaId, F24MeseRequest req, UniEmensService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var flusso = await svc.GeneraDelMeseAsync(
+            TenantCorrente(user), aziendaId, req.Anno, req.Mese, req.MatricolaInps);
+        var xml = Paghe.Core.AdeTelematico.UniEmens.UniEmensXmlWriter.GeneraStringa(flusso);
+        return Results.Ok(new
+        {
+            req.Anno,
+            req.Mese,
+            lavoratori = flusso.Lavoratori.Count,
+            totaleImponibile = flusso.Lavoratori.Sum(l => l.Imponibile),
+            totaleContributo = flusso.Lavoratori.Sum(l => l.Contributo),
+            avvertenza = "Bozza UniEmens NON validata: passare dal software di controllo ufficiale INPS prima dell'invio.",
+            xml,
         });
     }
     catch (ArgumentException ex)

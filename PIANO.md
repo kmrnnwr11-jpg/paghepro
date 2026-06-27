@@ -164,16 +164,25 @@ e hai i documenti privacy pronti.
 
 ---
 
-### Fase 5 — Firma digitale reale
+### Fase 5 — Firma digitale reale (SOLO se serve)
 **Obiettivo:** firmare davvero fatture e documenti.
 **Perché:** il motore di firma c'è già; manca solo il certificato e il collaudo.
 
-- [ ] 🧑 (già avviato) Procurati il certificato di firma. ⏳ riconoscimento 1–2 settimane.
+> ⚠️ **Importante — forse non ti serve, non comprare subito:**
+> - La firma sulla fattura è **obbligatoria SOLO verso la Pubblica Amministrazione (PA)**.
+>   Per le fatture B2B/B2C lo SdI **non** la richiede.
+> - **A-Cube può firmare per te** (quando serve), così non compri nessun certificato.
+> - Il certificato dura **~3 anni** (non è "per sempre"), poi si rinnova. Quello personale
+>   chiede un OTP a ogni firma → non adatto a firmare tante fatture in automatico; per quello
+>   serve la "firma automatica/sigillo", che costa di più ed è **annuale**.
+> - **Decisione rimandata:** comprare solo se servirai clienti verso la PA e se A-Cube non firma.
+
+- [ ] 🧑 (solo se necessario) Procurati il certificato di firma. ⏳ riconoscimento 1–2 settimane.
 - [ ] 🔧 Configurare il certificato nel software e collaudare la firma su una fattura vera.
 - [ ] 🔧 (se usi smart card/CNS) verificare il funzionamento sul PC che firma.
 
-⏱️ 2–3 giorni 🔧 + ⏳ 1–2 sett. · 💶 ~30–60 € · ✅ **Fatto quando:** firmi un file e la firma
-risulta valida alla verifica.
+⏱️ 2–3 giorni 🔧 + ⏳ 1–2 sett. · 💶 ~30–60 € ogni ~3 anni (se serve) · ✅ **Fatto quando:**
+firmi un file e la firma risulta valida — oppure hai deciso che firma A-Cube e non serve.
 
 ---
 

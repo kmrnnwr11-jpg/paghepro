@@ -61,13 +61,13 @@ public sealed class TracciatoF24Ufficiale : ITracciatoF24Writer
         r.Nu(156, 8, 0);                      // data nascita versante
         r.Nu(248, 5, 0);                      // cap residenza versante
         r.Nu(330, 5, 0);                      // cap residenza contribuente
+        r.Nu(482, 8, 0);                      // data nascita contribuente (NU: zero se non valorizzata)
         if (pnf)
             r.An(518, 55, f24.Contribuente.Denominazione);
         else
         {
             r.An(438, 24, f24.Contribuente.Cognome);
             r.An(462, 20, f24.Contribuente.Nome);
-            r.Nu(482, 8, 0);                  // data nascita PF
         }
         r.An(1869, 4, "EURO");                // valuta
         r.An(1873, 15, ImportoVirgola(f24.SaldoFinale)); // saldo totale a debito (formato con virgola)
@@ -110,7 +110,7 @@ public sealed class TracciatoF24Ufficiale : ITracciatoF24Writer
             r.An(p + 4, 4, v?.CausaleContributo);
             r.An(p + 8, 17, v?.MatricolaCodice);
             r.Nu(p + 25, 6, Periodo(v?.PeriodoDa));
-            r.Nu(p + 31, 6, Periodo(v?.PeriodoA ?? v?.PeriodoDa));
+            r.Nu(p + 31, 6, Periodo(v?.PeriodoA));   // periodo "a": zero se non valorizzato (es. DM10)
             r.Nu(p + 37, 15, Cent(v?.ImportoDebito ?? 0m));
             r.Nu(p + 52, 15, Cent(v?.ImportoCredito ?? 0m));
             if (v is not null) { inDeb += v.ImportoDebito; inCre += v.ImportoCredito; }
@@ -155,9 +155,23 @@ public sealed class TracciatoF24Ufficiale : ITracciatoF24Writer
         }
         Totali(r, 1325, 1340, 1355, 1356, locDeb, locCre);
 
-        // --- Sezioni INAIL e Altri enti: non usate (azzerate) ---
+        // --- Sezione INAIL: 3 righe da 52 byte da pos 1371 (non usata: campi NU azzerati) ---
+        for (int i = 0; i < 3; i++)
+        {
+            int p = 1371 + i * 52;
+            r.Nu(p, 5, 0).Nu(p + 5, 8, 0).Nu(p + 13, 2, 0).Nu(p + 15, 6, 0)
+             .An(p + 21, 1, " ").Nu(p + 22, 15, 0).Nu(p + 37, 15, 0);
+        }
         r.Nu(1527, 15, 0).Nu(1542, 15, 0).An(1557, 1, " ").Nu(1558, 15, 0); // totali INAIL
-        r.Nu(1573, 4, 0);                                                    // codice ente (altri enti)
+
+        // --- Sezione Altri enti previdenziali: 2 righe da 60 byte da pos 1577 (non usata) ---
+        r.Nu(1573, 4, 0); // codice ente
+        for (int i = 0; i < 2; i++)
+        {
+            int p = 1577 + i * 60;
+            r.An(p, 5, "").An(p + 5, 4, "").Nu(p + 9, 9, 0).Nu(p + 18, 6, 0)
+             .Nu(p + 24, 6, 0).Nu(p + 30, 15, 0).Nu(p + 45, 15, 0);
+        }
         r.Nu(1697, 15, 0).Nu(1712, 15, 0).An(1727, 1, " ").Nu(1728, 15, 0); // totali altri enti
 
         // --- Saldo finale e data versamento ---

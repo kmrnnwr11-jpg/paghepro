@@ -111,7 +111,7 @@ public sealed class PraticheF24DbTests : IDisposable
         db.Aziende.Add(new AziendaEntity
         {
             Id = _aziendaId, TenantId = _tenant, RagioneSociale = "Acme Srl",
-            PartitaIva = "01234567897", CodiceFiscale = "01234567897",
+            PartitaIva = "01234560017", CodiceFiscale = "01234560017",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
         });
         db.Dipendenti.AddRange(

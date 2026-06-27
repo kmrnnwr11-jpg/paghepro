@@ -19,12 +19,13 @@ public class ValidatoreFiscaleTests
         Assert.False(ValidatoreFiscale.CodiceFiscalePersonaFisicaValido(cf));
 
     [Theory]
-    [InlineData("01234567897")]        // check digit mod 10 corretto
+    [InlineData("01234560017")]        // check digit ok + codice ufficio "001" valido
     public void PartitaIva_valida(string piva) =>
         Assert.True(ValidatoreFiscale.PartitaIvaValida(piva));
 
     [Theory]
     [InlineData("01234567890")]        // check digit errato
+    [InlineData("01234567897")]        // check digit ok ma codice ufficio "789" non valido (come da controllo AdE)
     [InlineData("0123456789")]         // 10 cifre
     [InlineData("0123456789A")]        // contiene lettere
     [InlineData(null)]
@@ -33,7 +34,7 @@ public class ValidatoreFiscaleTests
 
     [Theory]
     [InlineData("RSSMRA85T10A562S")]   // 16 char → CF persona fisica
-    [InlineData("01234567897")]        // 11 cifre → trattato come partita IVA
+    [InlineData("01234560017")]        // 11 cifre → trattato come partita IVA
     public void CodiceFiscale_accetta_pf_e_soggetti_numerici(string valore) =>
         Assert.True(ValidatoreFiscale.CodiceFiscaleValido(valore));
 }

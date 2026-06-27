@@ -85,7 +85,14 @@ public static class ValidatoreFiscale
         }
 
         int controllo = (10 - somma % 10) % 10;
-        return controllo == piva[10] - '0';
+        if (controllo != piva[10] - '0')
+            return false;
+
+        // Codice ufficio (cifre 8-10): l'Agenzia delle Entrate accetta 001-100 più 120, 121, 888, 999.
+        // Senza questo controllo una P.IVA col solo check digit corretto (es. ufficio "789") passerebbe
+        // qui ma verrebbe scartata dal controllo ufficiale F24 ("Codice Fiscale di PNF non corretto").
+        int ufficio = int.Parse(piva.Substring(7, 3));
+        return ufficio is (>= 1 and <= 100) or 120 or 121 or 888 or 999;
     }
 
     private static int ValorePari(char c) => char.IsDigit(c) ? c - '0' : c - 'A';

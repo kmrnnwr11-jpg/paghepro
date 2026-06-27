@@ -4,20 +4,13 @@ namespace Paghe.Tests.AdeTelematico;
 
 public class TracciatoF24UfficialeTests
 {
-    private static ModelloF24 F24Esempio() => new()
-    {
-        Contribuente = new ContribuenteF24
-        {
-            CodiceFiscale = "01234560017",
-            Tipo = TipoSoggettoF24.SoggettoDiverso,
-            Denominazione = "Acme Srl",
-        },
-        DataVersamento = new DateOnly(2026, 7, 16),
-        Erario = [new VoceErario("1001", 2026, ImportoDebito: 500.00m)],
-        Inps = [new VoceInps("7100", "DM10", "1234567890", "062026", "062026", ImportoDebito: 1000.00m)],
-        Regioni = [new VoceRegioni("12", "3802", 2026, ImportoDebito: 35.00m)],
-        TributiLocali = [new VoceImuTributiLocali("F205", "3848", 2026, ImportoDebito: 15.00m, Saldo: true)],
-    };
+    // Costruito tramite F24DaCedolini così riflette esattamente la logica di generazione reale
+    // (rateazione "00MM", periodo INPS, flag, ecc.).
+    private static ModelloF24 F24Esempio() =>
+        F24DaCedolini.Costruisci(
+            new DatiSostitutoImposta("01234560017", "Acme Srl", MatricolaInps: "1234567890", CodiceSedeInps: "7100"),
+            [new RigaPagaPerF24(500.00m, 35.00m, 15.00m, 400.00m, 600.00m, "12", "F205")],
+            annoPeriodo: 2026, mesePeriodo: 6);
 
     [Fact]
     public void Struttura_record_corretta()

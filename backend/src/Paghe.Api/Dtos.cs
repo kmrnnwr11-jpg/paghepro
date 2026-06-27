@@ -47,6 +47,18 @@ public sealed record RiclassificaRequest(
     IReadOnlyList<ContoBilancio> PianoConti,
     IReadOnlyList<SaldoConto> Saldi);
 
+/// <summary>Voce di bilancio in ingresso: conto, classificazione CEE e saldo di fine esercizio.</summary>
+public sealed record VoceBilancioRequest(string Codice, string Descrizione, MacroVoce Voce, decimal Importo);
+
+/// <summary>Creazione/archiviazione di un bilancio d'esercizio per azienda e anno.</summary>
+public sealed record CreaBilancioRequest(int Anno, IReadOnlyList<VoceBilancioRequest> Voci);
+
+/// <summary>Creazione di un bilancio d'esempio (piano dei conti CEE di base) per un anno.</summary>
+public sealed record CreaBilancioEsempioRequest(int Anno);
+
+/// <summary>Cambio di stato di un bilancio (valore di StatoBilancio: Bozza/Approvato/Depositato/Annullato).</summary>
+public sealed record CambiaStatoBilancioRequest(string Stato);
+
 /// <summary>Richiesta di liquidazione IVA vendite/acquisti per un periodo.</summary>
 public sealed record LiquidazioneIvaRequest(
     DateOnly Dal,
@@ -152,3 +164,55 @@ public sealed record CreaDelegaRequest(
     DateOnly? DataFine = null,
     string? Riferimento = null,
     string? Note = null);
+
+/// <summary>Creazione di un avviso di pagamento mensile dovuto dal cliente allo studio.</summary>
+public sealed record CreaAvvisoPagamentoRequest(
+    int Anno,
+    int Mese,
+    decimal Importo,
+    DateOnly DataScadenza,
+    string? Descrizione = null,
+    DateOnly? DataEmissione = null,
+    string MetodoPagamento = "Bonifico",
+    string? Iban = null,
+    string? Causale = null,
+    string? Note = null);
+
+/// <summary>Creazione massiva dello stesso avviso mensile per tutte le aziende clienti.</summary>
+public sealed record CreaAvvisiPagamentoMeseRequest(
+    int Anno,
+    int Mese,
+    decimal Importo,
+    DateOnly DataScadenza,
+    string? Descrizione = null,
+    DateOnly? DataEmissione = null,
+    string MetodoPagamento = "Bonifico",
+    string? Iban = null,
+    string? Causale = null,
+    string? Note = null);
+
+/// <summary>Cambio stato dell'avviso: DaPagare, Sollecitato, Pagato o Annullato.</summary>
+public sealed record CambiaStatoAvvisoPagamentoRequest(
+    string Stato,
+    DateOnly? PagatoIl = null,
+    string? RiferimentoPagamento = null,
+    string? Note = null);
+
+/// <summary>Registrazione di un DURC di un'azienda (scadenza usata per il promemoria di rinnovo).</summary>
+public sealed record RegistraDurcRequest(
+    string Numero,
+    DateOnly DataEmissione,
+    DateOnly? DataScadenza = null,
+    bool Regolare = true,
+    string? Note = null);
+
+/// <summary>Inserimento di un promemoria/scadenza a mano nello scadenzario.</summary>
+public sealed record CreaPromemoriaRequest(
+    string Titolo,
+    DateOnly DataScadenza,
+    Guid? AziendaId = null,
+    string? Descrizione = null,
+    int GiorniPreavviso = 7);
+
+/// <summary>Cambio stato di un promemoria: Aperto, Inviato, Completato o Annullato.</summary>
+public sealed record CambiaStatoPromemoriaRequest(string Stato);

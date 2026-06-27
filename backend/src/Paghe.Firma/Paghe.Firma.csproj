@@ -3,6 +3,8 @@
   <ItemGroup>
     <!-- Firma CAdES/CMS (SignedCms): non è nel reference set di default, va referenziato. -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.9" />
+    <!-- Firma XAdES/XML-DSig (SignedXml): idem, va referenziato esplicitamente. -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.9" />
     <!--
       Pkcs11Interop.X509Store (Apache-2.0): accesso a smart card / CNS via PKCS#11.
       La chiave privata resta sulla carta; si integra con SignedCms del runtime .NET.

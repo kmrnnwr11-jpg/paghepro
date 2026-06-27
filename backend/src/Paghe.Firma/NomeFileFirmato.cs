@@ -11,4 +11,18 @@ public static class NomeFileFirmato
         string.IsNullOrWhiteSpace(nomeFileOriginale)
             ? "documento.p7m"
             : nomeFileOriginale.Trim() + ".p7m";
+
+    /// <summary>
+    /// Nome del file per una firma XAdES "enveloped" (resta un XML): aggiunge il suffisso
+    /// <c>-firmato</c> prima dell'estensione (es. <c>fattura.xml</c> → <c>fattura-firmato.xml</c>).
+    /// </summary>
+    public static string PerXadesXml(string? nomeFileOriginale)
+    {
+        if (string.IsNullOrWhiteSpace(nomeFileOriginale))
+            return "documento-firmato.xml";
+        string nome = nomeFileOriginale.Trim();
+        return nome.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+            ? nome[..^4] + "-firmato.xml"
+            : nome + "-firmato.xml";
+    }
 }

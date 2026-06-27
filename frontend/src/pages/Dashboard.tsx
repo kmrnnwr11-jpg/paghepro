@@ -7,6 +7,8 @@ import { BustaPaga } from "./BustaPaga";
 import { Elaborazione } from "./Elaborazione";
 import { Fatture } from "./Fatture";
 import { Firma } from "./Firma";
+import { Pagamenti } from "./Pagamenti";
+import { Bilancio } from "./Bilancio";
 
 type SectionKey =
   | "dashboard"
@@ -18,8 +20,10 @@ type SectionKey =
   | "calcolo"
   | "adempimenti"
   | "fatture"
+  | "pagamenti"
   | "firma"
   | "contabilita"
+  | "bilancio"
   | "documenti"
   | "elaborazioni"
   | "f24"
@@ -40,8 +44,10 @@ const primaryNav: NavItem[] = [
   { key: "cedolini", icon: "📄", label: "Cedolini" },
   { key: "adempimenti", icon: "📨", label: "Adempimenti" },
   { key: "fatture", icon: "🧾", label: "Fatturazione" },
+  { key: "pagamenti", icon: "€", label: "Pagamenti clienti" },
   { key: "firma", icon: "🔏", label: "Firma digitale" },
   { key: "contabilita", icon: "📒", label: "Contabilità" },
+  { key: "bilancio", icon: "⚖️", label: "Bilancio" },
   { key: "documenti", icon: "📁", label: "Documenti" },
 ];
 
@@ -70,6 +76,7 @@ const crumbsFor: Partial<Record<SectionKey, string[]>> = {
   elaborazioni: ["Home", "Cedolini", "Elaborazione"],
   cedolini: ["Home", "Cedolini", "Giugno 2026", "Mario Bianchi"],
   calcolo: ["Home", "Cedolini", "Calcolo cedolino"],
+  pagamenti: ["Home", "Pagamenti clienti"],
 };
 
 const sectionTitle: Record<SectionKey, string> = {
@@ -82,8 +89,10 @@ const sectionTitle: Record<SectionKey, string> = {
   calcolo: "Calcolo cedolino",
   adempimenti: "Adempimenti",
   fatture: "Fatturazione",
+  pagamenti: "Pagamenti clienti",
   firma: "Firma digitale",
   contabilita: "Contabilità",
+  bilancio: "Bilancio d'esercizio",
   documenti: "Documenti",
   elaborazioni: "Elaborazione cedolini",
   f24: "Modello F24",
@@ -587,8 +596,10 @@ function ModuleScreen({
   if (active === "elaborazioni") return <Elaborazione />;
   if (active === "adempimenti") return <DeadlinesPanel onNavigate={onNavigate} />;
   if (active === "fatture") return <Fatture />;
+  if (active === "pagamenti") return <Pagamenti />;
   if (active === "firma") return <Firma />;
   if (active === "contabilita") return <AccountingPanel />;
+  if (active === "bilancio") return <Bilancio />;
   if (active === "documenti") return <DocumentsPanel onNavigate={onNavigate} />;
   if (active === "f24") return <F24Panel />;
   if (active === "cu") return <CuPanel />;

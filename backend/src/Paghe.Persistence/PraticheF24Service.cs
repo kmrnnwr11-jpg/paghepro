@@ -46,6 +46,7 @@ public sealed class PraticheF24Service
             Valido = esito.Valido,
             ModelloJson = JsonSerializer.Serialize(f24),
             Bozza = new BozzaLeggibileF24Writer().Genera(f24),
+            TracciatoUfficiale = new TracciatoF24Ufficiale().Genera(f24),
             CreataIl = ora,
             UltimoAggiornamento = ora,
         };
@@ -95,7 +96,9 @@ public sealed class PraticheF24Service
         string dir = Path.Combine(cartellaBase, "agenzia-entrate", "da-controllare");
         Directory.CreateDirectory(dir);
         string file = Path.Combine(dir, $"F24-{p.Anno}-{p.Mese:00}-{p.Id}.txt");
-        await File.WriteAllTextAsync(file, p.Bozza, ct);
+        // Esporta il tracciato telematico ufficiale (record A/M/V/Z); ripiega sulla bozza se assente.
+        string contenuto = string.IsNullOrEmpty(p.TracciatoUfficiale) ? p.Bozza : p.TracciatoUfficiale;
+        await File.WriteAllTextAsync(file, contenuto, ct);
         return file;
     }
 }

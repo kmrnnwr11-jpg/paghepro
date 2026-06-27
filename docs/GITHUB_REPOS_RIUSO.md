@@ -18,6 +18,7 @@ Obiettivo: firma CAdES-BES (`.xml.p7m`) per la fattura elettronica e firma con
 | Componente | Repository / fonte | Licenza | Decisione |
 |---|---|---:|---|
 | Engine CAdES/CMS | `System.Security.Cryptography.Pkcs` (`SignedCms`) | runtime .NET (MIT) | ✅ **Usato.** Base della busta `.p7m` con digest SHA-256 e attributo `SigningCertificateV2`. Nessuna dipendenza esterna rischiosa. |
+| Engine XAdES/XML-DSig | `System.Security.Cryptography.Xml` (`SignedXml`) | runtime .NET (MIT) | ✅ **Usato** per `FirmaXades` (XAdES-BES enveloped, SHA-256). Sottoclasse di `SignedXml` per risolvere le `SignedProperties`. Nessuna dipendenza GPL. |
 | Accesso CNS/smart card | [Pkcs11Interop](https://github.com/Pkcs11Interop/Pkcs11Interop) + [Pkcs11Interop.X509Store](https://github.com/Pkcs11Interop/Pkcs11Interop.X509Store) | **Apache-2.0** | ✅ **Usato** per `FirmatoreCns`. Parla con il middleware PKCS#11 della carta; la chiave privata resta sul chip. Si integra con `SignedCms`. |
 | Firma XAdES/CAdES alternativa | [ctt-gob-es/FirmaXadesNet](https://github.com/ctt-gob-es/FirmaXadesNet) / [FirmaCadesNet](https://github.com/ctt-gob-es/FirmaCadesNet) e fork .NET Core | **GPL-3.0** | ❌ **Scartata.** Copyleft forte: vietata nel SaaS senza decisione legale esplicita (vedi Regola di sicurezza). |
 

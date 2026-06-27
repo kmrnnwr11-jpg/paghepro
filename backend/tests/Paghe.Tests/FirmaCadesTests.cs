@@ -47,7 +47,7 @@ public class FirmaCadesTests
 
         var cms = new SignedCms();
         cms.Decode(risultato.ContenutoFirmato);
-        Assert.Equal(1, cms.SignerInfos.Count);
+        Assert.Single(cms.SignerInfos);
         var firma = cms.SignerInfos[0];
 
         // Digest SHA-256.

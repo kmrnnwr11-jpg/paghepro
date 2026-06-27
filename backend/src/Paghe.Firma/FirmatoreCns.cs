@@ -41,7 +41,7 @@ public sealed class FirmatoreCns : IFirmatoreDigitale
         _etichettaCertificato = etichettaCertificato;
     }
 
-    public RisultatoFirma Firma(byte[] contenuto, string? nomeFileOriginale = null)
+    public RisultatoFirma Firma(byte[] contenuto, string? nomeFileOriginale = null, TipoFirma tipo = TipoFirma.Cades)
     {
         using var store = new Pkcs11X509Store(_libreriaPkcs11, new PinFisso(_pin));
 
@@ -53,13 +53,7 @@ public sealed class FirmatoreCns : IFirmatoreDigitale
         using var chiave = cert.GetPrivateKey();
         X509Certificate2 pubblico = cert.Info.ParsedCertificate;
 
-        byte[] p7m = FirmaCades.Firma(contenuto, pubblico, chiave);
-        return new RisultatoFirma(
-            p7m,
-            NomeFileFirmato.PerP7m(nomeFileOriginale),
-            pubblico.GetNameInfo(X509NameType.SimpleName, forIssuer: false),
-            DateTime.UtcNow,
-            "SHA-256");
+        return MotoreFirma.Firma(contenuto, nomeFileOriginale, tipo, pubblico, chiave);
     }
 
     private Pkcs11X509Certificate? SelezionaCertificato(Pkcs11X509Store store)

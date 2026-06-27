@@ -45,7 +45,7 @@ e *valida* correttamente, ma non è ancora *configurabile*, *sicuro* o *usabile 
 > È il "finto" più grosso del sistema attuale: oggi i valori sono esempi cablati nel codice.
 
 ### 3. Fatturazione — completare il ciclo 🔴
-- [x] **Firma digitale** CAdES-BES (.xml.p7m) — modulo `Paghe.Firma` (`SignedCms` + SHA-256 + SigningCertificateV2). Firmatari: PFX/firma remota (`FirmatorePfx`) e **smart card/CNS** via PKCS#11 (`FirmatoreCns`, libreria Apache-2.0). Endpoint `POST /api/firma/cades` e `POST /api/fatture/firma`; integra il seam `IFirmaFatturaElettronica` della trasmissione SdI. Restano: marche temporali (CAdES-T), validazione catena/OCSP, certificato qualificato reale in produzione.
+- [x] **Firma digitale** CAdES-BES (.p7m) e **XAdES-BES** (XML enveloped) — modulo `Paghe.Firma` (`SignedCms`/`SignedXml` + SHA-256 + SigningCertificateV2). Firmatari: PFX/firma remota (`FirmatorePfx`) e **smart card/CNS** via PKCS#11 (`FirmatoreCns`, libreria Apache-2.0). Endpoint `POST /api/firma/cades` (formato cades/xades), `POST /api/fatture/firma`, `POST /api/firma/verifica`; pagina UI con anteprima e risultato verificato; integra il seam `IFirmaFatturaElettronica` della trasmissione SdI. Restano: marche temporali (CAdES-T/XAdES-T), validazione catena/OCSP, certificato qualificato reale in produzione.
 - [ ] **Trasmissione/ricezione SdI** (canale SdICoop web service, o via intermediario) — **L**
 - [ ] **Fatture passive** (ciclo acquisti): ricezione, registrazione, riconciliazione — **M**
 - [ ] **Note di credito/debito**, **autofattura/reverse charge**, **bollo**, **ritenute**, **cassa previdenziale** — **M**

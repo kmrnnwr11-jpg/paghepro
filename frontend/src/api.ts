@@ -82,6 +82,70 @@ export interface Delega {
   id: string; aziendaId: string; tipoAdempimento: string; stato: string;
   dataInizio: string; dataFine?: string | null; riferimento?: string | null;
 }
+export interface AvvisoPagamento {
+  id: string; aziendaId: string; cliente?: string | null;
+  anno: number; mese: number; descrizione: string; importo: number;
+  dataEmissione: string; dataScadenza: string; stato: string;
+  metodoPagamento: string; iban?: string | null; causale?: string | null; note?: string | null;
+  pagatoIl?: string | null; riferimentoPagamento?: string | null;
+  numeroPromemoria: number; ultimoPromemoriaIl?: string | null;
+  giorniAllaScadenza: number; scaduto: boolean;
+}
+export interface NuovoAvvisoPagamento {
+  anno: number; mese: number; importo: number; dataScadenza: string;
+  descrizione?: string; dataEmissione?: string; metodoPagamento?: string;
+  iban?: string; causale?: string; note?: string;
+}
+export interface StatoAvvisoPagamento {
+  stato: string; pagatoIl?: string; riferimentoPagamento?: string; note?: string;
+}
+export interface Promemoria {
+  id: string; aziendaId?: string | null; tipo: string; riferimentoId?: string | null;
+  titolo: string; descrizione: string; dataScadenza: string; giorniPreavviso: number;
+  stato: string; messaggio: string; giorniAllaScadenza: number; urgenza: string;
+}
+export interface Durc {
+  id: string; aziendaId: string; numero: string;
+  dataEmissione: string; dataScadenza: string; regolare: boolean; note?: string | null;
+}
+export interface NuovoDurc {
+  numero: string; dataEmissione: string; dataScadenza?: string; regolare?: boolean; note?: string;
+}
+export interface NuovoPromemoria {
+  titolo: string; dataScadenza: string; aziendaId?: string; descrizione?: string; giorniPreavviso?: number;
+}
+export interface VoceBilancio {
+  codice: string; descrizione: string; voce: string; importo: number;
+}
+export interface BilancioSintesi {
+  id: string; anno: number; stato: string; quadra: boolean;
+  valoreDellaProduzione: number; costiDellaProduzione: number; utilePerditaEsercizio: number;
+  totaleAttivo: number; totalePassivo: number; patrimonioNetto: number; sbilancioAttivoPassivo: number;
+}
+export interface BilancioDettaglio extends BilancioSintesi {
+  proventiFinanziari: number; oneriFinanziari: number; imposte: number;
+  bozza: string; righe: VoceBilancio[];
+}
+export interface NuovoBilancio { anno: number; voci: VoceBilancio[] }
+export interface PrecompilaBilancio { anno: number; voci: VoceBilancio[]; nota: string }
+export type FormatoFirma = "cades" | "xades";
+export interface EsitoVerifica {
+  valido: boolean;
+  formato: string;
+  firmatario?: string | null;
+  dataFirmaUtc?: string | null;
+  algoritmoDigest?: string | null;
+}
+
+// Replica lato client la convenzione di nome file del backend (NomeFileFirmato).
+function nomeFileFirmato(nome: string, formato: FormatoFirma): string {
+  if (formato === "xades") {
+    return nome.toLowerCase().endsWith(".xml")
+      ? `${nome.slice(0, -4)}-firmato.xml`
+      : `${nome}-firmato.xml`;
+  }
+  return `${nome}.p7m`;
+}
 
 // --- Endpoint ---
 export const api = {
@@ -139,15 +203,17 @@ export const api = {
     }),
   fatturaXml: (fatturaId: string) => req<string>(`/api/fatture/${fatturaId}/xml`),
 
-  // --- Firma digitale CAdES (.p7m) ---
+  // --- Firma digitale (CAdES .p7m / XAdES .xml) ---
   // Firma un file: con certificato software (pfx + password) oppure con smart card/CNS (pin).
-  // Risponde con la busta .p7m come blob da scaricare.
+  // Risponde con il documento firmato come blob da scaricare.
   firmaCades: async (
     file: File,
-    opts: { pfx?: File; password?: string; pin?: string } = {},
+    opts: { pfx?: File; password?: string; pin?: string; formato?: FormatoFirma } = {},
   ): Promise<{ blob: Blob; filename: string }> => {
+    const formato: FormatoFirma = opts.formato ?? "cades";
     const form = new FormData();
     form.append("file", file);
+    form.append("formato", formato);
     if (opts.pfx) form.append("pfx", opts.pfx);
     if (opts.password) form.append("password", opts.password);
     if (opts.pin) form.append("pin", opts.pin);
@@ -167,13 +233,94 @@ export const api = {
       }
       throw new Error(messaggio);
     }
-    const blob = await res.blob();
-    // Il backend nomina il file aggiungendo ".p7m" al nome originale.
-    return { blob, filename: `${file.name}.p7m` };
+    return { blob: await res.blob(), filename: nomeFileFirmato(file.name, formato) };
+  },
+
+  // Verifica un documento firmato (.p7m o XML): validità, formato, firmatario, data.
+  verificaFirma: async (file: File | Blob, nome = "documento"): Promise<EsitoVerifica> => {
+    const form = new FormData();
+    form.append("file", file, nome);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/firma/verifica`, { method: "POST", body: form, headers });
+    if (!res.ok) throw new Error(`Errore ${res.status}`);
+    return (await res.json()) as EsitoVerifica;
   },
 
   // --- Deleghe intermediario ---
   deleghe: () => req<Delega[]>("/api/deleghe"),
   creaDelega: (d: { aziendaId: string; tipoAdempimento: string; dataInizio: string; riferimento?: string }) =>
     req<Delega>("/api/deleghe", { method: "POST", body: JSON.stringify(d) }),
+
+  // --- Avvisi pagamento clienti / promemoria commercialista ---
+  avvisiPagamento: (filtro: { aziendaId?: string; stato?: string; scaduti?: boolean } = {}) => {
+    const qs = new URLSearchParams();
+    if (filtro.aziendaId) qs.set("aziendaId", filtro.aziendaId);
+    if (filtro.stato) qs.set("stato", filtro.stato);
+    if (filtro.scaduti) qs.set("scaduti", "true");
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return req<AvvisoPagamento[]>(`/api/avvisi-pagamento${suffix}`);
+  },
+  avvisiPagamentoAzienda: (aziendaId: string) =>
+    req<AvvisoPagamento[]>(`/api/aziende/${aziendaId}/avvisi-pagamento`),
+  creaAvvisoPagamento: (aziendaId: string, avviso: NuovoAvvisoPagamento) =>
+    req<AvvisoPagamento>(`/api/aziende/${aziendaId}/avvisi-pagamento`, {
+      method: "POST",
+      body: JSON.stringify(avviso),
+    }),
+  creaAvvisiPagamentoMese: (avviso: NuovoAvvisoPagamento) =>
+    req<{ creati: number; avvisi: AvvisoPagamento[] }>("/api/avvisi-pagamento/mese", {
+      method: "POST",
+      body: JSON.stringify(avviso),
+    }),
+  promemoriaPagamento: (giorni = 7) =>
+    req<AvvisoPagamento[]>(`/api/avvisi-pagamento/promemoria?giorni=${giorni}`),
+  testoAvvisoPagamento: (id: string) =>
+    req<{ avviso: AvvisoPagamento; testo: string }>(`/api/avvisi-pagamento/${id}/avviso`),
+  registraPromemoriaPagamento: (id: string) =>
+    req<{ avviso: AvvisoPagamento; testo: string }>(`/api/avvisi-pagamento/${id}/promemoria`, {
+      method: "POST",
+    }),
+  cambiaStatoAvvisoPagamento: (id: string, stato: StatoAvvisoPagamento) =>
+    req<AvvisoPagamento>(`/api/avvisi-pagamento/${id}/stato`, {
+      method: "POST",
+      body: JSON.stringify(stato),
+    }),
+
+  // --- Bilancio d'esercizio (Stato Patrimoniale + Conto Economico, schema CEE) ---
+  bilanci: (aziendaId: string) => req<BilancioSintesi[]>(`/api/aziende/${aziendaId}/bilanci`),
+  bilancio: (id: string) => req<BilancioDettaglio>(`/api/bilanci/${id}`),
+  creaBilancio: (aziendaId: string, b: NuovoBilancio) =>
+    req<BilancioSintesi>(`/api/aziende/${aziendaId}/bilanci`, {
+      method: "POST",
+      body: JSON.stringify(b),
+    }),
+  creaBilancioEsempio: (aziendaId: string, anno: number) =>
+    req<BilancioSintesi>(`/api/aziende/${aziendaId}/bilanci/esempio`, {
+      method: "POST",
+      body: JSON.stringify({ anno }),
+    }),
+  precompilaBilancio: (aziendaId: string, anno: number) =>
+    req<PrecompilaBilancio>(`/api/aziende/${aziendaId}/bilanci/precompila?anno=${anno}`),
+  cambiaStatoBilancio: (id: string, stato: string) =>
+    req<{ id: string; stato: string }>(`/api/bilanci/${id}/stato`, {
+      method: "POST",
+      body: JSON.stringify({ stato }),
+    }),
+
+  // --- Scadenzario / promemoria (DURC, F24, manuali) ---
+  scadenzario: () => req<Promemoria[]>("/api/scadenzario"),
+  rigeneraScadenzario: () =>
+    req<{ aggiornati: number }>("/api/scadenzario/rigenera", { method: "POST" }),
+  creaPromemoria: (p: NuovoPromemoria) =>
+    req<Promemoria>("/api/scadenzario", { method: "POST", body: JSON.stringify(p) }),
+  cambiaStatoPromemoria: (id: string, stato: string) =>
+    req<Promemoria>(`/api/scadenzario/${id}/stato`, {
+      method: "POST",
+      body: JSON.stringify({ stato }),
+    }),
+  durcAzienda: (aziendaId: string) => req<Durc[]>(`/api/aziende/${aziendaId}/durc`),
+  registraDurc: (aziendaId: string, d: NuovoDurc) =>
+    req<Durc>(`/api/aziende/${aziendaId}/durc`, { method: "POST", body: JSON.stringify(d) }),
 };

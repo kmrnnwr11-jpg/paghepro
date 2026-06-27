@@ -12,8 +12,9 @@ public interface IFirmatoreDigitale
     /// contenuto incapsulato e digest SHA-256, nel profilo accettato dal Sistema di Interscambio.
     /// </summary>
     /// <param name="nomeFileOriginale">
-    /// Nome del file di origine (es. <c>IT01234567890_00001.xml</c>): serve solo a comporre
-    /// il nome del file firmato aggiungendo <c>.p7m</c>. Se nullo viene usato un nome generico.
+    /// Nome del file di origine (es. <c>IT01234567890_00001.xml</c>): serve a comporre il nome
+    /// del file firmato. Se nullo viene usato un nome generico.
     /// </param>
-    RisultatoFirma Firma(byte[] contenuto, string? nomeFileOriginale = null);
+    /// <param name="tipo">Formato della firma: CAdES (<c>.p7m</c>, default) o XAdES (XML).</param>
+    RisultatoFirma Firma(byte[] contenuto, string? nomeFileOriginale = null, TipoFirma tipo = TipoFirma.Cades);
 }

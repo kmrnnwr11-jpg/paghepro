@@ -29,16 +29,8 @@ public sealed class FirmatorePfx : IFirmatoreDigitale, IDisposable
     public static FirmatorePfx DaBytes(byte[] pfx, string password) =>
         new(X509CertificateLoader.LoadPkcs12(pfx, password));
 
-    public RisultatoFirma Firma(byte[] contenuto, string? nomeFileOriginale = null)
-    {
-        byte[] p7m = FirmaCades.Firma(contenuto, _certificato);
-        return new RisultatoFirma(
-            p7m,
-            NomeFileFirmato.PerP7m(nomeFileOriginale),
-            _certificato.GetNameInfo(X509NameType.SimpleName, forIssuer: false),
-            DateTime.UtcNow,
-            "SHA-256");
-    }
+    public RisultatoFirma Firma(byte[] contenuto, string? nomeFileOriginale = null, TipoFirma tipo = TipoFirma.Cades) =>
+        MotoreFirma.Firma(contenuto, nomeFileOriginale, tipo, _certificato);
 
     public void Dispose() => _certificato.Dispose();
 }

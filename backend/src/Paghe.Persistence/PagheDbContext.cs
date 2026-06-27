@@ -37,11 +37,18 @@ public class PagheDbContext : DbContext
     public DbSet<SpesaEntity> Spese => Set<SpesaEntity>();
     public DbSet<LiquidazioneIvaEntity> LiquidazioniIva => Set<LiquidazioneIvaEntity>();
 
+    // Bilancio d'esercizio riclassificato (CEE) per azienda/anno
+    public DbSet<BilancioEntity> Bilanci => Set<BilancioEntity>();
+    public DbSet<RigaBilancioEntity> RigheBilancio => Set<RigaBilancioEntity>();
+
     // Trasmissione fatture elettroniche (SdI) e deleghe intermediario
     public DbSet<TrasmissioneFatturaEntity> TrasmissioniFatture => Set<TrasmissioneFatturaEntity>();
     public DbSet<RicevutaSdiEntity> RicevuteSdi => Set<RicevutaSdiEntity>();
     public DbSet<DelegaEntity> Deleghe => Set<DelegaEntity>();
     public DbSet<PraticaF24Entity> PraticheF24 => Set<PraticaF24Entity>();
+    public DbSet<AvvisoPagamentoEntity> AvvisiPagamento => Set<AvvisoPagamentoEntity>();
+    public DbSet<DurcEntity> Durc => Set<DurcEntity>();
+    public DbSet<PromemoriaEntity> Promemoria => Set<PromemoriaEntity>();
 
     /// <summary>
     /// Compatibilità per il database SQLite di sviluppo creato con EnsureCreated:
@@ -212,6 +219,82 @@ public class PagheDbContext : DbContext
             """);
 
         Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "AvvisiPagamento" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_AvvisiPagamento" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "AziendaId" TEXT NOT NULL,
+                "Anno" INTEGER NOT NULL,
+                "Mese" INTEGER NOT NULL,
+                "Descrizione" TEXT NOT NULL,
+                "Importo" TEXT NOT NULL,
+                "DataEmissione" TEXT NOT NULL,
+                "DataScadenza" TEXT NOT NULL,
+                "Stato" TEXT NOT NULL,
+                "MetodoPagamento" TEXT NOT NULL,
+                "Iban" TEXT NULL,
+                "Causale" TEXT NULL,
+                "Note" TEXT NULL,
+                "PagatoIl" TEXT NULL,
+                "RiferimentoPagamento" TEXT NULL,
+                "NumeroPromemoria" INTEGER NOT NULL,
+                "UltimoPromemoriaIl" TEXT NULL,
+                "CreataIl" TEXT NOT NULL,
+                "UltimoAggiornamento" TEXT NOT NULL,
+                CONSTRAINT "FK_AvvisiPagamento_Aziende_AziendaId"
+                    FOREIGN KEY ("AziendaId") REFERENCES "Aziende" ("Id") ON DELETE CASCADE
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_AvvisiPagamento_TenantId_AziendaId_Anno_Mese"
+                ON "AvvisiPagamento" ("TenantId", "AziendaId", "Anno", "Mese");
+            CREATE INDEX IF NOT EXISTS "IX_AvvisiPagamento_TenantId_Stato_DataScadenza"
+                ON "AvvisiPagamento" ("TenantId", "Stato", "DataScadenza");
+            CREATE INDEX IF NOT EXISTS "IX_AvvisiPagamento_AziendaId"
+                ON "AvvisiPagamento" ("AziendaId");
+            """);
+
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "Durc" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Durc" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "AziendaId" TEXT NOT NULL,
+                "Numero" TEXT NOT NULL,
+                "DataEmissione" TEXT NOT NULL,
+                "DataScadenza" TEXT NOT NULL,
+                "Regolare" INTEGER NOT NULL,
+                "Note" TEXT NULL,
+                "CreatoIl" TEXT NOT NULL,
+                CONSTRAINT "FK_Durc_Aziende_AziendaId"
+                    FOREIGN KEY ("AziendaId") REFERENCES "Aziende" ("Id") ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS "IX_Durc_AziendaId" ON "Durc" ("AziendaId");
+            CREATE INDEX IF NOT EXISTS "IX_Durc_TenantId_AziendaId_DataScadenza"
+                ON "Durc" ("TenantId", "AziendaId", "DataScadenza");
+
+            CREATE TABLE IF NOT EXISTS "Promemoria" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Promemoria" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "AziendaId" TEXT NULL,
+                "Tipo" TEXT NOT NULL,
+                "RiferimentoId" TEXT NULL,
+                "Titolo" TEXT NOT NULL,
+                "Descrizione" TEXT NOT NULL,
+                "DataScadenza" TEXT NOT NULL,
+                "GiorniPreavviso" INTEGER NOT NULL,
+                "Stato" TEXT NOT NULL,
+                "Messaggio" TEXT NOT NULL,
+                "CreatoIl" TEXT NOT NULL,
+                "UltimoAggiornamento" TEXT NOT NULL,
+                "InviatoIl" TEXT NULL,
+                CONSTRAINT "FK_Promemoria_Aziende_AziendaId"
+                    FOREIGN KEY ("AziendaId") REFERENCES "Aziende" ("Id") ON DELETE SET NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_Promemoria_AziendaId" ON "Promemoria" ("AziendaId");
+            CREATE INDEX IF NOT EXISTS "IX_Promemoria_TenantId_DataScadenza"
+                ON "Promemoria" ("TenantId", "DataScadenza");
+            CREATE INDEX IF NOT EXISTS "IX_Promemoria_TenantId_Tipo_RiferimentoId"
+                ON "Promemoria" ("TenantId", "Tipo", "RiferimentoId");
+            """);
+
+        Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS "PraticheF24" (
                 "Id" TEXT NOT NULL CONSTRAINT "PK_PraticheF24" PRIMARY KEY,
                 "TenantId" TEXT NOT NULL,
@@ -226,11 +309,51 @@ public class PagheDbContext : DbContext
                 "Valido" INTEGER NOT NULL,
                 "ModelloJson" TEXT NOT NULL,
                 "Bozza" TEXT NOT NULL,
+                "TracciatoUfficiale" TEXT NOT NULL DEFAULT '',
                 "CreataIl" TEXT NOT NULL,
                 "UltimoAggiornamento" TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS "IX_PraticheF24_TenantId_AziendaId_Anno_Mese"
                 ON "PraticheF24" ("TenantId", "AziendaId", "Anno", "Mese");
+            """);
+
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "Bilanci" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Bilanci" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "AziendaId" TEXT NOT NULL,
+                "Anno" INTEGER NOT NULL,
+                "ValoreDellaProduzione" TEXT NOT NULL,
+                "CostiDellaProduzione" TEXT NOT NULL,
+                "ProventiFinanziari" TEXT NOT NULL,
+                "OneriFinanziari" TEXT NOT NULL,
+                "Imposte" TEXT NOT NULL,
+                "UtilePerditaEsercizio" TEXT NOT NULL,
+                "TotaleAttivo" TEXT NOT NULL,
+                "TotalePassivo" TEXT NOT NULL,
+                "PatrimonioNetto" TEXT NOT NULL,
+                "SbilancioAttivoPassivo" TEXT NOT NULL,
+                "Quadra" INTEGER NOT NULL,
+                "Stato" TEXT NOT NULL,
+                "BilancioJson" TEXT NOT NULL,
+                "Bozza" TEXT NOT NULL,
+                "CreataIl" TEXT NOT NULL,
+                "UltimoAggiornamento" TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS "RigheBilancio" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_RigheBilancio" PRIMARY KEY,
+                "BilancioId" TEXT NOT NULL,
+                "Codice" TEXT NOT NULL,
+                "Descrizione" TEXT NOT NULL,
+                "Voce" TEXT NOT NULL,
+                "Importo" TEXT NOT NULL,
+                CONSTRAINT "FK_RigheBilancio_Bilanci_BilancioId"
+                    FOREIGN KEY ("BilancioId") REFERENCES "Bilanci" ("Id") ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS "IX_Bilanci_TenantId_AziendaId_Anno"
+                ON "Bilanci" ("TenantId", "AziendaId", "Anno");
+            CREATE INDEX IF NOT EXISTS "IX_RigheBilancio_BilancioId"
+                ON "RigheBilancio" ("BilancioId");
             """);
     }
 
@@ -437,6 +560,31 @@ public class PagheDbContext : DbContext
             e.HasOne(x => x.Azienda).WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        // --- Avvisi di pagamento clienti dello studio ---
+        mb.Entity<AvvisoPagamentoEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.AziendaId, x.Anno, x.Mese }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.Stato, x.DataScadenza });
+            e.Property(x => x.Importo).HasPrecision(15, 2);
+            e.HasOne(x => x.Azienda).WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // --- Scadenzario / promemoria generici ---
+        mb.Entity<DurcEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.AziendaId, x.DataScadenza });
+            e.HasOne<AziendaEntity>().WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.Cascade);
+        });
+        mb.Entity<PromemoriaEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.DataScadenza });
+            e.HasIndex(x => new { x.TenantId, x.Tipo, x.RiferimentoId });
+            e.HasOne<AziendaEntity>().WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.SetNull);
+        });
+
         // --- Pratiche F24 (telematico) ---
         mb.Entity<PraticaF24Entity>(e =>
         {
@@ -445,6 +593,26 @@ public class PagheDbContext : DbContext
             e.Property(x => x.TotaleDebiti).HasPrecision(15, 2);
             e.Property(x => x.TotaleCrediti).HasPrecision(15, 2);
             e.Property(x => x.SaldoFinale).HasPrecision(15, 2);
+        });
+
+        // --- Bilancio d'esercizio (CEE) ---
+        mb.Entity<BilancioEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.AziendaId, x.Anno });
+            foreach (var p in new[] { nameof(BilancioEntity.ValoreDellaProduzione),
+                nameof(BilancioEntity.CostiDellaProduzione), nameof(BilancioEntity.ProventiFinanziari),
+                nameof(BilancioEntity.OneriFinanziari), nameof(BilancioEntity.Imposte),
+                nameof(BilancioEntity.UtilePerditaEsercizio), nameof(BilancioEntity.TotaleAttivo),
+                nameof(BilancioEntity.TotalePassivo), nameof(BilancioEntity.PatrimonioNetto),
+                nameof(BilancioEntity.SbilancioAttivoPassivo) })
+                e.Property(p).HasPrecision(15, 2);
+            e.HasMany(x => x.Righe).WithOne().HasForeignKey(r => r.BilancioId).OnDelete(DeleteBehavior.Cascade);
+        });
+        mb.Entity<RigaBilancioEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Importo).HasPrecision(15, 2);
         });
     }
 }

@@ -56,6 +56,16 @@ dotnet run --project src/Paghe.Demo -c Release
   persistenza tenant-isolata (`PraticheAperturaPartitaIvaService`).
 - Liquidazione IVA vendite/acquisti con registri di periodo (`CalcoloLiquidazioneIva`) e
   salvataggio di spese/liquidazioni per azienda (`ContabilitaIvaService`).
+- **Bilancio d'esercizio persistito** (Stato Patrimoniale + Conto Economico, schema CEE
+  art. 2424/2425 c.c.): oltre alla riclassificazione stateless (`RiclassificazioneBilancio`,
+  `POST /api/bilancio/riclassifica`), ora **archiviato per azienda e anno** con totali,
+  utile/perdita, quadratura, righe (piano conti + saldi auto-contenuti), bozza leggibile e
+  macchina a stati Bozza→Approvato→Depositato/Annullato (`BilancioService`, `BilancioEntity`,
+  `StatoBilancio`). Endpoint: `POST /api/aziende/{id}/bilanci`,
+  `POST /api/aziende/{id}/bilanci/esempio` (demo SRLS quadrato),
+  `GET /api/aziende/{id}/bilanci/precompila?anno=` (ricavi/costi pescati da fatture, spese e
+  cedolini), `GET /api/aziende/{id}/bilanci`, `GET /api/bilanci/{id}`, `POST /api/bilanci/{id}/stato`.
+  Tutto isolato per tenant. Lo schema di deposito ufficiale XBRL non è ancora generato.
 - **Import UNILAV**: `ImportazioneUnilav` legge la Comunicazione Obbligatoria XML (lettura
   namespace-agnostica) e crea in automatico dipendente + rapporto. Endpoint
   `POST /api/aziende/{id}/dipendenti/da-unilav`.
@@ -63,7 +73,14 @@ dotnet run --project src/Paghe.Demo -c Release
   IRPEF, addizionali, INPS). Endpoint `POST /api/f24/da-paghe` (importi nella request) e
   `POST /api/aziende/{id}/f24/mese` (pesca i cedolini archiviati del periodo via
   `CedoliniService.GeneraF24DelMeseAsync`). Controlli interni F24 (`ValidazioneF24`,
-  `ValidatoreFiscale`). Tracciato ufficiale a lunghezza fissa ancora da fare.
+  `ValidatoreFiscale`). **Pratiche F24 persistite** con stato (macchina a stati) ed export su
+  cartella (`PraticheF24Service`, `PraticaF24Entity`): `POST .../f24/mese/salva`,
+  `GET .../f24`, `GET /api/f24/{id}`, `POST /api/f24/{id}/stato`, `POST /api/f24/{id}/esporta`.
+  **Tracciato telematico ufficiale a lunghezza fissa** (record A/M/V/Z, 1900 char, sez. IMU
+  v.2013) in `TracciatoF24Ufficiale`, da Allegato 1 specifiche AdE: generato e archiviato in
+  pratica, è il file scritto da `/esporta`. Costanti del controllo ufficiale F24A0 in
+  `ControlloF24A0` (`finanze.BQJCB102.main.CtrlFile`). Validazione col JAR ufficiale
+  `ControlliF24A0.jar` da eseguire (richiede i JAR del kit + Java).
 - **Trasmissione Fattura → SdI** (il "modem"): astrazioni `IFatturaSdiGateway` /
   `IFirmaFatturaElettronica` in `Paghe.Core/Fatturazione/Trasmissione`, canali
   `SdiGatewayManuale` (default, prepara il file) e `SdiGatewayProviderRest` (provider accreditato
@@ -74,14 +91,17 @@ dotnet run --project src/Paghe.Demo -c Release
   Configurazione canale in sezione `Sdi` (default Manuale). Vedi
   `docs/integrazione-ufficiale/MODULO-TRASMISSIONE-SDI.md`. Restano da fornire: account/ApiKey del
   provider, firma CAdES locale reale (se non delegata), webhook ricevute, conservazione a norma.
-- **Firma digitale CAdES-BES** (busta `.xml.p7m`): modulo `backend/src/Paghe.Firma`. Engine
-  `FirmaCades` su `SignedCms` (SHA-256 + attributo `SigningCertificateV2`), nessuna dipendenza
-  GPL. Firmatari dietro `IFirmatoreDigitale`: `FirmatorePfx` (certificato software/firma remota)
-  e **`FirmatoreCns`** (smart card / **CNS** via PKCS#11 con `Pkcs11Interop.X509Store`, Apache-2.0;
+- **Firma digitale** (modulo `backend/src/Paghe.Firma`): due formati dietro `MotoreFirma`/`TipoFirma`.
+  **CAdES-BES** (`.p7m`) con `FirmaCades` su `SignedCms`, e **XAdES-BES** (XML enveloped) con
+  `FirmaXades` su `SignedXml` — entrambi SHA-256 + `SigningCertificateV2`, nessuna dipendenza GPL.
+  Firmatari dietro `IFirmatoreDigitale`: `FirmatorePfx` (certificato software/firma remota) e
+  **`FirmatoreCns`** (smart card / **CNS** via PKCS#11 con `Pkcs11Interop.X509Store`, Apache-2.0;
   la chiave resta sulla carta). Adapter `FirmaCadesLocale` collegato al seam
-  `IFirmaFatturaElettronica` della trasmissione SdI. Endpoint `POST /api/firma/cades` (upload PFX
-  o PIN CNS) e `POST /api/fatture/firma` (XML FatturaPA → valida → `.xml.p7m`). Config sezione
-  `Firma` (`PfxPath`/`PfxPassword` oppure `Cns:Pkcs11LibraryPath`). La firma CNS richiede il
+  `IFirmaFatturaElettronica` della trasmissione SdI. Endpoint: `POST /api/firma/cades`
+  (campo `formato=cades|xades`, upload PFX o PIN CNS), `POST /api/fatture/firma`
+  (XML FatturaPA → valida → firma, `?formato=`), `POST /api/firma/verifica` (validità + firmatario
+  + data). UI: pagina **Firma digitale** nella SPA (anteprima documento, scelta formato/dispositivo,
+  risultato firmato verificato e scaricabile). Config sezione `Firma`. La firma CNS richiede il
   middleware PKCS#11 + carta sulla macchina che firma (desktop/agente locale, non backend cloud).
 
 ## Prossimi lavori utili

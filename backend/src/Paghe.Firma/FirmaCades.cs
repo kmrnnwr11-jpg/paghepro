@@ -74,6 +74,41 @@ public static class FirmaCades
         }
     }
 
+    /// <summary>Verifica una busta CAdES (<c>.p7m</c>) e ne estrae i dettagli (firmatario, data).</summary>
+    public static RisultatoVerifica VerificaConDettagli(byte[] bustaP7m)
+    {
+        ArgumentNullException.ThrowIfNull(bustaP7m);
+        try
+        {
+            var cms = new SignedCms();
+            cms.Decode(bustaP7m);
+            cms.CheckSignature(verifySignatureOnly: true);
+
+            var firma = cms.SignerInfos[0];
+            string firmatario = firma.Certificate?.GetNameInfo(X509NameType.SimpleName, forIssuer: false)
+                ?? "(certificato non incluso)";
+            return new RisultatoVerifica(true, "CAdES", firmatario, EstraiSigningTime(firma), "SHA-256");
+        }
+        catch (CryptographicException)
+        {
+            return new RisultatoVerifica(false, "CAdES");
+        }
+    }
+
+    private static DateTime? EstraiSigningTime(SignerInfo firma)
+    {
+        foreach (var attr in firma.SignedAttributes)
+        {
+            if (attr.Oid?.Value == "1.2.840.113549.1.9.5" && attr.Values.Count > 0)
+            {
+                var t = new Pkcs9SigningTime();
+                t.CopyFrom(attr.Values[0]);
+                return t.SigningTime.ToUniversalTime();
+            }
+        }
+        return null;
+    }
+
     /// <summary>Estrae il contenuto originale incapsulato in una busta CAdES (<c>.p7m</c>).</summary>
     public static byte[] EstraiContenuto(byte[] bustaP7m)
     {

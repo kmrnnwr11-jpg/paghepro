@@ -90,7 +90,10 @@ public sealed class PraticheF24DbTests : IDisposable
 
             Assert.True(File.Exists(file));
             Assert.Contains(Path.Combine("agenzia-entrate", "da-controllare"), file);
-            Assert.Contains("BOZZA NON UFFICIALE", await File.ReadAllTextAsync(file));
+            // L'export scrive il tracciato telematico ufficiale (record A/M/V/Z, codice fornitura F24A0).
+            string contenuto = await File.ReadAllTextAsync(file);
+            Assert.StartsWith("A", contenuto);
+            Assert.Contains("F24A0", contenuto);
         }
         finally
         {

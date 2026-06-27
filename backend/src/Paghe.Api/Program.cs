@@ -31,6 +31,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddDbContext<PagheDbContext>(o => o.UseSqlite(connectionString));
 builder.Services.AddScoped<AziendeService>();
 builder.Services.AddScoped<FattureService>();
+builder.Services.AddScoped<AvvisiPagamentoService>();
 
 // Parametri normativi e CCNL caricati dal database, versionati per anno (non più cablati).
 builder.Services.AddScoped<ParametriNormativiService>();
@@ -39,12 +40,19 @@ builder.Services.AddScoped<CedoliniService>();
 builder.Services.AddScoped<PraticheF24Service>();
 builder.Services.AddScoped<PraticheAperturaPartitaIvaService>();
 builder.Services.AddScoped<ContabilitaIvaService>();
+builder.Services.AddScoped<BilancioService>();
+builder.Services.AddScoped<ScadenzarioService>();
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
 var sdiOptions = new SdiProviderOptions();
 builder.Configuration.GetSection("Sdi").Bind(sdiOptions);
 builder.Services.AddSingleton(sdiOptions);
+
+// Credenziali provider A-Cube (sezione "Acube"): usate quando Sdi:Provider = "Acube".
+var acubeOptions = new AcubeOptions();
+builder.Configuration.GetSection("Acube").Bind(acubeOptions);
+builder.Services.AddSingleton(acubeOptions);
 
 // Certificato di firma digitale CAdES (sezione "Firma"): PFX lato server o smart card/CNS via PKCS#11.
 var firmaOptions = new FirmaOptions();
@@ -62,6 +70,11 @@ switch (sdiOptions.Provider.ToLowerInvariant())
             builder.Services.AddScoped<IFirmaFatturaElettronica, FirmaCadesLocale>();
         else
             builder.Services.AddScoped<IFirmaFatturaElettronica, FirmaDelegataAlProvider>();
+        break;
+    case "acube":
+        // Provider accreditato A-Cube: login email/password → token, invio fattura, lettura esiti.
+        builder.Services.AddHttpClient<IFatturaSdiGateway, SdiGatewayAcube>();
+        builder.Services.AddScoped<IFirmaFatturaElettronica, FirmaDelegataAlProvider>();
         break;
     case "simulato":
         builder.Services.AddScoped<IFatturaSdiGateway, SdiGatewaySimulato>();
@@ -132,6 +145,36 @@ static Guid TenantCorrente(ClaimsPrincipal user) =>
         ? id
         : throw new InvalidOperationException("Tenant non presente nel token.");
 
+static object AvvisoPagamentoDto(Paghe.Persistence.Entities.AvvisoPagamentoEntity a)
+{
+    var oggi = DateOnly.FromDateTime(DateTime.UtcNow);
+    return new
+    {
+        a.Id,
+        a.AziendaId,
+        Cliente = a.Azienda?.RagioneSociale,
+        a.Anno,
+        a.Mese,
+        a.Descrizione,
+        a.Importo,
+        a.DataEmissione,
+        a.DataScadenza,
+        a.Stato,
+        a.MetodoPagamento,
+        a.Iban,
+        a.Causale,
+        a.Note,
+        a.PagatoIl,
+        a.RiferimentoPagamento,
+        a.NumeroPromemoria,
+        a.UltimoPromemoriaIl,
+        GiorniAllaScadenza = a.DataScadenza.DayNumber - oggi.DayNumber,
+        Scaduto = a.Stato != AvvisiPagamentoService.Pagato
+            && a.Stato != AvvisiPagamentoService.Annullato
+            && a.DataScadenza < oggi,
+    };
+}
+
 // Costruisce il motore di calcolo caricando parametri e CCNL dal DB per l'anno indicato.
 static async Task<MotoreCalcoloCedolino> CostruisciMotore(
     ParametriNormativiService svc, RapportoLavoro rapporto, int anno)
@@ -147,6 +190,25 @@ static async Task<byte[]> LeggiFile(IFormFile file)
     using var ms = new MemoryStream();
     await file.CopyToAsync(ms);
     return ms.ToArray();
+}
+
+// Proietta un promemoria aggiungendo i giorni mancanti e l'urgenza calcolata a oggi.
+static object PromemoriaDto(Paghe.Persistence.Entities.PromemoriaEntity p)
+{
+    var oggi = DateOnly.FromDateTime(DateTime.UtcNow);
+    int giorni = p.DataScadenza.DayNumber - oggi.DayNumber;
+    string urgenza =
+        p.Stato is "Completato" or "Annullato" ? "chiuso"
+        : giorni < 0 ? "scaduto"
+        : giorni == 0 ? "oggi"
+        : giorni <= p.GiorniPreavviso ? "in_scadenza"
+        : "futuro";
+    return new
+    {
+        p.Id, p.AziendaId, p.Tipo, p.RiferimentoId,
+        p.Titolo, p.Descrizione, p.DataScadenza, p.GiorniPreavviso,
+        p.Stato, p.Messaggio, giorniAllaScadenza = giorni, urgenza,
+    };
 }
 
 app.MapGet("/", () => Results.Ok(new
@@ -165,9 +227,16 @@ app.MapGet("/", () => Results.Ok(new
         "POST /api/fatture/calcola",
         "POST /api/fatture/xml",
         "POST /api/fatture/valida",
-        "POST /api/fatture/firma         (CAdES .xml.p7m)",
-        "POST /api/firma/cades           (firma file: PFX o CNS/smart card)",
+        "POST /api/fatture/firma         (CAdES .xml.p7m o XAdES con ?formato=xades)",
+        "POST /api/firma/cades           (firma file: PFX o CNS/smart card; campo formato=cades|xades)",
+        "POST /api/firma/verifica        (verifica .p7m/XML firmato: validità, firmatario, data)",
         "POST /api/bilancio/riclassifica",
+        "POST /api/aziende/{id}/bilanci",
+        "POST /api/aziende/{id}/bilanci/esempio",
+        "GET  /api/aziende/{id}/bilanci/precompila?anno=",
+        "GET  /api/aziende/{id}/bilanci",
+        "GET  /api/bilanci/{id}",
+        "POST /api/bilanci/{id}/stato",
         "POST /api/contabilita/iva/liquidazione",
         "POST /api/aziende            (richiede Bearer token)",
         "GET  /api/aziende",
@@ -197,6 +266,21 @@ app.MapGet("/", () => Results.Ok(new
         "GET  /api/f24/{id}",
         "POST /api/f24/{id}/stato",
         "POST /api/f24/{id}/esporta",
+        "POST /api/aziende/{id}/avvisi-pagamento",
+        "GET  /api/aziende/{id}/avvisi-pagamento",
+        "GET  /api/avvisi-pagamento",
+        "POST /api/avvisi-pagamento/mese",
+        "GET  /api/avvisi-pagamento/promemoria",
+        "GET  /api/avvisi-pagamento/{id}/avviso",
+        "POST /api/avvisi-pagamento/{id}/promemoria",
+        "POST /api/avvisi-pagamento/{id}/stato",
+        "POST /api/aziende/{id}/durc",
+        "GET  /api/aziende/{id}/durc",
+        "GET  /api/scadenzario",
+        "POST /api/scadenzario/rigenera",
+        "POST /api/scadenzario",
+        "GET  /api/scadenzario/{id}",
+        "POST /api/scadenzario/{id}/stato",
         "POST /api/cedolini/pdf",
         "POST /api/fatture/pdf",
         "GET  /api/fatture/{id}/pdf"
@@ -346,6 +430,9 @@ app.MapPost("/api/firma/cades", async (HttpRequest http, FirmaOptions firma) =>
     var pfxFile = form.Files["pfx"];
     string? password = form["password"];
     string? pin = form["pin"];
+    // Formato: "xades" (XML enveloped) oppure "cades" (.p7m, default).
+    var tipo = string.Equals(form["formato"], "xades", StringComparison.OrdinalIgnoreCase)
+        ? TipoFirma.Xades : TipoFirma.Cades;
 
     IFirmatoreDigitale? firmatore = null;
     try
@@ -355,17 +442,40 @@ app.MapPost("/api/firma/cades", async (HttpRequest http, FirmaOptions firma) =>
         else
             firmatore = FirmaCadesLocale.CreaFirmatore(firma, pin);
 
-        var risultato = firmatore.Firma(contenuto, file.FileName);
-        return Results.File(risultato.ContenutoFirmato, "application/pkcs7-mime", risultato.NomeFile);
+        var risultato = firmatore.Firma(contenuto, file.FileName, tipo);
+        return Results.File(risultato.ContenutoFirmato, risultato.Mime, risultato.NomeFile);
     }
     catch (NotSupportedException ex) { return Results.BadRequest(new { errore = ex.Message }); }
     catch (Exception ex) { return Results.BadRequest(new { errore = $"Firma non riuscita: {ex.Message}" }); }
     finally { (firmatore as IDisposable)?.Dispose(); }
 }).DisableAntiforgery();
 
+// Verifica un documento firmato (.p7m CAdES o XML XAdES): riconosce il formato, controlla la
+// validità della firma e restituisce firmatario e data. multipart/form-data con campo "file".
+app.MapPost("/api/firma/verifica", async (HttpRequest http) =>
+{
+    if (!http.HasFormContentType)
+        return Results.BadRequest(new { errore = "Inviare multipart/form-data con il campo 'file'." });
+
+    var form = await http.ReadFormAsync();
+    var file = form.Files["file"];
+    if (file is null || file.Length == 0)
+        return Results.BadRequest(new { errore = "File firmato mancante (campo 'file')." });
+
+    var r = MotoreFirma.Verifica(await LeggiFile(file));
+    return Results.Ok(new
+    {
+        valido = r.Valido,
+        formato = r.Formato,
+        firmatario = r.Firmatario,
+        dataFirmaUtc = r.DataFirmaUtc,
+        algoritmoDigest = r.AlgoritmoDigest,
+    });
+}).DisableAntiforgery();
+
 // Genera l'XML FatturaPA, lo valida e lo firma in CAdES (.xml.p7m) con il certificato configurato
 // nella sezione "Firma". Per la CNS il PIN può essere passato nell'header "X-Firma-Pin".
-app.MapPost("/api/fatture/firma", async (Fattura fattura, HttpRequest http, FirmaOptions firma) =>
+app.MapPost("/api/fatture/firma", async (Fattura fattura, HttpRequest http, FirmaOptions firma, string? formato) =>
 {
     if (fattura.Righe.Count == 0)
         return Results.BadRequest(new { errore = "La fattura non ha righe." });
@@ -376,6 +486,9 @@ app.MapPost("/api/fatture/firma", async (Fattura fattura, HttpRequest http, Firm
     if (erroriXsd.Count > 0 || erroriSdi.Count > 0)
         return Results.BadRequest(new { errore = "Fattura non valida: firma annullata.", erroriXsd, erroriSdi });
 
+    var tipo = string.Equals(formato, "xades", StringComparison.OrdinalIgnoreCase)
+        ? TipoFirma.Xades : TipoFirma.Cades;
+
     IFirmatoreDigitale? firmatore = null;
     try
     {
@@ -384,8 +497,8 @@ app.MapPost("/api/fatture/firma", async (Fattura fattura, HttpRequest http, Firm
         string nomeXml = NomeFileFatturaPa.Genera(
             fattura.Cedente.Nazione, idCodice, NomeFileFatturaPa.ProgressivoCasuale());
 
-        var risultato = firmatore.Firma(Encoding.UTF8.GetBytes(xml), nomeXml);
-        return Results.File(risultato.ContenutoFirmato, "application/pkcs7-mime", risultato.NomeFile);
+        var risultato = firmatore.Firma(Encoding.UTF8.GetBytes(xml), nomeXml, tipo);
+        return Results.File(risultato.ContenutoFirmato, risultato.Mime, risultato.NomeFile);
     }
     catch (NotSupportedException ex) { return Results.BadRequest(new { errore = ex.Message }); }
     catch (Exception ex) { return Results.BadRequest(new { errore = $"Firma non riuscita: {ex.Message}" }); }
@@ -404,6 +517,104 @@ app.MapPost("/api/bilancio/riclassifica", (RiclassificaRequest req) =>
     {
         return Results.BadRequest(new { errore = ex.Message });
     }
+});
+
+// --- Bilancio d'esercizio archiviato per azienda/anno -------------------------------
+// Restituisce una sintesi del bilancio archiviato (per elenchi e creazione).
+static object SintesiBilancio(Paghe.Persistence.Entities.BilancioEntity b) => new
+{
+    b.Id, b.Anno, b.Stato, b.Quadra,
+    b.ValoreDellaProduzione, b.CostiDellaProduzione, b.UtilePerditaEsercizio,
+    b.TotaleAttivo, b.TotalePassivo, b.PatrimonioNetto, b.SbilancioAttivoPassivo,
+};
+
+// Redige e archivia il bilancio dell'anno per l'azienda a partire dalle voci indicate.
+secured.MapPost("/api/aziende/{aziendaId:guid}/bilanci",
+    async (Guid aziendaId, CreaBilancioRequest req, BilancioService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var voci = (req.Voci ?? Array.Empty<VoceBilancioRequest>())
+            .Select(v => new VoceBilancioInput(v.Codice, v.Descrizione, v.Voce, v.Importo))
+            .ToList();
+        var b = await svc.CreaAsync(TenantCorrente(user), aziendaId, req.Anno, voci);
+        return Results.Created($"/api/bilanci/{b.Id}", SintesiBilancio(b));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
+// Crea un bilancio d'esempio quadrato (piano dei conti CEE di base) — utile per demo/SRLS.
+secured.MapPost("/api/aziende/{aziendaId:guid}/bilanci/esempio",
+    async (Guid aziendaId, CreaBilancioEsempioRequest req, BilancioService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var b = await svc.CreaDaEsempioAsync(TenantCorrente(user), aziendaId, req.Anno);
+        return Results.Created($"/api/bilanci/{b.Id}", SintesiBilancio(b));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
+// Precompila le voci di Conto Economico dalla contabilità registrata (fatture, spese, cedolini).
+secured.MapGet("/api/aziende/{aziendaId:guid}/bilanci/precompila",
+    async (Guid aziendaId, int anno, BilancioService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var voci = await svc.PrecompilaDaContabilitaAsync(TenantCorrente(user), aziendaId, anno);
+        return Results.Ok(new
+        {
+            anno,
+            voci,
+            nota = "Bozza dalle sole voci di Conto Economico ricavate dalla contabilità. "
+                + "Aggiungere le voci di Stato Patrimoniale per completare il bilancio.",
+        });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
+secured.MapGet("/api/aziende/{aziendaId:guid}/bilanci",
+    async (Guid aziendaId, BilancioService svc, ClaimsPrincipal user) =>
+        Results.Ok((await svc.ElencoAsync(TenantCorrente(user), aziendaId)).Select(SintesiBilancio)));
+
+secured.MapGet("/api/bilanci/{id:guid}", async (Guid id, BilancioService svc, ClaimsPrincipal user) =>
+{
+    var b = await svc.GetAsync(TenantCorrente(user), id);
+    if (b is null)
+        return Results.NotFound(new { errore = "Bilancio non trovato." });
+    return Results.Ok(new
+    {
+        b.Id, b.Anno, b.Stato, b.Quadra,
+        b.ValoreDellaProduzione, b.CostiDellaProduzione, b.ProventiFinanziari, b.OneriFinanziari,
+        b.Imposte, b.UtilePerditaEsercizio,
+        b.TotaleAttivo, b.TotalePassivo, b.PatrimonioNetto, b.SbilancioAttivoPassivo,
+        b.Bozza,
+        righe = b.Righe.Select(r => new { r.Codice, r.Descrizione, r.Voce, r.Importo }),
+        bilancio = JsonSerializer.Deserialize<JsonElement>(b.BilancioJson),
+    });
+});
+
+secured.MapPost("/api/bilanci/{id:guid}/stato",
+    async (Guid id, CambiaStatoBilancioRequest req, BilancioService svc, ClaimsPrincipal user) =>
+{
+    if (!Enum.TryParse<StatoBilancio>(req.Stato, ignoreCase: true, out var nuovo))
+        return Results.BadRequest(new { errore = $"Stato '{req.Stato}' non valido." });
+    try
+    {
+        var b = await svc.CambiaStatoAsync(TenantCorrente(user), id, nuovo);
+        return Results.Ok(new { b.Id, b.Stato });
+    }
+    catch (ArgumentException ex) { return Results.NotFound(new { errore = ex.Message }); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { errore = ex.Message }); }
 });
 
 app.MapPost("/api/contabilita/iva/liquidazione", (LiquidazioneIvaRequest req) =>
@@ -970,6 +1181,187 @@ secured.MapPost("/api/deleghe/{id:guid}/revoca", async (Guid id, DelegheService 
 {
     try { return Results.Ok(await svc.RevocaAsync(TenantCorrente(user), id)); }
     catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+});
+
+// --- Avvisi pagamento clienti / promemoria commercialista -------------------------
+secured.MapPost("/api/aziende/{aziendaId:guid}/avvisi-pagamento",
+    async (Guid aziendaId, CreaAvvisoPagamentoRequest req, AvvisiPagamentoService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var avviso = await svc.CreaAsync(TenantCorrente(user), new AvvisoPagamentoInput(
+            aziendaId,
+            req.Anno,
+            req.Mese,
+            req.Importo,
+            req.DataScadenza,
+            req.Descrizione,
+            req.DataEmissione,
+            req.MetodoPagamento,
+            req.Iban,
+            req.Causale,
+            req.Note));
+        return Results.Created($"/api/avvisi-pagamento/{avviso.Id}", AvvisoPagamentoDto(avviso));
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+});
+
+secured.MapGet("/api/aziende/{aziendaId:guid}/avvisi-pagamento",
+    async (Guid aziendaId, string? stato, bool? scaduti, AvvisiPagamentoService svc, ClaimsPrincipal user) =>
+        Results.Ok((await svc.ElencoAsync(
+            TenantCorrente(user), aziendaId, stato, scaduti ?? false)).Select(AvvisoPagamentoDto)));
+
+secured.MapGet("/api/avvisi-pagamento",
+    async (Guid? aziendaId, string? stato, bool? scaduti, AvvisiPagamentoService svc, ClaimsPrincipal user) =>
+        Results.Ok((await svc.ElencoAsync(
+            TenantCorrente(user), aziendaId, stato, scaduti ?? false)).Select(AvvisoPagamentoDto)));
+
+secured.MapPost("/api/avvisi-pagamento/mese",
+    async (CreaAvvisiPagamentoMeseRequest req, AvvisiPagamentoService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var creati = await svc.CreaMensilePerTuttiAsync(TenantCorrente(user), new AvvisiPagamentoMeseInput(
+            req.Anno,
+            req.Mese,
+            req.Importo,
+            req.DataScadenza,
+            req.Descrizione,
+            req.DataEmissione,
+            req.MetodoPagamento,
+            req.Iban,
+            req.Causale,
+            req.Note));
+        return Results.Created("/api/avvisi-pagamento", new
+        {
+            creati = creati.Count,
+            avvisi = creati.Select(AvvisoPagamentoDto),
+        });
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+});
+
+secured.MapGet("/api/avvisi-pagamento/promemoria",
+    async (int? giorni, AvvisiPagamentoService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        return Results.Ok((await svc.PromemoriaDaFareAsync(
+            TenantCorrente(user), giorni ?? 7)).Select(AvvisoPagamentoDto));
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+});
+
+secured.MapGet("/api/avvisi-pagamento/{id:guid}/avviso",
+    async (Guid id, AvvisiPagamentoService svc, ClaimsPrincipal user) =>
+{
+    var avviso = await svc.GetAsync(TenantCorrente(user), id);
+    return avviso is null
+        ? Results.NotFound(new { errore = "Avviso di pagamento non trovato." })
+        : Results.Ok(new
+        {
+            avviso = AvvisoPagamentoDto(avviso),
+            testo = AvvisiPagamentoService.TestoAvviso(avviso),
+        });
+});
+
+secured.MapPost("/api/avvisi-pagamento/{id:guid}/promemoria",
+    async (Guid id, AvvisiPagamentoService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var avviso = await svc.RegistraPromemoriaAsync(TenantCorrente(user), id);
+        return Results.Ok(new
+        {
+            avviso = AvvisoPagamentoDto(avviso),
+            testo = AvvisiPagamentoService.TestoPromemoria(avviso),
+        });
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+});
+
+secured.MapPost("/api/avvisi-pagamento/{id:guid}/stato",
+    async (Guid id, CambiaStatoAvvisoPagamentoRequest req, AvvisiPagamentoService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var tenantId = TenantCorrente(user);
+        var avviso = await svc.CambiaStatoAsync(tenantId, id, new StatoAvvisoPagamentoInput(
+            req.Stato,
+            req.PagatoIl,
+            req.RiferimentoPagamento,
+            req.Note));
+        var aggiornato = await svc.GetAsync(tenantId, avviso.Id) ?? avviso;
+        return Results.Ok(AvvisoPagamentoDto(aggiornato));
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+});
+
+// --- Scadenzario / promemoria (DURC, F24, manuali) --------------------------------
+// Registra un DURC di un'azienda: la sua scadenza alimenta il promemoria di rinnovo.
+secured.MapPost("/api/aziende/{aziendaId:guid}/durc",
+    async (Guid aziendaId, RegistraDurcRequest req, ScadenzarioService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var d = await svc.RegistraDurcAsync(TenantCorrente(user), new DurcInput(
+            aziendaId, req.Numero, req.DataEmissione, req.DataScadenza, req.Regolare, req.Note));
+        return Results.Created($"/api/aziende/{aziendaId}/durc", new
+        {
+            d.Id, d.AziendaId, d.Numero, d.DataEmissione, d.DataScadenza, d.Regolare, d.Note,
+        });
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+});
+
+secured.MapGet("/api/aziende/{aziendaId:guid}/durc",
+    async (Guid aziendaId, ScadenzarioService svc, ClaimsPrincipal user) =>
+        Results.Ok((await svc.ElencoDurcAsync(TenantCorrente(user), aziendaId)).Select(d => new
+        {
+            d.Id, d.AziendaId, d.Numero, d.DataEmissione, d.DataScadenza, d.Regolare, d.Note,
+        })));
+
+// Elenco dei promemoria: rigenera prima in automatico dalle fonti (DURC, F24), poi ordina per scadenza.
+secured.MapGet("/api/scadenzario",
+    async (ScadenzarioService svc, ClaimsPrincipal user) =>
+        Results.Ok((await svc.ElencoAsync(TenantCorrente(user))).Select(PromemoriaDto)));
+
+// Forza la rigenerazione dei promemoria dalle fonti e restituisce quanti ne ha creati/aggiornati.
+secured.MapPost("/api/scadenzario/rigenera",
+    async (ScadenzarioService svc, ClaimsPrincipal user) =>
+        Results.Ok(new { aggiornati = await svc.RigeneraAsync(TenantCorrente(user)) }));
+
+// Inserisce un promemoria a mano.
+secured.MapPost("/api/scadenzario",
+    async (CreaPromemoriaRequest req, ScadenzarioService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var p = await svc.CreaManualeAsync(TenantCorrente(user), new PromemoriaManualeInput(
+            req.Titolo, req.DataScadenza, req.AziendaId, req.Descrizione, req.GiorniPreavviso));
+        return Results.Created($"/api/scadenzario/{p.Id}", PromemoriaDto(p));
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+});
+
+secured.MapGet("/api/scadenzario/{id:guid}",
+    async (Guid id, ScadenzarioService svc, ClaimsPrincipal user) =>
+{
+    var p = await svc.GetAsync(TenantCorrente(user), id);
+    return p is null ? Results.NotFound(new { errore = "Promemoria non trovato." }) : Results.Ok(PromemoriaDto(p));
+});
+
+secured.MapPost("/api/scadenzario/{id:guid}/stato",
+    async (Guid id, CambiaStatoPromemoriaRequest req, ScadenzarioService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var p = await svc.CambiaStatoAsync(TenantCorrente(user), id, req.Stato);
+        return Results.Ok(PromemoriaDto(p));
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { errore = ex.Message }); }
 });
 
 app.Run();

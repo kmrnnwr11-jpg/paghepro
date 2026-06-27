@@ -42,6 +42,36 @@ public sealed record EsitoControlloUfficiale(
     public bool Ok => ExitCode == 0 && File.Exists(FileControllato);
 }
 
+/// <summary>
+/// Parametri ufficiali del modulo di controllo F24 (codice fornitura "F24A0"), come da
+/// <c>TabellaAssociazioniControlli.json</c> dell'Agenzia delle Entrate.
+/// </summary>
+public static class ControlloF24A0
+{
+    public const string CodiceFornitura = "F24A0";
+    public const string ClasseMainControllo = "finanze.BQJCB102.main.CtrlFile";
+    public const string ClasseMainDiagnostico = "finanze.BQJCB102.generale.MakeDgn";
+
+    /// <summary>
+    /// Costruisce la richiesta di controllo per il file F24 indicato. <paramref name="cartellaJar"/>
+    /// è la cartella che contiene <c>SuppTelem.jar</c> e <c>ControlliF24A0.jar</c>.
+    /// </summary>
+    public static RichiestaControlloUfficiale Richiesta(string fileInput, string cartellaJar, string? cartellaOutput = null)
+    {
+        char sep = OperatingSystem.IsWindows() ? ';' : ':';
+        string classpath = string.Join(sep,
+            Path.Combine(cartellaJar, "SuppTelem.jar"),
+            Path.Combine(cartellaJar, "ControlliF24A0.jar"));
+        return new RichiestaControlloUfficiale
+        {
+            FileInput = fileInput,
+            Classpath = classpath,
+            ClasseMain = ClasseMainControllo,
+            CartellaOutput = cartellaOutput,
+        };
+    }
+}
+
 /// <summary>Esegue il controllo ufficiale di un file telematico.</summary>
 public interface IControlliUfficialiRunner
 {

@@ -31,6 +31,9 @@ public class PraticaF24Entity
     /// <summary>Rappresentazione leggibile (bozza NON ufficiale) dell'F24.</summary>
     public string Bozza { get; set; } = "";
 
+    /// <summary>Tracciato telematico UFFICIALE a lunghezza fissa (record A/M/V/Z) per il Desktop Telematico.</summary>
+    public string TracciatoUfficiale { get; set; } = "";
+
     public DateTime CreataIl { get; set; }
     public DateTime UltimoAggiornamento { get; set; }
 }

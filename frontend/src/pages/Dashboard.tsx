@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Aziende } from "./Aziende";
 import { Cedolino } from "./Cedolino";
 import { Dipendente } from "./Dipendente";
+import { Dipendenti } from "./Dipendenti";
 import { Presenze } from "./Presenze";
 import { BustaPaga } from "./BustaPaga";
 import { Elaborazione } from "./Elaborazione";
@@ -204,13 +205,6 @@ const documentQueue = [
     state: "Bloccato",
     stateTone: "red",
   },
-];
-
-const employees = [
-  ["Mario Bianchi", "000123", "Impiegato", "4", "Attivo", "2.749,24 €"],
-  ["Sara Conti", "000124", "Amministrazione", "3", "Attivo", "2.380,00 €"],
-  ["Luca Ferri", "000125", "Tecnico", "4", "Attivo", "2.600,00 €"],
-  ["Elena Romano", "000128", "Part-time", "2", "Da verificare", "2.200,00 €"],
 ];
 
 export function Dashboard() {
@@ -598,7 +592,7 @@ function ModuleScreen({
     );
   }
 
-  if (active === "dipendenti") return <EmployeesPanel onNavigate={onNavigate} />;
+  if (active === "dipendenti") return <Dipendenti onApri={onNavigate} />;
   if (active === "dipendente") return <Dipendente onPayslip={() => onNavigate("cedolini")} />;
   if (active === "presenze") return <Presenze />;
   if (active === "elaborazioni") return <Elaborazione />;
@@ -630,55 +624,6 @@ function ModuleRail({ title, rows }: { title: string; rows: string[][] }) {
         </div>
       ))}
     </aside>
-  );
-}
-
-function EmployeesPanel({ onNavigate }: { onNavigate: (key: SectionKey) => void }) {
-  return (
-    <section className="glass-card page-card">
-      <div className="card-title-row">
-        <div>
-          <h1>Dipendenti</h1>
-          <p>Archivio lavoratori · Rossi S.r.l. — seleziona una riga per aprire la scheda</p>
-        </div>
-        <button className="btn primary" type="button" onClick={() => onNavigate("calcolo")}>
-          Nuovo cedolino
-        </button>
-      </div>
-      <div className="table-wrap">
-        <table className="data-table spacious">
-          <thead>
-            <tr>
-              <th>Dipendente</th>
-              <th>Matricola</th>
-              <th>Qualifica</th>
-              <th>Livello</th>
-              <th>Stato</th>
-              <th className="right">Lordo mese</th>
-            </tr>
-          </thead>
-          <tbody>
-            {employees.map(([name, code, role, level, state, gross]) => (
-              <tr key={code} style={{ cursor: "pointer" }} onClick={() => onNavigate("dipendente")}>
-                <td>
-                  <div className="person-cell">
-                    <span>{name.split(" ").map((part) => part[0]).join("")}</span>
-                    <strong>{name}</strong>
-                  </div>
-                </td>
-                <td className="num">{code}</td>
-                <td>{role}</td>
-                <td>{level}</td>
-                <td>
-                  <span className={`status-pill ${state === "Attivo" ? "green" : "amber"}`}>{state}</span>
-                </td>
-                <td className="right num">{gross}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
   );
 }
 

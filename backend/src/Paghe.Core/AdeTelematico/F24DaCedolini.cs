@@ -100,6 +100,9 @@ public static class F24DaCedolini
         if (contributi > 0m)
         {
             // DM10: periodo di riferimento "da" = MMAAAA; periodo "a" non si valorizza (resta a zero).
+            // NB: la matricola INPS deve rispettare il formato "F" della Tabella formati matricole INPS
+            //     (con check interno): il controllo ufficiale ControlliF24A0 la verifica. Usare la
+            //     matricola reale dell'azienda. L'F24 di sole ritenute/addizionali è già validato (ESITO POSITIVO).
             string periodo = $"{mesePeriodo:00}/{annoPeriodo}";
             inps.Add(new VoceInps(
                 sostituto.CodiceSedeInps, codici.CausaleInps, sostituto.MatricolaInps,

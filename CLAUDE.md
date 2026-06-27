@@ -89,6 +89,12 @@ dotnet run --project src/Paghe.Demo -c Release
 - **Import UNILAV**: `ImportazioneUnilav` legge la Comunicazione Obbligatoria XML (lettura
   namespace-agnostica) e crea in automatico dipendente + rapporto. Endpoint
   `POST /api/aziende/{id}/dipendenti/da-unilav`.
+- **UniEmens INPS (Fase 6, prima versione)**: modulo `Paghe.Core/AdeTelematico/UniEmens`
+  (`FlussoUniEmens`, `UniEmensDaCedolini`, `UniEmensXmlWriter`) + `UniEmensService` che genera
+  il flusso mensile dai cedolini archiviati (anagrafica lavoratori + imponibile/contributi).
+  Endpoint `POST /api/aziende/{id}/uniemens/mese` → XML + sintesi. **BOZZA non validata**:
+  struttura allineata allo schema pubblico, da far passare dal software di controllo ufficiale
+  INPS prima dell'invio; Qualifica e GiorniRetribuiti/Settimane da affinare. Vedi `PIANO.md` Fase 6.
 - **F24 dalle paghe**: `F24DaCedolini` costruisce l'F24 da versare dai cedolini (ritenute
   IRPEF, addizionali, INPS). Endpoint `POST /api/f24/da-paghe` (importi nella request) e
   `POST /api/aziende/{id}/f24/mese` (pesca i cedolini archiviati del periodo via
@@ -99,8 +105,10 @@ dotnet run --project src/Paghe.Demo -c Release
   **Tracciato telematico ufficiale a lunghezza fissa** (record A/M/V/Z, 1900 char, sez. IMU
   v.2013) in `TracciatoF24Ufficiale`, da Allegato 1 specifiche AdE: generato e archiviato in
   pratica, è il file scritto da `/esporta`. Costanti del controllo ufficiale F24A0 in
-  `ControlloF24A0` (`finanze.BQJCB102.main.CtrlFile`). Validazione col JAR ufficiale
-  `ControlliF24A0.jar` da eseguire (richiede i JAR del kit + Java).
+  `ControlloF24A0` (`finanze.BQJCB102.main.CtrlFile`). **Validato col controllo ufficiale
+  `ControlliF24A0.jar` → ESITO POSITIVO** per F24 Erario+Regioni+IMU/locali (.dcm prodotto,
+  zero errori). La sola sezione INPS richiede la matricola nel formato INPS "F" (Tabella
+  formati matricole), da verificare con matricola reale. Vedi `docs/integrazione-ufficiale/`.
 - **Trasmissione Fattura → SdI** (il "modem"): astrazioni `IFatturaSdiGateway` /
   `IFirmaFatturaElettronica` in `Paghe.Core/Fatturazione/Trasmissione`, canali
   `SdiGatewayManuale` (default, prepara il file) e `SdiGatewayProviderRest` (provider accreditato

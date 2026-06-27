@@ -190,7 +190,9 @@ firmi un file e la firma risulta valida — oppure hai deciso che firma A-Cube e
 **Obiettivo:** generare il flusso mensile contributi INPS (UniEmens) e l'autoliquidazione INAIL.
 **Perché:** senza UniEmens un consulente del lavoro non può usarlo per le paghe.
 
-- [ ] 🔧 Modello dati e generatore XML **UniEmens** dai cedolini archiviati.
+- [x] 🔧 Modello dati e generatore XML **UniEmens** dai cedolini archiviati. *(fatto: prima
+  versione — `Paghe.Core/AdeTelematico/UniEmens` + `UniEmensService` + endpoint
+  `POST /api/aziende/{id}/uniemens/mese`; bozza da validare, Qualifica/Giorni da affinare)*
 - [ ] 🔧 Far passare il file dal **software di controllo ufficiale INPS** (validazione).
 - [ ] 🔧 Autoliquidazione **INAIL** (calcolo e file).
 - [ ] 🧑 L'invio avviene dal cassetto previdenziale INPS / canale del consulente.

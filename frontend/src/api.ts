@@ -340,7 +340,25 @@ export const api = {
     req<ConfigSdi>("/api/configurazione-sdi", { method: "PUT", body: JSON.stringify(c) }),
   verificaConfigSdi: () =>
     req<{ ok: boolean; messaggio: string }>("/api/configurazione-sdi/verifica", { method: "POST" }),
+
+  // --- Dipendenti (anagrafiche reali per azienda) ---
+  dipendenti: (aziendaId: string) =>
+    req<DipendenteRapporto[]>(`/api/aziende/${aziendaId}/dipendenti`),
+  creaDipendente: (aziendaId: string, d: CreaDipendente) =>
+    req<{ rapportoId: string; dipendenteId: string; nome: string; cognome: string }>(
+      `/api/aziende/${aziendaId}/dipendenti`,
+      { method: "POST", body: JSON.stringify(d) },
+    ),
 };
+
+export interface DipendenteRapporto {
+  rapportoId: string; dipendenteId: string; nominativo: string;
+  codiceCcnl: string; livello: string; qualifica: string;
+}
+export interface CreaDipendente {
+  codiceFiscale: string; nome: string; cognome: string;
+  codiceCcnl: string; livello: string; iban?: string; qualifica?: string;
+}
 
 export interface ConfigSdi {
   modalita: string; provider: string; baseUrl: string; apiKeyImpostata: boolean;

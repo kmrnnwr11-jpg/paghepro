@@ -66,6 +66,17 @@ dotnet run --project src/Paghe.Demo -c Release
   `GET /api/aziende/{id}/bilanci/precompila?anno=` (ricavi/costi pescati da fatture, spese e
   cedolini), `GET /api/aziende/{id}/bilanci`, `GET /api/bilanci/{id}`, `POST /api/bilanci/{id}/stato`.
   Tutto isolato per tenant. Lo schema di deposito ufficiale XBRL non è ancora generato.
+- **Scadenzario / promemoria** (`ScadenzarioService`, `DurcEntity`, `PromemoriaEntity`): tiene i
+  **DURC** delle aziende (scadenza calcolata a 120 gg dall'emissione) e **genera in automatico** i
+  promemoria dalle fonti — DURC in scadenza (preavviso 30 gg) e versamenti F24 archiviati (preavviso
+  7 gg) — con il **testo del messaggio già precompilato** (oggetto + corpo). La rigenerazione è
+  idempotente (chiave Tipo+RiferimentoId) e **preserva lo stato deciso dall'utente**
+  (Aperto→Inviato→Completato/Annullato, finali bloccati). Endpoint: `GET /api/scadenzario`
+  (rigenera + elenca con `giorniAllaScadenza`/`urgenza`), `POST /api/scadenzario/rigenera`,
+  `POST /api/scadenzario` (manuale), `GET /api/scadenzario/{id}`, `POST /api/scadenzario/{id}/stato`,
+  `POST /api/aziende/{id}/durc`, `GET /api/aziende/{id}/durc`. UI: pagina **Scadenzario** nella SPA
+  (contatori scaduti/in scadenza, messaggio copiabile, form registrazione DURC). Isolato per tenant.
+  L'invio email reale (SMTP) dei messaggi resta da abilitare: oggi il testo è pronto da copiare/inviare.
 - **Import UNILAV**: `ImportazioneUnilav` legge la Comunicazione Obbligatoria XML (lettura
   namespace-agnostica) e crea in automatico dipendente + rapporto. Endpoint
   `POST /api/aziende/{id}/dipendenti/da-unilav`.

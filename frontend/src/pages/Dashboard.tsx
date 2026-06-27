@@ -9,6 +9,8 @@ import { Fatture } from "./Fatture";
 import { Firma } from "./Firma";
 import { Pagamenti } from "./Pagamenti";
 import { Bilancio } from "./Bilancio";
+import { Scadenzario } from "./Scadenzario";
+import { CollegaProvider } from "./CollegaProvider";
 
 type SectionKey =
   | "dashboard"
@@ -19,6 +21,7 @@ type SectionKey =
   | "cedolini"
   | "calcolo"
   | "adempimenti"
+  | "scadenzario"
   | "fatture"
   | "pagamenti"
   | "firma"
@@ -29,6 +32,7 @@ type SectionKey =
   | "f24"
   | "cu"
   | "impostazioni"
+  | "collega-sdi"
   | "utenti";
 
 interface NavItem {
@@ -43,6 +47,7 @@ const primaryNav: NavItem[] = [
   { key: "presenze", icon: "🗓️", label: "Presenze" },
   { key: "cedolini", icon: "📄", label: "Cedolini" },
   { key: "adempimenti", icon: "📨", label: "Adempimenti" },
+  { key: "scadenzario", icon: "⏰", label: "Scadenzario" },
   { key: "fatture", icon: "🧾", label: "Fatturazione" },
   { key: "pagamenti", icon: "€", label: "Pagamenti clienti" },
   { key: "firma", icon: "🔏", label: "Firma digitale" },
@@ -58,6 +63,7 @@ const payrollNav: NavItem[] = [
 ];
 
 const adminNav: NavItem[] = [
+  { key: "collega-sdi", icon: "🔌", label: "Collega Fatturazione" },
   { key: "impostazioni", icon: "⚙️", label: "Impostazioni" },
   { key: "utenti", icon: "🔐", label: "Utenti e permessi" },
 ];
@@ -88,6 +94,7 @@ const sectionTitle: Record<SectionKey, string> = {
   cedolini: "Cedolini",
   calcolo: "Calcolo cedolino",
   adempimenti: "Adempimenti",
+  scadenzario: "Scadenzario",
   fatture: "Fatturazione",
   pagamenti: "Pagamenti clienti",
   firma: "Firma digitale",
@@ -98,6 +105,7 @@ const sectionTitle: Record<SectionKey, string> = {
   f24: "Modello F24",
   cu: "Certificazione Unica",
   impostazioni: "Impostazioni",
+  "collega-sdi": "Collega Fatturazione Elettronica",
   utenti: "Utenti e permessi",
 };
 
@@ -596,6 +604,7 @@ function ModuleScreen({
   if (active === "elaborazioni") return <Elaborazione />;
   if (active === "adempimenti") return <DeadlinesPanel onNavigate={onNavigate} />;
   if (active === "fatture") return <Fatture />;
+  if (active === "scadenzario") return <Scadenzario />;
   if (active === "pagamenti") return <Pagamenti />;
   if (active === "firma") return <Firma />;
   if (active === "contabilita") return <AccountingPanel />;
@@ -604,6 +613,7 @@ function ModuleScreen({
   if (active === "f24") return <F24Panel />;
   if (active === "cu") return <CuPanel />;
   if (active === "impostazioni") return <SettingsPanel />;
+  if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;
 
   return <GenericPanel active={active} onNavigate={onNavigate} />;

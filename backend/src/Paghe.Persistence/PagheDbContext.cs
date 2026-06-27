@@ -50,6 +50,9 @@ public class PagheDbContext : DbContext
     public DbSet<DurcEntity> Durc => Set<DurcEntity>();
     public DbSet<PromemoriaEntity> Promemoria => Set<PromemoriaEntity>();
 
+    // Configurazione canale SdI self-service (un record per tenant)
+    public DbSet<ConfigurazioneSdiEntity> ConfigurazioniSdi => Set<ConfigurazioneSdiEntity>();
+
     /// <summary>
     /// Compatibilità per il database SQLite di sviluppo creato con EnsureCreated:
     /// se esiste già, EF non aggiunge nuove tabelle. In produzione usare migrazioni EF.
@@ -216,6 +219,26 @@ public class PagheDbContext : DbContext
             CREATE INDEX IF NOT EXISTS "IX_Deleghe_AziendaId" ON "Deleghe" ("AziendaId");
             CREATE INDEX IF NOT EXISTS "IX_Deleghe_TenantId_AziendaId_TipoAdempimento"
                 ON "Deleghe" ("TenantId", "AziendaId", "TipoAdempimento");
+            """);
+
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "ConfigurazioniSdi" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ConfigurazioniSdi" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "Modalita" TEXT NOT NULL,
+                "Provider" TEXT NOT NULL,
+                "BaseUrl" TEXT NOT NULL,
+                "ApiKey" TEXT NULL,
+                "EndpointInvio" TEXT NOT NULL,
+                "EndpointEsito" TEXT NOT NULL,
+                "CampoId" TEXT NOT NULL,
+                "CampoStato" TEXT NOT NULL,
+                "FirmaLocale" INTEGER NOT NULL,
+                "Attivo" INTEGER NOT NULL,
+                "AggiornataIl" TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_ConfigurazioniSdi_TenantId"
+                ON "ConfigurazioniSdi" ("TenantId");
             """);
 
         Database.ExecuteSqlRaw("""

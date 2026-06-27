@@ -8,7 +8,7 @@ public class TracciatoF24UfficialeTests
     {
         Contribuente = new ContribuenteF24
         {
-            CodiceFiscale = "01234567897",
+            CodiceFiscale = "01234560017",
             Tipo = TipoSoggettoF24.SoggettoDiverso,
             Denominazione = "Acme Srl",
         },
@@ -62,7 +62,7 @@ public class TracciatoF24UfficialeTests
         {
             Contribuente = new ContribuenteF24
             {
-                CodiceFiscale = "01234567897", Tipo = TipoSoggettoF24.SoggettoDiverso, Denominazione = "Acme Srl",
+                CodiceFiscale = "01234560017", Tipo = TipoSoggettoF24.SoggettoDiverso, Denominazione = "Acme Srl",
             },
             DataVersamento = new DateOnly(2026, 7, 16),
             Erario = [new VoceErario("1001", 2026, ImportoDebito: 614.27m)],

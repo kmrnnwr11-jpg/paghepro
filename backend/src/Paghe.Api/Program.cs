@@ -42,6 +42,7 @@ builder.Services.AddScoped<PraticheAperturaPartitaIvaService>();
 builder.Services.AddScoped<ContabilitaIvaService>();
 builder.Services.AddScoped<BilancioService>();
 builder.Services.AddScoped<ScadenzarioService>();
+builder.Services.AddScoped<ConfigurazioneSdiService>();
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
@@ -1363,6 +1364,9 @@ secured.MapPost("/api/scadenzario/{id:guid}/stato",
     catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
     catch (InvalidOperationException ex) { return Results.BadRequest(new { errore = ex.Message }); }
 });
+
+// Collegamento self-service del provider SdI (configurazione per tenant).
+app.MapConfigurazioneSdi();
 
 app.Run();
 

@@ -158,6 +158,9 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// RBAC: applica la policy per ruolo (sola_lettura → solo lettura; anonimizzazione GDPR → solo admin).
+app.UseControlloRuoli();
+
 // Audit log: rende disponibile "chi opera" (utente + tenant dal token) per tutta la richiesta,
 // così l'interceptor di persistenza registra l'autore di ogni modifica. Va dopo l'autenticazione.
 app.Use(async (context, next) =>

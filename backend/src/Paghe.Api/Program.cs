@@ -1637,6 +1637,7 @@ app.MapIres();
 app.MapImu();
 app.MapIntrastat();
 app.MapImportUnilavPdf(); // UNILAV: carica il PDF → registra datore + lavoratore + rapporto
+app.MapCcnl();            // elenco dei CCNL configurati (menu busta paga)
 
 app.Run();
 

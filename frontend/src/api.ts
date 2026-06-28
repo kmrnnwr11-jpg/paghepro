@@ -64,6 +64,12 @@ export interface CedolinoArchiviato {
   nettoInBusta: number; costoAzienda: number;
   imponibileIrpef?: number; irpefNetta?: number;
 }
+export interface PresenzaRiga {
+  rapportoId: string; nominativo: string; oreStraordinario: number; elaborato: boolean; netto: number;
+}
+export interface PresenzeMese {
+  anno: number; mese: number; totale: number; elaborati: number; righe: PresenzaRiga[];
+}
 export interface RapportoDettaglio {
   rapportoId: string; dipendenteId: string;
   nome: string; cognome: string; codiceFiscale: string; iban?: string | null; anonimizzato: boolean;
@@ -200,6 +206,8 @@ export const api = {
     }),
   rapportoDettaglio: (rapportoId: string) =>
     req<RapportoDettaglio>(`/api/rapporti/${rapportoId}`),
+  presenzeMese: (aziendaId: string, anno: number, mese: number) =>
+    req<PresenzeMese>(`/api/aziende/${aziendaId}/presenze/${anno}/${mese}`),
 
   // --- Fatturazione e trasmissione SdI ---
   fatture: (aziendaId: string) => req<Fattura[]>(`/api/aziende/${aziendaId}/fatture`),

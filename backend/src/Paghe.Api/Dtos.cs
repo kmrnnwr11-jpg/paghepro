@@ -15,6 +15,10 @@ public sealed record LoginRequest(string Email, string Password, string? Codice2
 /// <summary>Codice TOTP a 6 cifre per attivare/disattivare il secondo fattore.</summary>
 public sealed record Codice2faRequest(string Codice);
 
+/// <summary>Dati per il calcolo del ravvedimento operoso su un versamento tardivo.</summary>
+public sealed record RavvedimentoRequest(
+    decimal Importo, DateOnly Scadenza, DateOnly Versamento, decimal TassoLegaleAnnuo);
+
 /// <summary>Richiesta di calcolo di un cedolino: rapporto di lavoro + cartellino presenze.</summary>
 public sealed record CalcolaCedolinoRequest(RapportoLavoro Rapporto, Cartellino Cartellino);
 

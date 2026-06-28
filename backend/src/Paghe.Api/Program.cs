@@ -48,6 +48,7 @@ builder.Services.AddScoped<ConfigurazioneSdiService>();
 builder.Services.AddScoped<CertificazioneUnicaService>();
 builder.Services.AddScoped<LipeService>();
 builder.Services.AddScoped<Modello770Service>();
+builder.Services.AddScoped<PresenzeService>();
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
@@ -1010,6 +1011,27 @@ secured.MapPost("/api/dipendenti/{id:guid}/anonimizza",
     return fatto ? Results.Ok(new { anonimizzato = true }) : Results.NotFound();
 });
 
+// Ravvedimento operoso: sanzione ridotta + interessi legali per un versamento tardivo.
+// Usa gli scaglioni di ESEMPIO (storico, sanzione base 30%): da validare con un Consulente del Lavoro.
+secured.MapPost("/api/ravvedimento/calcola", (RavvedimentoRequest req) =>
+{
+    try
+    {
+        var r = Paghe.Core.Calcolo.Ravvedimento.Calcola(
+            req.Importo, req.Scadenza, req.Versamento, req.TassoLegaleAnnuo,
+            Paghe.Core.Calcolo.Ravvedimento.ScaglioniEsempioStorico);
+        return Results.Ok(new
+        {
+            r.GiorniRitardo, r.ScaglioneApplicato, r.Tributo, r.Sanzione, r.Interessi, r.Totale,
+            nota = "Scaglioni di esempio (storico 30%): validare con un Consulente del Lavoro.",
+        });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
 // --- Cedolini calcolati e archiviati -----------------------------------------------
 secured.MapPost("/api/rapporti/{rapportoId:guid}/cedolini",
     async (Guid rapportoId, Cartellino cartellino, CedoliniService svc, ClaimsPrincipal user) =>
@@ -1506,6 +1528,7 @@ app.MapCertificazioneUnica();
 app.MapLipe();
 app.MapModello770();
 app.MapRapportoDettaglio();
+app.MapPresenze();
 
 app.Run();
 

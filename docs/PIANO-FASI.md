@@ -78,7 +78,9 @@ nessun account esterno.
 
 ### Fatto quando
 - [ ] una fattura passiva di test arriva e si registra · [ ] entra nei registri IVA acquisti
-- [ ] ravvedimento produce un F24 corretto · [ ] build + test verdi
+- [x] **ravvedimento calcola sanzione+interessi e produce le righe F24** (`Ravvedimento` + `RavvedimentoF24` + `POST /api/ravvedimento/calcola`) · [x] build + test verdi (208)
+
+> Nota: il ravvedimento è un **calcolatore parametrizzato** — aliquote/tasso legale sono input. Gli scaglioni di default sono **storici (30%), da validare** ⚖️ (riforma sanzioni dal 1/9/2024 → base 25%).
 
 ---
 

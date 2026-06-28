@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../api";
 import { Aziende } from "./Aziende";
 import { Cedolino } from "./Cedolino";
 import { Dipendente } from "./Dipendente";
@@ -346,13 +347,42 @@ function Topbar({ onCompanyClick }: { onCompanyClick: () => void }) {
 }
 
 function DashboardHome({ onNavigate }: { onNavigate: (key: SectionKey) => void }) {
+  const [kpiReali, setKpiReali] = useState(kpis);
+
+  useEffect(() => {
+    const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    (async () => {
+      try {
+        const aziende = await api.aziende();
+        const az = aziende[0];
+        if (!az) return;
+        const oggi = new Date();
+        const anno = oggi.getFullYear();
+        const mese = oggi.getMonth() + 1;
+        const trimestre = Math.floor((mese - 1) / 3) + 1;
+        const [dip, presenze, fatture, lipe] = await Promise.all([
+          api.dipendenti(az.id),
+          api.presenzeMese(az.id, anno, mese),
+          api.fatture(az.id),
+          api.lipeBozza(az.id, anno, trimestre),
+        ]);
+        setKpiReali([
+          { icon: "👥", tone: "blue", label: "Dipendenti", detail: "In forza", value: String(dip.length), unit: "", foot: "Anagrafiche reali" },
+          { icon: "📄", tone: "green", label: "Cedolini", detail: `Elaborati ${mese}/${anno}`, value: String(presenze.elaborati), unit: `/${presenze.totale}`, foot: "Cedolini del mese" },
+          { icon: "🧾", tone: "cyan", label: "Fatture", detail: "Emesse", value: String(fatture.length), unit: "", foot: "Fatture registrate" },
+          { icon: "🏛️", tone: "amber", label: "IVA dovuta", detail: `${trimestre}° trimestre`, value: euro(lipe.totaleDovuta), unit: " €", foot: "Dalle liquidazioni IVA" },
+        ]);
+      } catch { /* mantiene i valori iniziali se l'API non risponde */ }
+    })();
+  }, []);
+
   return (
     <div className="dashboard-grid">
       <section className="dashboard-main">
         <div className="page-heading">
           <div>
             <h1>Centro operativo</h1>
-            <p>Panoramica attività e adempimenti · Giugno 2026</p>
+            <p>Panoramica attività e adempimenti · dati reali</p>
           </div>
           <button className="btn primary" type="button" onClick={() => onNavigate("elaborazioni")}>
             + Nuova attività
@@ -360,7 +390,7 @@ function DashboardHome({ onNavigate }: { onNavigate: (key: SectionKey) => void }
         </div>
 
         <div className="kpi-grid">
-          {kpis.map((kpi) => (
+          {kpiReali.map((kpi) => (
             <article key={kpi.label} className="glass-card kpi-card">
               <div className="kpi-head">
                 <span className={`tone-icon ${kpi.tone}`}>{kpi.icon}</span>

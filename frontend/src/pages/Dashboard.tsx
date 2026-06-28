@@ -5,6 +5,7 @@ import { Dipendente } from "./Dipendente";
 import { Dipendenti } from "./Dipendenti";
 import { CertificazioneUnica } from "./CertificazioneUnica";
 import { Lipe } from "./Lipe";
+import { Modello770 } from "./Modello770";
 import { Presenze } from "./Presenze";
 import { BustaPaga } from "./BustaPaga";
 import { Elaborazione } from "./Elaborazione";
@@ -35,6 +36,7 @@ type SectionKey =
   | "elaborazioni"
   | "f24"
   | "cu"
+  | "mod770"
   | "impostazioni"
   | "collega-sdi"
   | "utenti";
@@ -65,6 +67,7 @@ const payrollNav: NavItem[] = [
   { key: "elaborazioni", icon: "🧮", label: "Elaborazioni" },
   { key: "f24", icon: "🏛️", label: "F24" },
   { key: "cu", icon: "📑", label: "CU / CUD" },
+  { key: "mod770", icon: "🧾", label: "Modello 770" },
 ];
 
 const adminNav: NavItem[] = [
@@ -110,6 +113,7 @@ const sectionTitle: Record<SectionKey, string> = {
   elaborazioni: "Elaborazione cedolini",
   f24: "Modello F24",
   cu: "Certificazione Unica",
+  mod770: "Modello 770",
   impostazioni: "Impostazioni",
   "collega-sdi": "Collega Fatturazione Elettronica",
   utenti: "Utenti e permessi",
@@ -612,6 +616,7 @@ function ModuleScreen({
   if (active === "documenti") return <DocumentsPanel onNavigate={onNavigate} />;
   if (active === "f24") return <F24Panel />;
   if (active === "cu") return <CertificazioneUnica />;
+  if (active === "mod770") return <Modello770 />;
   if (active === "impostazioni") return <SettingsPanel />;
   if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;

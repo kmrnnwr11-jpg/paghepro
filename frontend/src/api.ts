@@ -357,7 +357,21 @@ export const api = {
   // --- Dichiarazioni: Fase 3 LIPE / IVA (bozza) ---
   lipeBozza: (aziendaId: string, anno: number, trimestre: number) =>
     req<LipeBozza>(`/api/aziende/${aziendaId}/lipe/${anno}/${trimestre}`),
+
+  // --- Dichiarazioni: Fase 2 Modello 770 (bozza) ---
+  mod770Bozza: (aziendaId: string, anno: number) =>
+    req<Mod770Bozza>(`/api/aziende/${aziendaId}/modello770/${anno}`),
 };
+
+export interface Mod770Percipiente {
+  nominativo: string; codiceFiscale: string;
+  ritenuteIrpef: number; addizionaleRegionale: number; addizionaleComunale: number;
+}
+export interface Mod770Bozza {
+  anno: number; numeroPercipienti: number; numeroCedolini: number;
+  totaleRitenuteIrpef: number; totaleAddizionaleRegionale: number; totaleAddizionaleComunale: number;
+  percipienti: Mod770Percipiente[];
+}
 
 export interface LipeModulo {
   periodo: string; ivaEsigibile: number; ivaDetratta: number; ivaDovuta: number; ivaCredito: number;

@@ -27,6 +27,16 @@ async function inviaUnilav(file: File, aziendaId: string): Promise<EsitoImportUn
   return (await res.json()) as EsitoImportUnilav;
 }
 
+// Elenco dei CCNL configurati nel motore (per il menu della busta paga).
+async function listaCcnl(): Promise<{ codice: string; descrizione: string }[]> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${BASE}/api/ccnl`, { headers });
+  if (!res.ok) return [];
+  return (await res.json()) as { codice: string; descrizione: string }[];
+}
+
 /// "Trascina l'UNILAV e fa tutto": scegli l'azienda (o automatico dal PDF), il sistema registra
 /// azienda + lavoratore + rapporto, poi con un clic fai la busta paga del mese.
 export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: string; ragioneSociale: string }) => void }) {
@@ -171,13 +181,18 @@ function Risultato({ esito }: { esito: EsitoImportUnilav }) {
 
 function BustaPaga({ esito }: { esito: EsitoImportUnilav }) {
   const oggi = new Date();
-  const ccnlNoto = /COMMERCIO/i.test(esito.rapporto.codiceCcnl);
+  // Il backend mappa il CCNL UNILAV a un codice interno (MAIUSCOLE_CON_UNDERSCORE): se c'è, è riconosciuto.
+  const ccnlMappato = /^[A-Z_]+$/.test(esito.rapporto.codiceCcnl) ? esito.rapporto.codiceCcnl : "";
+  const ccnlNoto = ccnlMappato.length > 0;
   const [aperto, setAperto] = useState(false);
   const [mese, setMese] = useState(oggi.getMonth() + 1);
   const [anno, setAnno] = useState(oggi.getFullYear());
   const [straordinario, setStraordinario] = useState(0);
-  const [ccnl, setCcnl] = useState("COMMERCIO_TERZIARIO");
+  const [ccnl, setCcnl] = useState(ccnlMappato || "COMMERCIO_TERZIARIO");
   const [livello, setLivello] = useState(/^\d+$/.test(esito.rapporto.livello) ? esito.rapporto.livello : "3");
+  const [ccnlList, setCcnlList] = useState<{ codice: string; descrizione: string }[]>([]);
+
+  useEffect(() => { listaCcnl().then(setCcnlList).catch(() => { /* ignora */ }); }, []);
   const [calc, setCalc] = useState<Cedolino | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -222,7 +237,8 @@ function BustaPaga({ esito }: { esito: EsitoImportUnilav }) {
             <label>
               <span>CCNL</span>
               <select value={ccnl} onChange={(e) => setCcnl(e.target.value)}>
-                <option value="COMMERCIO_TERZIARIO">Commercio / Terziario</option>
+                {(ccnlList.length > 0 ? ccnlList : [{ codice: "COMMERCIO_TERZIARIO", descrizione: "Commercio / Terziario" }])
+                  .map((c) => <option key={c.codice} value={c.codice}>{c.descrizione}</option>)}
               </select>
             </label>
             <label>
@@ -238,10 +254,13 @@ function BustaPaga({ esito }: { esito: EsitoImportUnilav }) {
             </button>
           </div>
 
-          {!ccnlNoto && (
+          {ccnlNoto ? (
+            <p style={{ fontSize: 12, color: "#16a34a", marginTop: 4 }}>
+              ✓ CCNL riconosciuto dall'UNILAV: {ccnlMappato.replace(/_/g, " ")}. Valori tabellari di esempio — verifica con il Consulente del Lavoro.
+            </p>
+          ) : (
             <p style={{ fontSize: 12, color: "var(--muted, #64748b)", marginTop: 4 }}>
-              Il CCNL dell'UNILAV ({esito.rapporto.codiceCcnl || "—"}) non è tra quelli configurati: uso il CCNL
-              Commercio per la stima. Imposta il CCNL corretto per il calcolo definitivo.
+              Il CCNL dell'UNILAV non è tra quelli configurati: scegli il contratto corretto dal menu (uso Commercio come stima).
             </p>
           )}
           {errore && <p className="errore">{errore}</p>}

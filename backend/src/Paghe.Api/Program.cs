@@ -2,7 +2,9 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Paghe.Api;
@@ -126,6 +128,17 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
+// Rate limiting anti-brute-force sugli endpoint di autenticazione (login + 2FA): max 10 tentativi
+// al minuto per indirizzo IP, poi HTTP 429. Protegge password e codice TOTP dalla forza bruta.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            http.Connection.RemoteIpAddress?.ToString() ?? "sconosciuto",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+});
+
 // Documentazione interattiva degli endpoint (Swagger / OpenAPI).
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -141,6 +154,7 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -355,7 +369,7 @@ app.MapPost("/api/auth/login", async (LoginRequest req, AuthService auth, TokenS
             new { serveCodice2fa = true, errore = "Codice 2FA non valido." }, statusCode: 401),
         _ => Results.Unauthorized(),
     };
-});
+}).RequireRateLimiting("auth");
 
 // --- Secondo fattore (2FA / TOTP) — endpoint protetti per l'utente autenticato ---
 static Guid? UtenteCorrente(ClaimsPrincipal user) =>
@@ -365,9 +379,16 @@ static Guid? UtenteCorrente(ClaimsPrincipal user) =>
 secured.MapPost("/api/auth/2fa/inizia", async (ClaimsPrincipal user, AuthService auth) =>
 {
     if (UtenteCorrente(user) is not { } uid) return Results.Unauthorized();
-    var conf = await auth.IniziaDueFattoriAsync(uid);
-    return Results.Ok(new { conf.Segreto, conf.UriOtpauth });
-});
+    try
+    {
+        var conf = await auth.IniziaDueFattoriAsync(uid);
+        return Results.Ok(new { conf.Segreto, conf.UriOtpauth });
+    }
+    catch (InvalidOperationException ex) // 2FA già attivo: va prima disattivato con un codice valido
+    {
+        return Results.Conflict(new { errore = ex.Message });
+    }
+}).RequireRateLimiting("auth");
 
 secured.MapPost("/api/auth/2fa/attiva", async (Codice2faRequest req, ClaimsPrincipal user, AuthService auth) =>
 {
@@ -375,7 +396,7 @@ secured.MapPost("/api/auth/2fa/attiva", async (Codice2faRequest req, ClaimsPrinc
     return await auth.AttivaDueFattoriAsync(uid, req.Codice)
         ? Results.Ok(new { dueFattoriAttivo = true })
         : Results.BadRequest(new { errore = "Codice non valido." });
-});
+}).RequireRateLimiting("auth");
 
 secured.MapPost("/api/auth/2fa/disattiva", async (Codice2faRequest req, ClaimsPrincipal user, AuthService auth) =>
 {
@@ -383,7 +404,7 @@ secured.MapPost("/api/auth/2fa/disattiva", async (Codice2faRequest req, ClaimsPr
     return await auth.DisattivaDueFattoriAsync(uid, req.Codice)
         ? Results.Ok(new { dueFattoriAttivo = false })
         : Results.BadRequest(new { errore = "Codice non valido." });
-});
+}).RequireRateLimiting("auth");
 
 // Elenco dei livelli di un CCNL per un dato anno (default: anno corrente del seed).
 app.MapGet("/api/ccnl/{codice}/livelli", async (string codice, int? anno, ParametriNormativiService svc) =>

@@ -10,6 +10,14 @@ export function setToken(token: string | null): void {
   else localStorage.removeItem("token");
 }
 
+export function getRuolo(): string | null {
+  return localStorage.getItem("ruolo");
+}
+export function setRuolo(ruolo: string | null): void {
+  if (ruolo) localStorage.setItem("ruolo", ruolo);
+  else localStorage.removeItem("ruolo");
+}
+
 async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -43,6 +51,9 @@ async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 // --- Tipi ---
 export interface AuthResponse { token: string; tenantId: string; ruolo: string }
+export interface StudioSintesi {
+  id: string; ragioneSociale: string; sospeso: boolean; numeroUtenti: number; creatoIl: string;
+}
 export interface Azienda { id: string; ragioneSociale: string }
 export interface NuovaAzienda {
   ragioneSociale: string; partitaIva?: string; indirizzo: string;
@@ -201,16 +212,29 @@ function nomeFileFirmato(nome: string, formato: FormatoFirma): string {
 
 // --- Endpoint ---
 export const api = {
-  registra: (ragioneSociale: string, email: string, password: string) =>
-    req<AuthResponse>("/api/auth/registra", {
+  registra: async (ragioneSociale: string, email: string, password: string) => {
+    const r = await req<AuthResponse>("/api/auth/registra", {
       method: "POST",
       body: JSON.stringify({ ragioneSociale, email, password }),
-    }),
-  login: (email: string, password: string) =>
-    req<AuthResponse>("/api/auth/login", {
+    });
+    setRuolo(r.ruolo); // memorizza il ruolo (es. superadmin) per mostrare il pannello giusto
+    return r;
+  },
+  login: async (email: string, password: string, codice2fa?: string) => {
+    const r = await req<AuthResponse>("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
+      body: JSON.stringify({ email, password, codice2fa }),
+    });
+    setRuolo(r.ruolo);
+    return r;
+  },
+
+  // --- Super-admin di piattaforma: gestione/sospensione studi ---
+  elencaStudi: () => req<StudioSintesi[]>("/api/admin/studi"),
+  sospendiStudio: (id: string) =>
+    req<{ id: string; sospeso: boolean }>(`/api/admin/studi/${id}/sospendi`, { method: "POST" }),
+  riattivaStudio: (id: string) =>
+    req<{ id: string; sospeso: boolean }>(`/api/admin/studi/${id}/riattiva`, { method: "POST" }),
   aziende: () => req<Azienda[]>("/api/aziende"),
   creaAzienda: (a: NuovaAzienda) =>
     req<{ id: string; ragioneSociale: string }>("/api/aziende", {

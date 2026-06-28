@@ -1,54 +1,69 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { api, getToken, setToken } from "./api";
 
-// Credenziali dell'account demo: l'app vi accede in automatico, senza pagina di login.
+// Credenziali dell'account demo condiviso: permettono a chiunque di provare l'app
+// senza registrarsi. Per l'uso personale "ognuno il suo spazio" si usa Accedi / Crea account.
 const DEMO_EMAIL = "demo@paghe.local";
 const DEMO_PASSWORD = "demo-password-1";
 
 interface AuthState {
   token: string | null;
+  /** Accede a un account esistente con email + password. */
+  accedi: (email: string, password: string) => Promise<void>;
+  /** Crea un nuovo account personale (spazio privato isolato) ed entra. */
+  registrati: (ragioneSociale: string, email: string, password: string) => Promise<void>;
+  /** Entra nell'account demo condiviso, solo per provare. */
+  provaDemo: () => Promise<void>;
+  /** Esce: cancella il token e torna alla schermata di accesso. */
+  esci: () => void;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTok] = useState<string | null>(getToken());
-  const [pronto, setPronto] = useState<boolean>(!!getToken());
-  const [errore, setErrore] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (token) return;
-    let annullato = false;
-    (async () => {
-      try {
-        let r;
-        try {
-          r = await api.login(DEMO_EMAIL, DEMO_PASSWORD);
-        } catch {
-          r = await api.registra("Account Demo", DEMO_EMAIL, DEMO_PASSWORD);
-        }
-        if (!annullato) {
-          setToken(r.token);
-          setTok(r.token);
-        }
-      } catch (e) {
-        if (!annullato) setErrore(e instanceof Error ? e.message : "Errore di accesso");
-      } finally {
-        if (!annullato) setPronto(true);
-      }
-    })();
-    return () => { annullato = true; };
-  }, [token]);
+  const applica = useCallback((nuovoToken: string) => {
+    setToken(nuovoToken);
+    setTok(nuovoToken);
+  }, []);
 
-  const value = useMemo<AuthState>(() => ({ token }), [token]);
+  const accedi = useCallback(
+    async (email: string, password: string) => {
+      const r = await api.login(email, password);
+      applica(r.token);
+    },
+    [applica],
+  );
 
-  if (!pronto) {
-    return (
-      <div className="centro">
-        <div className="card">{errore ? <span className="errore">{errore}</span> : "Caricamento…"}</div>
-      </div>
-    );
-  }
+  const registrati = useCallback(
+    async (ragioneSociale: string, email: string, password: string) => {
+      const r = await api.registra(ragioneSociale, email, password);
+      applica(r.token);
+    },
+    [applica],
+  );
+
+  const provaDemo = useCallback(async () => {
+    // L'account demo potrebbe non esistere ancora: in tal caso lo si crea al volo.
+    let r;
+    try {
+      r = await api.login(DEMO_EMAIL, DEMO_PASSWORD);
+    } catch {
+      r = await api.registra("Account Demo", DEMO_EMAIL, DEMO_PASSWORD);
+    }
+    applica(r.token);
+  }, [applica]);
+
+  const esci = useCallback(() => {
+    setToken(null);
+    setTok(null);
+  }, []);
+
+  const value = useMemo<AuthState>(
+    () => ({ token, accedi, registrati, provaDemo, esci }),
+    [token, accedi, registrati, provaDemo, esci],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

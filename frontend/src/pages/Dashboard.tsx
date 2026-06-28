@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { useAuth } from "../auth";
+import { getRuolo } from "../api";
 import { Aziende } from "./Aziende";
 import { Cedolino } from "./Cedolino";
 import { Dipendente } from "./Dipendente";
@@ -23,6 +25,7 @@ import { Bilancio } from "./Bilancio";
 import { Scadenzario } from "./Scadenzario";
 import { CollegaProvider } from "./CollegaProvider";
 import { CaricaUnilav } from "./CaricaUnilav";
+import { Studi } from "./Studi";
 import { aiutoPerSezione } from "../guida";
 
 type SectionKey =
@@ -54,7 +57,8 @@ type SectionKey =
   | "intrastat"
   | "impostazioni"
   | "collega-sdi"
-  | "utenti";
+  | "utenti"
+  | "studi";
 
 interface NavItem {
   key: SectionKey;
@@ -144,6 +148,7 @@ const sectionTitle: Record<SectionKey, string> = {
   impostazioni: "Impostazioni",
   "collega-sdi": "Collega Fatturazione Elettronica",
   utenti: "Utenti e permessi",
+  studi: "Studi — super-admin",
 };
 
 const kpis = [
@@ -244,6 +249,7 @@ const documentQueue = [
 ];
 
 export function Dashboard() {
+  const { esci } = useAuth();
   const [active, setActive] = useState<SectionKey>("dashboard");
   const [rapportoSel, setRapportoSel] = useState<string | null>(null);
   const [aiutoAperto, setAiutoAperto] = useState(false);
@@ -251,6 +257,11 @@ export function Dashboard() {
 
   const navActive = navActiveFor[active] ?? active;
   const crumbs = useMemo(() => crumbsFor[active] ?? ["Home", sectionTitle[active]], [active]);
+
+  // Voce "Studi" visibile solo al super-admin di piattaforma.
+  const adminNavVisibile = getRuolo() === "superadmin"
+    ? [...adminNav, { key: "studi" as SectionKey, icon: "🏢", label: "Studi (admin)" }]
+    : adminNav;
 
   return (
     <div className="app-shell">
@@ -266,7 +277,7 @@ export function Dashboard() {
         <nav className="nav-scroll" aria-label="Navigazione principale">
           <NavGroup items={primaryNav} active={navActive} onChange={setActive} />
           <NavGroup title="Elaborazione paghe" items={payrollNav} active={navActive} onChange={setActive} />
-          <NavGroup title="Amministrazione" items={adminNav} active={navActive} onChange={setActive} />
+          <NavGroup title="Amministrazione" items={adminNavVisibile} active={navActive} onChange={setActive} />
         </nav>
 
         <button className="company-switch" type="button" onClick={() => setActive("aziende")}>
@@ -280,7 +291,7 @@ export function Dashboard() {
       </aside>
 
       <div className="workspace">
-        <Topbar onCompanyClick={() => setActive("aziende")} onAiuto={() => setAiutoAperto(true)} />
+        <Topbar onCompanyClick={() => setActive("aziende")} onAiuto={() => setAiutoAperto(true)} onEsci={esci} />
 
         <main className="content-area">
           <div className="breadcrumbs">
@@ -401,7 +412,7 @@ function AiutoPanel({ sezione, onChiudi }: { sezione: SectionKey; onChiudi: () =
   );
 }
 
-function Topbar({ onCompanyClick, onAiuto }: { onCompanyClick: () => void; onAiuto: () => void }) {
+function Topbar({ onCompanyClick, onAiuto, onEsci }: { onCompanyClick: () => void; onAiuto: () => void; onEsci: () => void }) {
   return (
     <header className="topbar">
       <button className="soft-button company-top" type="button" onClick={onCompanyClick}>
@@ -436,6 +447,9 @@ function Topbar({ onCompanyClick, onAiuto }: { onCompanyClick: () => void; onAiu
           <small>m.rossi@rossisrl.it</small>
         </strong>
         <em>⌄</em>
+      </button>
+      <button className="icon-button" type="button" aria-label="Esci" title="Esci / cambia account" onClick={onEsci}>
+        ⎋
       </button>
     </header>
   );
@@ -761,6 +775,7 @@ function ModuleScreen({
   if (active === "impostazioni") return <SettingsPanel />;
   if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;
+  if (active === "studi") return <Studi />;
 
   return <GenericPanel active={active} onNavigate={onNavigate} />;
 }

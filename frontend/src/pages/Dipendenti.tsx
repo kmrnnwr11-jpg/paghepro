@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Azienda, type DipendenteRapporto, type Livello } from "../api";
+import { CaricaUnilav } from "./CaricaUnilav";
 
 const CCNL = "COMMERCIO_TERZIARIO";
 
@@ -67,8 +68,16 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // Dopo l'import UNILAV: porta la lista sull'azienda (datore) creata/trovata dal PDF.
+  const dopoImport = async (az: { id: string; ragioneSociale: string }) => {
+    setAzienda(az);
+    try { setLista(await api.dipendenti(az.id)); } catch { /* ignora */ }
+  };
+
   return (
-    <section className="glass-card page-card">
+    <>
+      <CaricaUnilav onImportato={dopoImport} />
+      <section className="glass-card page-card">
       <div className="card-title-row">
         <div>
           <h1>Dipendenti</h1>
@@ -166,7 +175,8 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
           </table>
         </div>
       )}
-    </section>
+      </section>
+    </>
   );
 }
 

@@ -408,6 +408,27 @@ export const api = {
       { method: "POST", body: JSON.stringify(d) },
     ),
 
+  // --- Import UNILAV da PDF: legge il PDF e registra datore + lavoratore + rapporto ---
+  importUnilavPdf: async (file: File): Promise<EsitoImportUnilav> => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/unilav/pdf`, { method: "POST", body: form, headers });
+    if (!res.ok) {
+      let messaggio = `Errore ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.errore) messaggio = body.errore as string;
+      } catch {
+        /* corpo non JSON */
+      }
+      throw new Error(messaggio);
+    }
+    return (await res.json()) as EsitoImportUnilav;
+  },
+
   // --- Dichiarazioni: Fase 1 Certificazione Unica (bozza) ---
   cuBozza: (rapportoId: string, anno: number) =>
     req<CuBozza>(`/api/rapporti/${rapportoId}/cu/${anno}`),
@@ -463,6 +484,20 @@ export interface DipendenteRapporto {
 export interface CreaDipendente {
   codiceFiscale: string; nome: string; cognome: string;
   codiceCcnl: string; livello: string; iban?: string; qualifica?: string;
+}
+
+export interface EsitoImportUnilav {
+  azienda: {
+    id: string; ragioneSociale: string;
+    partitaIva?: string | null; codiceFiscale?: string | null; creata: boolean;
+  };
+  rapporto: {
+    id: string;
+    dipendente: { id: string; nome: string; cognome: string; codiceFiscale: string };
+    codiceCcnl: string; livello: string; qualifica: string;
+    dataAssunzione: string; lavoratoreGiaPresente: boolean;
+  };
+  avvertenze: string[];
 }
 
 export interface ConfigSdi {

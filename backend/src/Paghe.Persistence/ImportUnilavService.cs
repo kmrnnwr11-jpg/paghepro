@@ -27,7 +27,8 @@ public sealed class ImportUnilavService
 
     public async Task<EsitoImportUnilav> ImportaDaTestoAsync(
         Guid tenantId, string testoUnilav,
-        string? ccnlDefault = null, string? livelloDefault = null, CancellationToken ct = default)
+        string? ccnlDefault = null, string? livelloDefault = null,
+        Guid? aziendaIdScelto = null, CancellationToken ct = default)
     {
         var imp = ImportazioneUnilavPdf.Importa(testoUnilav);
         var avvertenze = new List<string>(imp.Avvertenze);
@@ -37,8 +38,19 @@ public sealed class ImportUnilavService
             throw new ArgumentException(
                 "Impossibile registrare il lavoratore: codice fiscale non riconosciuto nel PDF UNILAV.");
 
-        // 1) Datore di lavoro: trova o crea l'azienda.
-        var (azienda, aziendaCreata) = await TrovaOCreaDatoreAsync(tenantId, imp.Datore, avvertenze, ct);
+        // 1) Azienda: se l'utente ne ha scelta una, ci si attacca; altrimenti si trova/crea il datore del PDF.
+        AziendaEntity azienda;
+        bool aziendaCreata;
+        if (aziendaIdScelto is { } scelta)
+        {
+            azienda = await _db.Aziende.FirstOrDefaultAsync(a => a.Id == scelta && a.TenantId == tenantId, ct)
+                ?? throw new ArgumentException("Azienda scelta non trovata per il tenant indicato.");
+            aziendaCreata = false;
+        }
+        else
+        {
+            (azienda, aziendaCreata) = await TrovaOCreaDatoreAsync(tenantId, imp.Datore, avvertenze, ct);
+        }
 
         // 2) Rapporto di lavoro (inquadramento) dai dati UNILAV.
         var rapporto = new RapportoLavoroEntity

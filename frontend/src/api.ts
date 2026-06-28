@@ -77,6 +77,10 @@ export interface IrapBozza {
   anno: number; ricavi: number; costiEsterni: number; costoLavoroDeducibile: number;
   baseImponibile: number; aliquota: number; imposta: number;
 }
+export interface IresBozza {
+  anno: number; haBilancio: boolean; utileEsercizio: number; imposteBilancio: number;
+  redditoAnteImposte: number; variazioniNette: number; baseImponibile: number; aliquota: number; imposta: number;
+}
 export interface RedditiPfBozza {
   rapportoId: string; nominativo: string; codiceFiscale: string; anno: number; numeroCedolini: number;
   altriRedditi: number; oneriDeducibili: number; oneriDetraibili19: number; acconti: number;
@@ -236,6 +240,10 @@ export const api = {
   // --- Dichiarazioni: Fase 5 IRAP (bozza) ---
   irapBozza: (aziendaId: string, anno: number) =>
     req<IrapBozza>(`/api/aziende/${aziendaId}/irap/${anno}`),
+
+  // --- Dichiarazioni: Fase 5 IRES (Redditi società) bozza ---
+  iresBozza: (aziendaId: string, anno: number, variazioni: number) =>
+    req<IresBozza>(`/api/aziende/${aziendaId}/ires/${anno}?variazioni=${variazioni}`),
 
   // --- Fatturazione e trasmissione SdI ---
   fatture: (aziendaId: string) => req<Fattura[]>(`/api/aziende/${aziendaId}/fatture`),

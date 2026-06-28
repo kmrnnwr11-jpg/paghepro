@@ -9,6 +9,7 @@ import { Lipe } from "./Lipe";
 import { Modello770 } from "./Modello770";
 import { RedditiPf } from "./RedditiPf";
 import { Irap } from "./Irap";
+import { Ires } from "./Ires";
 import { IvaAnnuale } from "./IvaAnnuale";
 import { Presenze } from "./Presenze";
 import { Cedolini } from "./Cedolini";
@@ -19,6 +20,7 @@ import { Pagamenti } from "./Pagamenti";
 import { Bilancio } from "./Bilancio";
 import { Scadenzario } from "./Scadenzario";
 import { CollegaProvider } from "./CollegaProvider";
+import { aiutoPerSezione } from "../guida";
 
 type SectionKey =
   | "dashboard"
@@ -44,6 +46,7 @@ type SectionKey =
   | "mod770"
   | "redditi-pf"
   | "irap"
+  | "ires"
   | "impostazioni"
   | "collega-sdi"
   | "utenti";
@@ -78,6 +81,7 @@ const payrollNav: NavItem[] = [
   { key: "mod770", icon: "🧾", label: "Modello 770" },
   { key: "redditi-pf", icon: "🧑‍💼", label: "Redditi PF / 730" },
   { key: "irap", icon: "🏭", label: "IRAP" },
+  { key: "ires", icon: "🏢", label: "IRES società" },
 ];
 
 const adminNav: NavItem[] = [
@@ -127,6 +131,7 @@ const sectionTitle: Record<SectionKey, string> = {
   mod770: "Modello 770",
   "redditi-pf": "Redditi PF / 730",
   irap: "IRAP",
+  ires: "IRES — Redditi società",
   impostazioni: "Impostazioni",
   "collega-sdi": "Collega Fatturazione Elettronica",
   utenti: "Utenti e permessi",
@@ -232,6 +237,7 @@ const documentQueue = [
 export function Dashboard() {
   const [active, setActive] = useState<SectionKey>("dashboard");
   const [rapportoSel, setRapportoSel] = useState<string | null>(null);
+  const [aiutoAperto, setAiutoAperto] = useState(false);
   const apriDipendente = (rapportoId: string) => { setRapportoSel(rapportoId); setActive("dipendente"); };
 
   const navActive = navActiveFor[active] ?? active;
@@ -265,7 +271,7 @@ export function Dashboard() {
       </aside>
 
       <div className="workspace">
-        <Topbar onCompanyClick={() => setActive("aziende")} />
+        <Topbar onCompanyClick={() => setActive("aziende")} onAiuto={() => setAiutoAperto(true)} />
 
         <main className="content-area">
           <div className="breadcrumbs">
@@ -284,6 +290,10 @@ export function Dashboard() {
           )}
         </main>
       </div>
+
+      {aiutoAperto && (
+        <AiutoPanel sezione={navActive} onChiudi={() => setAiutoAperto(false)} />
+      )}
     </div>
   );
 }
@@ -323,7 +333,66 @@ function apriGuida() {
   window.open(`${import.meta.env.BASE_URL}guida/index.html`, "_blank", "noopener");
 }
 
-function Topbar({ onCompanyClick }: { onCompanyClick: () => void }) {
+// Pannello di aiuto: spiega in modo semplice SOLO la sezione dove sei.
+function AiutoPanel({ sezione, onChiudi }: { sezione: SectionKey; onChiudi: () => void }) {
+  // Chiudi con il tasto Esc.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onChiudi(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onChiudi]);
+
+  const scheda = aiutoPerSezione[sezione] ?? aiutoPerSezione.dashboard;
+
+  return (
+    <div className="aiuto-overlay" role="dialog" aria-modal="true" aria-label="Aiuto" onClick={onChiudi}>
+      <aside className="aiuto-panel glass-panel" onClick={(e) => e.stopPropagation()}>
+        <header className="aiuto-head">
+          <div>
+            <span className="aiuto-tag">❓ Aiuto</span>
+            <h2>{scheda.titolo}</h2>
+          </div>
+          <button className="aiuto-close" type="button" aria-label="Chiudi" onClick={onChiudi}>✕</button>
+        </header>
+
+        <div className="aiuto-body">
+          <div className="aiuto-cosa">
+            <strong>A cosa serve</strong>
+            <p>{scheda.aCosaServe}</p>
+          </div>
+
+          <div className="aiuto-passi">
+            <strong>Come si fa, passo per passo</strong>
+            <ol>
+              {scheda.passi.map((passo, i) => (
+                <li key={i}>{passo}</li>
+              ))}
+            </ol>
+          </div>
+
+          {scheda.faq && scheda.faq.length > 0 && (
+            <div className="aiuto-faq">
+              <strong>Domande frequenti</strong>
+              {scheda.faq.map((f, i) => (
+                <details key={i}>
+                  <summary>{f.domanda}</summary>
+                  <p>{f.risposta}</p>
+                </details>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <footer className="aiuto-foot">
+          <span>Vuoi la guida completa con la voce?</span>
+          <button className="link-button" type="button" onClick={apriGuida}>📘 Apri la guida animata</button>
+        </footer>
+      </aside>
+    </div>
+  );
+}
+
+function Topbar({ onCompanyClick, onAiuto }: { onCompanyClick: () => void; onAiuto: () => void }) {
   return (
     <header className="topbar">
       <button className="soft-button company-top" type="button" onClick={onCompanyClick}>
@@ -340,15 +409,15 @@ function Topbar({ onCompanyClick }: { onCompanyClick: () => void }) {
 
       <div className="topbar-spacer" />
 
-      <button className="soft-button guide-top" type="button" onClick={apriGuida} title="Apri la guida animata: come usare il software">
-        <span>📘</span>
-        <strong>Guida</strong>
+      <button className="soft-button guide-top" type="button" onClick={onAiuto} title="Aiuto: spiega in modo semplice la pagina dove sei">
+        <span>❓</span>
+        <strong>Aiuto</strong>
       </button>
       <button className="icon-button" type="button" aria-label="Notifiche">
         <span>🔔</span>
         <b>3</b>
       </button>
-      <button className="icon-button" type="button" aria-label="Aiuto" title="Apri la guida" onClick={apriGuida}>
+      <button className="icon-button" type="button" aria-label="Aiuto" title="Aiuto su questa pagina" onClick={onAiuto}>
         ?
       </button>
       <button className="user-button" type="button">
@@ -677,6 +746,7 @@ function ModuleScreen({
   if (active === "mod770") return <Modello770 />;
   if (active === "redditi-pf") return <RedditiPf />;
   if (active === "irap") return <Irap />;
+  if (active === "ires") return <Ires />;
   if (active === "impostazioni") return <SettingsPanel />;
   if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;

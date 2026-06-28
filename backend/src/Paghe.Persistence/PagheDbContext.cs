@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Persistence.Entities;
 using Paghe.Persistence.Gdpr;
@@ -406,6 +407,36 @@ public class PagheDbContext : DbContext
             CREATE INDEX IF NOT EXISTS "IX_AuditLog_TenantId_Entita"
                 ON "AuditLog" ("TenantId", "Entita");
             """);
+
+        // Colonne 2FA aggiunte a una tabella Utenti preesistente (EnsureCreated non altera le tabelle).
+        if (!ColonnaSqliteEsiste("Utenti", "DueFattoriAttivo"))
+            Database.ExecuteSqlRaw(
+                "ALTER TABLE \"Utenti\" ADD COLUMN \"DueFattoriAttivo\" INTEGER NOT NULL DEFAULT 0;");
+        if (!ColonnaSqliteEsiste("Utenti", "SegretoTotp"))
+            Database.ExecuteSqlRaw(
+                "ALTER TABLE \"Utenti\" ADD COLUMN \"SegretoTotp\" TEXT NULL;");
+    }
+
+    /// <summary>True se la colonna esiste già nella tabella SQLite (via PRAGMA table_info).</summary>
+    private bool ColonnaSqliteEsiste(string tabella, string colonna)
+    {
+        var conn = Database.GetDbConnection();
+        var daAprire = conn.State != ConnectionState.Open;
+        if (daAprire) conn.Open();
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"PRAGMA table_info(\"{tabella}\");";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                if (string.Equals(reader.GetString(1), colonna, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
+        finally
+        {
+            if (daAprire) conn.Close();
+        }
     }
 
     protected override void OnModelCreating(ModelBuilder mb)
@@ -500,6 +531,7 @@ public class PagheDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.Email).IsUnique();
+            e.Property(x => x.SegretoTotp).HasConversion(protettore.ConverterStringa()); // GDPR: cifrato a riposo
         });
 
         // --- Anagrafiche e cedolini del lavoro ---

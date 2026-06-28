@@ -8,7 +8,7 @@ import { Lipe } from "./Lipe";
 import { Modello770 } from "./Modello770";
 import { IvaAnnuale } from "./IvaAnnuale";
 import { Presenze } from "./Presenze";
-import { BustaPaga } from "./BustaPaga";
+import { Cedolini } from "./Cedolini";
 import { Elaborazione } from "./Elaborazione";
 import { Fatture } from "./Fatture";
 import { Firma } from "./Firma";
@@ -570,7 +570,7 @@ function ModuleScreen({
     );
   }
 
-  if (active === "cedolini") return <BustaPaga onRicalcola={() => onNavigate("calcolo")} />;
+  if (active === "cedolini") return <Cedolini />;
 
   if (active === "calcolo") {
     return (

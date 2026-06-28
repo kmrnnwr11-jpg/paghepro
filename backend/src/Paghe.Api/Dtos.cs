@@ -9,8 +9,11 @@ namespace Paghe.Api;
 /// <summary>Registrazione di un nuovo account (tenant) con il primo utente amministratore.</summary>
 public sealed record RegistraRequest(string RagioneSociale, string Email, string Password);
 
-/// <summary>Credenziali di accesso.</summary>
-public sealed record LoginRequest(string Email, string Password);
+/// <summary>Credenziali di accesso (con codice 2FA opzionale per chi ha il secondo fattore attivo).</summary>
+public sealed record LoginRequest(string Email, string Password, string? Codice2fa = null);
+
+/// <summary>Codice TOTP a 6 cifre per attivare/disattivare il secondo fattore.</summary>
+public sealed record Codice2faRequest(string Codice);
 
 /// <summary>Richiesta di calcolo di un cedolino: rapporto di lavoro + cartellino presenze.</summary>
 public sealed record CalcolaCedolinoRequest(RapportoLavoro Rapporto, Cartellino Cartellino);

@@ -18,4 +18,10 @@ public class UtenteEntity
     public string Ruolo { get; set; } = "admin"; // admin | operatore | sola_lettura
     public bool Attivo { get; set; } = true;
     public DateTime CreatoIl { get; set; }
+
+    /// <summary>Secondo fattore (TOTP) attivo per questo utente.</summary>
+    public bool DueFattoriAttivo { get; set; }
+
+    /// <summary>Segreto TOTP in Base32 (cifrato a riposo). Null finché il 2FA non è configurato.</summary>
+    public string? SegretoTotp { get; set; }
 }

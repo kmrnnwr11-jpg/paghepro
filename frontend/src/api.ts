@@ -59,6 +59,11 @@ export interface Cedolino {
   totaleCompetenze: number; totaleTrattenute: number; nettoInBusta: number;
   costoAzienda: number; quotaTfr: number; righe: VoceCedolino[];
 }
+export interface CedolinoArchiviato {
+  id: string; anno: number; mese: number;
+  nettoInBusta: number; costoAzienda: number;
+  imponibileIrpef?: number; irpefNetta?: number;
+}
 export interface Fattura {
   id: string; numero: string; anno?: number; data?: string;
   cessionarioDenominazione?: string; totaleDocumento: number;
@@ -177,6 +182,14 @@ export const api = {
     req<Cedolino>("/api/cedolini/calcola", {
       method: "POST",
       body: JSON.stringify({ rapporto, cartellino }),
+    }),
+  // Cedolini archiviati per dipendente (rapporto): alimentano CU e 770.
+  cedoliniArchiviati: (rapportoId: string) =>
+    req<CedolinoArchiviato[]>(`/api/rapporti/${rapportoId}/cedolini`),
+  archiviaCedolino: (rapportoId: string, cartellino: Cartellino) =>
+    req<CedolinoArchiviato>(`/api/rapporti/${rapportoId}/cedolini`, {
+      method: "POST",
+      body: JSON.stringify(cartellino),
     }),
 
   // --- Fatturazione e trasmissione SdI ---

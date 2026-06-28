@@ -342,10 +342,46 @@ app.MapPost("/api/auth/registra", async (RegistraRequest req, AuthService auth, 
 
 app.MapPost("/api/auth/login", async (LoginRequest req, AuthService auth, TokenService tokens) =>
 {
-    var utente = await auth.AutenticaAsync(req.Email, req.Password);
-    return utente is null
-        ? Results.Unauthorized()
-        : Results.Ok(new { token = tokens.Crea(utente), tenantId = utente.TenantId, ruolo = utente.Ruolo });
+    var r = await auth.AccediAsync(req.Email, req.Password, req.Codice2fa);
+    return r.Esito switch
+    {
+        EsitoAccesso.Ok => Results.Ok(new
+        {
+            token = tokens.Crea(r.Utente!), tenantId = r.Utente!.TenantId, ruolo = r.Utente!.Ruolo,
+        }),
+        EsitoAccesso.ServeCodice2fa => Results.Json(new { serveCodice2fa = true }, statusCode: 401),
+        EsitoAccesso.Codice2faErrato => Results.Json(
+            new { serveCodice2fa = true, errore = "Codice 2FA non valido." }, statusCode: 401),
+        _ => Results.Unauthorized(),
+    };
+});
+
+// --- Secondo fattore (2FA / TOTP) — endpoint protetti per l'utente autenticato ---
+static Guid? UtenteCorrente(ClaimsPrincipal user) =>
+    Guid.TryParse(user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id)
+        ? id : null;
+
+secured.MapPost("/api/auth/2fa/inizia", async (ClaimsPrincipal user, AuthService auth) =>
+{
+    if (UtenteCorrente(user) is not { } uid) return Results.Unauthorized();
+    var conf = await auth.IniziaDueFattoriAsync(uid);
+    return Results.Ok(new { conf.Segreto, conf.UriOtpauth });
+});
+
+secured.MapPost("/api/auth/2fa/attiva", async (Codice2faRequest req, ClaimsPrincipal user, AuthService auth) =>
+{
+    if (UtenteCorrente(user) is not { } uid) return Results.Unauthorized();
+    return await auth.AttivaDueFattoriAsync(uid, req.Codice)
+        ? Results.Ok(new { dueFattoriAttivo = true })
+        : Results.BadRequest(new { errore = "Codice non valido." });
+});
+
+secured.MapPost("/api/auth/2fa/disattiva", async (Codice2faRequest req, ClaimsPrincipal user, AuthService auth) =>
+{
+    if (UtenteCorrente(user) is not { } uid) return Results.Unauthorized();
+    return await auth.DisattivaDueFattoriAsync(uid, req.Codice)
+        ? Results.Ok(new { dueFattoriAttivo = false })
+        : Results.BadRequest(new { errore = "Codice non valido." });
 });
 
 // Elenco dei livelli di un CCNL per un dato anno (default: anno corrente del seed).

@@ -53,7 +53,9 @@ nessun account esterno.
 
 ### Fatto quando
 - [x] **IBAN salvato cifrato** (AES-256-GCM, `ProtettoreDati`, verificato in DB con test) · [x] **ogni azione sensibile lascia traccia in audit** (`AuditSaveChangesInterceptor` + middleware API)
-- [ ] login con secondo fattore · [x] build + test verdi (193)
+- [x] **login con secondo fattore** (TOTP RFC 6238, `Totp` + endpoint `/api/auth/2fa/*`, segreto cifrato) · [x] build + test verdi (199)
+
+> Resta opzionale della Fase 1: **retention / diritto all'oblio** (job di cancellazione/anonimizzazione).
 
 ---
 

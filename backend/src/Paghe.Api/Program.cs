@@ -1597,6 +1597,7 @@ app.MapModello770();
 app.MapRapportoDettaglio();
 app.MapPresenze();
 app.MapRedditiPf();
+app.MapImportUnilavPdf(); // UNILAV: carica il PDF → registra datore + lavoratore + rapporto
 
 app.Run();
 

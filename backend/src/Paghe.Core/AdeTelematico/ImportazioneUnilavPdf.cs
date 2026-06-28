@@ -98,22 +98,26 @@ public static class ImportazioneUnilavPdf
         if (inizio < 0)
             return righe; // nessuna intestazione: si cerca su tutto il testo
         int fine = altreSezioni.Where(i => i > inizio).DefaultIfEmpty(righe.Length).Min();
-        return righe[(inizio)..fine];
+        return righe[inizio..fine];
     }
 
-    /// <summary>Valore associato a una delle etichette: resto della riga, o riga successiva se vuoto.</summary>
+    /// <summary>
+    /// Valore associato a una delle etichette: resto della riga dopo l'etichetta, o riga successiva
+    /// se vuoto. Cerca <b>per etichetta</b> (in ordine di priorità) su tutto il blocco, così le
+    /// etichette specifiche vincono sulle intestazioni generiche di sezione.
+    /// </summary>
     private static string? Campo(string[] blocco, params string[] etichette)
     {
-        for (int i = 0; i < blocco.Length; i++)
+        foreach (string et in etichette)
         {
-            string riga = blocco[i];
-            string lower = riga.ToLowerInvariant();
-            foreach (string et in etichette)
+            for (int i = 0; i < blocco.Length; i++)
             {
-                int pos = lower.IndexOf(et, StringComparison.Ordinal);
-                if (pos < 0) continue;
+                string riga = blocco[i];
+                // L'etichetta deve aprire la riga (come nei moduli UNILAV): evita falsi positivi
+                // come "nome" dentro "Cognome".
+                if (!riga.ToLowerInvariant().StartsWith(et, StringComparison.Ordinal)) continue;
 
-                string dopo = riga[(pos + et.Length)..].TrimStart(' ', ':', '-', '.', '\t', '=', ' ');
+                string dopo = riga[et.Length..].TrimStart(' ', ':', '-', '.', '\t', '=');
                 if (dopo.Length > 0)
                     return dopo.Trim();
                 if (i + 1 < blocco.Length)

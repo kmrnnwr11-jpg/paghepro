@@ -78,7 +78,8 @@ public sealed class MotoreCalcoloCedolino
 
         // ---- 3. Contributi previdenziali ---------------------------------------------
         decimal imponibileInps = totaleCompetenze;
-        var aliquota = _parametri.AliquotaInps(rapporto.Qualifica);
+        // Aliquota INPS specifica del settore/CCNL (es. autotrasporto 9,49%), se nota; altrimenti per qualifica.
+        var aliquota = AliquoteInpsSettore.PerCcnl(rapporto.CodiceCcnl) ?? _parametri.AliquotaInps(rapporto.Qualifica);
         var (contributiDip, contributiDatore) = CalcoloContributi.Calcola(imponibileInps, aliquota);
 
         AggiungiRiga(cedolino, "INPS_DIP", $"Contributi INPS c/dipendente ({aliquota.Dipendente:P2})",

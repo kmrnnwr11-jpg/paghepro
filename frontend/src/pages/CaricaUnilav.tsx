@@ -1,14 +1,44 @@
-import { useRef, useState } from "react";
-import { api, type EsitoImportUnilav } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { api, getToken, type Cedolino, type EsitoImportUnilav } from "../api";
 
-/// Schermata "trascina l'UNILAV e fa tutto": l'utente trascina (o sceglie) il PDF della
-/// Comunicazione Obbligatoria; il sistema lo legge e registra azienda + lavoratore + rapporto.
+const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:5171";
+const MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
+
+// Upload diretto (multipart) con azienda scelta opzionale.
+async function inviaUnilav(file: File, aziendaId: string): Promise<EsitoImportUnilav> {
+  const form = new FormData();
+  form.append("file", file);
+  if (aziendaId) form.append("aziendaId", aziendaId);
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${BASE}/api/unilav/pdf`, { method: "POST", body: form, headers });
+  if (!res.ok) {
+    let messaggio = `Errore ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.errore) messaggio = body.errore as string;
+    } catch {
+      /* corpo non JSON */
+    }
+    throw new Error(messaggio);
+  }
+  return (await res.json()) as EsitoImportUnilav;
+}
+
+/// "Trascina l'UNILAV e fa tutto": scegli l'azienda (o automatico dal PDF), il sistema registra
+/// azienda + lavoratore + rapporto, poi con un clic fai la busta paga del mese.
 export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: string; ragioneSociale: string }) => void }) {
+  const [aziende, setAziende] = useState<{ id: string; ragioneSociale: string }[]>([]);
+  const [aziendaScelta, setAziendaScelta] = useState(""); // "" = automatico dal PDF
   const [trascina, setTrascina] = useState(false);
   const [caricamento, setCaricamento] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
   const [esito, setEsito] = useState<EsitoImportUnilav | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { api.aziende().then(setAziende).catch(() => { /* ignora */ }); }, []);
 
   async function gestisci(file: File | undefined | null) {
     if (!file) return;
@@ -20,9 +50,10 @@ export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: st
     setEsito(null);
     setCaricamento(true);
     try {
-      const r = await api.importUnilavPdf(file);
+      const r = await inviaUnilav(file, aziendaScelta);
       setEsito(r);
       onImportato?.({ id: r.azienda.id, ragioneSociale: r.azienda.ragioneSociale });
+      api.aziende().then(setAziende).catch(() => { /* ignora */ }); // potrebbe aver creato una nuova azienda
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Non sono riuscito a leggere il PDF.");
     } finally {
@@ -35,9 +66,23 @@ export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: st
       <div className="card-title-row">
         <div>
           <h1>📄 Aggiungi da UNILAV</h1>
-          <p>Trascina qui il PDF della Comunicazione Obbligatoria: registro in automatico azienda, lavoratore e rapporto.</p>
+          <p>Trascina il PDF della Comunicazione Obbligatoria: registro azienda, lavoratore e rapporto — poi fai subito la busta paga.</p>
         </div>
       </div>
+
+      <label style={{ display: "block", marginBottom: 12 }}>
+        <span style={{ display: "block", fontSize: 13, marginBottom: 4, color: "var(--muted, #64748b)" }}>
+          Dove salvo i dati
+        </span>
+        <select
+          value={aziendaScelta}
+          onChange={(e) => setAziendaScelta(e.target.value)}
+          style={{ width: "100%", maxWidth: 460, padding: "9px 11px", borderRadius: 10 }}
+        >
+          <option value="">🤖 Automatico — usa o crea l'azienda dal PDF</option>
+          {aziende.map((a) => <option key={a.id} value={a.id}>🏢 {a.ragioneSociale}</option>)}
+        </select>
+      </label>
 
       <div
         role="button"
@@ -57,13 +102,7 @@ export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: st
           transition: "all .15s ease",
         }}
       >
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/pdf,.pdf"
-          hidden
-          onChange={(e) => gestisci(e.target.files?.[0])}
-        />
+        <input ref={inputRef} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => gestisci(e.target.files?.[0])} />
         {caricamento ? (
           <strong>⏳ Sto leggendo il PDF e registrando i dati…</strong>
         ) : (
@@ -124,8 +163,119 @@ function Risultato({ esito }: { esito: EsitoImportUnilav }) {
           </ul>
         </div>
       )}
+
+      <BustaPaga esito={esito} />
     </div>
   );
+}
+
+function BustaPaga({ esito }: { esito: EsitoImportUnilav }) {
+  const oggi = new Date();
+  const ccnlNoto = /COMMERCIO/i.test(esito.rapporto.codiceCcnl);
+  const [aperto, setAperto] = useState(false);
+  const [mese, setMese] = useState(oggi.getMonth() + 1);
+  const [anno, setAnno] = useState(oggi.getFullYear());
+  const [straordinario, setStraordinario] = useState(0);
+  const [ccnl, setCcnl] = useState("COMMERCIO_TERZIARIO");
+  const [livello, setLivello] = useState(/^\d+$/.test(esito.rapporto.livello) ? esito.rapporto.livello : "3");
+  const [calc, setCalc] = useState<Cedolino | null>(null);
+  const [errore, setErrore] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function fai() {
+    setBusy(true);
+    setErrore(null);
+    setCalc(null);
+    try {
+      const c = await api.calcolaCedolino(
+        {
+          codiceCcnl: ccnl, livello, qualifica: esito.rapporto.qualifica,
+          numeroMensilita: 14, scattiAnzianita: 0, regione: "Lombardia", codiceCatastaleComune: "F205",
+        },
+        { anno, mese, oreStraordinario: straordinario },
+      );
+      setCalc(c);
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Calcolo non riuscito.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 16, borderTop: "1px solid rgba(148,163,184,.25)", paddingTop: 16 }}>
+      {!aperto ? (
+        <button className="btn primary" type="button" onClick={() => setAperto(true)}>💶 Fai la busta paga</button>
+      ) : (
+        <>
+          <div className="form-grid">
+            <label>
+              <span>Mese</span>
+              <select value={mese} onChange={(e) => setMese(+e.target.value)}>
+                {MESI.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Anno</span>
+              <input type="number" value={anno} onChange={(e) => setAnno(+e.target.value)} />
+            </label>
+            <label>
+              <span>CCNL</span>
+              <select value={ccnl} onChange={(e) => setCcnl(e.target.value)}>
+                <option value="COMMERCIO_TERZIARIO">Commercio / Terziario</option>
+              </select>
+            </label>
+            <label>
+              <span>Livello</span>
+              <input value={livello} onChange={(e) => setLivello(e.target.value)} />
+            </label>
+            <label>
+              <span>Ore straordinario <small>(facoltativo)</small></span>
+              <input type="number" min={0} value={straordinario} onChange={(e) => setStraordinario(+e.target.value)} />
+            </label>
+            <button className="btn primary wide-field" type="button" onClick={fai} disabled={busy}>
+              {busy ? "Calcolo…" : "Calcola busta paga"}
+            </button>
+          </div>
+
+          {!ccnlNoto && (
+            <p style={{ fontSize: 12, color: "var(--muted, #64748b)", marginTop: 4 }}>
+              Il CCNL dell'UNILAV ({esito.rapporto.codiceCcnl || "—"}) non è tra quelli configurati: uso il CCNL
+              Commercio per la stima. Imposta il CCNL corretto per il calcolo definitivo.
+            </p>
+          )}
+          {errore && <p className="errore">{errore}</p>}
+          {calc && <RisultatoBusta c={calc} mese={mese} anno={anno} nominativo={`${esito.rapporto.dipendente.nome} ${esito.rapporto.dipendente.cognome}`.trim()} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+function RisultatoBusta({ c, mese, anno, nominativo }: { c: Cedolino; mese: number; anno: number; nominativo: string }) {
+  return (
+    <div className="ledger-grid" style={{ marginTop: 12 }}>
+      <article className="ledger-card">
+        <span>Netto in busta · {MESI[mese - 1]} {anno}</span>
+        <strong>{euro(c.nettoInBusta)}</strong>
+        <em className="status-pill green">{nominativo || "Lavoratore"}</em>
+      </article>
+      <article className="ledger-card">
+        <span>Totale competenze</span>
+        <strong>{euro(c.totaleCompetenze)}</strong>
+        <em className="status-pill blue">Lordo del mese</em>
+      </article>
+      <article className="ledger-card">
+        <span>Costo azienda</span>
+        <strong>{euro(c.costoAzienda)}</strong>
+        <em className="status-pill amber">TFR {euro(c.quotaTfr)}</em>
+      </article>
+    </div>
+  );
+}
+
+function euro(n: number): string {
+  return n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 }
 
 function formattaData(iso: string): string {

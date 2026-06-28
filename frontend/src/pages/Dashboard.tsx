@@ -8,6 +8,7 @@ import { CertificazioneUnica } from "./CertificazioneUnica";
 import { Lipe } from "./Lipe";
 import { Modello770 } from "./Modello770";
 import { RedditiPf } from "./RedditiPf";
+import { Irap } from "./Irap";
 import { IvaAnnuale } from "./IvaAnnuale";
 import { Presenze } from "./Presenze";
 import { Cedolini } from "./Cedolini";
@@ -42,6 +43,7 @@ type SectionKey =
   | "cu"
   | "mod770"
   | "redditi-pf"
+  | "irap"
   | "impostazioni"
   | "collega-sdi"
   | "utenti";
@@ -75,6 +77,7 @@ const payrollNav: NavItem[] = [
   { key: "cu", icon: "📑", label: "CU / CUD" },
   { key: "mod770", icon: "🧾", label: "Modello 770" },
   { key: "redditi-pf", icon: "🧑‍💼", label: "Redditi PF / 730" },
+  { key: "irap", icon: "🏭", label: "IRAP" },
 ];
 
 const adminNav: NavItem[] = [
@@ -123,6 +126,7 @@ const sectionTitle: Record<SectionKey, string> = {
   cu: "Certificazione Unica",
   mod770: "Modello 770",
   "redditi-pf": "Redditi PF / 730",
+  irap: "IRAP",
   impostazioni: "Impostazioni",
   "collega-sdi": "Collega Fatturazione Elettronica",
   utenti: "Utenti e permessi",
@@ -672,6 +676,7 @@ function ModuleScreen({
   if (active === "cu") return <CertificazioneUnica />;
   if (active === "mod770") return <Modello770 />;
   if (active === "redditi-pf") return <RedditiPf />;
+  if (active === "irap") return <Irap />;
   if (active === "impostazioni") return <SettingsPanel />;
   if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;

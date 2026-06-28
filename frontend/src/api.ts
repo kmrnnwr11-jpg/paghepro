@@ -73,6 +73,10 @@ export interface PresenzeMese {
 export interface RedditiPfInputReq {
   altriRedditi: number; oneriDeducibili: number; oneriDetraibili19: number; acconti: number;
 }
+export interface IrapBozza {
+  anno: number; ricavi: number; costiEsterni: number; costoLavoroDeducibile: number;
+  baseImponibile: number; aliquota: number; imposta: number;
+}
 export interface RedditiPfBozza {
   rapportoId: string; nominativo: string; codiceFiscale: string; anno: number; numeroCedolini: number;
   altriRedditi: number; oneriDeducibili: number; oneriDetraibili19: number; acconti: number;
@@ -228,6 +232,10 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(input),
     }),
+
+  // --- Dichiarazioni: Fase 5 IRAP (bozza) ---
+  irapBozza: (aziendaId: string, anno: number) =>
+    req<IrapBozza>(`/api/aziende/${aziendaId}/irap/${anno}`),
 
   // --- Fatturazione e trasmissione SdI ---
   fatture: (aziendaId: string) => req<Fattura[]>(`/api/aziende/${aziendaId}/fatture`),

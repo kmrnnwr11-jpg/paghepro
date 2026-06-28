@@ -27,11 +27,27 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
-// Persistenza: in sviluppo SQLite (file locale), in produzione PostgreSQL.
-// Per Postgres: sostituire UseSqlite con o.UseNpgsql(connectionString).
+// Persistenza: sceglie il provider automaticamente dalla stringa di connessione.
+//  - SQLite (default sviluppo): "Data Source=paghe.db"
+//  - PostgreSQL / Supabase:     "Host=...;Database=postgres;Username=...;Password=...;SSL Mode=Require;Trust Server Certificate=true"
+// Si può forzare con la chiave di config "Database:Provider" = "Postgres" | "Sqlite".
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? "Data Source=paghe.db";
-builder.Services.AddDbContext<PagheDbContext>(o => o.UseSqlite(connectionString));
+var providerConfig = builder.Configuration["Database:Provider"];
+bool usaPostgres =
+    string.Equals(providerConfig, "Postgres", StringComparison.OrdinalIgnoreCase)
+    || (providerConfig is null
+        && !connectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)
+        && (connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase)
+            || connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase)
+            || connectionString.Contains("postgres", StringComparison.OrdinalIgnoreCase)));
+builder.Services.AddDbContext<PagheDbContext>(o =>
+{
+    if (usaPostgres)
+        o.UseNpgsql(connectionString);
+    else
+        o.UseSqlite(connectionString);
+});
 builder.Services.AddScoped<AziendeService>();
 builder.Services.AddScoped<FattureService>();
 builder.Services.AddScoped<AvvisiPagamentoService>();
@@ -52,6 +68,7 @@ builder.Services.AddScoped<LipeService>();
 builder.Services.AddScoped<Modello770Service>();
 builder.Services.AddScoped<PresenzeService>();
 builder.Services.AddScoped<RedditiPfService>();
+builder.Services.AddScoped<IrapService>();
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
@@ -1597,6 +1614,7 @@ app.MapModello770();
 app.MapRapportoDettaglio();
 app.MapPresenze();
 app.MapRedditiPf();
+app.MapIrap();
 app.MapImportUnilavPdf(); // UNILAV: carica il PDF → registra datore + lavoratore + rapporto
 
 app.Run();

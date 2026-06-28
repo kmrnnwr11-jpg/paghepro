@@ -1,10 +1,23 @@
 GUIDA PAGHEPRO — Come usare il software (passo passo)
 ======================================================
 
+COSA C'È IN QUESTA CARTELLA
+---------------------------
+• index.html .............. la GUIDA ANIMATA con voce (doppio click per aprirla)
+• Guida-PaghePro.pdf ...... la stessa guida in PDF, pronta da stampare/inviare
+• guida-stampabile.html ... versione per la stampa (se vuoi rigenerare il PDF)
+• guida-data.js ........... i testi delle schede (modifica QUI per cambiarli)
+• img/ .................... le schermate del software
+
 COME APRIRLA
 ------------
 Fai doppio click sul file  index.html
 Si apre nel browser (Chrome, Safari, Edge…). Non serve internet.
+
+DENTRO AL SOFTWARE
+------------------
+La guida è anche DENTRO il programma: in alto a destra c'è il pulsante
+"📘 Guida" (e l'icona "?"). Cliccandolo si apre questa stessa guida.
 
 COME USARLA
 -----------

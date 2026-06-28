@@ -106,8 +106,15 @@ nessun account esterno.
 - 👤 Scegliere il **2°/3° CCNL** da coprire (la nicchia: es. Metalmeccanici, Edilizia, Turismo).
 
 ### Fatto quando
-- [ ] cedolino di dicembre conguaglia · [ ] TFR maturato e tassato alla cessazione
-- [ ] LUL stampabile · [ ] almeno 2 CCNL funzionanti e validati ⚖️
+- [x] **TFR** maturato (quota mensile), **rivalutato** (1,5%+75% ISTAT + imposta sostitutiva) e **tassato** alla cessazione (tassazione separata, `CalcoloTfr`)
+- [x] **conguaglio fiscale** di fine anno: motore `ConguaglioFiscale` + **agganciato ai cedolini archiviati** (`CedoliniService.CalcolaConguaglioAnnualeAsync` + `GET /api/rapporti/{id}/conguaglio`)
+- [x] **ratei 13ª/14ª** (`MensilitaAggiuntive`)
+- [x] **LUL** stampabile (sintesi mensile PDF, `LibroUnicoPdf`) · [x] build + test verdi (227)
+- [ ] almeno 2 CCNL funzionanti e validati ⚖️ (servono dati CCNL + CdL)
+
+> Motori interni e parametrizzati pronti. **Stop** ai pezzi che richiedono dati CCNL esterni o
+> validazione bloccante del Consulente del Lavoro (multi-CCNL, malattia/CIG/ANF) e a quelli con
+> account esterni (Fatture passive→A-Cube, Open Banking).
 
 ---
 
@@ -130,8 +137,11 @@ Desktop Telematico/SID. Riusa l'impianto `AdeTelematico` già presente.
 - 👤 Eventuale **adesione InfoCamere** se vuoi inviare ComUnica direttamente.
 
 ### Fatto quando
-- [ ] CU e 770 passano il controllo ufficiale JAR · [ ] XBRL valido per il deposito
-- [ ] estratto conto si riconcilia con le fatture · [ ] build + test verdi
+- [x] **CU per azienda** + **export CSV** (`CertificazioneUnicaService` + `GET /api/aziende/{id}/cu/{anno}[/export.csv]`)
+- [x] **770 per azienda** (bozza percipienti) + **export CSV** (`Modello770Service.EsportaCsv` + `.../modello770/{anno}/export.csv`)
+- [x] **Dichiarazione IVA annuale** (bozza, aggrega le liquidazioni dell'anno) + **export CSV** (`ContabilitaIvaService` + `.../iva/dichiarazione-annuale/{anno}[/export.csv]`)
+- [ ] CU/770/IVA passano il **controllo ufficiale JAR** · [ ] XBRL valido per il deposito — *bozze pronte, controllo vincolante ai JAR AE*
+- [ ] estratto conto si riconcilia con le fatture · [x] build + test verdi (240)
 
 ---
 

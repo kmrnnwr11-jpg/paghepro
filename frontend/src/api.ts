@@ -70,6 +70,17 @@ export interface PresenzaRiga {
 export interface PresenzeMese {
   anno: number; mese: number; totale: number; elaborati: number; righe: PresenzaRiga[];
 }
+export interface RedditiPfInputReq {
+  altriRedditi: number; oneriDeducibili: number; oneriDetraibili19: number; acconti: number;
+}
+export interface RedditiPfBozza {
+  rapportoId: string; nominativo: string; codiceFiscale: string; anno: number; numeroCedolini: number;
+  altriRedditi: number; oneriDeducibili: number; oneriDetraibili19: number; acconti: number;
+  redditoLavoroDipendente: number; ritenuteOperate: number;
+  redditoComplessivo: number; redditoImponibile: number; irpefLorda: number;
+  detrazioneLavoroDipendente: number; detrazioneOneri: number; irpefNetta: number;
+  saldoADebito: number; saldoACredito: number;
+}
 export interface RapportoDettaglio {
   rapportoId: string; dipendenteId: string;
   nome: string; cognome: string; codiceFiscale: string; iban?: string | null; anonimizzato: boolean;
@@ -208,6 +219,15 @@ export const api = {
     req<RapportoDettaglio>(`/api/rapporti/${rapportoId}`),
   presenzeMese: (aziendaId: string, anno: number, mese: number) =>
     req<PresenzeMese>(`/api/aziende/${aziendaId}/presenze/${anno}/${mese}`),
+
+  // --- Dichiarazioni: Fase 4 Redditi PF / 730 (bozza) ---
+  redditiPf: (rapportoId: string, anno: number) =>
+    req<RedditiPfBozza>(`/api/rapporti/${rapportoId}/redditi-pf/${anno}`),
+  salvaRedditiPf: (rapportoId: string, anno: number, input: RedditiPfInputReq) =>
+    req<RedditiPfBozza>(`/api/rapporti/${rapportoId}/redditi-pf/${anno}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
 
   // --- Fatturazione e trasmissione SdI ---
   fatture: (aziendaId: string) => req<Fattura[]>(`/api/aziende/${aziendaId}/fatture`),

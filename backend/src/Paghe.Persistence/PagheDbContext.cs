@@ -55,6 +55,9 @@ public class PagheDbContext : DbContext
     // Configurazione canale SdI self-service (un record per tenant)
     public DbSet<ConfigurazioneSdiEntity> ConfigurazioniSdi => Set<ConfigurazioneSdiEntity>();
 
+    // Dichiarazione Redditi PF / 730 (input manuali per rapporto/anno)
+    public DbSet<DichiarazioneRedditiPfEntity> DichiarazioniRedditiPf => Set<DichiarazioneRedditiPfEntity>();
+
     // Audit log (GDPR / tracciabilità): chi/cosa/quando, scritto dall'interceptor
     public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
 
@@ -251,6 +254,22 @@ public class PagheDbContext : DbContext
             );
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_ConfigurazioniSdi_TenantId"
                 ON "ConfigurazioniSdi" ("TenantId");
+            """);
+
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "DichiarazioniRedditiPf" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_DichiarazioniRedditiPf" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "RapportoLavoroId" TEXT NOT NULL,
+                "Anno" INTEGER NOT NULL,
+                "AltriRedditi" TEXT NOT NULL,
+                "OneriDeducibili" TEXT NOT NULL,
+                "OneriDetraibili19" TEXT NOT NULL,
+                "Acconti" TEXT NOT NULL,
+                "AggiornataIl" TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_DichiarazioniRedditiPf_Tenant_Rapporto_Anno"
+                ON "DichiarazioniRedditiPf" ("TenantId", "RapportoLavoroId", "Anno");
             """);
 
         Database.ExecuteSqlRaw("""

@@ -51,6 +51,7 @@ builder.Services.AddScoped<CertificazioneUnicaService>();
 builder.Services.AddScoped<LipeService>();
 builder.Services.AddScoped<Modello770Service>();
 builder.Services.AddScoped<PresenzeService>();
+builder.Services.AddScoped<RedditiPfService>();
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
@@ -815,6 +816,34 @@ secured.MapGet("/api/liquidazioni-iva/{id:guid}", async (Guid id, ContabilitaIva
     return liquidazione is null ? Results.NotFound(new { errore = "Liquidazione IVA non trovata." }) : Results.Ok(liquidazione);
 });
 
+// Bozza dichiarazione IVA annuale (aggrega le liquidazioni periodiche dell'anno).
+secured.MapGet("/api/aziende/{aziendaId:guid}/iva/dichiarazione-annuale/{anno:int}",
+    async (Guid aziendaId, int anno, ContabilitaIvaService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        return Results.Ok(await svc.CostruisciDichiarazioneIvaAnnualeAsync(TenantCorrente(user), aziendaId, anno));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
+secured.MapGet("/api/aziende/{aziendaId:guid}/iva/dichiarazione-annuale/{anno:int}/export.csv",
+    async (Guid aziendaId, int anno, ContabilitaIvaService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        var bozza = await svc.CostruisciDichiarazioneIvaAnnualeAsync(TenantCorrente(user), aziendaId, anno);
+        return Results.Text(ContabilitaIvaService.EsportaCsvDichiarazioneIva(bozza), "text/csv");
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
 // --- Pratiche apertura P.IVA / Camera di Commercio --------------------------------
 static PraticaAperturaPartitaIvaInput ToInput(CreaPraticaAperturaPartitaIvaRequest req) => new(
     req.FormaGiuridica,
@@ -1049,6 +1078,20 @@ secured.MapPost("/api/ravvedimento/calcola", (RavvedimentoRequest req) =>
             r.GiorniRitardo, r.ScaglioneApplicato, r.Tributo, r.Sanzione, r.Interessi, r.Totale,
             nota = "Scaglioni di esempio (storico 30%): validare con un Consulente del Lavoro.",
         });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
+// Conguaglio fiscale IRPEF di fine anno per un rapporto (aggrega i cedolini archiviati dell'anno).
+secured.MapGet("/api/rapporti/{rapportoId:guid}/conguaglio",
+    async (Guid rapportoId, int anno, CedoliniService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        return Results.Ok(await svc.CalcolaConguaglioAnnualeAsync(TenantCorrente(user), rapportoId, anno));
     }
     catch (ArgumentException ex)
     {
@@ -1553,6 +1596,7 @@ app.MapLipe();
 app.MapModello770();
 app.MapRapportoDettaglio();
 app.MapPresenze();
+app.MapRedditiPf();
 
 app.Run();
 

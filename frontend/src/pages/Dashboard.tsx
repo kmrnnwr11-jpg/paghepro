@@ -7,6 +7,7 @@ import { Dipendenti } from "./Dipendenti";
 import { CertificazioneUnica } from "./CertificazioneUnica";
 import { Lipe } from "./Lipe";
 import { Modello770 } from "./Modello770";
+import { RedditiPf } from "./RedditiPf";
 import { IvaAnnuale } from "./IvaAnnuale";
 import { Presenze } from "./Presenze";
 import { Cedolini } from "./Cedolini";
@@ -40,6 +41,7 @@ type SectionKey =
   | "f24"
   | "cu"
   | "mod770"
+  | "redditi-pf"
   | "impostazioni"
   | "collega-sdi"
   | "utenti";
@@ -72,6 +74,7 @@ const payrollNav: NavItem[] = [
   { key: "f24", icon: "🏛️", label: "F24" },
   { key: "cu", icon: "📑", label: "CU / CUD" },
   { key: "mod770", icon: "🧾", label: "Modello 770" },
+  { key: "redditi-pf", icon: "🧑‍💼", label: "Redditi PF / 730" },
 ];
 
 const adminNav: NavItem[] = [
@@ -119,6 +122,7 @@ const sectionTitle: Record<SectionKey, string> = {
   f24: "Modello F24",
   cu: "Certificazione Unica",
   mod770: "Modello 770",
+  "redditi-pf": "Redditi PF / 730",
   impostazioni: "Impostazioni",
   "collega-sdi": "Collega Fatturazione Elettronica",
   utenti: "Utenti e permessi",
@@ -310,6 +314,11 @@ function NavGroup({
   );
 }
 
+function apriGuida() {
+  // La guida è servita come file statico da public/guida (vedi cartella guida).
+  window.open(`${import.meta.env.BASE_URL}guida/index.html`, "_blank", "noopener");
+}
+
 function Topbar({ onCompanyClick }: { onCompanyClick: () => void }) {
   return (
     <header className="topbar">
@@ -327,11 +336,15 @@ function Topbar({ onCompanyClick }: { onCompanyClick: () => void }) {
 
       <div className="topbar-spacer" />
 
+      <button className="soft-button guide-top" type="button" onClick={apriGuida} title="Apri la guida animata: come usare il software">
+        <span>📘</span>
+        <strong>Guida</strong>
+      </button>
       <button className="icon-button" type="button" aria-label="Notifiche">
         <span>🔔</span>
         <b>3</b>
       </button>
-      <button className="icon-button" type="button" aria-label="Aiuto">
+      <button className="icon-button" type="button" aria-label="Aiuto" title="Apri la guida" onClick={apriGuida}>
         ?
       </button>
       <button className="user-button" type="button">
@@ -658,6 +671,7 @@ function ModuleScreen({
   if (active === "f24") return <F24Panel />;
   if (active === "cu") return <CertificazioneUnica />;
   if (active === "mod770") return <Modello770 />;
+  if (active === "redditi-pf") return <RedditiPf />;
   if (active === "impostazioni") return <SettingsPanel />;
   if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;

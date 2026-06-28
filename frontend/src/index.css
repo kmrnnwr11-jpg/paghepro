@@ -316,6 +316,28 @@ p {
   font-size: 13.5px;
 }
 
+.guide-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 13px;
+  font-size: 13.5px;
+  color: #fff;
+  border: none;
+  background: linear-gradient(135deg, #2f54ff, #7b61ff);
+  box-shadow: 0 8px 18px -6px rgba(47, 84, 255, 0.5);
+}
+
+.guide-top strong {
+  font-weight: 700;
+}
+
+.guide-top:hover {
+  filter: brightness(1.06);
+}
+
 .search-box {
   position: relative;
   width: min(100%, 560px);

@@ -21,6 +21,14 @@ public static class Modello770Endpoints
             return Results.Ok(bozza);
         }).RequireAuthorization();
 
+        // Export CSV (bozza rivedibile) dei percipienti del 770.
+        app.MapGet("/api/aziende/{aziendaId:guid}/modello770/{anno:int}/export.csv", async (
+            Guid aziendaId, int anno, ClaimsPrincipal user, Modello770Service svc) =>
+        {
+            var bozza = await svc.CostruisciAsync(Tenant(user), aziendaId, anno);
+            return Results.Text(Modello770Service.EsportaCsv(bozza), "text/csv");
+        }).RequireAuthorization();
+
         return app;
     }
 }

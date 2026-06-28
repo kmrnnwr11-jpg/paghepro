@@ -118,6 +118,35 @@ public sealed class CedoliniService
         return F24DaCedolini.Costruisci(sostituto, righe, anno, mese);
     }
 
+    /// <summary>
+    /// Conguaglio fiscale IRPEF di fine anno per un rapporto: aggrega i cedolini archiviati
+    /// dell'anno (imponibile e IRPEF già trattenuta), calcola la detrazione da lavoro dipendente
+    /// spettante e ricalcola l'IRPEF netta dovuta sull'anno, restituendo la differenza a debito o a
+    /// credito. Gli scaglioni sono quelli versionati dell'anno. Lancia se non ci sono cedolini.
+    /// </summary>
+    public async Task<RisultatoConguaglio> CalcolaConguaglioAnnualeAsync(
+        Guid tenantId, Guid rapportoId, int anno, CancellationToken ct = default)
+    {
+        var rapporto = await _db.Rapporti
+            .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct)
+            ?? throw new ArgumentException("Rapporto di lavoro non trovato per il tenant indicato.");
+
+        var cedolini = await _db.Cedolini
+            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId && c.Anno == anno)
+            .ToListAsync(ct);
+        if (cedolini.Count == 0)
+            throw new ArgumentException($"Nessun cedolino archiviato per l'anno {anno}.");
+
+        decimal imponibileAnnuo = cedolini.Sum(c => c.ImponibileIrpef);
+        decimal irpefTrattenuta = cedolini.Sum(c => c.IrpefNetta);
+        decimal detrazioni = rapporto.DetrazioniLavoroDipendente
+            ? CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(imponibileAnnuo, rapporto.GiorniDetrazioneAnno)
+            : 0m;
+
+        var parametri = await _parametri.CaricaParametriAsync(anno, ct);
+        return ConguaglioFiscale.Calcola(imponibileAnnuo, irpefTrattenuta, detrazioni, parametri.ScaglioniIrpef);
+    }
+
     public Task<CedolinoEntity?> GetAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         _db.Cedolini.Include(c => c.Voci)
             .FirstOrDefaultAsync(c => c.Id == id && c.TenantId == tenantId, ct);

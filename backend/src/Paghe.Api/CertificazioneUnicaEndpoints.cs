@@ -23,6 +23,20 @@ public static class CertificazioneUnicaEndpoints
                 : Results.Ok(bozza);
         }).RequireAuthorization();
 
+        // Tutte le CU dei dipendenti di un'azienda per l'anno.
+        app.MapGet("/api/aziende/{aziendaId:guid}/cu/{anno:int}", async (
+            Guid aziendaId, int anno, ClaimsPrincipal user, CertificazioneUnicaService svc) =>
+            Results.Ok(await svc.CostruisciPerAziendaAsync(Tenant(user), aziendaId, anno)))
+            .RequireAuthorization();
+
+        // Export CSV (bozza rivedibile) delle CU dell'azienda per l'anno.
+        app.MapGet("/api/aziende/{aziendaId:guid}/cu/{anno:int}/export.csv", async (
+            Guid aziendaId, int anno, ClaimsPrincipal user, CertificazioneUnicaService svc) =>
+        {
+            var bozze = await svc.CostruisciPerAziendaAsync(Tenant(user), aziendaId, anno);
+            return Results.Text(CertificazioneUnicaService.EsportaCsv(bozze), "text/csv");
+        }).RequireAuthorization();
+
         return app;
     }
 }

@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 
 namespace Paghe.Persistence;
@@ -49,5 +51,67 @@ public sealed class CertificazioneUnicaService
             TotaleAddizionaleComunale: cedolini.Sum(c => c.AddizionaleComunale),
             TotaleImponibileInps: cedolini.Sum(c => c.ImponibileInps),
             TotaleNetto: cedolini.Sum(c => c.NettoInBusta));
+    }
+
+    /// <summary>
+    /// Costruisce le bozze CU di tutti i dipendenti di un'azienda per l'anno: una CU per ciascun
+    /// rapporto che ha almeno un cedolino archiviato nell'anno. Ordinate per cognome/nome.
+    /// </summary>
+    public async Task<IReadOnlyList<CuBozza>> CostruisciPerAziendaAsync(
+        Guid tenantId, Guid aziendaId, int anno, CancellationToken ct = default)
+    {
+        var rapporti = await _db.Rapporti
+            .Include(r => r.Dipendente)
+            .Where(r => r.TenantId == tenantId && r.AziendaId == aziendaId)
+            .ToListAsync(ct);
+
+        var cedolini = await _db.Cedolini
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno)
+            .ToListAsync(ct);
+        var perRapporto = cedolini.GroupBy(c => c.RapportoLavoroId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var bozze = new List<CuBozza>();
+        foreach (var r in rapporti)
+        {
+            if (!perRapporto.TryGetValue(r.Id, out var cs) || cs.Count == 0)
+                continue; // nessun cedolino nell'anno: nessuna CU da certificare
+
+            var dip = r.Dipendente;
+            bozze.Add(new CuBozza(
+                CodiceFiscale: dip?.CodiceFiscale ?? "",
+                Nominativo: $"{dip?.Cognome} {dip?.Nome}".Trim(),
+                Anno: anno,
+                NumeroCedolini: cs.Count,
+                TotaleImponibileIrpef: cs.Sum(c => c.ImponibileIrpef),
+                TotaleRitenuteIrpef: cs.Sum(c => c.IrpefNetta),
+                TotaleAddizionaleRegionale: cs.Sum(c => c.AddizionaleRegionale),
+                TotaleAddizionaleComunale: cs.Sum(c => c.AddizionaleComunale),
+                TotaleImponibileInps: cs.Sum(c => c.ImponibileInps),
+                TotaleNetto: cs.Sum(c => c.NettoInBusta)));
+        }
+
+        return bozze
+            .OrderBy(b => b.Nominativo, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Export CSV (bozza rivedibile) delle CU: separatore ';', decimali con punto (cultura invariante).
+    /// NON è il file telematico ufficiale — serve al commercialista per controllare i totali certificati
+    /// prima della generazione/controllo col software ufficiale dell'Agenzia Entrate.
+    /// </summary>
+    public static string EsportaCsv(IReadOnlyList<CuBozza> bozze)
+    {
+        static string N(decimal v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+        var sb = new StringBuilder();
+        sb.AppendLine("CodiceFiscale;Nominativo;Anno;ImponibileIrpef;RitenuteIrpef;" +
+                      "AddizionaleRegionale;AddizionaleComunale;ImponibileInps;Netto");
+        foreach (var b in bozze)
+            sb.AppendLine(string.Join(';',
+                b.CodiceFiscale, b.Nominativo, b.Anno, N(b.TotaleImponibileIrpef), N(b.TotaleRitenuteIrpef),
+                N(b.TotaleAddizionaleRegionale), N(b.TotaleAddizionaleComunale),
+                N(b.TotaleImponibileInps), N(b.TotaleNetto)));
+        return sb.ToString();
     }
 }

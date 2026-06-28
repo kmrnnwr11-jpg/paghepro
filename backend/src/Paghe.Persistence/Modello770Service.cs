@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 
 namespace Paghe.Persistence;
@@ -68,5 +70,22 @@ public sealed class Modello770Service
             TotaleAddizionaleRegionale: cedolini.Sum(c => c.AddizionaleRegionale),
             TotaleAddizionaleComunale: cedolini.Sum(c => c.AddizionaleComunale),
             Percipienti: percipienti);
+    }
+
+    /// <summary>
+    /// Export CSV (bozza rivedibile) dei percipienti del 770: separatore ';', decimali con punto
+    /// (cultura invariante). NON è il file telematico ufficiale — serve al commercialista per
+    /// controllare le ritenute certificate prima della generazione/controllo col software ufficiale AE.
+    /// </summary>
+    public static string EsportaCsv(Mod770Bozza bozza)
+    {
+        static string N(decimal v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+        var sb = new StringBuilder();
+        sb.AppendLine("Nominativo;CodiceFiscale;RitenuteIrpef;AddizionaleRegionale;AddizionaleComunale");
+        foreach (var p in bozza.Percipienti)
+            sb.AppendLine(string.Join(';',
+                p.Nominativo, p.CodiceFiscale, N(p.RitenuteIrpef),
+                N(p.AddizionaleRegionale), N(p.AddizionaleComunale)));
+        return sb.ToString();
     }
 }

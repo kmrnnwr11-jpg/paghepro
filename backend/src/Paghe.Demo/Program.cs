@@ -54,3 +54,54 @@ Console.WriteLine(StampaCedolino.Testo(cedolino2,
 var bilancio = RiclassificazioneBilancio.Riclassifica(
     SeedPianoConti.PianoConti(), SeedPianoConti.SaldiEsempio());
 Console.WriteLine(StampaBilancio.Testo(bilancio, "Bilancio SRL di esempio — esercizio 2026"));
+
+// --- Caso 3: ANNO COMPLETO — 12 buste paga → Certificazione Unica → conguaglio -------
+// Simula la prova "dodici mesi + CU" per un dipendente, tutto in memoria (valori di esempio).
+Console.WriteLine("\n=== ANNO COMPLETO 2026 — 12 buste → CU → conguaglio (esempio) ===\n");
+
+var rapportoAnno = new RapportoLavoro
+{
+    CodiceCcnl = "COMMERCIO_TERZIARIO",
+    Livello = "3",
+    Qualifica = Qualifica.Impiegato,
+    NumeroMensilita = 14,
+    ScattiAnzianita = 1,
+    Regione = "Lombardia",
+    CodiceCatastaleComune = "F205", // Milano
+};
+
+decimal impIrpef = 0m, ritenuteIrpef = 0m, addReg = 0m, addCom = 0m, netto = 0m, tfr = 0m;
+Console.WriteLine("Mese  Netto in busta   IRPEF netta");
+for (int mese = 1; mese <= 12; mese++)
+{
+    var c = motore.Calcola(rapportoAnno, new Cartellino { Anno = 2026, Mese = mese });
+    impIrpef += c.ImponibileIrpef;
+    ritenuteIrpef += c.IrpefNetta;
+    addReg += c.AddizionaleRegionale;
+    addCom += c.AddizionaleComunale;
+    netto += c.NettoInBusta;
+    tfr += c.QuotaTfr;
+    Console.WriteLine($" {mese,2}   {c.NettoInBusta,12:N2}   {c.IrpefNetta,10:N2}");
+}
+
+Console.WriteLine("\n--- CERTIFICAZIONE UNICA (CU) 2026 — totali certificati ---");
+Console.WriteLine("Dipendente:                 Mario Rossi");
+Console.WriteLine($"Imponibile IRPEF annuo:     {impIrpef,12:N2}");
+Console.WriteLine($"Ritenute IRPEF operate:     {ritenuteIrpef,12:N2}");
+Console.WriteLine($"Addizionale regionale:      {addReg,12:N2}");
+Console.WriteLine($"Addizionale comunale:       {addCom,12:N2}");
+Console.WriteLine($"TFR accantonato nell'anno:  {tfr,12:N2}");
+Console.WriteLine($"Netto erogato nell'anno:    {netto,12:N2}");
+
+// Conguaglio fiscale di fine anno: ricalcolo IRPEF annua vs trattenute mensili.
+var detrazioneAnnua = CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(impIrpef, 365);
+var conguaglio = ConguaglioFiscale.Calcola(impIrpef, ritenuteIrpef, detrazioneAnnua, parametri.ScaglioniIrpef);
+Console.WriteLine("\n--- CONGUAGLIO FISCALE DI FINE ANNO ---");
+Console.WriteLine($"IRPEF lorda annua:          {conguaglio.IrpefLordaAnnua,12:N2}");
+Console.WriteLine($"Detrazioni lavoro dip.:     {conguaglio.DetrazioniSpettanti,12:N2}");
+Console.WriteLine($"IRPEF netta dovuta:         {conguaglio.IrpefNettaAnnua,12:N2}");
+Console.WriteLine($"Già trattenuta (12 mesi):   {conguaglio.IrpefGiaTrattenuta,12:N2}");
+Console.WriteLine($"Conguaglio:                 {conguaglio.Conguaglio,12:N2}  ({(conguaglio.ADebito ? "a DEBITO" : "a CREDITO")})");
+
+Console.WriteLine("\n(Valori di esempio, non certificati. La CU e i Redditi PF (\"Unico\") ufficiali si");
+Console.WriteLine(" producono/controllano col software ufficiale dell'Agenzia Entrate e si inviano via Entratel.)");

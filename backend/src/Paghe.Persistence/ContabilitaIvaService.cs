@@ -1,9 +1,24 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.Contabilita;
 using Paghe.Core.Fatturazione;
 using Paghe.Persistence.Entities;
 
 namespace Paghe.Persistence;
+
+/// <summary>
+/// Bozza di dichiarazione IVA annuale: somma le liquidazioni periodiche dell'anno (IVA su vendite,
+/// IVA detraibile su acquisti, IVA versata) e il saldo annuo. NON è il file telematico ufficiale —
+/// serve al commercialista per il riepilogo; la dichiarazione va prodotta/controllata col software AE.
+/// </summary>
+public sealed record DichiarazioneIvaAnnualeBozza(
+    int Anno,
+    int NumeroLiquidazioni,
+    decimal TotaleIvaVendite,
+    decimal TotaleIvaAcquistiDetraibile,
+    decimal TotaleIvaDaVersare,
+    decimal SaldoAnnuale);
 
 public sealed record SpesaInput(
     DateOnly Data,
@@ -151,6 +166,40 @@ public sealed class ContabilitaIvaService
         _db.LiquidazioniIva
             .Include(l => l.Righe)
             .FirstOrDefaultAsync(l => l.Id == id && l.TenantId == tenantId, ct);
+
+    /// <summary>
+    /// Costruisce la bozza della dichiarazione IVA annuale aggregando le liquidazioni periodiche
+    /// dell'anno (per data di fine periodo). Isolata per tenant.
+    /// </summary>
+    public async Task<DichiarazioneIvaAnnualeBozza> CostruisciDichiarazioneIvaAnnualeAsync(
+        Guid tenantId, Guid aziendaId, int anno, CancellationToken ct = default)
+    {
+        await VerificaAziendaAsync(tenantId, aziendaId, ct);
+
+        var inizio = new DateOnly(anno, 1, 1);
+        var fine = new DateOnly(anno, 12, 31);
+        var liq = await _db.LiquidazioniIva
+            .Where(l => l.TenantId == tenantId && l.AziendaId == aziendaId && l.Al >= inizio && l.Al <= fine)
+            .ToListAsync(ct);
+
+        decimal vendite = liq.Sum(l => l.IvaVendite);
+        decimal acquisti = liq.Sum(l => l.IvaAcquistiDetraibile);
+        decimal daVersare = liq.Sum(l => l.IvaDaVersare);
+
+        return new DichiarazioneIvaAnnualeBozza(anno, liq.Count, vendite, acquisti, daVersare, vendite - acquisti);
+    }
+
+    /// <summary>Export CSV (bozza rivedibile) del riepilogo IVA annuale. Separatore ';', decimali con punto.</summary>
+    public static string EsportaCsvDichiarazioneIva(DichiarazioneIvaAnnualeBozza b)
+    {
+        static string N(decimal v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+        var sb = new StringBuilder();
+        sb.AppendLine("Anno;NumeroLiquidazioni;IvaVendite;IvaAcquistiDetraibile;IvaDaVersare;SaldoAnnuale");
+        sb.AppendLine(string.Join(';',
+            b.Anno, b.NumeroLiquidazioni, N(b.TotaleIvaVendite), N(b.TotaleIvaAcquistiDetraibile),
+            N(b.TotaleIvaDaVersare), N(b.SaldoAnnuale)));
+        return sb.ToString();
+    }
 
     private async Task VerificaAziendaAsync(Guid tenantId, Guid aziendaId, CancellationToken ct)
     {

@@ -20,6 +20,7 @@ import { Pagamenti } from "./Pagamenti";
 import { Bilancio } from "./Bilancio";
 import { Scadenzario } from "./Scadenzario";
 import { CollegaProvider } from "./CollegaProvider";
+import { CaricaUnilav } from "./CaricaUnilav";
 import { aiutoPerSezione } from "../guida";
 
 type SectionKey =
@@ -840,7 +841,9 @@ function AccountingPanel() {
   ];
 
   return (
-    <div className="workbench-grid">
+    <>
+      <CaricaUnilav />
+      <div className="workbench-grid">
       <section className="glass-card page-card">
         <div className="card-title-row">
           <div>
@@ -872,7 +875,8 @@ function AccountingPanel() {
         <CheckRow label="2 movimenti senza centro costo" />
         <CheckRow label="Ricevute SdI da riconciliare" />
       </aside>
-    </div>
+      </div>
+    </>
   );
 }
 

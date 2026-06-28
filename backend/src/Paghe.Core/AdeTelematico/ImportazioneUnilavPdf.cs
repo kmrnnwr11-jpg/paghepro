@@ -4,62 +4,89 @@ using System.Text.RegularExpressions;
 namespace Paghe.Core.AdeTelematico;
 
 /// <summary>
-/// Riconosce i dati di una Comunicazione Obbligatoria UNILAV dal <b>testo</b> estratto da un PDF
-/// (modello con i quadri "Datore di lavoro", "Lavoratore", "Rapporto di lavoro"). Riusa i DTO
-/// dell'import XML (<see cref="RisultatoImportUnilav"/>).
+/// Riconosce i dati di una Comunicazione Obbligatoria UNILAV dal <b>testo</b> estratto da un PDF.
+/// Gestisce i moduli reali dei vari portali regionali (Emilia-Romagna, Campania/SILF, ...), che
+/// differiscono per: intestazioni di sezione con prefisso ("Sezione 1 - Datore di lavoro") o senza
+/// ("Datore di Lavoro", "Dati Rapporto"), etichette con o senza due punti, e <b>più campi sulla
+/// stessa riga</b> ("Cognome: X Nome: Y"). Riusa i DTO dell'import XML (<see cref="RisultatoImportUnilav"/>).
 ///
-/// <para>È <b>euristico</b>: cerca le etichette note e prende il valore sulla stessa riga (o sulla
-/// riga successiva), delimitando i campi per sezione. I PDF reali variano per portale/versione:
-/// le etichette sono configurate con più alias e vanno affinate su un campione reale. I campi non
-/// riconosciuti finiscono nelle <c>Avvertenze</c> invece di bloccare l'import.</para>
+/// <para>Strategia: individua le sezioni (datore/lavoratore/rapporto) e, per ciascun campo, cerca
+/// l'etichetta come <b>parola intera</b> dentro la sezione, prendendo il valore fino alla prossima
+/// etichetta nota o all'a-capo. È euristico: i campi non riconosciuti diventano avvertenze.</para>
 /// </summary>
 public static class ImportazioneUnilavPdf
 {
+    // Etichette usate per delimitare il valore quando più campi sono sulla stessa riga.
+    private static readonly string[] EtichetteTaglio =
+    {
+        "codice fiscale", "cognome", "nome", "sesso", "data di nascita", "data nascita",
+        "comune di nascita", "comune nascita", "comune di domicilio", "comune domicilio",
+        "provincia di nascita", "provincia di domicilio", "provincia", "cittadinanza",
+        "titolo di soggiorno", "tipo di soggiorno", "motivo titolo di soggiorno", "motivo di soggiorno",
+        "scadenza titolo di soggiorno", "data scadenza titolo soggiorno", "questura di rilascio titolo di soggiorno",
+        "questura", "numero titolo di soggiorno", "numero titolo soggiorno", "livello istruzione",
+        "indirizzo domicilio", "indirizzo di domicilio", "indirizzo",
+        "data inizio", "data fine periodo formativo", "data fine", "ente previdenziale",
+        "codice ente previdenziale", "pat inail", "patinail", "tipologia contrattuale",
+        "lavoro in mobilità", "lavoratore in mobilità", "lavoro stagionale", "socio lavoratore",
+        "orario", "tipo orario", "ore settimanali medie", "ore settimanali",
+        "qualifica professionale", "qualifica", "assunzione obbligatoria", "tipo lavorazione",
+        "categoria lavoratore", "ccnl", "giornate previste", "lavoro in agricoltura",
+        "livello inquadramento", "livello di inquadramento", "retribuzione/compenso", "retribuzione", "compenso",
+        "settore", "comune sede legale", "cap sede legale", "cap sede di lavoro", "indirizzo sede legale",
+        "comune sede di lavoro", "indirizzo sede di lavoro", "telefono", "fax", "email", "e-mail",
+        "recapiti", "ragione sociale", "denominazione",
+    };
+
     public static RisultatoImportUnilav Importa(string testo)
     {
         if (string.IsNullOrWhiteSpace(testo))
             throw new ArgumentException("Il testo dell'UNILAV è vuoto: il PDF non contiene testo leggibile.");
 
         var righe = testo.Replace("\r\n", "\n").Replace('\r', '\n')
-            .Split('\n').Select(r => r.Trim()).Where(r => r.Length > 0).ToArray();
+            .Split('\n').Select(r => r.Trim()).Where(r => r.Length > 0).ToList();
 
-        // Confini delle sezioni per nome di intestazione (se assenti, si cerca su tutto il testo).
-        int iDatore = IndiceIntestazione(righe, "datore di lavoro", "datore");
-        int iLavoratore = IndiceIntestazione(righe, "lavoratore", "dati del lavoratore");
-        int iRapporto = IndiceIntestazione(righe, "rapporto di lavoro", "inizio rapporto", "instaurazione", "dati del rapporto");
+        // Indici delle intestazioni di sezione (qualsiasi tipo = confine di blocco).
+        var intestazioni = new List<(int idx, string tipo)>();
+        for (int i = 0; i < righe.Count; i++)
+        {
+            var t = TipoSezione(righe[i]);
+            if (t is not null)
+                intestazioni.Add((i, t));
+        }
 
-        var datoreBlk = Blocco(righe, iDatore, iLavoratore, iRapporto);
-        var lavoratoreBlk = Blocco(righe, iLavoratore, iDatore, iRapporto);
-        var rapportoBlk = Blocco(righe, iRapporto, iDatore, iLavoratore);
+        string datoreBlk = Blocco(righe, intestazioni, "datore");
+        string lavoratoreBlk = Blocco(righe, intestazioni, "lavoratore");
+        string rapportoBlk = Blocco(righe, intestazioni, "rapporto");
 
         var datore = new DatoreLavoroUnilav(
-            CodiceFiscaleOPiva(Campo(datoreBlk, "codice fiscale", "cod. fiscale", "c.f.", "partita iva", "p. iva")),
-            Campo(datoreBlk, "denominazione", "ragione sociale"));
+            CodiceFiscaleOPiva(Campo(datoreBlk, "codice fiscale", "cod. fiscale", "c.f.", "partita iva", "p. iva", "p.iva")),
+            Campo(datoreBlk, "ragione sociale", "denominazione"));
 
         var lavoratore = new LavoratoreUnilav(
             CodiceFiscale(Campo(lavoratoreBlk, "codice fiscale", "cod. fiscale", "c.f.")),
             Campo(lavoratoreBlk, "cognome"),
             Campo(lavoratoreBlk, "nome"),
             Campo(lavoratoreBlk, "sesso"),
-            Data(Campo(lavoratoreBlk, "data di nascita", "data nascita", "nato il", "nata il")),
-            Campo(lavoratoreBlk, "comune di nascita", "comune nascita", "luogo di nascita"),
+            Data(Campo(lavoratoreBlk, "data di nascita", "data nascita")),
+            Campo(lavoratoreBlk, "comune di nascita", "comune nascita"),
             Campo(lavoratoreBlk, "provincia di nascita", "provincia nascita"),
             Campo(lavoratoreBlk, "cittadinanza"),
-            Campo(lavoratoreBlk, "comune di domicilio", "comune domicilio", "comune di residenza", "comune"),
-            Campo(lavoratoreBlk, "provincia di domicilio", "provincia domicilio", "provincia"),
+            Campo(lavoratoreBlk, "comune di domicilio", "comune domicilio", "comune di residenza"),
+            Campo(lavoratoreBlk, "provincia di domicilio", "provincia domicilio"),
             Campo(lavoratoreBlk, "c.a.p.", "cap"));
 
         var rapporto = new RapportoUnilav(
             Data(Campo(rapportoBlk, "data inizio", "data di inizio", "data assunzione", "decorrenza")),
             Data(Campo(rapportoBlk, "data fine", "data di fine", "data cessazione", "data termine")),
-            Campo(rapportoBlk, "tipologia contrattuale", "tipo contratto", "tipo di contratto", "tipologia"),
-            Campo(rapportoBlk, "c.c.n.l.", "ccnl", "contratto collettivo", "contratto applicato"),
+            Campo(rapportoBlk, "tipologia contrattuale", "tipo contratto", "tipo di contratto"),
+            Campo(rapportoBlk, "ccnl", "c.c.n.l.", "contratto collettivo"),
             Campo(rapportoBlk, "qualifica professionale", "qualifica"),
-            Campo(rapportoBlk, "livello di inquadramento", "livello"),
-            Campo(rapportoBlk, "tipo orario", "orario", "tipologia oraria"),
-            Numero(Campo(rapportoBlk, "percentuale part-time", "percentuale part time", "perc. part-time")),
-            Numero(Campo(rapportoBlk, "ore settimanali", "ore medie settimanali")),
-            Numero(Campo(rapportoBlk, "retribuzione", "retribuzione prevista", "retribuzione annua")));
+            Campo(rapportoBlk, "livello di inquadramento", "livello inquadramento", "livello"),
+            Campo(rapportoBlk, "tipo orario", "orario"),
+            Numero(Campo(rapportoBlk, "percentuale part-time", "percentuale part time")),
+            Numero(Campo(rapportoBlk, "ore settimanali medie", "ore settimanali", "ore medie settimanali")),
+            Numero(Campo(rapportoBlk, "retribuzione/compenso", "retribuzione", "compenso")));
 
         var avvertenze = new List<string>();
         if (string.IsNullOrWhiteSpace(lavoratore.CodiceFiscale))
@@ -68,8 +95,8 @@ public static class ImportazioneUnilavPdf
             avvertenze.Add("Datore di lavoro non riconosciuto nel PDF: verificare e completare.");
         if (string.IsNullOrWhiteSpace(rapporto.Ccnl))
             avvertenze.Add("CCNL non riconosciuto: andrà indicato manualmente per il calcolo del cedolino.");
-        if (string.IsNullOrWhiteSpace(rapporto.Livello))
-            avvertenze.Add("Livello di inquadramento non riconosciuto: andrà indicato manualmente.");
+        if (string.IsNullOrWhiteSpace(rapporto.Livello) || EVuotoLogico(rapporto.Livello))
+            avvertenze.Add("Livello di inquadramento non riconosciuto o non dichiarato: andrà indicato manualmente.");
 
         return new RisultatoImportUnilav
         {
@@ -80,54 +107,67 @@ public static class ImportazioneUnilavPdf
         };
     }
 
-    /// <summary>Indice della prima riga che contiene una delle intestazioni, o -1.</summary>
-    private static int IndiceIntestazione(string[] righe, params string[] intestazioni)
+    /// <summary>Classifica una riga come intestazione di sezione (datore/lavoratore/rapporto/altro) o null.</summary>
+    private static string? TipoSezione(string riga)
     {
-        for (int i = 0; i < righe.Length; i++)
-        {
-            string r = righe[i].ToLowerInvariant();
-            if (intestazioni.Any(h => r.Contains(h)))
-                return i;
-        }
-        return -1;
+        // Toglie un eventuale prefisso "Sezione N - ".
+        string n = Regex.Replace(riga.Trim(), @"(?i)^sezione\s+\d+\s*[-–]\s*", "").Trim().TrimEnd(':').Trim().ToLowerInvariant();
+
+        if (n.Contains("mittente")) return "altro";                       // "Dati Mittente (se diverso da datore di lavoro)"
+        if (n == "datore di lavoro") return "datore";
+        if (n == "lavoratore") return "lavoratore";
+        if (n is "dati rapporto" or "rapporto di lavoro" or "inizio" or "dati del rapporto" || n.StartsWith("inizio rapporto"))
+            return "rapporto";
+        if (n is "evento" or "rappresentante legale" or "proroga" or "sede legale" or "sede lavoro"
+            or "dati invio" or "datore di lavoro estero" || n.StartsWith("dati invio"))
+            return "altro";
+        return null;
     }
 
-    /// <summary>Righe di una sezione: dall'intestazione fino alla successiva intestazione di sezione.</summary>
-    private static string[] Blocco(string[] righe, int inizio, params int[] altreSezioni)
+    /// <summary>Testo della sezione richiesta: dalla sua intestazione fino alla successiva intestazione.</summary>
+    private static string Blocco(List<string> righe, List<(int idx, string tipo)> intestazioni, string tipo)
     {
-        if (inizio < 0)
-            return righe; // nessuna intestazione: si cerca su tutto il testo
-        int fine = altreSezioni.Where(i => i > inizio).DefaultIfEmpty(righe.Length).Min();
-        return righe[inizio..fine];
+        (int idx, string tipo) h = intestazioni.FirstOrDefault(x => x.tipo == tipo, (-1, tipo));
+        if (h.idx < 0)
+            return string.Join('\n', righe); // sezione non trovata: si cerca su tutto il testo
+        int fine = intestazioni.Where(x => x.idx > h.idx).Select(x => x.idx).DefaultIfEmpty(righe.Count).Min();
+        return string.Join('\n', righe.GetRange(h.idx, fine - h.idx));
     }
 
     /// <summary>
-    /// Valore associato a una delle etichette: resto della riga dopo l'etichetta, o riga successiva
-    /// se vuoto. Cerca <b>per etichetta</b> (in ordine di priorità) su tutto il blocco, così le
-    /// etichette specifiche vincono sulle intestazioni generiche di sezione.
+    /// Valore di un campo: trova un'etichetta (parola intera) nel blocco e prende il testo fino alla
+    /// prossima etichetta nota o all'a-capo (gestisce più campi sulla stessa riga).
     /// </summary>
-    private static string? Campo(string[] blocco, params string[] etichette)
+    private static string? Campo(string blocco, params string[] etichette)
     {
-        foreach (string et in etichette)
+        foreach (var et in etichette)
         {
-            for (int i = 0; i < blocco.Length; i++)
-            {
-                string riga = blocco[i];
-                // L'etichetta deve aprire la riga (come nei moduli UNILAV): evita falsi positivi
-                // come "nome" dentro "Cognome".
-                if (!riga.ToLowerInvariant().StartsWith(et, StringComparison.Ordinal)) continue;
+            var m = Regex.Match(blocco, $@"(?<![\p{{L}}]){Regex.Escape(et)}(?=[\s:/]|$)\s*:?\s*", RegexOptions.IgnoreCase);
+            if (!m.Success) continue;
 
-                string dopo = riga[et.Length..].TrimStart(' ', ':', '-', '.', '\t', '=');
-                if (dopo.Length > 0)
-                    return dopo.Trim();
-                if (i + 1 < blocco.Length)
-                    return blocco[i + 1].Trim();
+            int start = m.Index + m.Length;
+            int end = blocco.IndexOf('\n', start);
+            if (end < 0) end = blocco.Length;
+
+            string resto = blocco[start..end];
+            int taglia = resto.Length;
+            foreach (var altra in EtichetteTaglio)
+            {
+                if (string.Equals(altra, et, StringComparison.OrdinalIgnoreCase)) continue;
+                var ma = Regex.Match(resto, $@"(?<![\p{{L}}]){Regex.Escape(altra)}(?=[\s:/]|$)", RegexOptions.IgnoreCase);
+                if (ma.Success && ma.Index < taglia) taglia = ma.Index;
             }
+
+            string val = resto[..taglia].Trim().Trim(':', '-').Trim();
+            if (val.Length > 0) return val;
         }
         return null;
     }
 
-    /// <summary>Estrae un codice fiscale a 16 caratteri dal testo passato.</summary>
+    private static bool EVuotoLogico(string? v) =>
+        v is not null && (v.StartsWith("ND", StringComparison.OrdinalIgnoreCase)
+            || v.Contains("non dichiarat", StringComparison.OrdinalIgnoreCase));
+
     private static string? CodiceFiscale(string? valore)
     {
         if (string.IsNullOrWhiteSpace(valore)) return null;
@@ -135,7 +175,6 @@ public static class ImportazioneUnilavPdf
         return m.Success ? m.Value.ToUpperInvariant() : valore.Trim();
     }
 
-    /// <summary>Estrae un codice fiscale (16) o una partita IVA (11 cifre) dal testo passato.</summary>
     private static string? CodiceFiscaleOPiva(string? valore)
     {
         if (string.IsNullOrWhiteSpace(valore)) return null;

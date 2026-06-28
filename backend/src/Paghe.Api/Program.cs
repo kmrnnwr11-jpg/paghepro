@@ -71,6 +71,7 @@ builder.Services.AddScoped<RedditiPfService>();
 builder.Services.AddScoped<IrapService>();
 builder.Services.AddScoped<IresService>();
 builder.Services.AddScoped<ImuService>();
+builder.Services.AddScoped<IntrastatService>();
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
@@ -1634,6 +1635,7 @@ app.MapRedditiPf();
 app.MapIrap();
 app.MapIres();
 app.MapImu();
+app.MapIntrastat();
 app.MapImportUnilavPdf(); // UNILAV: carica il PDF → registra datore + lavoratore + rapporto
 
 app.Run();

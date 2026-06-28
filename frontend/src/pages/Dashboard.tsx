@@ -11,6 +11,7 @@ import { RedditiPf } from "./RedditiPf";
 import { Irap } from "./Irap";
 import { Ires } from "./Ires";
 import { Imu } from "./Imu";
+import { Intrastat } from "./Intrastat";
 import { IvaAnnuale } from "./IvaAnnuale";
 import { Presenze } from "./Presenze";
 import { Cedolini } from "./Cedolini";
@@ -50,6 +51,7 @@ type SectionKey =
   | "irap"
   | "ires"
   | "imu"
+  | "intrastat"
   | "impostazioni"
   | "collega-sdi"
   | "utenti";
@@ -86,6 +88,7 @@ const payrollNav: NavItem[] = [
   { key: "irap", icon: "🏭", label: "IRAP" },
   { key: "ires", icon: "🏢", label: "IRES società" },
   { key: "imu", icon: "🏠", label: "IMU" },
+  { key: "intrastat", icon: "🌍", label: "Intrastat" },
 ];
 
 const adminNav: NavItem[] = [
@@ -137,6 +140,7 @@ const sectionTitle: Record<SectionKey, string> = {
   irap: "IRAP",
   ires: "IRES — Redditi società",
   imu: "IMU — immobili",
+  intrastat: "Intrastat — cessioni intra-UE",
   impostazioni: "Impostazioni",
   "collega-sdi": "Collega Fatturazione Elettronica",
   utenti: "Utenti e permessi",
@@ -753,6 +757,7 @@ function ModuleScreen({
   if (active === "irap") return <Irap />;
   if (active === "ires") return <Ires />;
   if (active === "imu") return <Imu />;
+  if (active === "intrastat") return <Intrastat />;
   if (active === "impostazioni") return <SettingsPanel />;
   if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;

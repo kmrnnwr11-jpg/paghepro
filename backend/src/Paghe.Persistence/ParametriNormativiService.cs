@@ -64,15 +64,17 @@ public sealed class ParametriNormativiService
                 Id = Guid.NewGuid(), Anno = p.Anno, CodiceCatastale = codice, Aliquota = aliquota,
             });
 
-        var ccnl = Seed.CcnlCommercio2026();
-        _db.Ccnl.Add(new CcnlEntity { Codice = ccnl.Codice, Descrizione = ccnl.Descrizione });
-        foreach (var liv in ccnl.Livelli)
-            _db.CcnlLivelli.Add(new CcnlLivelloEntity
-            {
-                Id = Guid.NewGuid(), CcnlCodice = ccnl.Codice, Anno = p.Anno,
-                Livello = liv.Codice, Descrizione = liv.Descrizione,
-                MinimoTabellare = liv.MinimoTabellare, Edr = liv.Edr, ImportoScatto = liv.ImportoScatto,
-            });
+        foreach (var ccnl in Seed.TuttiICcnl2026())
+        {
+            _db.Ccnl.Add(new CcnlEntity { Codice = ccnl.Codice, Descrizione = ccnl.Descrizione });
+            foreach (var liv in ccnl.Livelli)
+                _db.CcnlLivelli.Add(new CcnlLivelloEntity
+                {
+                    Id = Guid.NewGuid(), CcnlCodice = ccnl.Codice, Anno = p.Anno,
+                    Livello = liv.Codice, Descrizione = liv.Descrizione,
+                    MinimoTabellare = liv.MinimoTabellare, Edr = liv.Edr, ImportoScatto = liv.ImportoScatto,
+                });
+        }
 
         await _db.SaveChangesAsync(ct);
     }

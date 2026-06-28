@@ -29,6 +29,45 @@ public static class Seed
             new LivelloCcnl("7",      "Settimo livello",  909.78m, 10.33m, 19.92m),
         });
 
+    // --- Altri CCNL (minimi tabellari di ESEMPIO, da validare con il Consulente del Lavoro) ---
+    // Servono come destinazione della mappatura dei CCNL letti dagli UNILAV dei vari settori.
+
+    private static Ccnl CcnlEsempio(string codice, string descrizione, params (string liv, string desc, decimal min)[] livelli) =>
+        new(codice, descrizione, livelli.Select(l => new LivelloCcnl(l.liv, l.desc, l.min, 0m, 25m)));
+
+    public static Ccnl CcnlAgricolturaOperai2026() => CcnlEsempio(
+        "AGRICOLTURA_OPERAI", "CCNL Operai Agricoli e Florovivaisti — valori di esempio",
+        ("1", "Specializzato super", 1480m), ("2", "Specializzato", 1390m),
+        ("3", "Qualificato", 1300m), ("4", "Comune", 1220m));
+
+    public static Ccnl CcnlTrasportiLogistica2026() => CcnlEsempio(
+        "TRASPORTI_LOGISTICA", "CCNL Logistica, Trasporto e Spedizione — valori di esempio",
+        ("1", "Primo livello", 1900m), ("2", "Secondo livello", 1750m), ("3", "Terzo livello", 1600m),
+        ("4", "Quarto livello", 1480m), ("5", "Quinto livello", 1380m), ("6", "Sesto livello", 1300m));
+
+    public static Ccnl CcnlEdilizia2026() => CcnlEsempio(
+        "EDILIZIA_INDUSTRIA", "CCNL Edilizia Industria — valori di esempio",
+        ("1", "Operaio comune", 1300m), ("2", "Operaio qualificato", 1420m),
+        ("3", "Operaio specializzato", 1560m), ("4", "Quarto livello", 1700m));
+
+    public static Ccnl CcnlMetalmeccanici2026() => CcnlEsempio(
+        "METALMECCANICI_INDUSTRIA", "CCNL Metalmeccanici Industria — valori di esempio",
+        ("1", "Primo livello", 1380m), ("2", "Secondo livello", 1520m), ("3", "Terzo livello", 1660m),
+        ("4", "Quarto livello", 1780m), ("5", "Quinto livello", 1900m), ("6", "Sesto livello", 2050m),
+        ("7", "Settimo livello", 2200m));
+
+    public static Ccnl CcnlTurismo2026() => CcnlEsempio(
+        "TURISMO_PUBBLICI_ESERCIZI", "CCNL Turismo / Pubblici Esercizi — valori di esempio",
+        ("1", "Primo livello", 1700m), ("2", "Secondo livello", 1560m), ("3", "Terzo livello", 1430m),
+        ("4", "Quarto livello", 1340m), ("5", "Quinto livello", 1270m), ("6", "Sesto livello", 1210m));
+
+    /// <summary>Tutti i CCNL d'esempio caricati nel database (Commercio + altri settori).</summary>
+    public static IEnumerable<Ccnl> TuttiICcnl2026() => new[]
+    {
+        CcnlCommercio2026(), CcnlAgricolturaOperai2026(), CcnlTrasportiLogistica2026(),
+        CcnlEdilizia2026(), CcnlMetalmeccanici2026(), CcnlTurismo2026(),
+    };
+
     /// <summary>Parametri normativi nazionali 2026 (valori di esempio).</summary>
     public static ParametriNormativi Parametri2026() => new()
     {

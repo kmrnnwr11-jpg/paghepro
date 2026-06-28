@@ -86,6 +86,8 @@ export interface ImuRiga {
   moltiplicatore: number; baseImponibile: number; esente: boolean; imposta: number;
 }
 export interface ImuBozza { anno: number; totaleImposta: number; righe: ImuRiga[]; }
+export interface IntrastatRiga { paese: string; numeroOperazioni: number; totaleImponibile: number; }
+export interface IntrastatBozza { anno: number; totaleCessioni: number; righe: IntrastatRiga[]; }
 export interface IresBozza {
   anno: number; haBilancio: boolean; utileEsercizio: number; imposteBilancio: number;
   redditoAnteImposte: number; variazioniNette: number; baseImponibile: number; aliquota: number; imposta: number;
@@ -257,6 +259,8 @@ export const api = {
   // --- Dichiarazioni: Fase 6 IMU (immobili + calcolo) ---
   imuBozza: (aziendaId: string, anno: number) =>
     req<ImuBozza>(`/api/aziende/${aziendaId}/imu/${anno}`),
+  intrastatBozza: (aziendaId: string, anno: number) =>
+    req<IntrastatBozza>(`/api/aziende/${aziendaId}/intrastat/${anno}`),
   aggiungiImmobile: (aziendaId: string, i: ImmobileInputReq) =>
     req<{ id: string }>(`/api/aziende/${aziendaId}/immobili`, { method: "POST", body: JSON.stringify(i) }),
   eliminaImmobile: (id: string) =>

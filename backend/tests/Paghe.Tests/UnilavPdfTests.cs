@@ -145,6 +145,34 @@ public sealed class UnilavPdfTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Servizio_ConAziendaScelta_AttaccaAQuellaSenzaCrearne()
+    {
+        var tenant = Guid.NewGuid();
+        Guid aziendaSceltaId;
+        await using (var db = NuovoContesto())
+        {
+            var az = await new AziendeService(db).CreaAsync(
+                tenant, new Paghe.Persistence.Entities.AziendaEntity { RagioneSociale = "Studio Cliente Srl" });
+            aziendaSceltaId = az.Id;
+        }
+
+        EsitoImportUnilav esito;
+        await using (var db = NuovoContesto())
+            esito = await new ImportUnilavService(db)
+                .ImportaDaTestoAsync(tenant, TestoUnilav, aziendaIdScelto: aziendaSceltaId);
+
+        Assert.False(esito.AziendaCreata);
+        Assert.Equal(aziendaSceltaId, esito.Azienda.Id);
+
+        await using (var db = NuovoContesto())
+        {
+            // Nessuna azienda nuova creata dal datore del PDF: resta solo quella scelta.
+            Assert.Equal(1, await db.Aziende.CountAsync(a => a.TenantId == tenant));
+            Assert.Equal(1, await db.Rapporti.CountAsync(r => r.TenantId == tenant && r.AziendaId == aziendaSceltaId));
+        }
+    }
+
     private static byte[] GeneraPdf(string testo) =>
         Document.Create(container =>
         {

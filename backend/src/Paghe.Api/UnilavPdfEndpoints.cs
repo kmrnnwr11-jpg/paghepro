@@ -39,8 +39,10 @@ public static class UnilavPdfEndpoints
 
             try
             {
+                // Azienda scelta dall'utente (opzionale): se assente, il backend trova/crea il datore del PDF.
+                Guid? aziendaId = Guid.TryParse(form["aziendaId"], out var aid) ? aid : null;
                 var esito = await new ImportUnilavService(db)
-                    .ImportaDaTestoAsync(Tenant(user), testo, form["ccnlDefault"], form["livelloDefault"]);
+                    .ImportaDaTestoAsync(Tenant(user), testo, form["ccnlDefault"], form["livelloDefault"], aziendaId);
 
                 var d = esito.Rapporto.Dipendente!;
                 return Results.Ok(new

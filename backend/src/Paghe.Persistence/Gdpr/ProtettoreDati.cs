@@ -28,12 +28,29 @@ public sealed class ProtettoreDati
 
     private readonly byte[] _chiave; // 32 byte (AES-256)
 
-    public ProtettoreDati(string passphrase)
+    public ProtettoreDati(string passphrase) : this(passphrase, AmbienteProduzione()) { }
+
+    /// <summary>
+    /// Variante con l'ambiente esplicito (testabile). In produzione la <b>passphrase di sviluppo</b>
+    /// è rifiutata: se <c>PAGHE_DATA_KEY</c> non è impostata l'avvio fallisce (fail-fast), così i dati
+    /// non vengono mai cifrati con una chiave nota. Stessa logica della chiave JWT.
+    /// </summary>
+    public ProtettoreDati(string passphrase, bool produzione)
     {
         if (string.IsNullOrEmpty(passphrase))
             throw new ArgumentException("La passphrase di cifratura non può essere vuota.", nameof(passphrase));
+        if (produzione && passphrase == PassphraseSviluppo)
+            throw new InvalidOperationException(
+                "PAGHE_DATA_KEY mancante in produzione: configurare una chiave di cifratura robusta " +
+                "tramite la variabile d'ambiente PAGHE_DATA_KEY (da secret). La passphrase di " +
+                "sviluppo non è ammessa in ambiente Production.");
         _chiave = SHA256.HashData(Encoding.UTF8.GetBytes(passphrase));
     }
+
+    private static bool AmbienteProduzione() =>
+        string.Equals(
+            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+            "Production", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Istanza condivisa, costruita dalla variabile d'ambiente o dalla passphrase di sviluppo.</summary>
     public static ProtettoreDati Corrente { get; } = new(

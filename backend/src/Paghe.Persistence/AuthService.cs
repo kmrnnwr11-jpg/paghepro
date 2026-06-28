@@ -97,6 +97,11 @@ public sealed class AuthService
     {
         var utente = await _db.Utenti.FirstOrDefaultAsync(u => u.Id == utenteId, ct)
             ?? throw new ArgumentException("Utente inesistente.");
+        // Sicurezza: non reiniziare l'enrollment se il 2FA è già attivo, altrimenti una sessione
+        // rubata potrebbe disattivarlo. Per riconfigurarlo serve prima DisattivaDueFattoriAsync (con codice).
+        if (utente.DueFattoriAttivo)
+            throw new InvalidOperationException(
+                "Il 2FA è già attivo: disattivalo con un codice valido prima di riconfigurarlo.");
 
         var segreto = Totp.GeneraSegreto();
         utente.SegretoTotp = segreto;

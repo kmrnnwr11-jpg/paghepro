@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Paghe.Persistence.Entities;
+using Paghe.Persistence.Gdpr;
 
 namespace Paghe.Persistence;
 
@@ -52,6 +53,16 @@ public class PagheDbContext : DbContext
 
     // Configurazione canale SdI self-service (un record per tenant)
     public DbSet<ConfigurazioneSdiEntity> ConfigurazioniSdi => Set<ConfigurazioneSdiEntity>();
+
+    // Audit log (GDPR / tracciabilità): chi/cosa/quando, scritto dall'interceptor
+    public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        // Audit automatico di ogni inserimento/modifica/cancellazione tenant-scoped.
+        optionsBuilder.AddInterceptors(new Gdpr.AuditSaveChangesInterceptor());
+        base.OnConfiguring(optionsBuilder);
+    }
 
     /// <summary>
     /// Compatibilità per il database SQLite di sviluppo creato con EnsureCreated:
@@ -378,10 +389,30 @@ public class PagheDbContext : DbContext
             CREATE INDEX IF NOT EXISTS "IX_RigheBilancio_BilancioId"
                 ON "RigheBilancio" ("BilancioId");
             """);
+
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "AuditLog" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_AuditLog" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "UtenteId" TEXT NULL,
+                "Azione" TEXT NOT NULL,
+                "Entita" TEXT NOT NULL,
+                "ChiaveEntita" TEXT NOT NULL,
+                "CampiModificati" TEXT NULL,
+                "QuandoUtc" TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_AuditLog_TenantId_QuandoUtc"
+                ON "AuditLog" ("TenantId", "QuandoUtc");
+            CREATE INDEX IF NOT EXISTS "IX_AuditLog_TenantId_Entita"
+                ON "AuditLog" ("TenantId", "Entita");
+            """);
     }
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
+        // GDPR: cifratura applicativa a riposo dei dati personali sensibili (IBAN).
+        var protettore = ProtettoreDati.Corrente;
+
         mb.Entity<AziendaEntity>(e =>
         {
             e.HasKey(x => x.Id);
@@ -476,6 +507,7 @@ public class PagheDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.CodiceFiscale }).IsUnique();
+            e.Property(x => x.Iban).HasConversion(protettore.ConverterStringa()); // GDPR: cifrato a riposo
             e.HasMany(x => x.Rapporti).WithOne(r => r.Dipendente!).HasForeignKey(r => r.DipendenteId);
         });
         mb.Entity<RapportoLavoroEntity>(e =>
@@ -590,6 +622,7 @@ public class PagheDbContext : DbContext
             e.HasIndex(x => new { x.TenantId, x.AziendaId, x.Anno, x.Mese }).IsUnique();
             e.HasIndex(x => new { x.TenantId, x.Stato, x.DataScadenza });
             e.Property(x => x.Importo).HasPrecision(15, 2);
+            e.Property(x => x.Iban).HasConversion(protettore.ConverterStringa()); // GDPR: cifrato a riposo
             e.HasOne(x => x.Azienda).WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -636,6 +669,14 @@ public class PagheDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Importo).HasPrecision(15, 2);
+        });
+
+        // --- Audit log (GDPR / tracciabilità) ---
+        mb.Entity<AuditLogEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.QuandoUtc });
+            e.HasIndex(x => new { x.TenantId, x.Entita });
         });
     }
 }

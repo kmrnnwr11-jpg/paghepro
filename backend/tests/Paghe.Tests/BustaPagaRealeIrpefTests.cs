@@ -22,8 +22,10 @@ public sealed class BustaPagaRealeIrpefTests
     [InlineData(2124.50, 488.64)] // maggio
     [InlineData(2198.77, 505.72)] // giugno
     [InlineData(1968.90, 452.85)] // luglio
-    // Multiservizi/Pulizie, Operaio liv. 3 — maggio 2026:
-    [InlineData(1523.24, 350.35)]
+    // Multiservizi/Pulizie, Operaio liv. 3 — 2026 (marzo, aprile, maggio):
+    [InlineData(1614.87, 371.42)] // marzo
+    [InlineData(1657.23, 381.16)] // aprile
+    [InlineData(1523.24, 350.35)] // maggio
     public void IrpefLorda_RiproduceLeBusteReali(double imponibileMese, double irpefLordaRealeMese)
     {
         var scaglioni = Seed.Parametri2026().ScaglioniIrpef;

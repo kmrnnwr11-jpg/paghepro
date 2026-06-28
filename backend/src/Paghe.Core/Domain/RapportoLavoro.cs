@@ -40,4 +40,11 @@ public sealed class RapportoLavoro
 
     /// <summary>Giorni dell'anno per cui spettano le detrazioni (default anno intero).</summary>
     public int GiorniDetrazioneAnno { get; init; } = 365;
+
+    /// <summary>
+    /// L'azienda ha più di 15 dipendenti (rientra nella CIG): la quota INPS c/dipendente è maggiorata
+    /// dello 0,30% (contributo aggiuntivo), es. 9,19% → 9,49%. È una regola <b>generale</b> legata alla
+    /// dimensione dell'azienda, non al settore/CCNL.
+    /// </summary>
+    public bool AziendaOltre15Dipendenti { get; init; }
 }

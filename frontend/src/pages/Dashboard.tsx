@@ -10,6 +10,7 @@ import { Modello770 } from "./Modello770";
 import { RedditiPf } from "./RedditiPf";
 import { Irap } from "./Irap";
 import { Ires } from "./Ires";
+import { Imu } from "./Imu";
 import { IvaAnnuale } from "./IvaAnnuale";
 import { Presenze } from "./Presenze";
 import { Cedolini } from "./Cedolini";
@@ -48,6 +49,7 @@ type SectionKey =
   | "redditi-pf"
   | "irap"
   | "ires"
+  | "imu"
   | "impostazioni"
   | "collega-sdi"
   | "utenti";
@@ -83,6 +85,7 @@ const payrollNav: NavItem[] = [
   { key: "redditi-pf", icon: "🧑‍💼", label: "Redditi PF / 730" },
   { key: "irap", icon: "🏭", label: "IRAP" },
   { key: "ires", icon: "🏢", label: "IRES società" },
+  { key: "imu", icon: "🏠", label: "IMU" },
 ];
 
 const adminNav: NavItem[] = [
@@ -133,6 +136,7 @@ const sectionTitle: Record<SectionKey, string> = {
   "redditi-pf": "Redditi PF / 730",
   irap: "IRAP",
   ires: "IRES — Redditi società",
+  imu: "IMU — immobili",
   impostazioni: "Impostazioni",
   "collega-sdi": "Collega Fatturazione Elettronica",
   utenti: "Utenti e permessi",
@@ -748,6 +752,7 @@ function ModuleScreen({
   if (active === "redditi-pf") return <RedditiPf />;
   if (active === "irap") return <Irap />;
   if (active === "ires") return <Ires />;
+  if (active === "imu") return <Imu />;
   if (active === "impostazioni") return <SettingsPanel />;
   if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;

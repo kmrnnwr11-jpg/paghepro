@@ -47,6 +47,25 @@ Al primo avvio il software **crea automaticamente tutte le tabelle** su Supabase
 
 > Se per qualche motivo non rileva Postgres, forzalo: `export Database__Provider=Postgres`.
 
+### Metodo pulito consigliato in locale: `dotnet user-secrets`
+Tiene la stringa (con la password) in un file **fuori dal progetto** (`~/.microsoft/usersecrets/…`),
+letto in automatico **in sviluppo** — non finisce mai nel codice né nei commit.
+
+```bash
+cd backend
+# (una tantum) imposta la connection string come secret locale:
+dotnet user-secrets set "ConnectionStrings:Default" \
+  "Host=aws-0-eu-west-1.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.<ref>;Password=<LA-TUA-PASSWORD>;SSL Mode=Require;Trust Server Certificate=true" \
+  --project src/Paghe.Api
+
+# avvia (il profilo di sviluppo carica i user-secrets e si collega a Supabase):
+dotnet run --project src/Paghe.Api -c Release
+```
+- Vedi cosa hai salvato: `dotnet user-secrets list --project src/Paghe.Api`
+- Rimuovi: `dotnet user-secrets remove "ConnectionStrings:Default" --project src/Paghe.Api`
+- ⚠️ I user-secrets valgono **solo in sviluppo**. In **produzione** usa le variabili d'ambiente/secret
+  dell'host (vedi Passo 5).
+
 ## Passo 4 — Verifica che funzioni
 - Su Supabase: **Table editor** → devi vedere le tabelle (`Aziende`, `Cedolini`, `Utenti`, …).
 - Oppure apri <http://localhost:5171/swagger> e prova un endpoint.

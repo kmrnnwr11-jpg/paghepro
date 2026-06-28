@@ -77,6 +77,15 @@ export interface IrapBozza {
   anno: number; ricavi: number; costiEsterni: number; costoLavoroDeducibile: number;
   baseImponibile: number; aliquota: number; imposta: number;
 }
+export interface ImmobileInputReq {
+  descrizione: string; categoriaCatastale: string; renditaCatastale: number;
+  percentualePossesso: number; mesiPossesso: number; aliquotaPerMille: number; abitazionePrincipale: boolean;
+}
+export interface ImuRiga {
+  id: string; descrizione: string; categoriaCatastale: string; renditaCatastale: number;
+  moltiplicatore: number; baseImponibile: number; esente: boolean; imposta: number;
+}
+export interface ImuBozza { anno: number; totaleImposta: number; righe: ImuRiga[]; }
 export interface IresBozza {
   anno: number; haBilancio: boolean; utileEsercizio: number; imposteBilancio: number;
   redditoAnteImposte: number; variazioniNette: number; baseImponibile: number; aliquota: number; imposta: number;
@@ -244,6 +253,14 @@ export const api = {
   // --- Dichiarazioni: Fase 5 IRES (Redditi società) bozza ---
   iresBozza: (aziendaId: string, anno: number, variazioni: number) =>
     req<IresBozza>(`/api/aziende/${aziendaId}/ires/${anno}?variazioni=${variazioni}`),
+
+  // --- Dichiarazioni: Fase 6 IMU (immobili + calcolo) ---
+  imuBozza: (aziendaId: string, anno: number) =>
+    req<ImuBozza>(`/api/aziende/${aziendaId}/imu/${anno}`),
+  aggiungiImmobile: (aziendaId: string, i: ImmobileInputReq) =>
+    req<{ id: string }>(`/api/aziende/${aziendaId}/immobili`, { method: "POST", body: JSON.stringify(i) }),
+  eliminaImmobile: (id: string) =>
+    req<void>(`/api/immobili/${id}`, { method: "DELETE" }),
 
   // --- Fatturazione e trasmissione SdI ---
   fatture: (aziendaId: string) => req<Fattura[]>(`/api/aziende/${aziendaId}/fatture`),

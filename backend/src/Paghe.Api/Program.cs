@@ -70,6 +70,7 @@ builder.Services.AddScoped<PresenzeService>();
 builder.Services.AddScoped<RedditiPfService>();
 builder.Services.AddScoped<IrapService>();
 builder.Services.AddScoped<IresService>();
+builder.Services.AddScoped<ImuService>();
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
@@ -208,6 +209,21 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
     db.Database.EnsureCreated();
     db.EnsureSchemaSviluppoCompatibile();
+
+    // PostgreSQL/Supabase: EnsureCreated NON crea le tabelle se il database ne possiede già altre
+    // (Supabase arriva con i propri schemi auth/storage/realtime). Se le tabelle dell'app mancano,
+    // le creiamo esplicitamente con lo script del modello generato da EF Core.
+    if (db.Database.IsNpgsql())
+    {
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open) conn.Open();
+        using var check = conn.CreateCommand();
+        check.CommandText = "SELECT to_regclass('public.\"ParametriAnno\"') IS NOT NULL";
+        var tabelleAppPresenti = check.ExecuteScalar() is bool b && b;
+        if (!tabelleAppPresenti)
+            db.Database.ExecuteSqlRaw(db.Database.GenerateCreateScript());
+    }
+
     scope.ServiceProvider.GetRequiredService<ParametriNormativiService>()
         .ImportaSeedSeVuotoAsync().GetAwaiter().GetResult();
 }
@@ -1617,6 +1633,7 @@ app.MapPresenze();
 app.MapRedditiPf();
 app.MapIrap();
 app.MapIres();
+app.MapImu();
 app.MapImportUnilavPdf(); // UNILAV: carica il PDF → registra datore + lavoratore + rapporto
 
 app.Run();

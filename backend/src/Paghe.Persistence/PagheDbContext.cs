@@ -58,6 +58,9 @@ public class PagheDbContext : DbContext
     // Dichiarazione Redditi PF / 730 (input manuali per rapporto/anno)
     public DbSet<DichiarazioneRedditiPfEntity> DichiarazioniRedditiPf => Set<DichiarazioneRedditiPfEntity>();
 
+    // Immobili per il calcolo IMU
+    public DbSet<ImmobileEntity> Immobili => Set<ImmobileEntity>();
+
     // Audit log (GDPR / tracciabilità): chi/cosa/quando, scritto dall'interceptor
     public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
 
@@ -270,6 +273,24 @@ public class PagheDbContext : DbContext
             );
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_DichiarazioniRedditiPf_Tenant_Rapporto_Anno"
                 ON "DichiarazioniRedditiPf" ("TenantId", "RapportoLavoroId", "Anno");
+            """);
+
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "Immobili" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Immobili" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "AziendaId" TEXT NOT NULL,
+                "Descrizione" TEXT NOT NULL,
+                "CategoriaCatastale" TEXT NOT NULL,
+                "RenditaCatastale" TEXT NOT NULL,
+                "PercentualePossesso" TEXT NOT NULL,
+                "MesiPossesso" INTEGER NOT NULL,
+                "AliquotaPerMille" TEXT NOT NULL,
+                "AbitazionePrincipale" INTEGER NOT NULL,
+                "CreatoIl" TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_Immobili_TenantId_AziendaId"
+                ON "Immobili" ("TenantId", "AziendaId");
             """);
 
         Database.ExecuteSqlRaw("""

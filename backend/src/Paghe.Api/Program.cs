@@ -46,6 +46,7 @@ builder.Services.AddScoped<UniEmensService>();
 builder.Services.AddScoped<ScadenzarioService>();
 builder.Services.AddScoped<ConfigurazioneSdiService>();
 builder.Services.AddScoped<CertificazioneUnicaService>();
+builder.Services.AddScoped<LipeService>();
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
@@ -1439,6 +1440,7 @@ secured.MapPost("/api/scadenzario/{id:guid}/invia",
 // Collegamento self-service del provider SdI (configurazione per tenant).
 app.MapConfigurazioneSdi();
 app.MapCertificazioneUnica();
+app.MapLipe();
 
 app.Run();
 

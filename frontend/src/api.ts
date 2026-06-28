@@ -353,7 +353,18 @@ export const api = {
   // --- Dichiarazioni: Fase 1 Certificazione Unica (bozza) ---
   cuBozza: (rapportoId: string, anno: number) =>
     req<CuBozza>(`/api/rapporti/${rapportoId}/cu/${anno}`),
+
+  // --- Dichiarazioni: Fase 3 LIPE / IVA (bozza) ---
+  lipeBozza: (aziendaId: string, anno: number, trimestre: number) =>
+    req<LipeBozza>(`/api/aziende/${aziendaId}/lipe/${anno}/${trimestre}`),
 };
+
+export interface LipeModulo {
+  periodo: string; ivaEsigibile: number; ivaDetratta: number; ivaDovuta: number; ivaCredito: number;
+}
+export interface LipeBozza {
+  anno: number; trimestre: number; moduli: LipeModulo[]; totaleDovuta: number; totaleCredito: number;
+}
 
 export interface CuBozza {
   codiceFiscale: string; nominativo: string; anno: number; numeroCedolini: number;

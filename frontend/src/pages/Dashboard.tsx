@@ -4,6 +4,7 @@ import { Cedolino } from "./Cedolino";
 import { Dipendente } from "./Dipendente";
 import { Dipendenti } from "./Dipendenti";
 import { CertificazioneUnica } from "./CertificazioneUnica";
+import { Lipe } from "./Lipe";
 import { Presenze } from "./Presenze";
 import { BustaPaga } from "./BustaPaga";
 import { Elaborazione } from "./Elaborazione";
@@ -28,6 +29,7 @@ type SectionKey =
   | "pagamenti"
   | "firma"
   | "contabilita"
+  | "lipe"
   | "bilancio"
   | "documenti"
   | "elaborazioni"
@@ -54,6 +56,7 @@ const primaryNav: NavItem[] = [
   { key: "pagamenti", icon: "€", label: "Pagamenti clienti" },
   { key: "firma", icon: "🔏", label: "Firma digitale" },
   { key: "contabilita", icon: "📒", label: "Contabilità" },
+  { key: "lipe", icon: "📊", label: "LIPE / IVA" },
   { key: "bilancio", icon: "⚖️", label: "Bilancio" },
   { key: "documenti", icon: "📁", label: "Documenti" },
 ];
@@ -101,6 +104,7 @@ const sectionTitle: Record<SectionKey, string> = {
   pagamenti: "Pagamenti clienti",
   firma: "Firma digitale",
   contabilita: "Contabilità",
+  lipe: "LIPE / IVA",
   bilancio: "Bilancio d'esercizio",
   documenti: "Documenti",
   elaborazioni: "Elaborazione cedolini",
@@ -603,6 +607,7 @@ function ModuleScreen({
   if (active === "pagamenti") return <Pagamenti />;
   if (active === "firma") return <Firma />;
   if (active === "contabilita") return <AccountingPanel />;
+  if (active === "lipe") return <Lipe />;
   if (active === "bilancio") return <Bilancio />;
   if (active === "documenti") return <DocumentsPanel onNavigate={onNavigate} />;
   if (active === "f24") return <F24Panel />;

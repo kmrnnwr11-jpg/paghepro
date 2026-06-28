@@ -61,11 +61,37 @@ public static class Seed
         ("1", "Primo livello", 1700m), ("2", "Secondo livello", 1560m), ("3", "Terzo livello", 1430m),
         ("4", "Quarto livello", 1340m), ("5", "Quinto livello", 1270m), ("6", "Sesto livello", 1210m));
 
-    /// <summary>Tutti i CCNL d'esempio caricati nel database (Commercio + altri settori).</summary>
+    public static Ccnl CcnlMultiservizi2026() => CcnlEsempio(
+        "MULTISERVIZI_PULIZIE", "CCNL Multiservizi / Pulizie — valori di esempio",
+        ("1", "Primo livello", 1180m), ("2", "Secondo livello", 1250m), ("3", "Terzo livello", 1330m),
+        ("4", "Quarto livello", 1430m), ("5", "Quinto livello", 1540m), ("6", "Sesto livello", 1660m));
+
+    public static Ccnl CcnlStudiProfessionali2026() => CcnlEsempio(
+        "STUDI_PROFESSIONALI", "CCNL Studi Professionali — valori di esempio",
+        ("1", "Primo livello", 1980m), ("2", "Secondo livello", 1720m), ("3", "Terzo livello", 1520m),
+        ("4", "Quarto livello", 1360m), ("5", "Quinto livello", 1240m));
+
+    public static Ccnl CcnlChimicoFarmaceutico2026() => CcnlEsempio(
+        "CHIMICO_FARMACEUTICO", "CCNL Chimico-Farmaceutico — valori di esempio",
+        ("1", "Categoria A", 1450m), ("2", "Categoria B", 1620m), ("3", "Categoria C", 1820m),
+        ("4", "Categoria D", 2050m), ("5", "Categoria E", 2300m));
+
+    public static Ccnl CcnlAlimentare2026() => CcnlEsempio(
+        "ALIMENTARE_INDUSTRIA", "CCNL Industria Alimentare — valori di esempio",
+        ("1", "Primo livello", 1360m), ("2", "Secondo livello", 1480m), ("3", "Terzo livello", 1610m),
+        ("4", "Quarto livello", 1740m), ("5", "Quinto livello", 1880m), ("6", "Sesto livello", 2020m));
+
+    /// <summary>
+    /// Tutti i CCNL d'esempio caricati nel database. ⚠️ Minimi tabellari di ESEMPIO: per buste reali
+    /// vanno sostituiti con i valori ufficiali (caricabili da file via l'import CCNL) e validati con
+    /// un Consulente del Lavoro.
+    /// </summary>
     public static IEnumerable<Ccnl> TuttiICcnl2026() => new[]
     {
         CcnlCommercio2026(), CcnlAgricolturaOperai2026(), CcnlTrasportiLogistica2026(),
         CcnlEdilizia2026(), CcnlMetalmeccanici2026(), CcnlTurismo2026(),
+        CcnlMultiservizi2026(), CcnlStudiProfessionali2026(), CcnlChimicoFarmaceutico2026(),
+        CcnlAlimentare2026(),
     };
 
     /// <summary>Parametri normativi nazionali 2026 (valori di esempio).</summary>

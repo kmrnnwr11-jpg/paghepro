@@ -15,6 +15,14 @@ public static class CcnlEndpoints
                 .ToListAsync()))
             .RequireAuthorization();
 
+        // Carica/aggiorna in blocco le tabelle CCNL (minimi tabellari reali) da un file JSON.
+        // Cosi' "tutti i CCNL" = caricare i dati ufficiali, senza toccare il codice.
+        app.MapPost("/api/ccnl/importa", async (List<CcnlInput> input, PagheDbContext db) =>
+        {
+            var (ccnl, livelli) = await new CcnlImportService(db).ImportaAsync(input);
+            return Results.Ok(new { ccnlCaricati = ccnl, livelliCaricati = livelli });
+        }).RequireAuthorization();
+
         return app;
     }
 }

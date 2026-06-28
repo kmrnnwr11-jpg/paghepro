@@ -32,6 +32,13 @@ public static class MappaturaCcnl
         ("metalmecc", "METALMECCANICI_INDUSTRIA", "3"),
         ("turismo", "TURISMO_PUBBLICI_ESERCIZI", "4"),
         ("pubblici esercizi", "TURISMO_PUBBLICI_ESERCIZI", "4"),
+        ("multiserviz", "MULTISERVIZI_PULIZIE", "3"),
+        ("pulizi", "MULTISERVIZI_PULIZIE", "3"),
+        ("studi professional", "STUDI_PROFESSIONALI", "3"),
+        ("studio professional", "STUDI_PROFESSIONALI", "3"),
+        ("chimic", "CHIMICO_FARMACEUTICO", "2"),
+        ("farmaceutic", "CHIMICO_FARMACEUTICO", "2"),
+        ("aliment", "ALIMENTARE_INDUSTRIA", "3"),
         ("commercio", "COMMERCIO_TERZIARIO", "3"),
         ("terziario", "COMMERCIO_TERZIARIO", "3"),
     };

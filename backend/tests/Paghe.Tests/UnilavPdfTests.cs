@@ -173,6 +173,42 @@ public sealed class UnilavPdfTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Servizio_CcnlAgricolo_MappatoAInternoEcedolinoCalcolabile()
+    {
+        const string testo = """
+            Datore di Lavoro
+            Codice Fiscale: 01174590339
+            Ragione Sociale: Az. Agricola Esempio
+            Lavoratore
+            Codice Fiscale: TLKKRN04P28Z249M
+            Cognome: TALUKDAR Nome: KAMRAN
+            Dati Rapporto
+            Data Inizio: 11/04/2026
+            Qualifica: 8.3.1.1.0 - BRACCIANTI AGRICOLI
+            CCNL: 0190 - AGRICOLTURA - Operai florovivaisti
+            Livello inquadramento: ND - Non dichiarato
+            """;
+        var tenant = Guid.NewGuid();
+        await using (var db = NuovoContesto())
+            await new ParametriNormativiService(db).ImportaSeedSeVuotoAsync();
+
+        EsitoImportUnilav esito;
+        await using (var db = NuovoContesto())
+            esito = await new ImportUnilavService(db).ImportaDaTestoAsync(tenant, testo);
+
+        // CCNL del portale "0190 - AGRICOLTURA" mappato al CCNL interno; livello "ND" -> default "3".
+        Assert.Equal("AGRICOLTURA_OPERAI", esito.Rapporto.CodiceCcnl);
+        Assert.Equal("3", esito.Rapporto.Livello);
+
+        // Il CCNL agricolo è caricato a DB con i suoi livelli: il cedolino è calcolabile.
+        await using (var db = NuovoContesto())
+        {
+            var ccnl = await new ParametriNormativiService(db).CaricaCcnlAsync("AGRICOLTURA_OPERAI", 2026);
+            Assert.Contains(ccnl.Livelli, l => l.Codice == "3");
+        }
+    }
+
     private static byte[] GeneraPdf(string testo) =>
         Document.Create(container =>
         {

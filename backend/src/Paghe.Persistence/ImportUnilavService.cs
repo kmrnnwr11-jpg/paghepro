@@ -52,11 +52,26 @@ public sealed class ImportUnilavService
             (azienda, aziendaCreata) = await TrovaOCreaDatoreAsync(tenantId, imp.Datore, avvertenze, ct);
         }
 
-        // 2) Rapporto di lavoro (inquadramento) dai dati UNILAV.
+        // 2) Rapporto di lavoro: mappa il CCNL del portale UNILAV a un CCNL interno, così il cedolino è calcolabile.
+        var mappato = MappaturaCcnl.Riconosci(imp.Rapporto.Ccnl);
+        string codiceCcnl, livello;
+        if (mappato is not null)
+        {
+            codiceCcnl = mappato.CodiceInterno;
+            // Livello UNILAV se "semplice" (numerico), altrimenti il default del CCNL riconosciuto.
+            livello = Regex.IsMatch(imp.Rapporto.Livello ?? "", @"^\d+$") ? imp.Rapporto.Livello! : mappato.LivelloDefault;
+            avvertenze.Add($"CCNL «{imp.Rapporto.Ccnl}» riconosciuto come {codiceCcnl}: cedolino calcolabile (verificare livello {livello}).");
+        }
+        else
+        {
+            codiceCcnl = Primo(imp.Rapporto.Ccnl, ccnlDefault) ?? "";
+            livello = Primo(imp.Rapporto.Livello, livelloDefault) ?? "";
+        }
+
         var rapporto = new RapportoLavoroEntity
         {
-            CodiceCcnl = Primo(imp.Rapporto.Ccnl, ccnlDefault) ?? "",
-            Livello = Primo(imp.Rapporto.Livello, livelloDefault) ?? "",
+            CodiceCcnl = codiceCcnl,
+            Livello = livello,
             Qualifica = ImportazioneUnilav.MappaQualifica(imp.Rapporto.Qualifica).ToString(),
             PartTime = ImportazioneUnilav.EParTime(imp.Rapporto.TipoOrario),
             PercentualePartTime = imp.Rapporto.PercentualePartTime ?? 100m,

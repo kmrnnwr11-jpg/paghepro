@@ -43,4 +43,27 @@ public sealed class AnagraficheLavoroService
         Guid tenantId, Guid rapportoId, CancellationToken ct = default) =>
         _db.Rapporti.Include(r => r.Dipendente)
             .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct);
+
+    /// <summary>
+    /// GDPR — diritto all'oblio (art. 17): anonimizza i dati personali del dipendente (nome, cognome,
+    /// codice fiscale, IBAN) <b>mantenendo</b> i record contabili collegati (cedolini), soggetti a
+    /// conservazione fiscale obbligatoria. È idempotente e isolato per tenant; l'audit log registra
+    /// automaticamente l'operazione. Restituisce false se il dipendente non esiste.
+    /// </summary>
+    public async Task<bool> AnonimizzaDipendenteAsync(
+        Guid tenantId, Guid dipendenteId, CancellationToken ct = default)
+    {
+        var dip = await _db.Dipendenti
+            .FirstOrDefaultAsync(d => d.Id == dipendenteId && d.TenantId == tenantId, ct);
+        if (dip is null) return false;
+        if (dip.Anonimizzato) return true; // già anonimizzato: idempotente
+
+        dip.Nome = "(anonimizzato)";
+        dip.Cognome = "(anonimizzato)";
+        dip.CodiceFiscale = $"ANON-{Guid.NewGuid():N}"; // resta univoco per (tenant, codice fiscale)
+        dip.Iban = null;
+        dip.Anonimizzato = true;
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
 }

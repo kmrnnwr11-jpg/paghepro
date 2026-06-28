@@ -5,7 +5,7 @@ const CCNL = "COMMERCIO_TERZIARIO";
 
 const formVuoto = { codiceFiscale: "", nome: "", cognome: "", livello: "3", iban: "", qualifica: "Impiegato" };
 
-export function Dipendenti({ onApri }: { onApri: (key: "dipendente") => void }) {
+export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void }) {
   const [azienda, setAzienda] = useState<Azienda | null>(null);
   const [lista, setLista] = useState<DipendenteRapporto[]>([]);
   const [livelli, setLivelli] = useState<Livello[]>([]);
@@ -144,7 +144,7 @@ export function Dipendenti({ onApri }: { onApri: (key: "dipendente") => void }) 
             </thead>
             <tbody>
               {lista.map((d) => (
-                <tr key={d.rapportoId} style={{ cursor: "pointer" }} onClick={() => onApri("dipendente")}>
+                <tr key={d.rapportoId} style={{ cursor: "pointer" }} onClick={() => onApri(d.rapportoId)}>
                   <td>
                     <div className="person-cell">
                       <span>{iniziali(d.nominativo)}</span>
@@ -156,7 +156,7 @@ export function Dipendenti({ onApri }: { onApri: (key: "dipendente") => void }) 
                   <td>{d.livello}</td>
                   <td>{d.codiceCcnl === CCNL ? "Commercio" : d.codiceCcnl}</td>
                   <td className="right">
-                    <button className="mini-action" type="button" onClick={(e) => { e.stopPropagation(); onApri("dipendente"); }}>
+                    <button className="mini-action" type="button" onClick={(e) => { e.stopPropagation(); onApri(d.rapportoId); }}>
                       Apri
                     </button>
                   </td>

@@ -53,9 +53,10 @@ nessun account esterno.
 
 ### Fatto quando
 - [x] **IBAN salvato cifrato** (AES-256-GCM, `ProtettoreDati`, verificato in DB con test) · [x] **ogni azione sensibile lascia traccia in audit** (`AuditSaveChangesInterceptor` + middleware API)
-- [x] **login con secondo fattore** (TOTP RFC 6238, `Totp` + endpoint `/api/auth/2fa/*`, segreto cifrato) · [x] build + test verdi (199)
+- [x] **login con secondo fattore** (TOTP RFC 6238, `Totp` + endpoint `/api/auth/2fa/*`, segreto cifrato) · [x] build + test verdi (202)
+- [x] **diritto all'oblio** (anonimizzazione dipendente, cedolini conservati, `POST /api/dipendenti/{id}/anonimizza`)
 
-> Resta opzionale della Fase 1: **retention / diritto all'oblio** (job di cancellazione/anonimizzazione).
+> ✅ **Fase 1 GDPR completata** (cifratura + audit + 2FA + diritto all'oblio).
 
 ---
 

@@ -64,6 +64,13 @@ export interface CedolinoArchiviato {
   nettoInBusta: number; costoAzienda: number;
   imponibileIrpef?: number; irpefNetta?: number;
 }
+export interface RapportoDettaglio {
+  rapportoId: string; dipendenteId: string;
+  nome: string; cognome: string; codiceFiscale: string; iban?: string | null; anonimizzato: boolean;
+  codiceCcnl: string; livello: string; qualifica: string;
+  numeroMensilita: number; partTime: boolean; percentualePartTime: number;
+  scattiAnzianita: number; superminimo: number; regione: string; dataAssunzione: string;
+}
 export interface Fattura {
   id: string; numero: string; anno?: number; data?: string;
   cessionarioDenominazione?: string; totaleDocumento: number;
@@ -191,6 +198,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(cartellino),
     }),
+  rapportoDettaglio: (rapportoId: string) =>
+    req<RapportoDettaglio>(`/api/rapporti/${rapportoId}`),
 
   // --- Fatturazione e trasmissione SdI ---
   fatture: (aziendaId: string) => req<Fattura[]>(`/api/aziende/${aziendaId}/fatture`),

@@ -1,87 +1,92 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api, type CedolinoArchiviato, type RapportoDettaglio } from "../api";
 
-type Tab = "anagrafica" | "rapporto" | "familiari" | "storico";
+type Tab = "anagrafica" | "rapporto" | "storico";
 
 const tabs: { key: Tab; label: string }[] = [
   { key: "anagrafica", label: "Anagrafica" },
   { key: "rapporto", label: "Rapporto di lavoro" },
-  { key: "familiari", label: "Familiari a carico" },
   { key: "storico", label: "Storico cedolini" },
 ];
 
-const anagrafica: [string, string, boolean?, string?][] = [
-  ["Codice fiscale", "BNCMRA88C15F205X"],
-  ["Nome", "Mario"],
-  ["Cognome", "Bianchi"],
-  ["Data di nascita", "15/03/1988"],
-  ["Comune di nascita", "Milano (MI)"],
-  ["Cittadinanza", "Italiana"],
-  ["Residenza", "Via Roma 10, 20121 Milano (MI) — Lombardia", true, "· rileva per addizionali"],
-  ["Email", "m.bianchi@email.it"],
-  ["IBAN", "IT•• •••• •••• •••• •••• •2 9 1 7", true, "🔒 sensibile"],
-];
+const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const mesi = ["", "Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
 
-const rapporto: [string, string][] = [
-  ["Azienda", "Rossi S.r.l."],
-  ["Sede di lavoro", "Sede di Milano"],
-  ["CCNL", "Commercio — Terziario"],
-  ["Livello", "4"],
-  ["Qualifica", "Impiegato"],
-  ["Tipo contratto", "Tempo indeterminato"],
-  ["Data assunzione", "01/01/2018"],
-  ["Part-time", "No · 100%"],
-  ["Retribuzione lorda", "2.749,24 € / mese"],
-];
+function iniziali(nome: string, cognome: string): string {
+  return `${(cognome[0] ?? "").toUpperCase()}${(nome[0] ?? "").toUpperCase()}` || "—";
+}
 
-const familiari: [string, string, string, string, string][] = [
-  ["Coniuge", "Sara Bianchi", "BNCSRA90M55F205X", "100%", "dal 06/2015"],
-  ["Figlio", "Luca Bianchi", "BNCLCU16T10F205Y", "50%", "dal 10/2016"],
-  ["Figlio", "Aurora Bianchi", "BNCRRA20P50F205Z", "50%", "dal 09/2020"],
-];
+export function Dipendente({ rapportoId, onPayslip }: { rapportoId: string | null; onPayslip: () => void }) {
+  const [tab, setTab] = useState<Tab>("anagrafica");
+  const [d, setD] = useState<RapportoDettaglio | null>(null);
+  const [cedolini, setCedolini] = useState<CedolinoArchiviato[]>([]);
+  const [errore, setErrore] = useState<string | null>(null);
+  const [caricamento, setCaricamento] = useState(true);
 
-type StoricoStato = "Bozza" | "Chiuso";
-const storico: [string, StoricoStato, string, string][] = [
-  ["Giu 2026", "Bozza", "2.749,24", "—"],
-  ["Mag 2026", "Chiuso", "2.749,24", "1.736,50"],
-  ["Apr 2026", "Chiuso", "2.812,60", "1.781,20"],
-  ["Mar 2026", "Chiuso", "2.749,24", "1.736,50"],
-  ["Feb 2026", "Chiuso", "2.749,24", "1.736,50"],
-];
+  useEffect(() => {
+    if (!rapportoId) { setCaricamento(false); return; }
+    setCaricamento(true);
+    Promise.all([api.rapportoDettaglio(rapportoId), api.cedoliniArchiviati(rapportoId)])
+      .then(([det, ced]) => { setD(det); setCedolini(ced); })
+      .catch((e) => setErrore(e instanceof Error ? e.message : "Errore"))
+      .finally(() => setCaricamento(false));
+  }, [rapportoId]);
 
-export function Dipendente({ onPayslip }: { onPayslip: () => void }) {
-  const [tab, setTab] = useState<Tab>("rapporto");
+  if (!rapportoId) {
+    return (
+      <section className="glass-card page-card">
+        <div className="empty-state">Seleziona un dipendente dall'elenco “Dipendenti” per aprirne la scheda.</div>
+      </section>
+    );
+  }
+  if (caricamento) {
+    return <section className="glass-card page-card"><div className="empty-state">Caricamento…</div></section>;
+  }
+  if (!d) {
+    return <section className="glass-card page-card"><p className="errore">{errore ?? "Dipendente non trovato."}</p></section>;
+  }
+
+  const anagrafica: [string, string][] = [
+    ["Codice fiscale", d.codiceFiscale || "—"],
+    ["Nome", d.nome || "—"],
+    ["Cognome", d.cognome || "—"],
+    ["IBAN", d.iban || "— (non inserito)"],
+  ];
+  const rapporto: [string, string][] = [
+    ["CCNL", d.codiceCcnl === "COMMERCIO_TERZIARIO" ? "Commercio — Terziario" : d.codiceCcnl],
+    ["Livello", d.livello],
+    ["Qualifica", d.qualifica],
+    ["Mensilità", String(d.numeroMensilita)],
+    ["Part-time", d.partTime ? `Sì · ${d.percentualePartTime}%` : "No · 100%"],
+    ["Scatti anzianità", String(d.scattiAnzianita)],
+    ["Superminimo", `${euro(d.superminimo)} €`],
+    ["Regione", d.regione || "—"],
+    ["Data assunzione", d.dataAssunzione],
+  ];
 
   return (
     <div className="detail-layout">
       <header className="glass-card emp-header">
-        <div className="emp-avatar">MB</div>
+        <div className="emp-avatar">{iniziali(d.nome, d.cognome)}</div>
         <div className="emp-id">
           <div className="emp-id-top">
-            <h1>Mario Bianchi</h1>
-            <span className="status-pill green">● Attivo</span>
+            <h1>{d.cognome} {d.nome}</h1>
+            <span className={`status-pill ${d.anonimizzato ? "slate" : "green"}`}>
+              {d.anonimizzato ? "Anonimizzato" : "● Attivo"}
+            </span>
           </div>
           <div className="emp-id-meta">
-            Impiegato · liv. 4 CCNL Commercio · Mat. 000123 · CF{" "}
-            <span className="num">BNCMRA88C15F205X</span>
+            {d.qualifica} · liv. {d.livello} {d.codiceCcnl === "COMMERCIO_TERZIARIO" ? "CCNL Commercio" : d.codiceCcnl}
+            {" · CF "}<span className="num">{d.codiceFiscale || "—"}</span>
           </div>
         </div>
-        <button className="btn secondary" type="button" onClick={onPayslip}>
-          Ultimo cedolino
-        </button>
-        <button className="btn primary" type="button">
-          Modifica
-        </button>
+        <button className="btn secondary" type="button" onClick={onPayslip}>Cedolini</button>
       </header>
 
       <section className="glass-card emp-card">
         <div className="emp-tabs">
           {tabs.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              className={`emp-tab ${tab === t.key ? "active" : ""}`}
-              onClick={() => setTab(t.key)}
-            >
+            <button key={t.key} type="button" className={`emp-tab ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>
               {t.label}
             </button>
           ))}
@@ -90,14 +95,9 @@ export function Dipendente({ onPayslip }: { onPayslip: () => void }) {
         <div className="emp-body">
           {tab === "anagrafica" && (
             <div className="emp-grid">
-              {anagrafica.map(([label, value, wide, hint]) => (
-                <div key={label} className={wide ? "emp-span2" : undefined}>
-                  <div className="emp-field-label">
-                    {label}
-                    {hint && (
-                      <span className={`hint ${hint.includes("🔒") ? "muted" : ""}`}> {hint}</span>
-                    )}
-                  </div>
+              {anagrafica.map(([label, value]) => (
+                <div key={label}>
+                  <div className="emp-field-label">{label}</div>
                   <div className={`emp-field-value ${/\d/.test(value) ? "num" : ""}`}>{value}</div>
                 </div>
               ))}
@@ -115,64 +115,37 @@ export function Dipendente({ onPayslip }: { onPayslip: () => void }) {
             </div>
           )}
 
-          {tab === "familiari" && (
-            <div className="table-wrap">
-              <table className="data-table spacious">
-                <thead>
-                  <tr>
-                    <th>Rapporto</th>
-                    <th>Nominativo</th>
-                    <th>Codice fiscale</th>
-                    <th>% carico</th>
-                    <th>Periodo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {familiari.map(([tipo, nome, cf, perc, per]) => (
-                    <tr key={cf}>
-                      <td><strong>{tipo}</strong></td>
-                      <td>{nome}</td>
-                      <td className="num">{cf}</td>
-                      <td className="num">{perc}</td>
-                      <td>{per}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
           {tab === "storico" && (
-            <div className="table-wrap">
-              <table className="data-table spacious">
-                <thead>
-                  <tr>
-                    <th>Periodo</th>
-                    <th>Stato</th>
-                    <th className="right">Lordo</th>
-                    <th className="right">Netto</th>
-                    <th className="right">Azioni</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {storico.map(([per, st, lordo, netto]) => (
-                    <tr key={per}>
-                      <td><strong>{per}</strong></td>
-                      <td>
-                        <span className={`status-pill ${st === "Chiuso" ? "green" : "slate"}`}>{st}</span>
-                      </td>
-                      <td className="right num">{lordo} €</td>
-                      <td className="right num">{netto === "—" ? "—" : `${netto} €`}</td>
-                      <td className="right">
-                        <button className="mini-action" type="button" onClick={onPayslip}>
-                          Apri
-                        </button>
-                      </td>
+            cedolini.length === 0 ? (
+              <div className="empty-state">Nessun cedolino archiviato. Generane in “Cedolini”.</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table spacious">
+                  <thead>
+                    <tr>
+                      <th>Periodo</th>
+                      <th className="right">Imponibile IRPEF</th>
+                      <th className="right">Ritenute IRPEF</th>
+                      <th className="right">Netto</th>
+                      <th className="right">Azioni</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {[...cedolini].sort((a, b) => b.anno - a.anno || b.mese - a.mese).map((c) => (
+                      <tr key={c.id}>
+                        <td><strong>{mesi[c.mese]} {c.anno}</strong></td>
+                        <td className="right num">{c.imponibileIrpef != null ? `${euro(c.imponibileIrpef)} €` : "—"}</td>
+                        <td className="right num">{c.irpefNetta != null ? `${euro(c.irpefNetta)} €` : "—"}</td>
+                        <td className="right num"><strong>{euro(c.nettoInBusta)} €</strong></td>
+                        <td className="right">
+                          <button className="mini-action" type="button" onClick={onPayslip}>Apri</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
           )}
         </div>
       </section>

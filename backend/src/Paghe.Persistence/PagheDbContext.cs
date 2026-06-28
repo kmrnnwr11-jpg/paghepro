@@ -415,6 +415,11 @@ public class PagheDbContext : DbContext
         if (!ColonnaSqliteEsiste("Utenti", "SegretoTotp"))
             Database.ExecuteSqlRaw(
                 "ALTER TABLE \"Utenti\" ADD COLUMN \"SegretoTotp\" TEXT NULL;");
+
+        // Flag GDPR (diritto all'oblio) su una tabella Dipendenti preesistente.
+        if (!ColonnaSqliteEsiste("Dipendenti", "Anonimizzato"))
+            Database.ExecuteSqlRaw(
+                "ALTER TABLE \"Dipendenti\" ADD COLUMN \"Anonimizzato\" INTEGER NOT NULL DEFAULT 0;");
     }
 
     /// <summary>True se la colonna esiste già nella tabella SQLite (via PRAGMA table_info).</summary>

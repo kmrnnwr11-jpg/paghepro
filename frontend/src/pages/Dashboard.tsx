@@ -88,7 +88,7 @@ const navActiveFor: Partial<Record<SectionKey, SectionKey>> = {
 // Breadcrumb per ogni schermata (allineato a PaghePro Studio).
 const crumbsFor: Partial<Record<SectionKey, string[]>> = {
   dashboard: ["Home", "Dashboard"],
-  dipendente: ["Home", "Dipendenti", "Mario Bianchi"],
+  dipendente: ["Home", "Dipendenti", "Scheda"],
   presenze: ["Home", "Presenze", "Cartellino mensile"],
   elaborazioni: ["Home", "Cedolini", "Elaborazione"],
   cedolini: ["Home", "Cedolini", "Giugno 2026", "Mario Bianchi"],
@@ -222,6 +222,8 @@ const documentQueue = [
 
 export function Dashboard() {
   const [active, setActive] = useState<SectionKey>("dashboard");
+  const [rapportoSel, setRapportoSel] = useState<string | null>(null);
+  const apriDipendente = (rapportoId: string) => { setRapportoSel(rapportoId); setActive("dipendente"); };
 
   const navActive = navActiveFor[active] ?? active;
   const crumbs = useMemo(() => crumbsFor[active] ?? ["Home", sectionTitle[active]], [active]);
@@ -269,7 +271,7 @@ export function Dashboard() {
           {active === "dashboard" ? (
             <DashboardHome onNavigate={setActive} />
           ) : (
-            <ModuleScreen active={active} onNavigate={setActive} />
+            <ModuleScreen active={active} onNavigate={setActive} rapportoSel={rapportoSel} onApriDipendente={apriDipendente} />
           )}
         </main>
       </div>
@@ -542,9 +544,13 @@ function DashboardRail({ onNavigate }: { onNavigate: (key: SectionKey) => void }
 function ModuleScreen({
   active,
   onNavigate,
+  rapportoSel,
+  onApriDipendente,
 }: {
   active: SectionKey;
   onNavigate: (key: SectionKey) => void;
+  rapportoSel: string | null;
+  onApriDipendente: (rapportoId: string) => void;
 }) {
   if (active === "aziende") {
     return (
@@ -605,8 +611,8 @@ function ModuleScreen({
     );
   }
 
-  if (active === "dipendenti") return <Dipendenti onApri={onNavigate} />;
-  if (active === "dipendente") return <Dipendente onPayslip={() => onNavigate("cedolini")} />;
+  if (active === "dipendenti") return <Dipendenti onApri={onApriDipendente} />;
+  if (active === "dipendente") return <Dipendente rapportoId={rapportoSel} onPayslip={() => onNavigate("cedolini")} />;
   if (active === "presenze") return <Presenze />;
   if (active === "elaborazioni") return <Elaborazione />;
   if (active === "adempimenti") return <DeadlinesPanel onNavigate={onNavigate} />;

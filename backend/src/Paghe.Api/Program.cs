@@ -1002,6 +1002,14 @@ secured.MapGet("/api/aziende/{aziendaId:guid}/dipendenti",
     }));
 });
 
+// GDPR — diritto all'oblio: anonimizza i dati personali del dipendente (i cedolini restano).
+secured.MapPost("/api/dipendenti/{id:guid}/anonimizza",
+    async (Guid id, AnagraficheLavoroService svc, ClaimsPrincipal user) =>
+{
+    var fatto = await svc.AnonimizzaDipendenteAsync(TenantCorrente(user), id);
+    return fatto ? Results.Ok(new { anonimizzato = true }) : Results.NotFound();
+});
+
 // --- Cedolini calcolati e archiviati -----------------------------------------------
 secured.MapPost("/api/rapporti/{rapportoId:guid}/cedolini",
     async (Guid rapportoId, Cartellino cartellino, CedoliniService svc, ClaimsPrincipal user) =>
@@ -1497,6 +1505,7 @@ app.MapConfigurazioneSdi();
 app.MapCertificazioneUnica();
 app.MapLipe();
 app.MapModello770();
+app.MapRapportoDettaglio();
 
 app.Run();
 

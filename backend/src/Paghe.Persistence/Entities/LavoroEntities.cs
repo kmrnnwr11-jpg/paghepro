@@ -10,6 +10,9 @@ public class DipendenteEntity
     public string Cognome { get; set; } = "";
     public string? Iban { get; set; }
 
+    /// <summary>GDPR (diritto all'oblio): true se i dati personali sono stati anonimizzati.</summary>
+    public bool Anonimizzato { get; set; }
+
     public List<RapportoLavoroEntity> Rapporti { get; set; } = new();
 }
 

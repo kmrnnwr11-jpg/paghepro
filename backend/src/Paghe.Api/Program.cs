@@ -143,6 +143,24 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Audit log: rende disponibile "chi opera" (utente + tenant dal token) per tutta la richiesta,
+// così l'interceptor di persistenza registra l'autore di ogni modifica. Va dopo l'autenticazione.
+app.Use(async (context, next) =>
+{
+    var u = context.User;
+    Guid? tenant = Guid.TryParse(u.FindFirst("tenant_id")?.Value, out var t) ? t : null;
+    var idUtente = u.FindFirst("sub")?.Value ?? u.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    Guid? utente = Guid.TryParse(idUtente, out var ux) ? ux : null;
+
+    if (tenant is null && utente is null)
+    {
+        await next();
+        return;
+    }
+    using (Paghe.Persistence.Gdpr.AmbientContestoAudit.Imposta(tenant, utente))
+        await next();
+});
+
 // Gruppo di endpoint che richiede un token valido (i dati di un tenant).
 var secured = app.MapGroup("").RequireAuthorization();
 

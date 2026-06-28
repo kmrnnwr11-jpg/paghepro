@@ -52,8 +52,8 @@ nessun account esterno.
 - 👤 Decidere dove sta la **chiave di cifratura** in produzione (variabile d'ambiente / KMS).
 
 ### Fatto quando
-- [x] **IBAN salvato cifrato** (AES-256-GCM, `ProtettoreDati`, verificato in DB con test) · [ ] ogni azione sensibile lascia traccia in audit
-- [ ] login con secondo fattore · [x] build + test verdi (190)
+- [x] **IBAN salvato cifrato** (AES-256-GCM, `ProtettoreDati`, verificato in DB con test) · [x] **ogni azione sensibile lascia traccia in audit** (`AuditSaveChangesInterceptor` + middleware API)
+- [ ] login con secondo fattore · [x] build + test verdi (193)
 
 ---
 

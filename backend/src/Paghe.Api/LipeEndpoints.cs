@@ -21,6 +21,13 @@ public static class LipeEndpoints
             return Results.Ok(bozza);
         }).RequireAuthorization();
 
+        app.MapGet("/api/aziende/{aziendaId:guid}/iva-annuale/{anno:int}", async (
+            Guid aziendaId, int anno, ClaimsPrincipal user, LipeService svc) =>
+        {
+            var bozza = await svc.CostruisciAnnualeAsync(Tenant(user), aziendaId, anno);
+            return Results.Ok(bozza);
+        }).RequireAuthorization();
+
         return app;
     }
 }

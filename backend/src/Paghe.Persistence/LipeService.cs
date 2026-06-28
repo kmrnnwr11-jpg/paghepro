@@ -22,6 +22,20 @@ public sealed record LipeBozza(
     decimal TotaleDovuta,
     decimal TotaleCredito);
 
+/// <summary>
+/// Bozza della Dichiarazione IVA annuale: aggrega tutte le liquidazioni IVA dell'anno.
+/// NON è il file telematico ufficiale (Fase 3, livelli B/C — vedi PIANO-DICHIARAZIONI.md).
+/// </summary>
+public sealed record IvaAnnualeBozza(
+    int Anno,
+    int NumeroLiquidazioni,
+    decimal TotaleIvaVendite,
+    decimal TotaleIvaAcquistiDetraibile,
+    decimal TotaleIvaDovuta,
+    decimal TotaleIvaCredito,
+    decimal SaldoAnnuale,
+    IReadOnlyList<LipeModulo> Periodi);
+
 public sealed class LipeService
 {
     private readonly PagheDbContext _db;
@@ -51,6 +65,35 @@ public sealed class LipeService
         return new LipeBozza(anno, t, moduli,
             TotaleDovuta: moduli.Sum(m => m.IvaDovuta),
             TotaleCredito: moduli.Sum(m => m.IvaCredito));
+    }
+
+    /// <summary>Costruisce la bozza della dichiarazione IVA annuale (tutto l'anno), isolata per tenant.</summary>
+    public async Task<IvaAnnualeBozza> CostruisciAnnualeAsync(
+        Guid tenantId, Guid aziendaId, int anno, CancellationToken ct = default)
+    {
+        var liquidazioni = await _db.LiquidazioniIva
+            .Where(l => l.TenantId == tenantId && l.AziendaId == aziendaId && l.Dal.Year == anno)
+            .OrderBy(l => l.Dal)
+            .ToListAsync(ct);
+
+        var periodi = liquidazioni.Select(l => new LipeModulo(
+            Periodo: EtichettaPeriodo(l.Dal, l.Periodicita, (l.Dal.Month - 1) / 3 + 1),
+            IvaEsigibile: l.IvaVendite,
+            IvaDetratta: l.IvaAcquistiDetraibile,
+            IvaDovuta: l.IvaDaVersare,
+            IvaCredito: l.CreditoDaRiportare)).ToList();
+
+        decimal dovuta = liquidazioni.Sum(l => l.IvaDaVersare);
+        decimal credito = liquidazioni.Sum(l => l.CreditoDaRiportare);
+        return new IvaAnnualeBozza(
+            Anno: anno,
+            NumeroLiquidazioni: liquidazioni.Count,
+            TotaleIvaVendite: liquidazioni.Sum(l => l.IvaVendite),
+            TotaleIvaAcquistiDetraibile: liquidazioni.Sum(l => l.IvaAcquistiDetraibile),
+            TotaleIvaDovuta: dovuta,
+            TotaleIvaCredito: credito,
+            SaldoAnnuale: dovuta - credito,
+            Periodi: periodi);
     }
 
     private static readonly string[] Mesi =

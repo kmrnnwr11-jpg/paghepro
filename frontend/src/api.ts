@@ -361,7 +361,18 @@ export const api = {
   // --- Dichiarazioni: Fase 2 Modello 770 (bozza) ---
   mod770Bozza: (aziendaId: string, anno: number) =>
     req<Mod770Bozza>(`/api/aziende/${aziendaId}/modello770/${anno}`),
+
+  // --- Dichiarazioni: Fase 3 IVA annuale (bozza) ---
+  ivaAnnualeBozza: (aziendaId: string, anno: number) =>
+    req<IvaAnnualeBozza>(`/api/aziende/${aziendaId}/iva-annuale/${anno}`),
 };
+
+export interface IvaAnnualeBozza {
+  anno: number; numeroLiquidazioni: number;
+  totaleIvaVendite: number; totaleIvaAcquistiDetraibile: number;
+  totaleIvaDovuta: number; totaleIvaCredito: number; saldoAnnuale: number;
+  periodi: LipeModulo[];
+}
 
 export interface Mod770Percipiente {
   nominativo: string; codiceFiscale: string;

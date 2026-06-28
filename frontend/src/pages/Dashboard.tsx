@@ -6,6 +6,7 @@ import { Dipendenti } from "./Dipendenti";
 import { CertificazioneUnica } from "./CertificazioneUnica";
 import { Lipe } from "./Lipe";
 import { Modello770 } from "./Modello770";
+import { IvaAnnuale } from "./IvaAnnuale";
 import { Presenze } from "./Presenze";
 import { BustaPaga } from "./BustaPaga";
 import { Elaborazione } from "./Elaborazione";
@@ -31,6 +32,7 @@ type SectionKey =
   | "firma"
   | "contabilita"
   | "lipe"
+  | "iva-annuale"
   | "bilancio"
   | "documenti"
   | "elaborazioni"
@@ -59,6 +61,7 @@ const primaryNav: NavItem[] = [
   { key: "firma", icon: "🔏", label: "Firma digitale" },
   { key: "contabilita", icon: "📒", label: "Contabilità" },
   { key: "lipe", icon: "📊", label: "LIPE / IVA" },
+  { key: "iva-annuale", icon: "🧾", label: "IVA annuale" },
   { key: "bilancio", icon: "⚖️", label: "Bilancio" },
   { key: "documenti", icon: "📁", label: "Documenti" },
 ];
@@ -108,6 +111,7 @@ const sectionTitle: Record<SectionKey, string> = {
   firma: "Firma digitale",
   contabilita: "Contabilità",
   lipe: "LIPE / IVA",
+  "iva-annuale": "Dichiarazione IVA annuale",
   bilancio: "Bilancio d'esercizio",
   documenti: "Documenti",
   elaborazioni: "Elaborazione cedolini",
@@ -612,6 +616,7 @@ function ModuleScreen({
   if (active === "firma") return <Firma />;
   if (active === "contabilita") return <AccountingPanel />;
   if (active === "lipe") return <Lipe />;
+  if (active === "iva-annuale") return <IvaAnnuale />;
   if (active === "bilancio") return <Bilancio />;
   if (active === "documenti") return <DocumentsPanel onNavigate={onNavigate} />;
   if (active === "f24") return <F24Panel />;

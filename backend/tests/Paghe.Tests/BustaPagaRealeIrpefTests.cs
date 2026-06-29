@@ -13,8 +13,9 @@ namespace Paghe.Tests;
 public sealed class BustaPagaRealeIrpefTests
 {
     [Theory]
-    // 22 buste paga reali (Drive del fondatore) da 5 gestionali diversi — TeamSystem, Sistemi/JOB,
-    // SeaSoft, INAZ, Zucchetti — e settori diversi (Logistica, Multiservizi, Agricoltura, somministrazione).
+    // 26 buste paga reali (Drive del fondatore) da 5 gestionali diversi — TeamSystem, Sistemi/JOB,
+    // SeaSoft, INAZ, Zucchetti — e settori diversi (Logistica, Multiservizi, Agricoltura,
+    // somministrazione, Edilizia, Metalmeccanico): l'IRPEF lorda torna al centesimo su tutte.
     // Logistica/Trasporti, Operaio-Autista C3 — 2025 (gennaio→luglio):
     [InlineData(2137.86, 491.71)] // gennaio
     [InlineData(2057.14, 473.14)] // febbraio
@@ -44,6 +45,12 @@ public sealed class BustaPagaRealeIrpefTests
     [InlineData(1642.92, 377.87)] // aprile
     [InlineData(1632.44, 375.46)] // marzo
     [InlineData(1518.89, 349.34)] // febbraio
+    // Edilizia (Cassa Edile), Operaio comune — Zucchetti — gennaio 2026:
+    [InlineData(184.38, 42.41)]
+    // Metalmeccanico/cavi (turni notturni), Operaio liv. H — Zucchetti — 2025/2026:
+    [InlineData(1819.29, 418.44)] // gennaio 2026
+    [InlineData(1855.53, 426.77)] // febbraio 2026
+    [InlineData(1282.55, 294.99)] // dicembre 2025
     public void IrpefLorda_RiproduceLeBusteReali(double imponibileMese, double irpefLordaRealeMese)
     {
         var scaglioni = Seed.Parametri2026().ScaglioniIrpef;

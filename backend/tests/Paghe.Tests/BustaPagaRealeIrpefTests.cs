@@ -13,7 +13,8 @@ namespace Paghe.Tests;
 public sealed class BustaPagaRealeIrpefTests
 {
     [Theory]
-    // 8 buste paga reali (Drive del fondatore), 2 gestionali e 2 CCNL diversi.
+    // 22 buste paga reali (Drive del fondatore) da 5 gestionali diversi — TeamSystem, Sistemi/JOB,
+    // SeaSoft, INAZ, Zucchetti — e settori diversi (Logistica, Multiservizi, Agricoltura, somministrazione).
     // Logistica/Trasporti, Operaio-Autista C3 — 2025 (gennaio→luglio):
     [InlineData(2137.86, 491.71)] // gennaio
     [InlineData(2057.14, 473.14)] // febbraio
@@ -26,6 +27,23 @@ public sealed class BustaPagaRealeIrpefTests
     [InlineData(1614.87, 371.42)] // marzo
     [InlineData(1657.23, 381.16)] // aprile
     [InlineData(1523.24, 350.35)] // maggio
+    // Logistica (coop, liv.5) — Sistemi/JOB — 2026:
+    [InlineData(2013.55, 463.12)] // marzo
+    [InlineData(1998.91, 459.75)] // aprile
+    [InlineData(1544.80, 355.30)] // febbraio
+    // Autotrasporto merci C3 — SeaSoft — marzo 2026:
+    [InlineData(1838.81, 422.93)]
+    // Multiservizi/Pulizie (Dussmann) — INAZ — 2026:
+    [InlineData(1202.61, 276.60)] // gennaio
+    [InlineData(1083.33, 249.17)] // febbraio
+    [InlineData(1114.62, 256.36)] // marzo
+    // Agricoltura OTD — INAZ — 2025:
+    [InlineData(610.63, 140.44)]  // ottobre
+    [InlineData(1232.21, 283.41)] // novembre
+    // Somministrazione, Magazziniere D1 — Zucchetti — 2026:
+    [InlineData(1642.92, 377.87)] // aprile
+    [InlineData(1632.44, 375.46)] // marzo
+    [InlineData(1518.89, 349.34)] // febbraio
     public void IrpefLorda_RiproduceLeBusteReali(double imponibileMese, double irpefLordaRealeMese)
     {
         var scaglioni = Seed.Parametri2026().ScaglioniIrpef;

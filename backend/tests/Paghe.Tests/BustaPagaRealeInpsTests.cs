@@ -6,31 +6,40 @@ using Xunit;
 namespace Paghe.Tests;
 
 /// <summary>
-/// Golden test INPS su <b>buste reali</b>: per un'azienda con &gt;15 dipendenti la quota c/dipendente
-/// è 9,19% + 0,30% = <b>9,49%</b> (regola generale, non di settore). Con questa, il motore riproduce
-/// i contributi delle 7 buste Logistica/Trasporti del Drive al centesimo.
+/// Golden test INPS su <b>buste reali</b>: la quota c/dipendente è base (9,19%) + 0,30% CIG (aziende
+/// &gt;15 dip) + fondi di settore (FIS 0,2667% Multiservizi, FSBS 0,15% somministrazione). Con questa
+/// composizione il motore riproduce i contributi delle buste reali del Drive al centesimo.
 /// </summary>
 public sealed class BustaPagaRealeInpsTests
 {
     [Theory]
-    // Operaio, azienda >15 dipendenti — imponibile contributivo → INPS c/dipendente (buste reali 2025):
-    [InlineData(2358.00, 223.77)] // gennaio
-    [InlineData(2269.00, 215.33)] // febbraio
-    [InlineData(2325.00, 220.64)] // marzo
-    [InlineData(2304.00, 218.65)] // aprile
-    [InlineData(2343.00, 222.35)] // maggio
-    [InlineData(2425.00, 230.14)] // giugno
-    [InlineData(2172.00, 206.12)] // luglio
-    public void Inps_Oltre15Dipendenti_RiproduceLeBusteLogistica(double imponibileContributivo, double inpsRealeDip)
+    // imponibile contributivo · azienda >15 dip · fondi di settore · INPS c/dip reale
+    // Logistica/Trasporti (9,19% + 0,30% = 9,49%) — 2025:
+    [InlineData(2358.00, true, 0.0, 223.77)] // gennaio
+    [InlineData(2269.00, true, 0.0, 215.33)] // febbraio
+    [InlineData(2325.00, true, 0.0, 220.64)] // marzo
+    [InlineData(2304.00, true, 0.0, 218.65)] // aprile
+    [InlineData(2343.00, true, 0.0, 222.35)] // maggio
+    [InlineData(2425.00, true, 0.0, 230.14)] // giugno
+    [InlineData(2172.00, true, 0.0, 206.12)] // luglio
+    // Multiservizi/Pulizie (Dussmann) — 9,19% + 0,30% + FIS 0,2667% = 9,7567% — 2026:
+    [InlineData(1333.00, true, 0.002667, 130.06)] // gennaio
+    [InlineData(1200.00, true, 0.002667, 117.08)] // febbraio
+    [InlineData(1235.00, true, 0.002667, 120.50)] // marzo
+    // Somministrazione (Zucchetti) — 9,19% + FSBS 0,15% = 9,34% (no CIGS) — 2026:
+    [InlineData(1835.00, false, 0.0015, 171.39)] // aprile
+    [InlineData(1823.00, false, 0.0015, 170.26)] // marzo
+    [InlineData(1675.00, false, 0.0015, 156.44)] // febbraio
+    public void Inps_RiproduceLeBusteReali_PerSettore(
+        double imponibileContributivo, bool oltre15Dipendenti, double fondiSettore, double inpsRealeDip)
     {
         var parametri = Seed.Parametri2026();
-        var aliquotaBase = parametri.AliquotaInps(Qualifica.Operaio); // 9,19%
-        // +0,30% di contributo CIG per aziende >15 dipendenti (regola generale): 9,49%.
-        var aliquota = aliquotaBase with { Dipendente = aliquotaBase.Dipendente + 0.003m };
+        var baseDip = parametri.AliquotaInps(Qualifica.Operaio).Dipendente; // 9,19%
+        var quota = CalcoloContributi.QuotaInpsDipendente(baseDip, oltre15Dipendenti, (decimal)fondiSettore);
 
-        var (dip, _) = CalcoloContributi.Calcola((decimal)imponibileContributivo, aliquota);
+        var (dip, _) = CalcoloContributi.Calcola((decimal)imponibileContributivo, new AliquotaInps(quota, 0.28m));
 
         Assert.True(System.Math.Abs(dip - (decimal)inpsRealeDip) <= 0.02m,
-            $"INPS c/dip (>15 dip): atteso ~{inpsRealeDip:F2} (busta reale), calcolato {dip:F2}");
+            $"INPS c/dip: atteso ~{inpsRealeDip:F2} (busta reale), calcolato {dip:F2}");
     }
 }

@@ -47,4 +47,10 @@ public sealed class RapportoLavoro
     /// dimensione dell'azienda, non al settore/CCNL.
     /// </summary>
     public bool AziendaOltre15Dipendenti { get; init; }
+
+    /// <summary>
+    /// Fondi di settore a carico del dipendente, in aggiunta alla quota INPS base (es. FIS 0,2667%
+    /// nel Multiservizi, FSBS 0,15% nella somministrazione). Espresso come frazione (0,002667 = 0,2667%).
+    /// </summary>
+    public decimal ContributiFondiSettore { get; init; }
 }

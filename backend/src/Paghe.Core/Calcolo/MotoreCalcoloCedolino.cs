@@ -79,11 +79,10 @@ public sealed class MotoreCalcoloCedolino
         // ---- 3. Contributi previdenziali ---------------------------------------------
         decimal imponibileInps = totaleCompetenze;
         var aliquotaBase = _parametri.AliquotaInps(rapporto.Qualifica);
-        // Aziende >15 dipendenti (CIG): +0,30% di contributo aggiuntivo c/dipendente (9,19% -> 9,49%).
-        // Regola generale, non legata al settore.
-        var aliquota = rapporto.AziendaOltre15Dipendenti
-            ? aliquotaBase with { Dipendente = aliquotaBase.Dipendente + 0.003m }
-            : aliquotaBase;
+        // Quota c/dipendente effettiva: base + 0,30% CIG (>15 dip) + fondi di settore (FIS, FSBS...).
+        var quotaDip = CalcoloContributi.QuotaInpsDipendente(
+            aliquotaBase.Dipendente, rapporto.AziendaOltre15Dipendenti, rapporto.ContributiFondiSettore);
+        var aliquota = aliquotaBase with { Dipendente = quotaDip };
         var (contributiDip, contributiDatore) = CalcoloContributi.Calcola(imponibileInps, aliquota);
 
         AggiungiRiga(cedolino, "INPS_DIP", $"Contributi INPS c/dipendente ({aliquota.Dipendente:P2})",

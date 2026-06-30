@@ -1,0 +1,14 @@
+# ─────────────────────────────────────────────────────────────
+# Configurazione Netlify per la "vetrina" del frontend (GRATIS, niente carta).
+# Mette online solo l'app da vedere/installare (PWA). Il motore (backend) si
+# collega dopo. Su Netlify: Add new site → Import from GitHub → scegli questo
+# repository → Deploy. Netlify legge questo file e fa tutto da solo.
+# ─────────────────────────────────────────────────────────────
+
+[build]
+  command = "npm --prefix frontend ci && npm --prefix frontend run build"
+  publish = "frontend/dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  VITE_VETRINA = "1"   # mostra l'avviso "anteprima" nell'app

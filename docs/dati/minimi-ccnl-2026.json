@@ -1,0 +1,181 @@
+[
+  {
+    "codice": "TRASPORTI_LOGISTICA",
+    "descrizione": "CCNL Logistica, Trasporto Merci e Spedizione",
+    "anno": 2026,
+    "fonte": "CNEL accordo 223634, tabelle minimi 01/01/2026; valori al 30/06/2026; livello 6J non riportato nella tabella minimi.",
+    "livelli": [
+      { "livello": "Quadri", "descrizione": "Personale non viaggiante - Quadro", "minimoTabellare": 2528.31, "edr": 12.80, "importoScatto": 30.99 },
+      { "livello": "1", "descrizione": "Personale non viaggiante - 1 livello", "minimoTabellare": 2374.79, "edr": 12.05, "importoScatto": 29.44 },
+      { "livello": "2", "descrizione": "Personale non viaggiante - 2 livello", "minimoTabellare": 2181.55, "edr": 11.06, "importoScatto": 26.86 },
+      { "livello": "3S", "descrizione": "Personale non viaggiante - 3 livello super", "minimoTabellare": 1970.37, "edr": 10.00, "importoScatto": 24.79 },
+      { "livello": "3", "descrizione": "Personale non viaggiante - 3 livello", "minimoTabellare": 1916.84, "edr": 9.70, "importoScatto": 24.27 },
+      { "livello": "4", "descrizione": "Personale non viaggiante - 4 livello", "minimoTabellare": 1823.56, "edr": 9.24, "importoScatto": 23.24 },
+      { "livello": "4J", "descrizione": "Personale non viaggiante - 4 livello junior", "minimoTabellare": 1776.25, "edr": 9.02, "importoScatto": 22.34 },
+      { "livello": "5", "descrizione": "Personale non viaggiante - 5 livello", "minimoTabellare": 1738.31, "edr": 8.79, "importoScatto": 22.21 },
+      { "livello": "6", "descrizione": "Personale non viaggiante - 6 livello", "minimoTabellare": 1625.41, "edr": 8.26, "importoScatto": 20.66 },
+      { "livello": "6J", "descrizione": "Personale non viaggiante - 6 livello junior", "minimoTabellare": null, "edr": 7.58, "importoScatto": 18.78 },
+      { "livello": "C3", "descrizione": "Personale viaggiante - C3", "minimoTabellare": 1971.61, "edr": 10.04, "importoScatto": 24.79 },
+      { "livello": "B3", "descrizione": "Personale viaggiante - B3", "minimoTabellare": 1970.37, "edr": 10.00, "importoScatto": 24.79 },
+      { "livello": "A3", "descrizione": "Personale viaggiante - A3", "minimoTabellare": 1969.14, "edr": 9.96, "importoScatto": 24.79 },
+      { "livello": "F2", "descrizione": "Personale viaggiante - F2", "minimoTabellare": 1918.09, "edr": 9.74, "importoScatto": 24.27 },
+      { "livello": "E2", "descrizione": "Personale viaggiante - E2", "minimoTabellare": 1916.91, "edr": 9.70, "importoScatto": 24.27 },
+      { "livello": "D2", "descrizione": "Personale viaggiante - D2", "minimoTabellare": 1915.68, "edr": 9.66, "importoScatto": 24.27 },
+      { "livello": "H1", "descrizione": "Personale viaggiante - H1", "minimoTabellare": 1856.87, "edr": 9.36, "importoScatto": 23.24 },
+      { "livello": "G1", "descrizione": "Personale viaggiante - G1", "minimoTabellare": 1849.41, "edr": 9.32, "importoScatto": 23.14 },
+      { "livello": "I (param. 110)", "descrizione": "Personale viaggiante - I parametro 110", "minimoTabellare": 1629.65, "edr": 8.27, "importoScatto": 22.18 },
+      { "livello": "I (param. 116)", "descrizione": "Personale viaggiante - I parametro 116", "minimoTabellare": 1718.52, "edr": 8.72, "importoScatto": 22.18 },
+      { "livello": "L (param. 110)", "descrizione": "Personale viaggiante - L parametro 110", "minimoTabellare": 1629.65, "edr": 8.27, "importoScatto": 21.62 },
+      { "livello": "L (param. 116)", "descrizione": "Personale viaggiante - L parametro 116", "minimoTabellare": 1718.52, "edr": 8.72, "importoScatto": 21.62 },
+      { "livello": "L (param. 119)", "descrizione": "Personale viaggiante - L parametro 119", "minimoTabellare": 1762.98, "edr": 8.95, "importoScatto": 21.62 }
+    ]
+  },
+  {
+    "codice": "MULTISERVIZI_PULIZIE",
+    "descrizione": "CCNL Multiservizi / Pulizie (FISE/Legacoop)",
+    "anno": 2026,
+    "fonte": "CNEL accordo integrativo 234752, retribuzione base 05/2026; scatti per impiegati, anzianita forfetaria operai distinta.",
+    "livelli": [
+      { "livello": "Q", "descrizione": "Quadro", "minimoTabellare": 2256.14, "edr": 10.33, "importoScatto": 125.23 },
+      { "livello": "7", "descrizione": "7 livello", "minimoTabellare": 2107.24, "edr": 10.33, "importoScatto": 115.92 },
+      { "livello": "6", "descrizione": "6 livello", "minimoTabellare": 1888.36, "edr": 10.33, "importoScatto": 102.70 },
+      { "livello": "5", "descrizione": "5 livello", "minimoTabellare": 1615.66, "edr": 10.33, "importoScatto": 86.05 },
+      { "livello": "4", "descrizione": "4 livello", "minimoTabellare": 1520.60, "edr": 10.33, "importoScatto": 80.17 },
+      { "livello": "3", "descrizione": "3 livello", "minimoTabellare": 1440.16, "edr": 10.33, "importoScatto": 75.27 },
+      { "livello": "2", "descrizione": "2 livello", "minimoTabellare": 1368.17, "edr": 10.33, "importoScatto": 70.86 },
+      { "livello": "1", "descrizione": "1 livello", "minimoTabellare": 1296.39, "edr": 10.33, "importoScatto": 0.00 }
+    ]
+  },
+  {
+    "codice": "EDILIZIA_INDUSTRIA",
+    "descrizione": "CCNL Edilizia Industria (ANCE)",
+    "anno": 2026,
+    "fonte": "CNEL accordo 212523, minimi 01/03/2026; Cassa Edile Verona 03/2026; scatti art.49; premio produzione escluso.",
+    "livelli": [
+      { "livello": "7", "descrizione": "1 categoria super / 7 livello", "minimoTabellare": 2768.53, "edr": 10.33, "importoScatto": 13.94 },
+      { "livello": "6", "descrizione": "1 categoria / 6 livello", "minimoTabellare": 2540.86, "edr": 10.33, "importoScatto": 12.85 },
+      { "livello": "5", "descrizione": "2 categoria / 5 livello", "minimoTabellare": 2199.37, "edr": 10.33, "importoScatto": 10.46 },
+      { "livello": "4", "descrizione": "4 livello", "minimoTabellare": 2085.56, "edr": 10.33, "importoScatto": 9.62 },
+      { "livello": "3", "descrizione": "3 categoria / 3 livello", "minimoTabellare": 1971.72, "edr": 10.33, "importoScatto": 8.99 },
+      { "livello": "2", "descrizione": "4 categoria / 2 livello", "minimoTabellare": 1823.74, "edr": 10.33, "importoScatto": 8.22 },
+      { "livello": "1", "descrizione": "4 categoria / 1 livello", "minimoTabellare": 1630.23, "edr": 10.33, "importoScatto": 8.22 }
+    ]
+  },
+  {
+    "codice": "METALMECCANICI_INDUSTRIA",
+    "descrizione": "CCNL Metalmeccanici Industria (Federmeccanica)",
+    "anno": 2026,
+    "fonte": "Verbale Federmeccanica/Assistal-FIM/FIOM/UILM 16/06/2026, minimi 01/06/2026; CNEL 157071 art.6 scatti.",
+    "livelli": [
+      { "livello": "D1", "descrizione": "D1", "minimoTabellare": 1784.94, "edr": 0.00, "importoScatto": 21.59 },
+      { "livello": "D2", "descrizione": "D2", "minimoTabellare": 1979.37, "edr": 0.00, "importoScatto": 25.05 },
+      { "livello": "C1", "descrizione": "C1", "minimoTabellare": 2022.12, "edr": 0.00, "importoScatto": 25.05 },
+      { "livello": "C2", "descrizione": "C2", "minimoTabellare": 2064.88, "edr": 0.00, "importoScatto": 26.75 },
+      { "livello": "C3", "descrizione": "C3", "minimoTabellare": 2211.43, "edr": 0.00, "importoScatto": 29.64 },
+      { "livello": "B1", "descrizione": "B1", "minimoTabellare": 2370.33, "edr": 0.00, "importoScatto": 32.43 },
+      { "livello": "B2", "descrizione": "B2", "minimoTabellare": 2542.98, "edr": 0.00, "importoScatto": 36.41 },
+      { "livello": "B3", "descrizione": "B3", "minimoTabellare": 2838.99, "edr": 0.00, "importoScatto": 40.96 },
+      { "livello": "A1", "descrizione": "A1", "minimoTabellare": 2907.01, "edr": 0.00, "importoScatto": 40.96 }
+    ]
+  },
+  {
+    "codice": "AGRICOLTURA_OPERAI",
+    "descrizione": "CCNL Operai Agricoli e Florovivaisti",
+    "anno": 2026,
+    "fonte": "CNEL accordo economico 187820; CCNL 167688; scatti non determinati in cifra fissa nazionale.",
+    "livelli": [
+      { "livello": "Area 1", "descrizione": "Operai area 1", "minimoTabellare": 1458.61, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "Area 2", "descrizione": "Operai area 2", "minimoTabellare": 1330.25, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "Area 3", "descrizione": "Operai area 3", "minimoTabellare": 991.85, "edr": 0.00, "importoScatto": 0.00 }
+    ]
+  },
+  {
+    "codice": "COMMERCIO_TERZIARIO",
+    "descrizione": "CCNL Terziario Distribuzione e Servizi (Confcommercio)",
+    "anno": 2026,
+    "fonte": "CNEL CCNL 242377, minimi 01/11/2025, art.209 scatti; Contingenza+EDR inclusa nel minimoTabellare.",
+    "livelli": [
+      { "livello": "Quadri", "descrizione": "Quadri", "minimoTabellare": 2723.46, "edr": 0.00, "importoScatto": 25.46 },
+      { "livello": "1", "descrizione": "1 livello", "minimoTabellare": 2504.06, "edr": 0.00, "importoScatto": 24.84 },
+      { "livello": "2", "descrizione": "2 livello", "minimoTabellare": 2233.58, "edr": 0.00, "importoScatto": 22.83 },
+      { "livello": "3", "descrizione": "3 livello", "minimoTabellare": 1981.84, "edr": 0.00, "importoScatto": 21.95 },
+      { "livello": "4", "descrizione": "4 livello", "minimoTabellare": 1781.68, "edr": 0.00, "importoScatto": 20.66 },
+      { "livello": "5", "descrizione": "5 livello", "minimoTabellare": 1658.01, "edr": 0.00, "importoScatto": 20.30 },
+      { "livello": "6", "descrizione": "6 livello", "minimoTabellare": 1539.70, "edr": 0.00, "importoScatto": 19.73 },
+      { "livello": "7", "descrizione": "7 livello", "minimoTabellare": 1390.73, "edr": 0.00, "importoScatto": 19.47 }
+    ]
+  },
+  {
+    "codice": "STUDI_PROFESSIONALI",
+    "descrizione": "CCNL Studi Professionali",
+    "anno": 2026,
+    "fonte": "CNEL CCNL 195625, minimi 01/10/2025, art.134 scatti.",
+    "livelli": [
+      { "livello": "Quadri", "descrizione": "Quadri", "minimoTabellare": 2408.53, "edr": 0.00, "importoScatto": 30.00 },
+      { "livello": "1", "descrizione": "1 livello", "minimoTabellare": 2173.74, "edr": 0.00, "importoScatto": 26.00 },
+      { "livello": "2", "descrizione": "2 livello", "minimoTabellare": 1959.09, "edr": 0.00, "importoScatto": 23.00 },
+      { "livello": "3S", "descrizione": "3 livello super", "minimoTabellare": 1832.51, "edr": 0.00, "importoScatto": 22.00 },
+      { "livello": "3", "descrizione": "3 livello", "minimoTabellare": 1706.37, "edr": 0.00, "importoScatto": 22.00 },
+      { "livello": "4S", "descrizione": "4 livello super", "minimoTabellare": 1654.70, "edr": 0.00, "importoScatto": 20.00 },
+      { "livello": "4", "descrizione": "4 livello", "minimoTabellare": 1595.42, "edr": 0.00, "importoScatto": 20.00 },
+      { "livello": "5", "descrizione": "5 livello", "minimoTabellare": 1484.78, "edr": 0.00, "importoScatto": 20.00 }
+    ]
+  },
+  {
+    "codice": "TURISMO_PUBBLICI_ESERCIZI",
+    "descrizione": "CCNL Turismo / Pubblici Esercizi",
+    "anno": 2026,
+    "fonte": "CNEL rinnovo H05Y 192253 art.161 paga base; CCNL 103827 art.163 contingenza e art.182 scatti.",
+    "livelli": [
+      { "livello": "Qa", "descrizione": "Quadro A", "minimoTabellare": 2462.96, "edr": 0.00, "importoScatto": 40.80 },
+      { "livello": "Qb", "descrizione": "Quadro B", "minimoTabellare": 2271.62, "edr": 0.00, "importoScatto": 39.25 },
+      { "livello": "1", "descrizione": "1 livello", "minimoTabellare": 2107.66, "edr": 0.00, "importoScatto": 37.70 },
+      { "livello": "2", "descrizione": "2 livello", "minimoTabellare": 1916.32, "edr": 0.00, "importoScatto": 36.15 },
+      { "livello": "3", "descrizione": "3 livello", "minimoTabellare": 1800.74, "edr": 0.00, "importoScatto": 34.86 },
+      { "livello": "4", "descrizione": "4 livello", "minimoTabellare": 1692.69, "edr": 0.00, "importoScatto": 33.05 },
+      { "livello": "5", "descrizione": "5 livello", "minimoTabellare": 1580.08, "edr": 0.00, "importoScatto": 32.54 },
+      { "livello": "6S", "descrizione": "6 livello super", "minimoTabellare": 1514.82, "edr": 0.00, "importoScatto": 31.25 },
+      { "livello": "6", "descrizione": "6 livello", "minimoTabellare": 1491.58, "edr": 0.00, "importoScatto": 30.99 },
+      { "livello": "7", "descrizione": "7 livello", "minimoTabellare": 1390.20, "edr": 0.00, "importoScatto": 30.47 }
+    ]
+  },
+  {
+    "codice": "CHIMICO_FARMACEUTICO",
+    "descrizione": "CCNL Chimico-Farmaceutico",
+    "anno": 2026,
+    "fonte": "CNEL accordo 221298, Trattamento Economico Minimo 01/12/2025; EDR 2026 non separato, scatti non in cifra fissa.",
+    "livelli": [
+      { "livello": "A1", "descrizione": "A1", "minimoTabellare": 2648.52, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "A2", "descrizione": "A2", "minimoTabellare": 2648.52, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "A3", "descrizione": "A3", "minimoTabellare": 2648.52, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "B1", "descrizione": "B1", "minimoTabellare": 2444.22, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "B2", "descrizione": "B2", "minimoTabellare": 2444.22, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "C1", "descrizione": "C1", "minimoTabellare": 2169.25, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "C2", "descrizione": "C2", "minimoTabellare": 2169.25, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "D1", "descrizione": "D1", "minimoTabellare": 2008.03, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "D2", "descrizione": "D2", "minimoTabellare": 2008.03, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "D3", "descrizione": "D3", "minimoTabellare": 2008.03, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "E1", "descrizione": "E1", "minimoTabellare": 1815.87, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "E2", "descrizione": "E2", "minimoTabellare": 1815.87, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "E3", "descrizione": "E3", "minimoTabellare": 1815.87, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "E4", "descrizione": "E4", "minimoTabellare": 1815.87, "edr": 0.00, "importoScatto": 0.00 },
+      { "livello": "F", "descrizione": "F", "minimoTabellare": 1781.46, "edr": 0.00, "importoScatto": 0.00 }
+    ]
+  },
+  {
+    "codice": "ALIMENTARE_INDUSTRIA",
+    "descrizione": "CCNL Industria Alimentare",
+    "anno": 2026,
+    "fonte": "CNEL accordo rinnovo 182845, minimi 01/01/2026; FAI-CISL Verona 2026; FLAI-CGIL art.52 contingenza/EDR, art.53 scatti.",
+    "livelli": [
+      { "livello": "1S", "descrizione": "1 livello super", "minimoTabellare": 3316.57, "edr": 10.33, "importoScatto": 51.42 },
+      { "livello": "1", "descrizione": "1 livello", "minimoTabellare": 2948.10, "edr": 10.33, "importoScatto": 44.71 },
+      { "livello": "2", "descrizione": "2 livello", "minimoTabellare": 2518.31, "edr": 10.33, "importoScatto": 36.89 },
+      { "livello": "3A", "descrizione": "3 livello A", "minimoTabellare": 2272.67, "edr": 10.33, "importoScatto": 32.42 },
+      { "livello": "3", "descrizione": "3 livello", "minimoTabellare": 2088.48, "edr": 10.33, "importoScatto": 29.06 },
+      { "livello": "4", "descrizione": "4 livello", "minimoTabellare": 1965.64, "edr": 10.33, "importoScatto": 26.83 },
+      { "livello": "5", "descrizione": "5 livello", "minimoTabellare": 1842.86, "edr": 10.33, "importoScatto": 24.59 },
+      { "livello": "6", "descrizione": "6 livello", "minimoTabellare": 1720.05, "edr": 10.33, "importoScatto": 22.35 }
+    ]
+  }
+]

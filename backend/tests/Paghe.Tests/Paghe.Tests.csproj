@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.*" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -18,6 +19,13 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Dataset minimi CCNL ufficiali (CNEL) usato dal golden test, copiato in output. -->
+    <Content Include="..\..\..\docs\dati\minimi-ccnl-2026.json" Link="dati\minimi-ccnl-2026.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

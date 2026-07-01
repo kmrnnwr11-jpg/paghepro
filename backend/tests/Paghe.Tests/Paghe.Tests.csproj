@@ -22,8 +22,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Dataset minimi CCNL ufficiali (CNEL) usato dal golden test, copiato in output. -->
-    <Content Include="..\..\..\docs\dati\minimi-ccnl-2026.json" Link="dati\minimi-ccnl-2026.json">
+    <!-- Dataset CCNL (minimi + voci variabili) usati dai golden test, copiati in output. -->
+    <Content Include="..\..\..\docs\dati\*.json" Link="dati\%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

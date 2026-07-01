@@ -1,0 +1,23 @@
+[
+  {
+    "codice": "TRASPORTI_LOGISTICA",
+    "anno": 2026,
+    "fonte": "Valori VERIFICATI sulle buste reali del Drive: trasferte forfettarie autotrasporto e straordinario diurno feriale ricavati dalle buste TORELLO (autista C3) e GIOVE (coop). Le altre maggiorazioni (notturno, festivo) sono DA COMPLETARE dal testo ufficiale del CCNL: non ancora confermate su busta, lasciate a 0.",
+    "orarioSettimanale": 39,
+    "divisoreOrario": 168,
+    "numeroMensilita": 14,
+    "maggiorazioni": {
+      "straordinarioDiurno": 0.30,
+      "straordinarioNotturno": 0.00,
+      "lavoroFestivo": 0.00,
+      "lavoroNotturno": 0.00,
+      "lavoroDomenicale": 0.00,
+      "straordinarioFestivo": 0.00
+    },
+    "indennita": [
+      { "nome": "Trasferta Italia forfettaria autotrasporto", "tipo": "giornaliera", "importo": 46.48 },
+      { "nome": "Trasferta estero forfettaria autotrasporto", "tipo": "giornaliera", "importo": 77.47 }
+    ],
+    "scatti": { "numeroMassimo": 5, "periodicita": "biennale" }
+  }
+]

@@ -99,11 +99,12 @@ public static class Seed
     {
         Anno = 2026,
 
-        // Scaglioni IRPEF (riforma a 3 aliquote): 23% / 35% / 43%.
+        // Scaglioni IRPEF 2026: 23% / 33% / 43%. La seconda aliquota è scesa dal 35% (2024-2025)
+        // al 33% (Legge di Bilancio 2026). Verifica: a 50.000 il cumulato è 13.700 = 28.000×23% + 22.000×33%.
         ScaglioniIrpef = new[]
         {
             new ScaglioneIrpef(0m,      28000m, 0.23m),
-            new ScaglioneIrpef(28000m,  50000m, 0.35m),
+            new ScaglioneIrpef(28000m,  50000m, 0.33m),
             new ScaglioneIrpef(50000m,  null,   0.43m),
         },
 

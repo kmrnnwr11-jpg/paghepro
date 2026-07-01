@@ -19,16 +19,25 @@ public sealed class VociVariabiliCcnlRealeTests
     }
 
     [Fact]
-    public void Logistica_TrasferteForfettarie_CoincidonoConLaBustaReale()
+    public void Logistica_TrasferteForfettarieAutotrasporto_CoincidonoConLaBustaReale()
     {
         var c = Logistica();
 
         // Busta TORELLO (autista C3): "Trasf.ItaliaForfet.Autotrasp 46,48000", "Trasf.EsteroForfet. 77,47000".
-        var italia = Assert.Single(c.Indennita!, i => i.Nome.Contains("Italia"));
-        var estero = Assert.Single(c.Indennita!, i => i.Nome.Contains("estero"));
+        // (Regime autotrasporto, distinto dalle fasce orarie generali del CCNL.)
+        var italia = Assert.Single(c.Indennita!, i => i.Nome.Contains("Italia forfettaria autotrasporto"));
+        var estero = Assert.Single(c.Indennita!, i => i.Nome.Contains("estero forfettaria autotrasporto"));
         Assert.Equal(46.48m, italia.Importo);
         Assert.Equal(77.47m, estero.Importo);
         Assert.Equal("giornaliera", italia.Tipo);
+    }
+
+    [Fact]
+    public void Dataset_CaricaTuttiE5ICcnl()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "dati", "voci-variabili-ccnl-2026.json");
+        var lista = VociVariabiliCcnlJson.Carica(File.ReadAllText(path));
+        Assert.Equal(5, lista.Count);
     }
 
     [Fact]

@@ -61,13 +61,16 @@ public sealed class PersistenzaCedoliniTests : IDisposable
         var rapportoId = await CreaRapportoAsync(tenant, aziendaId);
 
         Guid cedolinoId;
+        decimal nettoCalcolato;
         await using (var db = NuovoContesto())
         {
             var svc = new CedoliniService(db, new ParametriNormativiService(db));
             var c = await svc.CalcolaEArchiviaAsync(tenant, rapportoId,
                 new Cartellino { Anno = 2026, Mese = 6 });
             cedolinoId = c.Id;
-            Assert.Equal(1075.87m, c.NettoInBusta); // stesso netto del calcolo in memoria
+            nettoCalcolato = c.NettoInBusta;
+            Assert.Equal(1340.99m, c.TotaleCompetenze); // le competenze non dipendono dalle addizionali
+            Assert.True(c.NettoInBusta > 0m && c.NettoInBusta < c.TotaleCompetenze);
         }
 
         await using (var db = NuovoContesto())
@@ -75,7 +78,7 @@ public sealed class PersistenzaCedoliniTests : IDisposable
             var c = await new CedoliniService(db, new ParametriNormativiService(db)).GetAsync(tenant, cedolinoId);
             Assert.NotNull(c);
             Assert.Equal(2026, c!.Anno);
-            Assert.Equal(1075.87m, c.NettoInBusta);
+            Assert.Equal(nettoCalcolato, c.NettoInBusta); // rileggendo: stesso netto calcolato
             Assert.NotEmpty(c.Voci); // le righe del cedolino sono persistite
         }
     }

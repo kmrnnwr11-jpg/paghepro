@@ -66,13 +66,13 @@ public sealed class ParametriNormativiServiceTests : IDisposable
             new RapportoLavoro
             {
                 CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3", Qualifica = Qualifica.Impiegato,
-                NumeroMensilita = 14, Regione = "Lombardia", CodiceCatastaleComune = "F205",
+                NumeroMensilita = 14, // senza residenza fiscale: confronta il calcolo base DB vs Seed
             },
             new Cartellino { Anno = 2026, Mese = 6 });
 
-        // Stesso risultato del test con i parametri cablati (Seed): netto 1075,87.
+        // Stesso risultato del calcolo col Seed (senza addizionali): netto 1100,59.
         Assert.Equal(1340.99m, cedolino.TotaleCompetenze);
-        Assert.Equal(1075.87m, cedolino.NettoInBusta);
+        Assert.Equal(1100.59m, cedolino.NettoInBusta);
     }
 
     [Fact]

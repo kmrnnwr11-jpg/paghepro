@@ -91,6 +91,10 @@ public sealed class ParametriNormativiService
         var regionali = await _db.AddizionaliRegionali.Where(x => x.Anno == anno).ToListAsync(ct);
         var comunali = await _db.AddizionaliComunali.Where(x => x.Anno == anno).ToListAsync(ct);
 
+        // Regimi a scaglioni + esenzione dai file ufficiali MEF (se disponibili per l'anno):
+        // prevalgono sull'aliquota piatta di DB, che resta come fallback.
+        var regimiMef = CaricaRegimiMef.PerAnno(anno);
+
         return new ParametriNormativi
         {
             Anno = anno,
@@ -103,6 +107,8 @@ public sealed class ParametriNormativiService
                 r => r.Regione, r => r.Aliquota, StringComparer.OrdinalIgnoreCase),
             AddizionaleComunale = comunali.ToDictionary(
                 c => c.CodiceCatastale, c => c.Aliquota, StringComparer.OrdinalIgnoreCase),
+            RegimiAddizionaleRegionale = regimiMef.Regionali,
+            RegimiAddizionaleComunale = regimiMef.Comunali,
             DivisoreOrario = pa.DivisoreOrario,
             MaggiorazioneStraordinario = pa.MaggiorazioneStraordinario,
             MaggiorazioneStraordinarioNotturno = pa.MaggiorazioneStraordinarioNotturno,

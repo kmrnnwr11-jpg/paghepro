@@ -6,4 +6,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Tabelle ufficiali MEF delle addizionali IRPEF (comunale + regionale), per anno.
+         Incorporate come risorse: disponibili anche nel deploy, senza file esterni. -->
+    <EmbeddedResource Include="Parametri/dati-mef/*.csv" />
+  </ItemGroup>
+
 </Project>

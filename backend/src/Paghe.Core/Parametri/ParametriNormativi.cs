@@ -29,6 +29,17 @@ public sealed class ParametriNormativi
     /// <summary>Aliquota addizionale comunale IRPEF per codice catastale del comune.</summary>
     public required IReadOnlyDictionary<string, decimal> AddizionaleComunale { get; init; }
 
+    /// <summary>
+    /// Regimi addizionale regionale a scaglioni + soglia di esenzione (dai dati ufficiali MEF),
+    /// per nome regione. Se presente per una regione, prevale sull'aliquota piatta.
+    /// </summary>
+    public IReadOnlyDictionary<string, RegimeAddizionale> RegimiAddizionaleRegionale { get; init; }
+        = new Dictionary<string, RegimeAddizionale>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Regimi addizionale comunale a scaglioni + esenzione (dati MEF), per codice catastale.</summary>
+    public IReadOnlyDictionary<string, RegimeAddizionale> RegimiAddizionaleComunale { get; init; }
+        = new Dictionary<string, RegimeAddizionale>(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Divisore orario per il calcolo della paga oraria (es. 168).</summary>
     public decimal DivisoreOrario { get; init; } = 168m;
 
@@ -46,4 +57,23 @@ public sealed class ParametriNormativi
         AliquoteInps.TryGetValue(qualifica, out var a)
             ? a
             : throw new ArgumentException($"Aliquota INPS non definita per la qualifica {qualifica}.");
+
+    /// <summary>Regime addizionale regionale (scaglioni MEF se disponibili, altrimenti aliquota piatta).</summary>
+    public RegimeAddizionale RegimeRegionale(string regione) =>
+        Regime(RegimiAddizionaleRegionale, AddizionaleRegionale, regione);
+
+    /// <summary>Regime addizionale comunale per codice catastale (scaglioni MEF se disponibili, altrimenti aliquota piatta).</summary>
+    public RegimeAddizionale RegimeComunale(string codiceCatastale) =>
+        Regime(RegimiAddizionaleComunale, AddizionaleComunale, codiceCatastale);
+
+    private static RegimeAddizionale Regime(
+        IReadOnlyDictionary<string, RegimeAddizionale> regimi,
+        IReadOnlyDictionary<string, decimal> piatte,
+        string chiave)
+    {
+        if (string.IsNullOrEmpty(chiave)) return RegimeAddizionale.Nessuno;
+        if (regimi.TryGetValue(chiave, out var r)) return r;              // scaglioni MEF
+        if (piatte.TryGetValue(chiave, out var a)) return RegimeAddizionale.Unica(a); // fallback piatto
+        return RegimeAddizionale.Nessuno;
+    }
 }

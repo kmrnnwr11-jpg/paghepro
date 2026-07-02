@@ -104,18 +104,21 @@ public sealed class MotoreCalcoloCedolino
         AggiungiRiga(cedolino, "IRPEF", "IRPEF netta del mese", TipoVoce.Trattenuta,
             @base: imponibileIrpefMese, importo: -irpefNetta);
 
-        // ---- 5. Addizionali regionale e comunale -------------------------------------
-        decimal aliquotaReg = _parametri.AddizionaleRegionale.GetValueOrDefault(rapporto.Regione, 0m);
-        decimal aliquotaCom = _parametri.AddizionaleComunale.GetValueOrDefault(rapporto.CodiceCatastaleComune, 0m);
+        // ---- 5. Addizionali regionale e comunale (a scaglioni + esenzione, dati MEF) --
+        // Metodo presuntivo mensile: addizionale annua dovuta sul reddito annuo presunto, /12.
+        var regimeReg = _parametri.RegimeRegionale(rapporto.Regione);
+        var regimeCom = _parametri.RegimeComunale(rapporto.CodiceCatastaleComune);
 
-        decimal addRegMese = Arrotondamento.Euro(redditoAnnuoPresunto * aliquotaReg / 12m);
-        decimal addComMese = Arrotondamento.Euro(redditoAnnuoPresunto * aliquotaCom / 12m);
+        decimal addRegMese = Arrotondamento.Euro(
+            CalcoloAddizionali.Dovuta(redditoAnnuoPresunto, regimeReg) / 12m);
+        decimal addComMese = Arrotondamento.Euro(
+            CalcoloAddizionali.Dovuta(redditoAnnuoPresunto, regimeCom) / 12m);
 
         if (addRegMese > 0m)
-            AggiungiRiga(cedolino, "ADD_REG", $"Addizionale regionale ({aliquotaReg:P2})",
+            AggiungiRiga(cedolino, "ADD_REG", "Addizionale regionale",
                 TipoVoce.Trattenuta, importo: -addRegMese);
         if (addComMese > 0m)
-            AggiungiRiga(cedolino, "ADD_COM", $"Addizionale comunale ({aliquotaCom:P2})",
+            AggiungiRiga(cedolino, "ADD_COM", "Addizionale comunale",
                 TipoVoce.Trattenuta, importo: -addComMese);
 
         // ---- 6. TFR (figurativo) ------------------------------------------------------

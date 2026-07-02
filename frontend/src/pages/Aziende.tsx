@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { api, type Azienda, type NuovaAzienda } from "../api";
 import { ComuneAutocomplete } from "../ComuneAutocomplete";
 
@@ -11,6 +11,33 @@ export function Aziende() {
   const [errore, setErrore] = useState<string | null>(null);
   const [form, setForm] = useState<NuovaAzienda>(vuota);
   const [daConfermare, setDaConfermare] = useState<NuovaAzienda | null>(null);
+  const [notaVisura, setNotaVisura] = useState<string | null>(null);
+  const [visuraInCorso, setVisuraInCorso] = useState(false);
+
+  async function caricaVisura(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setErrore(null);
+    setNotaVisura(null);
+    setVisuraInCorso(true);
+    try {
+      const d = await api.aziendaDaVisura(file);
+      setForm({
+        ragioneSociale: d.ragioneSociale ?? "",
+        partitaIva: d.partitaIva ?? "",
+        indirizzo: d.indirizzo ?? "",
+        cap: d.cap ?? "",
+        comune: d.comune ?? "",
+        provincia: d.provincia ?? "",
+      });
+      setNotaVisura(d.nota ?? "Dati estratti dalla visura: controllali, poi premi «Aggiungi azienda».");
+    } catch (err) {
+      setErrore(err instanceof Error ? err.message : "Non sono riuscito a leggere la visura.");
+    } finally {
+      setVisuraInCorso(false);
+    }
+  }
 
   async function carica() {
     try { setAziende(await api.aziende()); }
@@ -61,6 +88,29 @@ export function Aziende() {
               <em>Attiva</em>
             </div>
           ))}
+        </div>
+      )}
+
+      {!daConfermare && (
+        <div style={{ margin: "10px 0 14px" }}>
+          <label
+            className="btn secondary"
+            style={{ cursor: visuraInCorso ? "wait" : "pointer", display: "inline-flex", gap: 8, alignItems: "center" }}
+          >
+            📄 {visuraInCorso ? "Lettura in corso…" : "Carica visura (PDF o foto) → compila da sola"}
+            <input
+              type="file"
+              accept="application/pdf,.pdf,image/*"
+              onChange={caricaVisura}
+              disabled={visuraInCorso}
+              style={{ display: "none" }}
+            />
+          </label>
+          {notaVisura && (
+            <p className="muto" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
+              ✅ {notaVisura}
+            </p>
+          )}
         </div>
       )}
 

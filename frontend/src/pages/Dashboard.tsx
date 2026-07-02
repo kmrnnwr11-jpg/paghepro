@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { getRuolo } from "../api";
+import { getRuolo, getToken } from "../api";
+
+// Email dell'utente loggato, letta dal token (per mostrare il vero account, non un nome finto).
+function emailDalToken(): string {
+  try {
+    const t = getToken();
+    if (!t) return "";
+    const payload = JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return (payload.email as string) ?? "";
+  } catch {
+    return "";
+  }
+}
 import { Aziende } from "./Aziende";
 import { Cedolino } from "./Cedolino";
 import { Dipendente } from "./Dipendente";
@@ -68,6 +80,7 @@ interface NavItem {
 
 const primaryNav: NavItem[] = [
   { key: "dashboard", icon: "🏠", label: "Dashboard" },
+  { key: "aziende", icon: "🏢", label: "Aziende" },
   { key: "dipendenti", icon: "👥", label: "Dipendenti" },
   { key: "presenze", icon: "🗓️", label: "Presenze" },
   { key: "cedolini", icon: "📄", label: "Cedolini" },
@@ -113,7 +126,7 @@ const crumbsFor: Partial<Record<SectionKey, string[]>> = {
   dipendente: ["Home", "Dipendenti", "Scheda"],
   presenze: ["Home", "Presenze", "Cartellino mensile"],
   elaborazioni: ["Home", "Cedolini", "Elaborazione"],
-  cedolini: ["Home", "Cedolini", "Giugno 2026", "Mario Bianchi"],
+  cedolini: ["Home", "Cedolini"],
   calcolo: ["Home", "Cedolini", "Calcolo cedolino"],
   pagamenti: ["Home", "Pagamenti clienti"],
 };
@@ -157,96 +170,46 @@ const kpis = [
     tone: "blue",
     label: "Buste paga",
     detail: "Cedolini",
-    value: "38",
-    unit: "/42",
-    foot: "90,48% elaborati",
+    value: "0",
+    unit: "",
+    foot: "Nessun cedolino ancora",
   },
   {
     icon: "📑",
     tone: "green",
     label: "CU / CUD",
     detail: "CU pronte",
-    value: "42",
+    value: "0",
     unit: "",
-    foot: "Pronte per invio",
+    foot: "Nessuna CU ancora",
   },
   {
     icon: "🏛️",
     tone: "amber",
     label: "F24",
     detail: "F24 da versare",
-    value: "18.420",
+    value: "0",
     unit: ",00 €",
-    foot: "Scadenza: 16/06/2026",
+    foot: "Nessun F24 ancora",
   },
   {
     icon: "🧾",
     tone: "cyan",
     label: "Fatture",
     detail: "Fatture SdI",
-    value: "126",
+    value: "0",
     unit: "",
-    foot: "12 in attesa di esito",
+    foot: "Nessuna fattura ancora",
   },
 ];
 
-const workflow = [
-  { label: "Presenze chiuse", value: "42/42", state: "Completato", tone: "green", icon: "📅" },
-  { label: "Calcolo paghe", value: "38/42", state: "In corso", tone: "blue", icon: "🧮" },
-  { label: "Consegna buste", value: "—", state: "In attesa", tone: "slate", icon: "✉️" },
-  { label: "Genera CU", value: "42", state: "In attesa", tone: "slate", icon: "📄" },
-  { label: "Invio F24", value: "18.420,00", state: "In scadenza", tone: "amber", icon: "🏛" },
-  { label: "UniEmens", value: "Maggio", state: "In attesa", tone: "slate", icon: "☁️" },
-  { label: "Fatture", value: "126", state: "In corso", tone: "blue", icon: "€" },
-];
+// Vuoto: i dati reali del flusso compariranno qui man mano che lavori (niente esempi finti).
+const workflow: { label: string; value: string; state: string; tone: string; icon: string }[] = [];
 
-const documentQueue = [
-  {
-    tag: "F24",
-    tone: "amber",
-    title: "F24 FEP - Ritenute lavoro dip.",
-    ref: "Giugno 2026",
-    due: "16/06/2026",
-    state: "In scadenza",
-    stateTone: "amber",
-  },
-  {
-    tag: "CU",
-    tone: "blue",
-    title: "Certificazione Unica 2026",
-    ref: "Anno d'imposta 2025",
-    due: "16/03/2026",
-    state: "In attesa",
-    stateTone: "slate",
-  },
-  {
-    tag: "UNI",
-    tone: "violet",
-    title: "UniEmens - Flusso mensile",
-    ref: "Maggio 2026",
-    due: "31/05/2026",
-    state: "In lavorazione",
-    stateTone: "blue",
-  },
-  {
-    tag: "FAT",
-    tone: "green",
-    title: "Fattura elettronica n. 2026/045",
-    ref: "Cliente Verdi S.r.l.",
-    due: "28/05/2026",
-    state: "In attesa SdI",
-    stateTone: "slate",
-  },
-  {
-    tag: "F24",
-    tone: "amber",
-    title: "F24 Accise e Contributi",
-    ref: "Giugno 2026",
-    due: "16/06/2026",
-    state: "Bloccato",
-    stateTone: "red",
-  },
-];
+// Vuoto: i documenti/adempimenti reali compariranno qui (niente esempi finti).
+const documentQueue: {
+  tag: string; tone: string; title: string; ref: string; due: string; state: string; stateTone: string;
+}[] = [];
 
 export function Dashboard() {
   const { esci } = useAuth();
@@ -283,8 +246,8 @@ export function Dashboard() {
         <button className="company-switch" type="button" onClick={() => setActive("aziende")}>
           <span className="company-icon">🏢</span>
           <span>
-            <strong>Rossi S.r.l.</strong>
-            <small>P.IVA 01567890123</small>
+            <strong>Il tuo studio</strong>
+            <small>Cambia azienda</small>
           </span>
           <span className="chevron">›</span>
         </button>
@@ -417,7 +380,7 @@ function Topbar({ onCompanyClick, onAiuto, onEsci }: { onCompanyClick: () => voi
     <header className="topbar">
       <button className="soft-button company-top" type="button" onClick={onCompanyClick}>
         <span>🏢</span>
-        <strong>Rossi S.r.l.</strong>
+        <strong>Il tuo studio</strong>
         <span className="muted">▾</span>
       </button>
 
@@ -441,10 +404,10 @@ function Topbar({ onCompanyClick, onAiuto, onEsci }: { onCompanyClick: () => voi
         ?
       </button>
       <button className="user-button" type="button">
-        <span>MR</span>
+        <span>{(emailDalToken().slice(0, 2) || "AC").toUpperCase()}</span>
         <strong>
-          Mario Rossi
-          <small>m.rossi@rossisrl.it</small>
+          {emailDalToken().split("@")[0] || "Account"}
+          <small>{emailDalToken() || "—"}</small>
         </strong>
         <em>⌄</em>
       </button>
@@ -528,15 +491,21 @@ function DashboardHome({ onNavigate }: { onNavigate: (key: SectionKey) => void }
             </button>
           </div>
           <div className="workflow">
-            {workflow.map((step, index) => (
-              <div key={step.label} className="workflow-step">
-                {index < workflow.length - 1 && <span className="workflow-line" />}
-                <span className={`workflow-dot ${step.tone}`}>{step.icon}</span>
-                <strong>{step.label}</strong>
-                <small>{step.value}</small>
-                <em className={`status-pill ${step.tone}`}>{step.state}</em>
-              </div>
-            ))}
+            {workflow.length === 0 ? (
+              <p className="muto" style={{ margin: "4px 2px" }}>
+                Nessun processo in corso. Il flusso si popolerà man mano che lavori (presenze, cedolini, F24…).
+              </p>
+            ) : (
+              workflow.map((step, index) => (
+                <div key={step.label} className="workflow-step">
+                  {index < workflow.length - 1 && <span className="workflow-line" />}
+                  <span className={`workflow-dot ${step.tone}`}>{step.icon}</span>
+                  <strong>{step.label}</strong>
+                  <small>{step.value}</small>
+                  <em className={`status-pill ${step.tone}`}>{step.state}</em>
+                </div>
+              ))
+            )}
           </div>
         </section>
 
@@ -549,11 +518,11 @@ function DashboardHome({ onNavigate }: { onNavigate: (key: SectionKey) => void }
           </div>
           <div className="tabs-line">
             <button className="active" type="button">
-              Tutti (18)
+              Tutti
             </button>
-            <button type="button">In attesa (7)</button>
-            <button type="button">In lavorazione (6)</button>
-            <button type="button">Bloccati (2)</button>
+            <button type="button">In attesa</button>
+            <button type="button">In lavorazione</button>
+            <button type="button">Bloccati</button>
           </div>
           <div className="table-wrap">
             <table className="data-table">
@@ -568,26 +537,34 @@ function DashboardHome({ onNavigate }: { onNavigate: (key: SectionKey) => void }
                 </tr>
               </thead>
               <tbody>
-                {documentQueue.map((row) => (
-                  <tr key={`${row.tag}-${row.title}`}>
-                    <td>
-                      <span className={`tag ${row.tone}`}>{row.tag}</span>
-                    </td>
-                    <td>
-                      <strong>{row.title}</strong>
-                    </td>
-                    <td>{row.ref}</td>
-                    <td className="num">{row.due}</td>
-                    <td>
-                      <span className={`status-pill ${row.stateTone}`}>{row.state}</span>
-                    </td>
-                    <td className="right">
-                      <button className="mini-action" type="button">
-                        Apri
-                      </button>
+                {documentQueue.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="muto" style={{ padding: 14 }}>
+                      Nessun documento ancora. I tuoi adempimenti reali compariranno qui.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  documentQueue.map((row) => (
+                    <tr key={`${row.tag}-${row.title}`}>
+                      <td>
+                        <span className={`tag ${row.tone}`}>{row.tag}</span>
+                      </td>
+                      <td>
+                        <strong>{row.title}</strong>
+                      </td>
+                      <td>{row.ref}</td>
+                      <td className="num">{row.due}</td>
+                      <td>
+                        <span className={`status-pill ${row.stateTone}`}>{row.state}</span>
+                      </td>
+                      <td className="right">
+                        <button className="mini-action" type="button">
+                          Apri
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -600,62 +577,42 @@ function DashboardHome({ onNavigate }: { onNavigate: (key: SectionKey) => void }
 }
 
 function DashboardRail({ onNavigate }: { onNavigate: (key: SectionKey) => void }) {
-  const deadlines = [
-    ["16", "GIU", "F24 FEP - Ritenute", "Scade oggi"],
-    ["20", "GIU", "UniEmens - Maggio 2026", "Scade tra 4 giorni"],
-    ["30", "GIU", "Versamento ritenute", "Scade tra 14 giorni"],
-  ];
-
-  const receipts = [
-    ["F24 EP - Maggio 2026", "Ricevuta n. 250000123456", "10:15"],
-    ["UniEmens - Aprile 2026", "Protocollo n. 1234567890", "08:42"],
-    ["Fattura n. 2026/040", "Esito: Consegnata", "ieri"],
-  ];
+  // Vuoti: compariranno i dati reali (niente esempi finti).
+  const deadlines: string[][] = [];
+  const receipts: string[][] = [];
 
   return (
     <aside className="dashboard-rail">
       <section className="glass-card side-card">
         <div className="side-card-head">
           <strong>Errori da correggere</strong>
-          <span className="count red">2</span>
+          <span className="count">0</span>
         </div>
-        <button className="alert-row" type="button" onClick={() => onNavigate("presenze")}>
-          <span>!</span>
-          <strong>
-            Cartellini incompleti
-            <small>2 dipendenti con anomalie</small>
-          </strong>
-          <em>›</em>
-        </button>
-        <button className="alert-row" type="button" onClick={() => onNavigate("dipendenti")}>
-          <span>!</span>
-          <strong>
-            Anagrafica fiscale mancante
-            <small>1 dipendente senza codice fiscale</small>
-          </strong>
-          <em>›</em>
-        </button>
-        <button className="rail-cta" type="button">
-          Vai agli errori
-        </button>
+        <p className="muto" style={{ fontSize: 13, margin: "6px 2px" }}>
+          Nessun errore. I controlli sui tuoi dati compariranno qui.
+        </p>
       </section>
 
       <section className="glass-card side-card">
         <div className="side-card-head">
           <strong>Scadenze</strong>
         </div>
-        {deadlines.map(([day, month, title, meta]) => (
-          <div className="deadline-row" key={title}>
-            <span>
-              <b>{day}</b>
-              <small>{month}</small>
-            </span>
-            <strong>
-              {title}
-              <small>{meta}</small>
-            </strong>
-          </div>
-        ))}
+        {deadlines.length === 0 ? (
+          <p className="muto" style={{ fontSize: 13, margin: "6px 2px" }}>Nessuna scadenza imminente.</p>
+        ) : (
+          deadlines.map(([day, month, title, meta]) => (
+            <div className="deadline-row" key={title}>
+              <span>
+                <b>{day}</b>
+                <small>{month}</small>
+              </span>
+              <strong>
+                {title}
+                <small>{meta}</small>
+              </strong>
+            </div>
+          ))
+        )}
         <button className="rail-cta" type="button" onClick={() => onNavigate("adempimenti")}>
           Vedi tutte le scadenze
         </button>
@@ -665,16 +622,20 @@ function DashboardRail({ onNavigate }: { onNavigate: (key: SectionKey) => void }
         <div className="side-card-head">
           <strong>Ricevute recenti</strong>
         </div>
-        {receipts.map(([title, meta, time]) => (
-          <div className="receipt-row" key={title}>
-            <span>✓</span>
-            <strong>
-              {title}
-              <small>{meta}</small>
-            </strong>
-            <em>{time}</em>
-          </div>
-        ))}
+        {receipts.length === 0 ? (
+          <p className="muto" style={{ fontSize: 13, margin: "6px 2px" }}>Ancora nessuna ricevuta.</p>
+        ) : (
+          receipts.map(([title, meta, time]) => (
+            <div className="receipt-row" key={title}>
+              <span>✓</span>
+              <strong>
+                {title}
+                <small>{meta}</small>
+              </strong>
+              <em>{time}</em>
+            </div>
+          ))
+        )}
       </section>
     </aside>
   );
@@ -698,17 +659,17 @@ function ModuleScreen({
           <div className="page-heading">
             <div>
               <h1>Aziende clienti</h1>
-              <p>Anagrafiche, sedi e dati fiscali collegati al tenant demo</p>
+              <p>Anagrafiche, sedi e dati fiscali del tuo studio</p>
             </div>
           </div>
           <Aziende />
         </div>
         <ModuleRail
-          title="Stato anagrafiche"
+          title="Come iniziare"
           rows={[
-            ["Aziende attive", "4"],
-            ["Sedi incomplete", "1"],
-            ["Ultimo aggiornamento", "oggi"],
+            ["1", "Carica una visura (PDF o foto)"],
+            ["2", "Controlla i dati estratti"],
+            ["3", "Aggiungi l'azienda"],
           ]}
         />
       </div>
@@ -795,12 +756,7 @@ function ModuleRail({ title, rows }: { title: string; rows: string[][] }) {
 }
 
 function DeadlinesPanel({ onNavigate }: { onNavigate: (key: SectionKey) => void }) {
-  const rows = [
-    ["F24", "Ritenute lavoro dipendente", "16/06/2026", "Studio", "In scadenza", "amber"],
-    ["UNI", "UniEmens maggio 2026", "30/06/2026", "Paghe", "In lavorazione", "blue"],
-    ["LUL", "Libro unico del lavoro", "30/06/2026", "Paghe", "In attesa", "slate"],
-    ["SDI", "Controllo esiti fatture", "28/06/2026", "Amministrazione", "Bloccato", "red"],
-  ];
+  const rows: string[][] = [];
 
   return (
     <div className="workbench-grid">
@@ -814,12 +770,6 @@ function DeadlinesPanel({ onNavigate }: { onNavigate: (key: SectionKey) => void 
             Prepara F24
           </button>
         </div>
-        <div className="metric-strip">
-          <Metric label="In scadenza" value="7" />
-          <Metric label="Bloccati" value="2" />
-          <Metric label="In lavorazione" value="6" />
-          <Metric label="Completati" value="24" />
-        </div>
         <div className="table-wrap">
           <table className="data-table spacious">
             <thead>
@@ -832,7 +782,9 @@ function DeadlinesPanel({ onNavigate }: { onNavigate: (key: SectionKey) => void 
               </tr>
             </thead>
             <tbody>
-              {rows.map(([type, title, due, owner, state, tone]) => (
+              {rows.length === 0 ? (
+                <tr><td colSpan={5} className="muto" style={{ padding: 16 }}>Nessun adempimento ancora. Le tue scadenze reali compariranno qui.</td></tr>
+              ) : rows.map(([type, title, due, owner, state, tone]) => (
                 <tr key={`${type}-${title}`}>
                   <td><span className={`tag ${tone}`}>{type}</span></td>
                   <td><strong>{title}</strong></td>
@@ -845,75 +797,35 @@ function DeadlinesPanel({ onNavigate }: { onNavigate: (key: SectionKey) => void 
           </table>
         </div>
       </section>
-
-      <aside className="glass-card focus-panel">
-        <h2>Timeline mese</h2>
-        <TimelineRow day="16" label="Versamento F24" tone="amber" />
-        <TimelineRow day="20" label="Controllo ricevute" tone="blue" />
-        <TimelineRow day="30" label="Chiusura LUL" tone="slate" />
-        <TimelineRow day="30" label="Invio UniEmens" tone="blue" />
-      </aside>
     </div>
   );
 }
 
 function AccountingPanel() {
-  const rows = [
-    ["Stipendi lordi", "115.469,28 €", "Quadrato", "green"],
-    ["Contributi azienda", "32.218,40 €", "Da versare", "amber"],
-    ["TFR mese", "4.866,54 €", "Accantonato", "blue"],
-    ["Ritenute fiscali", "18.420,00 €", "In F24", "amber"],
-  ];
-
   return (
     <>
       <CaricaUnilav />
       <div className="workbench-grid">
-      <section className="glass-card page-card">
-        <div className="card-title-row">
-          <div>
-            <h1>Contabilità</h1>
-            <p>Quadratura costo del lavoro e scritture mensili</p>
+        <section className="glass-card page-card">
+          <div className="card-title-row">
+            <div>
+              <h1>Contabilità</h1>
+              <p>Quadratura costo del lavoro e scritture mensili</p>
+            </div>
+            <button className="btn primary" type="button">Esporta prima nota</button>
           </div>
-          <button className="btn primary" type="button">Esporta prima nota</button>
-        </div>
-        <div className="accounting-total">
-          <span>Costo azienda stimato</span>
-          <strong>147.687,68 €</strong>
-          <em>Giugno 2026 · Rossi S.r.l.</em>
-        </div>
-        <div className="ledger-grid">
-          {rows.map(([label, value, state, tone]) => (
-            <article className="ledger-card" key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-              <em className={`status-pill ${tone}`}>{state}</em>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <aside className="glass-card focus-panel">
-        <h2>Controlli audit</h2>
-        <CheckRow label="Totale cedolini = prima nota" ok />
-        <CheckRow label="F24 coerente con trattenute" ok />
-        <CheckRow label="2 movimenti senza centro costo" />
-        <CheckRow label="Ricevute SdI da riconciliare" />
-      </aside>
+          <p className="muto" style={{ padding: "6px 2px", lineHeight: 1.6 }}>
+            Nessun movimento ancora. Il costo del lavoro e le scritture compariranno qui man mano che
+            elabori i cedolini e registri le fatture.
+          </p>
+        </section>
       </div>
     </>
   );
 }
 
 function DocumentsPanel({ onNavigate }: { onNavigate: (key: SectionKey) => void }) {
-  const docs = [
-    ["Busta paga", "Mario Bianchi · Giugno 2026", "PDF", "Generato", "green"],
-    ["F24 EP", "Ritenute lavoro dipendente", "PDF", "Da firmare", "amber"],
-    ["Certificazione Unica", "Anno d'imposta 2025", "PDF", "In bozza", "blue"],
-    ["UniEmens", "Maggio 2026", "XML", "In lavorazione", "blue"],
-    ["Fattura elettronica", "2026/045 · Cliente Verdi", "XML", "In attesa SdI", "slate"],
-    ["Libro unico", "Giugno 2026", "PDF", "Da chiudere", "amber"],
-  ];
+  const docs: string[][] = [];
 
   return (
     <section className="glass-card page-card">
@@ -926,29 +838,30 @@ function DocumentsPanel({ onNavigate }: { onNavigate: (key: SectionKey) => void 
           Genera cedolino
         </button>
       </div>
-      <div className="document-grid">
-        {docs.map(([kind, title, format, state, tone]) => (
-          <article className="document-card" key={`${kind}-${title}`}>
-            <div className="doc-icon">{format}</div>
-            <div>
-              <strong>{kind}</strong>
-              <span>{title}</span>
-            </div>
-            <em className={`status-pill ${tone}`}>{state}</em>
-          </article>
-        ))}
-      </div>
+      {docs.length === 0 ? (
+        <p className="muto" style={{ padding: "6px 2px", lineHeight: 1.6 }}>
+          Nessun documento ancora. Cedolini, F24, CU e fatture che generi compariranno qui.
+        </p>
+      ) : (
+        <div className="document-grid">
+          {docs.map(([kind, title, format, state, tone]) => (
+            <article className="document-card" key={`${kind}-${title}`}>
+              <div className="doc-icon">{format}</div>
+              <div>
+                <strong>{kind}</strong>
+                <span>{title}</span>
+              </div>
+              <em className={`status-pill ${tone}`}>{state}</em>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
 
 function F24Panel() {
-  const payments = [
-    ["1001", "Ritenute lavoro dipendente", "18.420,00 €"],
-    ["3802", "Addizionale regionale", "820,00 €"],
-    ["3848", "Addizionale comunale", "420,00 €"],
-    ["DM10", "Contributi INPS", "24.180,40 €"],
-  ];
+  const payments: string[][] = [];
 
   return (
     <div className="document-workspace">
@@ -956,7 +869,7 @@ function F24Panel() {
         <div className="card-title-row">
           <div>
             <h1>Modello F24</h1>
-            <p>Riepilogo versamenti · scadenza 16/06/2026</p>
+            <p>Riepilogo versamenti dai cedolini elaborati</p>
           </div>
           <button className="btn primary" type="button">Genera PDF</button>
         </div>
@@ -970,7 +883,9 @@ function F24Panel() {
               </tr>
             </thead>
             <tbody>
-              {payments.map(([code, label, amount]) => (
+              {payments.length === 0 ? (
+                <tr><td colSpan={3} className="muto" style={{ padding: 16 }}>Nessun tributo ancora. L'F24 si compila dai cedolini elaborati.</td></tr>
+              ) : payments.map(([code, label, amount]) => (
                 <tr key={code}>
                   <td className="num"><strong>{code}</strong></td>
                   <td>{label}</td>
@@ -981,19 +896,6 @@ function F24Panel() {
           </table>
         </div>
       </section>
-
-      <aside className="glass-card pdf-preview">
-        <div className="pdf-toolbar">
-          <strong>Anteprima F24</strong>
-          <span className="status-pill amber">Da firmare</span>
-        </div>
-        <div className="fiscal-sheet">
-          <b>F24</b>
-          <span>Rossi S.r.l.</span>
-          <span>Periodo 06/2026</span>
-          <strong>43.840,40 €</strong>
-        </div>
-      </aside>
     </div>
   );
 }
@@ -1031,11 +933,12 @@ function SettingsPanel() {
 }
 
 function UsersPanel() {
-  const users = [
-    ["MR", "Mario Rossi", "m.rossi@rossisrl.it", "Admin", "Attivo"],
-    ["SP", "Studio Paghe", "paghe@rossisrl.it", "Operatore", "Attivo"],
-    ["RV", "Revisore", "revisore@rossisrl.it", "Lettura", "Invito pendente"],
-  ];
+  const email = emailDalToken();
+  const iniziali = (email.slice(0, 2) || "AC").toUpperCase();
+  const nome = email.split("@")[0] || "Account";
+  const ruolo = getRuolo() === "superadmin" ? "Super-admin" : "Admin";
+  // Solo l'utente realmente collegato: niente utenti di esempio.
+  const users = email ? [[iniziali, nome, email, ruolo, "Attivo"]] : [];
 
   return (
     <section className="glass-card page-card">
@@ -1057,15 +960,17 @@ function UsersPanel() {
             </tr>
           </thead>
           <tbody>
-            {users.map(([initials, name, email, role, state]) => (
-              <tr key={email}>
+            {users.length === 0 ? (
+              <tr><td colSpan={4} className="muto" style={{ padding: 16 }}>Nessun utente collegato.</td></tr>
+            ) : users.map(([initials, name, mail, role, state]) => (
+              <tr key={mail}>
                 <td>
                   <div className="person-cell">
                     <span>{initials}</span>
                     <strong>{name}</strong>
                   </div>
                 </td>
-                <td>{email}</td>
+                <td>{mail}</td>
                 <td>{role}</td>
                 <td><span className={`status-pill ${state === "Attivo" ? "green" : "amber"}`}>{state}</span></td>
               </tr>
@@ -1077,23 +982,6 @@ function UsersPanel() {
   );
 }
 
-function TimelineRow({ day, label, tone }: { day: string; label: string; tone: string }) {
-  return (
-    <div className="timeline-row">
-      <span className={`tag ${tone}`}>{day}</span>
-      <strong>{label}</strong>
-    </div>
-  );
-}
-
-function CheckRow({ label, ok }: { label: string; ok?: boolean }) {
-  return (
-    <div className="check-row">
-      <span className={`status-pill ${ok ? "green" : "amber"}`}>{ok ? "OK" : "Check"}</span>
-      <strong>{label}</strong>
-    </div>
-  );
-}
 
 function GenericPanel({
   active,
@@ -1102,43 +990,8 @@ function GenericPanel({
   active: SectionKey;
   onNavigate: (key: SectionKey) => void;
 }) {
-  const rowsBySection: Partial<Record<SectionKey, string[][]>> = {
-    adempimenti: [
-      ["F24 ritenute", "16/06/2026", "In scadenza"],
-      ["UniEmens maggio", "30/06/2026", "In lavorazione"],
-      ["Libro unico", "30/06/2026", "In attesa"],
-    ],
-    contabilita: [
-      ["Liquidazione IVA", "Maggio 2026", "Bozza"],
-      ["Prima nota stipendi", "Giugno 2026", "Pronta"],
-      ["Quadratura contributi", "Giugno 2026", "Da verificare"],
-    ],
-    documenti: [
-      ["Cedolino Mario Bianchi", "PDF", "Generato"],
-      ["F24 EP", "PDF", "Firmato"],
-      ["CU 2026", "PDF", "In bozza"],
-    ],
-    f24: [
-      ["Ritenute lavoro dipendente", "18.420,00 €", "In scadenza"],
-      ["Contributi INPS", "24.180,40 €", "Pronto"],
-      ["Addizionali", "1.240,00 €", "Pronto"],
-    ],
-    cu: [
-      ["CU lavoro dipendente", "42", "Pronte"],
-      ["CU autonome", "3", "Da controllare"],
-      ["Invio telematico", "2026", "In attesa"],
-    ],
-    impostazioni: [
-      ["Parametri fiscali", "2026", "Aggiornati"],
-      ["CCNL Commercio", "14 mensilita", "Attivo"],
-      ["Brand documenti", "PaghePro", "Attivo"],
-    ],
-    utenti: [
-      ["Mario Rossi", "Admin", "Attivo"],
-      ["Studio Paghe", "Operatore", "Attivo"],
-      ["Revisore", "Lettura", "Invito pendente"],
-    ],
-  };
+  // Nessun dato di esempio: le voci reali compariranno man mano che lavori.
+  const rowsBySection: Partial<Record<SectionKey, string[][]>> = {};
   const rows = rowsBySection[active] ?? [];
 
   return (
@@ -1162,7 +1015,9 @@ function GenericPanel({
             </tr>
           </thead>
           <tbody>
-            {rows.map(([title, ref, state]) => (
+            {rows.length === 0 ? (
+              <tr><td colSpan={3} className="muto" style={{ padding: 16 }}>Nessun dato ancora in questa sezione.</td></tr>
+            ) : rows.map(([title, ref, state]) => (
               <tr key={`${title}-${ref}`}>
                 <td>
                   <strong>{title}</strong>
@@ -1177,14 +1032,5 @@ function GenericPanel({
         </table>
       </div>
     </section>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }

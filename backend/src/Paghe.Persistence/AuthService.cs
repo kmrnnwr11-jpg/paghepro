@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Paghe.Persistence.Entities;
 using Paghe.Persistence.Sicurezza;
 
@@ -10,6 +11,7 @@ public enum EsitoAccesso
     CredenzialiErrate,
     ServeCodice2fa,
     Codice2faErrato,
+    AccountSospeso,
     Ok,
 }
 
@@ -26,8 +28,16 @@ public sealed record ConfigurazioneDueFattori(string Segreto, string UriOtpauth)
 public sealed class AuthService
 {
     private readonly PagheDbContext _db;
+    private readonly IConfiguration? _config;
 
-    public AuthService(PagheDbContext db) => _db = db;
+    public AuthService(PagheDbContext db, IConfiguration? config = null)
+    {
+        _db = db;
+        _config = config;
+    }
+
+    /// <summary>Ruolo del super-admin di piattaforma (proprietario del SaaS).</summary>
+    public const string RuoloSuperAdmin = "superadmin";
 
     public async Task<UtenteEntity> RegistraAsync(
         string ragioneSociale, string email, string password, CancellationToken ct = default)
@@ -45,7 +55,7 @@ public sealed class AuthService
         var utente = new UtenteEntity
         {
             Id = Guid.NewGuid(), TenantId = tenant.Id, Email = email,
-            PasswordHash = PasswordHasher.Hash(password), Ruolo = "admin",
+            PasswordHash = PasswordHasher.Hash(password), Ruolo = RuoloPerEmail(email),
             Attivo = true, CreatoIl = DateTime.UtcNow,
         };
 
@@ -53,6 +63,50 @@ public sealed class AuthService
         _db.Utenti.Add(utente);
         await _db.SaveChangesAsync(ct);
         return utente;
+    }
+
+    /// <summary>
+    /// Accesso con Google: trovato l'utente per email (verificata da Google nello strato API),
+    /// lo restituisce; se non esiste, crea uno studio + utente <b>senza password</b> (accesso solo
+    /// via Google). Il ruolo segue la stessa regola del super-admin (email configurata).
+    /// </summary>
+    public async Task<UtenteEntity> AccediConGoogleAsync(
+        string email, string nome, CancellationToken ct = default)
+    {
+        email = Normalizza(email);
+        if (string.IsNullOrWhiteSpace(email))
+            throw new ArgumentException("Email Google mancante.");
+
+        var esistente = await _db.Utenti.FirstOrDefaultAsync(u => u.Email == email && u.Attivo, ct);
+        if (esistente is not null)
+            return esistente;
+
+        var tenant = new TenantEntity
+        {
+            Id = Guid.NewGuid(),
+            RagioneSociale = string.IsNullOrWhiteSpace(nome) ? email : nome,
+            CreatoIl = DateTime.UtcNow,
+        };
+        var utente = new UtenteEntity
+        {
+            Id = Guid.NewGuid(), TenantId = tenant.Id, Email = email,
+            PasswordHash = "", // niente password: accesso solo via Google
+            Ruolo = RuoloPerEmail(email), Attivo = true, CreatoIl = DateTime.UtcNow,
+        };
+
+        _db.Tenants.Add(tenant);
+        _db.Utenti.Add(utente);
+        await _db.SaveChangesAsync(ct);
+        return utente;
+    }
+
+    /// <summary>Ruolo da assegnare a un'email: superadmin se coincide con <c>SuperAdmin:Email</c>, altrimenti admin.</summary>
+    private string RuoloPerEmail(string emailNormalizzata)
+    {
+        var emailSuper = _config?["SuperAdmin:Email"];
+        return !string.IsNullOrWhiteSpace(emailSuper)
+               && string.Equals(emailNormalizzata, Normalizza(emailSuper), StringComparison.Ordinal)
+            ? RuoloSuperAdmin : "admin";
     }
 
     /// <summary>Restituisce l'utente se le credenziali sono valide, altrimenti null. (Solo password.)</summary>
@@ -76,6 +130,14 @@ public sealed class AuthService
         var utente = await AutenticaAsync(email, password, ct);
         if (utente is null)
             return new RisultatoAccesso(EsitoAccesso.CredenzialiErrate, null);
+
+        // Studio sospeso dal super-admin: l'accesso è bloccato (il super-admin non sospende sé stesso).
+        if (utente.Ruolo != RuoloSuperAdmin)
+        {
+            var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == utente.TenantId, ct);
+            if (tenant is { Sospeso: true })
+                return new RisultatoAccesso(EsitoAccesso.AccountSospeso, null);
+        }
 
         if (utente.DueFattoriAttivo)
         {

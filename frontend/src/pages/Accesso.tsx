@@ -1,7 +1,17 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { api } from "../api";
 import { useAuth } from "../auth";
 
 type Modo = "accedi" | "registra";
+
+// ID client Google (Google Cloud → OAuth). Se assente, il bottone Google resta informativo.
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+
+interface GoogleId {
+  initialize: (c: { client_id: string; callback: (r: { credential: string }) => void }) => void;
+  prompt: () => void;
+}
+type WindowGoogle = Window & { google?: { accounts: { id: GoogleId } } };
 
 // Schermata di ingresso: ogni persona può creare il proprio account gratuito
 // (spazio privato isolato), accedere a uno esistente, oppure provare la demo.
@@ -14,6 +24,45 @@ export function Accesso() {
   const [errore, setErrore] = useState<string | null>(null);
   const [attesa, setAttesa] = useState(false);
   const [infoGoogle, setInfoGoogle] = useState<string | null>(null);
+
+  // Carica Google Identity Services e prepara il callback (solo se è configurato il client ID).
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return;
+    const avvia = () => {
+      const g = (window as WindowGoogle).google;
+      if (!g) return;
+      g.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (r) => {
+          void (async () => {
+            try {
+              await api.googleLogin(r.credential);
+              location.reload();
+            } catch (err) {
+              setErrore(err instanceof Error ? err.message : "Accesso con Google non riuscito.");
+            }
+          })();
+        },
+      });
+    };
+    if ((window as WindowGoogle).google) {
+      avvia();
+      return;
+    }
+    const id = "gis-script";
+    const esistente = document.getElementById(id);
+    if (esistente) {
+      esistente.addEventListener("load", avvia);
+      return;
+    }
+    const s = document.createElement("script");
+    s.id = id;
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.defer = true;
+    s.addEventListener("load", avvia);
+    document.body.appendChild(s);
+  }, []);
 
   async function invia(e: FormEvent) {
     e.preventDefault();
@@ -129,12 +178,16 @@ export function Accesso() {
         <button
           className="accesso-google"
           type="button"
-          onClick={() =>
-            setInfoGoogle(
-              "L'accesso con Google sarà attivabile a breve (serve un breve passaggio di configurazione). " +
-                "Per ora accedi con la tua email Gmail e password qui sopra.",
-            )
-          }
+          onClick={() => {
+            if (!GOOGLE_CLIENT_ID) {
+              setInfoGoogle(
+                "L'accesso con Google sarà attivabile a breve (serve un breve passaggio di configurazione). " +
+                  "Per ora accedi con la tua email Gmail e password qui sopra.",
+              );
+              return;
+            }
+            (window as WindowGoogle).google?.accounts.id.prompt();
+          }}
           disabled={attesa}
         >
           <svg viewBox="0 0 48 48" aria-hidden="true">

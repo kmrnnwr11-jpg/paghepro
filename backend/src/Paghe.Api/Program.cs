@@ -133,6 +133,7 @@ builder.Services.AddScoped<NotificheService>();
 // Autenticazione JWT: il tenant è derivato dai claim del token firmato, non da un header.
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TokenService>();
+builder.Services.AddScoped<PiattaformaAdminService>();
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -223,6 +224,10 @@ using (var scope = app.Services.CreateScope())
         var tabelleAppPresenti = check.ExecuteScalar() is bool b && b;
         if (!tabelleAppPresenti)
             db.Database.ExecuteSqlRaw(db.Database.GenerateCreateScript());
+
+        // Colonne aggiunte dopo la prima creazione dello schema (Postgres supporta IF NOT EXISTS).
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"Tenants\" ADD COLUMN IF NOT EXISTS \"Sospeso\" boolean NOT NULL DEFAULT false;");
     }
 
     scope.ServiceProvider.GetRequiredService<ParametriNormativiService>()
@@ -406,9 +411,72 @@ app.MapPost("/api/auth/login", async (LoginRequest req, AuthService auth, TokenS
         EsitoAccesso.ServeCodice2fa => Results.Json(new { serveCodice2fa = true }, statusCode: 401),
         EsitoAccesso.Codice2faErrato => Results.Json(
             new { serveCodice2fa = true, errore = "Codice 2FA non valido." }, statusCode: 401),
+        EsitoAccesso.AccountSospeso => Results.Json(
+            new { errore = "Studio sospeso. Contatta l'amministratore della piattaforma." }, statusCode: 403),
         _ => Results.Unauthorized(),
     };
 }).RequireRateLimiting("auth");
+
+// Accesso con Google (Sign in with Google): il frontend invia il "credential" (ID token Google);
+// lo verifichiamo tramite l'endpoint tokeninfo di Google (aud = nostro Client ID, email verificata),
+// poi accediamo/creiamo l'utente per quell'email. Richiede la config "Google:ClientId".
+app.MapPost("/api/auth/google", async (
+    GoogleLoginRequest req, IHttpClientFactory httpFactory, IConfiguration cfg,
+    AuthService auth, TokenService tokens) =>
+{
+    var clientId = cfg["Google:ClientId"];
+    if (string.IsNullOrWhiteSpace(clientId))
+        return Results.Json(new { errore = "Accesso con Google non configurato (manca Google:ClientId)." }, statusCode: 501);
+    if (string.IsNullOrWhiteSpace(req.Credential))
+        return Results.BadRequest(new { errore = "Credenziale Google mancante." });
+
+    GoogleTokenInfo? info;
+    try
+    {
+        var client = httpFactory.CreateClient();
+        info = await client.GetFromJsonAsync<GoogleTokenInfo>(
+            $"https://oauth2.googleapis.com/tokeninfo?id_token={Uri.EscapeDataString(req.Credential)}");
+    }
+    catch
+    {
+        return Results.Json(new { errore = "Token Google non valido." }, statusCode: 401);
+    }
+
+    if (info is null || info.Aud != clientId || info.EmailVerified != "true" || string.IsNullOrEmpty(info.Email))
+        return Results.Json(new { errore = "Token Google non valido o email non verificata." }, statusCode: 401);
+
+    var utente = await auth.AccediConGoogleAsync(info.Email, info.Name ?? info.Email);
+    return Results.Ok(new { token = tokens.Crea(utente), tenantId = utente.TenantId, ruolo = utente.Ruolo });
+}).RequireRateLimiting("auth");
+
+// --- Super-admin di piattaforma: gestione/sospensione studi (solo ruolo superadmin) ----
+static bool ÈSuperAdmin(ClaimsPrincipal u) =>
+    u.IsInRole(AuthService.RuoloSuperAdmin)
+    || u.FindFirst(ClaimTypes.Role)?.Value == AuthService.RuoloSuperAdmin
+    || u.FindFirst("role")?.Value == AuthService.RuoloSuperAdmin;
+
+secured.MapGet("/api/admin/studi", async (ClaimsPrincipal user, PiattaformaAdminService svc) =>
+    ÈSuperAdmin(user)
+        ? Results.Ok(await svc.ElencaStudiAsync())
+        : Results.StatusCode(StatusCodes.Status403Forbidden));
+
+secured.MapPost("/api/admin/studi/{id:guid}/sospendi",
+    async (Guid id, ClaimsPrincipal user, PiattaformaAdminService svc) =>
+{
+    if (!ÈSuperAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    return await svc.ImpostaSospensioneAsync(id, true)
+        ? Results.Ok(new { id, sospeso = true })
+        : Results.NotFound(new { errore = "Studio non trovato." });
+});
+
+secured.MapPost("/api/admin/studi/{id:guid}/riattiva",
+    async (Guid id, ClaimsPrincipal user, PiattaformaAdminService svc) =>
+{
+    if (!ÈSuperAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    return await svc.ImpostaSospensioneAsync(id, false)
+        ? Results.Ok(new { id, sospeso = false })
+        : Results.NotFound(new { errore = "Studio non trovato." });
+});
 
 // --- Secondo fattore (2FA / TOTP) — endpoint protetti per l'utente autenticato ---
 static Guid? UtenteCorrente(ClaimsPrincipal user) =>
@@ -1637,6 +1705,7 @@ app.MapIres();
 app.MapImu();
 app.MapIntrastat();
 app.MapImportUnilavPdf(); // UNILAV: carica il PDF → registra datore + lavoratore + rapporto
+app.MapImportVisuraPdf(); // Visura camerale: carica il PDF → estrae i dati azienda (da confermare)
 app.MapCcnl();            // elenco dei CCNL configurati (menu busta paga)
 
 app.Run();

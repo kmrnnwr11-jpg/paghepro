@@ -1,10 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Azienda, type DipendenteRapporto, type Livello } from "../api";
 import { CaricaUnilav } from "./CaricaUnilav";
+import { ComuneAutocomplete } from "../ComuneAutocomplete";
 
 const CCNL = "COMMERCIO_TERZIARIO";
 
-const formVuoto = { codiceFiscale: "", nome: "", cognome: "", livello: "3", iban: "", qualifica: "Impiegato" };
+const formVuoto = {
+  codiceFiscale: "", nome: "", cognome: "", livello: "3", iban: "", qualifica: "Impiegato",
+  regione: "", codiceCatastaleComune: "", comuneNome: "",
+};
 
 export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void }) {
   const [azienda, setAzienda] = useState<Azienda | null>(null);
@@ -54,6 +58,8 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
         livello: form.livello,
         iban: form.iban.trim() || undefined,
         qualifica: form.qualifica,
+        regione: form.regione || undefined,
+        codiceCatastaleComune: form.codiceCatastaleComune || undefined,
       });
       setLista(await api.dipendenti(azienda.id));
       setForm(formVuoto);
@@ -125,6 +131,15 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
           <label>
             <span>IBAN <small>(facoltativo)</small></span>
             <input value={form.iban} onChange={set("iban")} placeholder="IT.." />
+          </label>
+          <label className="wide-field">
+            <span>Comune di residenza <small>(per le addizionali regionale e comunale)</small></span>
+            <ComuneAutocomplete
+              valore={form.comuneNome}
+              placeholder="Es. Milano"
+              onSelect={(c) =>
+                setForm((f) => ({ ...f, comuneNome: c.nome, codiceCatastaleComune: c.cat, regione: c.reg }))}
+            />
           </label>
           <button className="btn primary wide-field" type="submit" disabled={salvataggio}>
             {salvataggio ? "Salvataggio…" : "Salva dipendente"}

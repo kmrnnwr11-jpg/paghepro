@@ -54,6 +54,11 @@ export interface AuthResponse { token: string; tenantId: string; ruolo: string }
 export interface StudioSintesi {
   id: string; ragioneSociale: string; sospeso: boolean; numeroUtenti: number; creatoIl: string;
 }
+export interface DatiVisura {
+  ragioneSociale?: string | null; partitaIva?: string | null; codiceFiscale?: string | null;
+  indirizzo?: string | null; cap?: string | null; comune?: string | null; provincia?: string | null;
+  codiceAteco?: string | null; legaleRappresentante?: string | null; nota?: string;
+}
 export interface Azienda { id: string; ragioneSociale: string }
 export interface NuovaAzienda {
   ragioneSociale: string; partitaIva?: string; indirizzo: string;
@@ -225,6 +230,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password, codice2fa }),
     });
+    setRuolo(r.ruolo);
+    return r;
+  },
+
+  // Accesso con Google: invia il "credential" (ID token) e riceve il nostro token.
+  googleLogin: async (credential: string) => {
+    const r = await req<AuthResponse>("/api/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ credential }),
+    });
+    setToken(r.token);
     setRuolo(r.ruolo);
     return r;
   },
@@ -461,6 +477,27 @@ export const api = {
       { method: "POST", body: JSON.stringify(d) },
     ),
 
+  // --- Azienda da visura camerale (PDF): estrae i dati da confermare ---
+  aziendaDaVisura: async (file: File): Promise<DatiVisura> => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/aziende/da-visura`, { method: "POST", body: form, headers });
+    if (!res.ok) {
+      let messaggio = `Errore ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.errore) messaggio = body.errore as string;
+      } catch {
+        /* corpo non JSON */
+      }
+      throw new Error(messaggio);
+    }
+    return (await res.json()) as DatiVisura;
+  },
+
   // --- Import UNILAV da PDF: legge il PDF e registra datore + lavoratore + rapporto ---
   importUnilavPdf: async (file: File): Promise<EsitoImportUnilav> => {
     const form = new FormData();
@@ -537,6 +574,7 @@ export interface DipendenteRapporto {
 export interface CreaDipendente {
   codiceFiscale: string; nome: string; cognome: string;
   codiceCcnl: string; livello: string; iban?: string; qualifica?: string;
+  regione?: string; codiceCatastaleComune?: string;
 }
 
 export interface EsitoImportUnilav {

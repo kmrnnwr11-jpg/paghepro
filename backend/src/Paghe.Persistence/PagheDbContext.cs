@@ -460,6 +460,11 @@ public class PagheDbContext : DbContext
         if (!ColonnaSqliteEsiste("Dipendenti", "Anonimizzato"))
             Database.ExecuteSqlRaw(
                 "ALTER TABLE \"Dipendenti\" ADD COLUMN \"Anonimizzato\" INTEGER NOT NULL DEFAULT 0;");
+
+        // Flag sospensione studio (super-admin) su una tabella Tenants preesistente.
+        if (!ColonnaSqliteEsiste("Tenants", "Sospeso"))
+            Database.ExecuteSqlRaw(
+                "ALTER TABLE \"Tenants\" ADD COLUMN \"Sospeso\" INTEGER NOT NULL DEFAULT 0;");
     }
 
     /// <summary>True se la colonna esiste già nella tabella SQLite (via PRAGMA table_info).</summary>

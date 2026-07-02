@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Paghe.Core.AdeTelematico;
 using Paghe.Core.Contabilita;
 using Paghe.Core.Domain;
@@ -14,6 +15,18 @@ public sealed record LoginRequest(string Email, string Password, string? Codice2
 
 /// <summary>Codice TOTP a 6 cifre per attivare/disattivare il secondo fattore.</summary>
 public sealed record Codice2faRequest(string Codice);
+
+/// <summary>Accesso con Google: "credential" è l'ID token restituito da Google Identity Services.</summary>
+public sealed record GoogleLoginRequest(string Credential);
+
+/// <summary>Risposta dell'endpoint tokeninfo di Google (campi in snake_case).</summary>
+public sealed class GoogleTokenInfo
+{
+    [JsonPropertyName("aud")] public string? Aud { get; set; }
+    [JsonPropertyName("email")] public string? Email { get; set; }
+    [JsonPropertyName("email_verified")] public string? EmailVerified { get; set; }
+    [JsonPropertyName("name")] public string? Name { get; set; }
+}
 
 /// <summary>Dati per il calcolo del ravvedimento operoso su un versamento tardivo.</summary>
 public sealed record RavvedimentoRequest(

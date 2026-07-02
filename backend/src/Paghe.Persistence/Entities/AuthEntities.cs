@@ -1,11 +1,14 @@
 namespace Paghe.Persistence.Entities;
 
-/// <summary>Account (tenant) che sottoscrive il SaaS.</summary>
+/// <summary>Account (tenant) che sottoscrive il SaaS — tipicamente uno studio/commercialista.</summary>
 public class TenantEntity
 {
     public Guid Id { get; set; }
     public string RagioneSociale { get; set; } = "";
     public DateTime CreatoIl { get; set; }
+
+    /// <summary>Se true, il super-admin ha sospeso lo studio: i suoi utenti non possono accedere.</summary>
+    public bool Sospeso { get; set; }
 }
 
 /// <summary>Utente applicativo, appartenente a un tenant.</summary>

@@ -154,3 +154,49 @@ Piano di completamento dettagliato (gap analysis, priorità, effort, sequenza): 
 
 Integrazione telematica ufficiale (Agenzia Entrate, ComUnica/Registro Imprese, INAIL,
 INPS, SUAP): fonti, kit, modello dati e backlog a fasi in `docs/integrazione-ufficiale/`.
+
+## Linee guida di comportamento (stile Karpathy)
+
+Regole per ridurre gli errori tipici degli assistenti AI nel programmare. Da fonte MIT
+`multica-ai/andrej-karpathy-skills`. Per compiti banali (refuso, one-liner ovvio): usa buon senso.
+
+### 1. Pensa prima di scrivere codice
+
+**Non dare per scontato. Non nascondere i dubbi. Esponi i compromessi.**
+
+- Dichiara le assunzioni in modo esplicito. Se sei incerto, chiedi.
+- Se ci sono più interpretazioni, presentale — non sceglierne una in silenzio.
+- Se esiste un approccio più semplice, dillo. Obietta quando ha senso.
+- Se qualcosa non è chiaro, fermati. Di' cosa ti confonde. Chiedi.
+
+### 2. Prima la semplicità
+
+**Il minimo codice che risolve il problema. Niente di speculativo.**
+
+- Nessuna funzionalità oltre a quanto richiesto.
+- Nessuna astrazione per codice usato una sola volta.
+- Nessuna "flessibilità"/"configurabilità" non richiesta.
+- Nessuna gestione di errori per scenari impossibili.
+- Se scrivi 200 righe e ne bastavano 50, riscrivi.
+- Test: "Un ingegnere senior direbbe che è troppo complicato?" Se sì, semplifica.
+
+### 3. Modifiche chirurgiche
+
+**Tocca solo ciò che devi. Pulisci solo il disordine che crei tu.**
+
+- Non "migliorare" codice, commenti o formattazione adiacenti.
+- Non rifattorizzare cose che non sono rotte.
+- Rispetta lo stile esistente, anche se lo faresti diversamente.
+- Se noti codice morto non collegato, segnalalo — non cancellarlo.
+- Rimuovi import/variabili/funzioni resi inutili dalle TUE modifiche; non rimuovere
+  codice morto preesistente se non richiesto.
+- Test: ogni riga modificata deve ricondursi direttamente alla richiesta dell'utente.
+
+### 4. Esecuzione guidata dall'obiettivo
+
+**Definisci criteri di successo. Itera finché non è verificato.**
+
+- "Aggiungi validazione" → "Scrivi test per input non validi, poi falli passare".
+- "Correggi il bug" → "Scrivi un test che lo riproduce, poi fallo passare".
+- "Rifattorizza X" → "Assicura che i test passino prima e dopo".
+- Per compiti multi-step, dichiara un piano breve: passo → verifica.

@@ -1,0 +1,1914 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>20 interfacce moderne per PaghePro Contabilita</title>
+  <style>
+    :root {
+      --ink: #111827;
+      --muted: #667085;
+      --soft: #f5f7fb;
+      --line: #dde3ee;
+      --paper: #ffffff;
+      --blue: #2457d6;
+      --green: #14855f;
+      --amber: #a5620b;
+      --red: #bd3327;
+      --shadow: 0 18px 60px -38px rgba(16, 24, 40, .55);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #eef2f7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .page {
+      min-height: 100vh;
+    }
+
+    .hero {
+      color: #fff;
+      background:
+        linear-gradient(rgba(11, 18, 32, .64), rgba(11, 18, 32, .74)),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 720'%3E%3Crect width='1600' height='720' fill='%23111827'/%3E%3Cg opacity='.38'%3E%3Crect x='116' y='96' width='296' height='420' rx='18' fill='%23ffffff'/%3E%3Crect x='456' y='96' width='996' height='86' rx='18' fill='%23ffffff'/%3E%3Crect x='456' y='220' width='230' height='150' rx='18' fill='%23ffffff'/%3E%3Crect x='718' y='220' width='230' height='150' rx='18' fill='%23ffffff'/%3E%3Crect x='980' y='220' width='230' height='150' rx='18' fill='%23ffffff'/%3E%3Crect x='456' y='410' width='996' height='210' rx='18' fill='%23ffffff'/%3E%3C/g%3E%3Cg opacity='.22' fill='none' stroke='%239db7ff' stroke-width='3'%3E%3Cpath d='M520 540c70-94 150-35 220-92 79-64 118 28 196-22 88-57 140 38 224-42 52-50 96-26 142 20'/%3E%3Cpath d='M520 580c90-52 168-28 236-48 88-26 152 16 234-30 92-52 178 12 312-68'/%3E%3C/g%3E%3C/svg%3E");
+      background-size: cover;
+      background-position: center;
+      border-bottom: 1px solid rgba(255, 255, 255, .14);
+    }
+
+    .hero-inner {
+      width: min(1180px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 34px 0 30px;
+    }
+
+    .topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 46px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      color: #fff;
+      background: #3157ff;
+      font-weight: 900;
+      box-shadow: 0 10px 26px rgba(49, 87, 255, .36);
+    }
+
+    .brand strong,
+    .brand span {
+      display: block;
+      line-height: 1.1;
+    }
+
+    .brand strong {
+      font-size: 17px;
+      font-weight: 850;
+    }
+
+    .brand span {
+      margin-top: 3px;
+      color: rgba(255, 255, 255, .66);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hero-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      padding: 0 13px;
+      border: 1px solid rgba(255, 255, 255, .24);
+      border-radius: 8px;
+      color: #fff;
+      background: rgba(255, 255, 255, .12);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .hero h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(34px, 5vw, 62px);
+      line-height: .96;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      max-width: 690px;
+      margin: 18px 0 0;
+      color: rgba(255, 255, 255, .78);
+      font-size: 18px;
+      line-height: 1.55;
+    }
+
+    .hero-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 30px;
+    }
+
+    .hero-stat {
+      min-height: 78px;
+      padding: 14px;
+      border: 1px solid rgba(255, 255, 255, .18);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .1);
+    }
+
+    .hero-stat strong,
+    .hero-stat span {
+      display: block;
+    }
+
+    .hero-stat strong {
+      font-size: 21px;
+      font-weight: 850;
+    }
+
+    .hero-stat span {
+      margin-top: 4px;
+      color: rgba(255, 255, 255, .68);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .toolbar-wrap {
+      position: sticky;
+      top: 0;
+      z-index: 8;
+      border-bottom: 1px solid var(--line);
+      background: rgba(238, 242, 247, .9);
+      backdrop-filter: blur(18px);
+    }
+
+    .toolbar {
+      width: min(1180px, calc(100% - 36px));
+      min-height: 70px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .search {
+      position: relative;
+      flex: 1;
+      min-width: 220px;
+    }
+
+    .search input {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px 0 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      background: #fff;
+      outline: none;
+    }
+
+    .search svg {
+      position: absolute;
+      left: 13px;
+      top: 12px;
+      width: 19px;
+      height: 19px;
+      color: #98a2b3;
+    }
+
+    .filter {
+      height: 44px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      background: #fff;
+      font-weight: 700;
+    }
+
+    .content {
+      width: min(1180px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 26px 0 54px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin: 8px 0 18px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    .section-head p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .legend span {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: #475467;
+      background: #fff;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .concept {
+      --accent: #2457d6;
+      --accent-2: #14855f;
+      --surface: #ffffff;
+      --app-bg: #f6f8fb;
+      --rail: #111827;
+      --rail-text: #f8fafc;
+      --tone: #eef4ff;
+      --warn: #f6a609;
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid #dfe5ef;
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .concept-head {
+      min-height: 110px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 18px 18px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .concept-title {
+      min-width: 0;
+    }
+
+    .concept-title h3 {
+      margin: 0;
+      font-size: 19px;
+      letter-spacing: 0;
+    }
+
+    .concept-title p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 13.5px;
+      line-height: 1.45;
+    }
+
+    .badge {
+      flex: 0 0 auto;
+      padding: 7px 9px;
+      border-radius: 999px;
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, #fff);
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .mock {
+      position: relative;
+      min-height: 360px;
+      padding: 13px;
+      background: var(--app-bg);
+    }
+
+    .app-frame {
+      height: 334px;
+      display: grid;
+      grid-template-columns: 95px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid rgba(17, 24, 39, .08);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .mini-rail {
+      padding: 12px 9px;
+      color: var(--rail-text);
+      background: var(--rail);
+    }
+
+    .mini-logo {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--accent);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .mini-nav {
+      display: grid;
+      gap: 7px;
+      margin-top: 18px;
+    }
+
+    .mini-nav span {
+      height: 27px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 8px;
+      border-radius: 7px;
+      color: rgba(255, 255, 255, .78);
+      font-size: 10px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .mini-nav span::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      flex: 0 0 8px;
+      border-radius: 3px;
+      background: currentColor;
+      opacity: .76;
+    }
+
+    .mini-nav .active {
+      color: #fff;
+      background: rgba(255, 255, 255, .15);
+    }
+
+    .mini-body {
+      min-width: 0;
+      padding: 13px;
+      background: var(--surface);
+    }
+
+    .mini-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .mini-title {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .mini-title strong,
+    .mini-title span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mini-title strong {
+      color: var(--ink);
+      font-size: 16px;
+      font-weight: 850;
+    }
+
+    .mini-title span {
+      margin-top: 2px;
+      color: #7b8794;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .mini-search {
+      width: 112px;
+      height: 29px;
+      display: flex;
+      align-items: center;
+      padding: 0 9px;
+      border: 1px solid #e3e8f0;
+      border-radius: 7px;
+      color: #98a2b3;
+      background: #fff;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .mini-action {
+      width: 30px;
+      height: 29px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      color: #fff;
+      background: var(--accent);
+      font-size: 16px;
+      font-weight: 850;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .kpi {
+      min-height: 70px;
+      padding: 10px;
+      border: 1px solid #e5eaf2;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .kpi span {
+      display: block;
+      color: #7b8794;
+      font-size: 9px;
+      font-weight: 750;
+    }
+
+    .kpi strong {
+      display: block;
+      margin-top: 7px;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .panel {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid #e5eaf2;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .panel h4 {
+      margin: 0 0 8px;
+      color: #253044;
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .bars {
+      display: grid;
+      gap: 7px;
+    }
+
+    .bar {
+      height: 9px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #eef2f7;
+    }
+
+    .bar i {
+      display: block;
+      height: 100%;
+      width: var(--w);
+      border-radius: inherit;
+      background: var(--accent);
+    }
+
+    .rows {
+      display: grid;
+      gap: 7px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 24px;
+      font-size: 10px;
+      font-weight: 750;
+    }
+
+    .row b {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pill {
+      padding: 4px 6px;
+      border-radius: 999px;
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 13%, #fff);
+      font-size: 9px;
+      font-weight: 850;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9.5px;
+    }
+
+    .table th {
+      padding: 7px 6px;
+      color: #7b8794;
+      background: #f7f9fc;
+      text-align: left;
+      font-size: 8.5px;
+      text-transform: uppercase;
+    }
+
+    .table td {
+      padding: 8px 6px;
+      border-top: 1px solid #edf1f6;
+      font-weight: 700;
+    }
+
+    .table td:last-child,
+    .table th:last-child {
+      text-align: right;
+    }
+
+    .cards-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .large-card {
+      min-height: 92px;
+      padding: 10px;
+      border: 1px solid #e5eaf2;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent) 7%, #fff);
+    }
+
+    .large-card strong,
+    .large-card span {
+      display: block;
+    }
+
+    .large-card strong {
+      color: #253044;
+      font-size: 13px;
+    }
+
+    .large-card span {
+      margin-top: 5px;
+      color: #667085;
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .lane {
+      min-height: 220px;
+      padding: 8px;
+      border: 1px solid #e5eaf2;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .lane h4 {
+      margin: 0 0 8px;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    .task {
+      min-height: 48px;
+      margin-bottom: 7px;
+      padding: 8px;
+      border: 1px solid #e5eaf2;
+      border-radius: 7px;
+      background: #fff;
+      font-size: 10px;
+      font-weight: 750;
+    }
+
+    .task small {
+      display: block;
+      margin-top: 4px;
+      color: #7b8794;
+      font-size: 8.5px;
+      font-weight: 700;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 9px;
+      margin-top: 8px;
+    }
+
+    .event {
+      display: grid;
+      grid-template-columns: 42px 1fr auto;
+      gap: 9px;
+      align-items: center;
+      padding: 9px;
+      border: 1px solid #e5eaf2;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 10px;
+      font-weight: 750;
+    }
+
+    .datebox {
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, #fff);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .wizard {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr);
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .steps,
+    .formgrid {
+      border: 1px solid #e5eaf2;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .steps {
+      padding: 9px;
+    }
+
+    .step {
+      display: flex;
+      gap: 7px;
+      min-height: 34px;
+      color: #667085;
+      font-size: 9.5px;
+      font-weight: 800;
+    }
+
+    .step i {
+      width: 18px;
+      height: 18px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 18px;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--accent);
+      font-style: normal;
+      font-size: 9px;
+    }
+
+    .formgrid {
+      padding: 12px;
+    }
+
+    .field {
+      height: 31px;
+      margin-bottom: 8px;
+      border: 1px solid #e5eaf2;
+      border-radius: 7px;
+      background: #f8fafc;
+    }
+
+    .field.wide {
+      height: 72px;
+    }
+
+    .phone-shell {
+      width: 160px;
+      height: 280px;
+      margin: 6px auto 0;
+      padding: 9px;
+      border: 8px solid #111827;
+      border-radius: 28px;
+      background: #fff;
+      box-shadow: 0 16px 40px -24px rgba(17, 24, 39, .65);
+    }
+
+    .phone-head {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      font-weight: 850;
+    }
+
+    .phone-card {
+      min-height: 56px;
+      margin-bottom: 8px;
+      padding: 8px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent) 10%, #fff);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .chat-layout {
+      display: grid;
+      grid-template-columns: 1fr 150px;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .chat {
+      min-height: 220px;
+      padding: 10px;
+      border: 1px solid #e5eaf2;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .bubble {
+      max-width: 86%;
+      margin-bottom: 8px;
+      padding: 8px;
+      border-radius: 8px;
+      color: #253044;
+      background: #f2f5f9;
+      font-size: 10px;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
+    .bubble.me {
+      margin-left: auto;
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .insights {
+      display: grid;
+      gap: 8px;
+    }
+
+    .insight {
+      min-height: 66px;
+      padding: 9px;
+      border: 1px solid #e5eaf2;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      padding: 13px 18px 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .tags span {
+      padding: 6px 8px;
+      border: 1px solid #e4e8f0;
+      border-radius: 999px;
+      color: #475467;
+      background: #fff;
+      font-size: 11px;
+      font-weight: 750;
+    }
+
+    .open-preview {
+      margin-left: auto;
+      padding: 6px 9px;
+      border: 1px solid color-mix(in srgb, var(--accent) 28%, #dfe5ef);
+      border-radius: 8px;
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 8%, #fff);
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      padding: 22px;
+      background: rgba(8, 13, 23, .78);
+    }
+
+    .modal.open {
+      display: grid;
+      place-items: center;
+    }
+
+    .modal-card {
+      width: min(1060px, 100%);
+      max-height: calc(100vh - 44px);
+      overflow: auto;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 28px 90px -24px rgba(0, 0, 0, .6);
+    }
+
+    .modal-head {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, .95);
+      backdrop-filter: blur(12px);
+    }
+
+    .modal-head h3 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .close {
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      font-size: 21px;
+      line-height: 1;
+    }
+
+    .modal-body {
+      padding: 18px;
+    }
+
+    .modal .mock {
+      min-height: 620px;
+      border-radius: 8px;
+    }
+
+    .modal .app-frame {
+      height: 590px;
+      grid-template-columns: 180px minmax(0, 1fr);
+    }
+
+    .modal .mini-rail {
+      padding: 22px 18px;
+    }
+
+    .modal .mini-body {
+      padding: 24px;
+    }
+
+    .modal .mini-nav span {
+      height: 41px;
+      font-size: 13px;
+    }
+
+    .modal .mini-logo {
+      width: 48px;
+      height: 48px;
+      font-size: 17px;
+    }
+
+    .modal .mini-title strong {
+      font-size: 27px;
+    }
+
+    .modal .mini-title span,
+    .modal .mini-search,
+    .modal .row,
+    .modal .task,
+    .modal .event,
+    .modal .bubble,
+    .modal .insight {
+      font-size: 14px;
+    }
+
+    .modal .mini-search {
+      width: 250px;
+      height: 42px;
+    }
+
+    .modal .mini-action {
+      width: 42px;
+      height: 42px;
+    }
+
+    .modal .kpis,
+    .modal .split,
+    .modal .cards-2,
+    .modal .board,
+    .modal .timeline,
+    .modal .wizard,
+    .modal .chat-layout {
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .modal .kpi {
+      min-height: 110px;
+      padding: 16px;
+    }
+
+    .modal .kpi span {
+      font-size: 12px;
+    }
+
+    .modal .kpi strong {
+      font-size: 34px;
+    }
+
+    .modal .panel {
+      padding: 16px;
+    }
+
+    .modal .panel h4 {
+      font-size: 15px;
+    }
+
+    .modal .large-card {
+      min-height: 140px;
+      padding: 17px;
+    }
+
+    .modal .large-card strong {
+      font-size: 20px;
+    }
+
+    .modal .large-card span {
+      font-size: 14px;
+    }
+
+    .modal .lane {
+      min-height: 380px;
+      padding: 14px;
+    }
+
+    .modal .lane h4 {
+      font-size: 13px;
+    }
+
+    .modal .task {
+      min-height: 74px;
+      padding: 12px;
+    }
+
+    .modal .task small,
+    .modal .table,
+    .modal .table th,
+    .modal .table td,
+    .modal .pill {
+      font-size: 13px;
+    }
+
+    .modal .event {
+      grid-template-columns: 64px 1fr auto;
+      min-height: 66px;
+    }
+
+    .modal .datebox {
+      height: 50px;
+      font-size: 17px;
+    }
+
+    .modal .wizard {
+      grid-template-columns: 210px minmax(0, 1fr);
+    }
+
+    .modal .step {
+      min-height: 54px;
+      font-size: 14px;
+    }
+
+    .modal .step i {
+      width: 28px;
+      height: 28px;
+      flex-basis: 28px;
+      font-size: 13px;
+    }
+
+    .modal .field {
+      height: 52px;
+      margin-bottom: 13px;
+    }
+
+    .modal .field.wide {
+      height: 134px;
+    }
+
+    .modal .phone-shell {
+      width: 260px;
+      height: 490px;
+    }
+
+    .modal .phone-head,
+    .modal .phone-card {
+      font-size: 15px;
+    }
+
+    .modal-notes {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .note {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .note strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 13px;
+    }
+
+    .note span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 980px) {
+      .hero-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .toolbar {
+        flex-wrap: wrap;
+        padding: 12px 0;
+      }
+
+      .search {
+        flex-basis: 100%;
+      }
+
+      .grid,
+      .modal-notes {
+        grid-template-columns: 1fr;
+      }
+
+      .modal .app-frame {
+        grid-template-columns: 130px minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 680px) {
+      .hero {
+        background: linear-gradient(160deg, #0b1220 0%, #182033 58%, #102b31 100%);
+      }
+
+      .hero-inner,
+      .toolbar,
+      .content {
+        width: min(100% - 24px, 1180px);
+      }
+
+      .topline,
+      .section-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .hero-actions {
+        width: 100%;
+      }
+
+      .hero-button {
+        flex: 1;
+        justify-content: center;
+      }
+
+      .hero-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .filter {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .concept-head {
+        flex-direction: column;
+      }
+
+      .mock {
+        padding: 9px;
+      }
+
+      .app-frame {
+        height: auto;
+        min-height: 360px;
+        grid-template-columns: 1fr;
+      }
+
+      .mini-rail {
+        display: none;
+      }
+
+      .kpis,
+      .split,
+      .cards-2,
+      .board,
+      .wizard,
+      .chat-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .mini-search {
+        display: none;
+      }
+
+      .modal {
+        padding: 10px;
+      }
+
+      .modal .app-frame {
+        height: auto;
+        min-height: 590px;
+        grid-template-columns: 1fr;
+      }
+
+      .modal .mini-rail {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="hero-inner">
+        <div class="topline">
+          <div class="brand">
+            <div class="mark">P</div>
+            <div>
+              <strong>PaghePro</strong>
+              <span>20 concept UI</span>
+            </div>
+          </div>
+          <div class="hero-actions">
+            <a class="hero-button" href="#gallery">Vedi esempi</a>
+            <a class="hero-button" href="../frontend/src/pages/Dashboard.tsx">Dashboard attuale</a>
+          </div>
+        </div>
+
+        <h1>20 esempi di interfaccia per contabilità e paghe</h1>
+        <p>
+          Idee pronte da confrontare: più moderne, più pulite e pensate per operatori che devono fare cedolini,
+          contabilità, F24, documenti, scadenze e gestione clienti senza perdersi nei menu.
+        </p>
+
+        <div class="hero-strip">
+          <div class="hero-stat"><strong>20</strong><span>direzioni visuali</span></div>
+          <div class="hero-stat"><strong>5</strong><span>layout operativi</span></div>
+          <div class="hero-stat"><strong>Paghe + IVA</strong><span>contenuti coerenti col prodotto</span></div>
+          <div class="hero-stat"><strong>Mobile</strong><span>varianti compatte incluse</span></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="toolbar-wrap">
+      <div class="toolbar" id="gallery">
+        <label class="search">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m20 20-3.4-3.4"></path>
+          </svg>
+          <input id="search" type="search" placeholder="Cerca: F24, scadenze, clienti, mobile, wizard...">
+        </label>
+        <select class="filter" id="layoutFilter" aria-label="Filtra per layout">
+          <option value="all">Tutti i layout</option>
+          <option value="dashboard">Dashboard</option>
+          <option value="table">Tabelle</option>
+          <option value="board">Kanban</option>
+          <option value="timeline">Timeline</option>
+          <option value="wizard">Guidato</option>
+          <option value="mobile">Mobile</option>
+          <option value="assistant">Assistente</option>
+        </select>
+        <select class="filter" id="toneFilter" aria-label="Filtra per tono">
+          <option value="all">Tutti gli stili</option>
+          <option value="studio">Studio professionale</option>
+          <option value="simple">Semplice</option>
+          <option value="compact">Compatto</option>
+          <option value="premium">Premium</option>
+          <option value="dark">Scuro</option>
+        </select>
+      </div>
+    </div>
+
+    <main class="content">
+      <div class="section-head">
+        <div>
+          <h2>Galleria concept</h2>
+          <p>Scegli un esempio, aprilo in grande e usa i tag per capire se va bene per il tuo software.</p>
+        </div>
+        <div class="legend">
+          <span>Consiglio: 01, 02, 10</span>
+          <span>Per commercialista</span>
+          <span>Per studio paghe</span>
+        </div>
+      </div>
+      <section class="grid" id="conceptGrid" aria-label="20 esempi di interfaccia"></section>
+    </main>
+  </div>
+
+  <div class="modal" id="modal" aria-hidden="true" role="dialog" aria-label="Anteprima concept">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <h3 id="modalTitle"></h3>
+        </div>
+        <button class="close" id="closeModal" type="button" aria-label="Chiudi">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="modalMock"></div>
+        <div class="modal-notes" id="modalNotes"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const concepts = [
+      {
+        id: "01",
+        title: "Studio Operativo",
+        subtitle: "La versione piu equilibrata: sidebar chiara, KPI mensili e coda adempimenti.",
+        badge: "Consigliato",
+        layout: "dashboard",
+        tone: "studio",
+        tags: ["Dashboard", "Cedolini", "F24", "Studio paghe"],
+        accent: "#2457d6",
+        accent2: "#14855f",
+        rail: "#102033",
+        bg: "#f5f8fc",
+        notes: ["Molto adatto come nuova home", "Riduce menu e mostra cosa fare oggi", "Buon equilibrio tra moderno e serio"]
+      },
+      {
+        id: "02",
+        title: "Contabilita Semplice",
+        subtitle: "Pochi blocchi grandi, linguaggio semplice e percorsi guidati per utenti non tecnici.",
+        badge: "Semplice",
+        layout: "dashboard",
+        tone: "simple",
+        tags: ["Prima schermata", "Clienti", "Scadenze", "Facile"],
+        accent: "#0f766e",
+        accent2: "#2457d6",
+        rail: "#173c3a",
+        bg: "#f2fbf8",
+        notes: ["Perfetta per clienti poco esperti", "Meno tabelle nella home", "Azioni principali sempre visibili"]
+      },
+      {
+        id: "03",
+        title: "Scadenze Prima",
+        subtitle: "La home e un calendario fiscale operativo: F24, IVA, CU, UniEmens e pagamenti.",
+        badge: "Scadenze",
+        layout: "timeline",
+        tone: "studio",
+        tags: ["F24", "IVA", "Calendar", "Adempimenti"],
+        accent: "#b45309",
+        accent2: "#2457d6",
+        rail: "#262114",
+        bg: "#fff8ed",
+        notes: ["Ottima per evitare dimenticanze", "Mostra urgenza e responsabilita", "Ideale per studi con molte aziende"]
+      },
+      {
+        id: "04",
+        title: "Payroll Control",
+        subtitle: "Pensata per elaborazione paghe: presenze, cedolini, calcolo massivo, consegna documenti.",
+        badge: "Paghe",
+        layout: "table",
+        tone: "compact",
+        tags: ["Paghe", "Presenze", "Cedolini", "Controllo"],
+        accent: "#3157ff",
+        accent2: "#12a37f",
+        rail: "#171b2f",
+        bg: "#f4f6ff",
+        notes: ["Migliore per lavoro operativo quotidiano", "Tabelle dense ma leggibili", "Stati chiari per ogni dipendente"]
+      },
+      {
+        id: "05",
+        title: "Cliente 360",
+        subtitle: "Ogni azienda cliente ha un profilo unico con dipendenti, fatture, documenti e alert.",
+        badge: "Clienti",
+        layout: "dashboard",
+        tone: "studio",
+        tags: ["Aziende", "CRM studio", "Documenti", "Contabilita"],
+        accent: "#4f46e5",
+        accent2: "#0e7490",
+        rail: "#1f1b3d",
+        bg: "#f6f5ff",
+        notes: ["Molto utile per commercialisti", "Rende centrale il cliente", "Facile trovare tutto da una scheda"]
+      },
+      {
+        id: "06",
+        title: "Fatture e Incassi",
+        subtitle: "Focus su fatturazione, incassi, solleciti e quadratura con la contabilita.",
+        badge: "Incassi",
+        layout: "table",
+        tone: "simple",
+        tags: ["Fatture", "Pagamenti", "Cashflow", "Solleciti"],
+        accent: "#047857",
+        accent2: "#2563eb",
+        rail: "#123429",
+        bg: "#f3faf6",
+        notes: ["Adatta alla sezione pagamenti clienti", "Importi leggibili e azioni rapide", "Riduce lavoro di controllo manuale"]
+      },
+      {
+        id: "07",
+        title: "Minimal White",
+        subtitle: "Interfaccia chiarissima, pochi colori, molto spazio e tabelle meno pesanti.",
+        badge: "Pulita",
+        layout: "dashboard",
+        tone: "simple",
+        tags: ["Minimal", "Bianco", "Facile", "Modern"],
+        accent: "#1f6feb",
+        accent2: "#2f855a",
+        rail: "#f8fafc",
+        railText: "#1f2937",
+        bg: "#f7f8fa",
+        notes: ["Molto moderna e leggera", "Buona per demo commerciali", "Meno adatta se servono tanti dati subito"]
+      },
+      {
+        id: "08",
+        title: "Compact Pro",
+        subtitle: "Per chi lavora veloce: molte informazioni, meno spazio sprecato, azioni in riga.",
+        badge: "Compatto",
+        layout: "table",
+        tone: "compact",
+        tags: ["Tabella", "Professionale", "Dati", "Backoffice"],
+        accent: "#334155",
+        accent2: "#0f766e",
+        rail: "#0f172a",
+        bg: "#eef2f6",
+        notes: ["Ottima per utenti esperti", "Simile a un gestionale moderno", "Da usare per liste e controlli massivi"]
+      },
+      {
+        id: "09",
+        title: "Kanban Adempimenti",
+        subtitle: "Le pratiche si spostano da bozza a controllato, inviato, ricevuta o scartato.",
+        badge: "Kanban",
+        layout: "board",
+        tone: "simple",
+        tags: ["Workflow", "Adempimenti", "Documenti", "Team"],
+        accent: "#7c3aed",
+        accent2: "#0f766e",
+        rail: "#251640",
+        bg: "#f8f5ff",
+        notes: ["Perfetta per team e collaboratori", "Rende visibile cosa e bloccato", "Molto intuitiva anche senza formazione"]
+      },
+      {
+        id: "10",
+        title: "Wizard Guidato",
+        subtitle: "Ogni procedura complessa diventa passo-passo: importa, controlla, calcola, invia.",
+        badge: "Guidato",
+        layout: "wizard",
+        tone: "simple",
+        tags: ["Guida", "Import", "Cedolino", "F24"],
+        accent: "#2563eb",
+        accent2: "#16a34a",
+        rail: "#14233b",
+        bg: "#f4f8ff",
+        notes: ["La scelta migliore per renderlo semplice", "Riduce errori nelle procedure fiscali", "Ideale per nuovi utenti"]
+      },
+      {
+        id: "11",
+        title: "Document Inbox",
+        subtitle: "Tutto arriva in una casella: XML, PDF, ricevute, F24, CU e file da firmare.",
+        badge: "Inbox",
+        layout: "table",
+        tone: "studio",
+        tags: ["Documenti", "Firma", "Archivio", "Ricevute"],
+        accent: "#0e7490",
+        accent2: "#4f46e5",
+        rail: "#102a35",
+        bg: "#eff9fb",
+        notes: ["Ottima per sezione Documenti", "Somiglia a una posta ordinata", "Facile capire cosa manca"]
+      },
+      {
+        id: "12",
+        title: "Executive CFO",
+        subtitle: "Vista direzionale con costi, margini, debiti, crediti e andamento mensile.",
+        badge: "Premium",
+        layout: "dashboard",
+        tone: "premium",
+        tags: ["CFO", "Bilancio", "Grafici", "Costi"],
+        accent: "#8b5cf6",
+        accent2: "#eab308",
+        rail: "#22182f",
+        bg: "#f8f5ff",
+        notes: ["Utile per il titolare dello studio", "Piace in presentazione commerciale", "Non sostituisce le viste operative"]
+      },
+      {
+        id: "13",
+        title: "Dark Focus",
+        subtitle: "Tema scuro professionale per lavoro serale, monitor grandi e dashboard di controllo.",
+        badge: "Scuro",
+        layout: "dashboard",
+        tone: "dark",
+        tags: ["Dark mode", "Controllo", "Monitor", "Premium"],
+        accent: "#38bdf8",
+        accent2: "#22c55e",
+        rail: "#020617",
+        bg: "#111827",
+        surface: "#182133",
+        dark: true,
+        notes: ["Da offrire come tema alternativo", "Molto moderno", "Serve curare bene contrasto e tabelle"]
+      },
+      {
+        id: "14",
+        title: "Operatore Mobile",
+        subtitle: "Vista smartphone per controllare scadenze, notifiche e documenti fuori ufficio.",
+        badge: "Mobile",
+        layout: "mobile",
+        tone: "simple",
+        tags: ["Mobile", "Scadenze", "Notifiche", "Clienti"],
+        accent: "#0f766e",
+        accent2: "#2563eb",
+        rail: "#10231f",
+        bg: "#eef8f3",
+        notes: ["Non sostituisce il desktop", "Perfetta per approvare e controllare", "Da progettare con poche azioni"]
+      },
+      {
+        id: "15",
+        title: "Table Master",
+        subtitle: "Tutto ruota intorno a tabelle potenti: filtri, colonne, stati e importi allineati.",
+        badge: "Tabelle",
+        layout: "table",
+        tone: "compact",
+        tags: ["Excel-like", "Importi", "Filtri", "Massivo"],
+        accent: "#0f172a",
+        accent2: "#2563eb",
+        rail: "#111827",
+        bg: "#f4f5f7",
+        notes: ["Ideale per commercialisti esperti", "Velocissimo con scorciatoie", "Va accompagnato da aiuti contestuali"]
+      },
+      {
+        id: "16",
+        title: "Compliance Timeline",
+        subtitle: "Percorso normativo per ogni pratica: creato, controllato, firmato, inviato, ricevuto.",
+        badge: "Audit",
+        layout: "timeline",
+        tone: "studio",
+        tags: ["Audit", "Ricevute", "Normativa", "Firma"],
+        accent: "#be123c",
+        accent2: "#2563eb",
+        rail: "#2d1020",
+        bg: "#fff4f6",
+        notes: ["Aumenta fiducia e tracciabilita", "Utile per ricevute e firme", "Molto forte in contesti fiscali"]
+      },
+      {
+        id: "17",
+        title: "Cashflow Center",
+        subtitle: "Centro incassi e uscite: fatture, stipendi da pagare, F24, debiti e crediti.",
+        badge: "Cashflow",
+        layout: "dashboard",
+        tone: "premium",
+        tags: ["Pagamenti", "F24", "Stipendi", "Incassi"],
+        accent: "#0d9488",
+        accent2: "#f59e0b",
+        rail: "#0d2f2c",
+        bg: "#f0fbf9",
+        notes: ["Chiaro per capire liquidita", "Molto utile ai titolari", "Collega paghe e contabilita"]
+      },
+      {
+        id: "18",
+        title: "Assistente Contabile",
+        subtitle: "Una home con assistente che suggerisce errori, prossime azioni e documenti mancanti.",
+        badge: "AI",
+        layout: "assistant",
+        tone: "simple",
+        tags: ["Aiuto", "Errori", "Guida", "Automazioni"],
+        accent: "#6366f1",
+        accent2: "#10b981",
+        rail: "#202047",
+        bg: "#f5f6ff",
+        notes: ["Ottima per rendere il software amichevole", "Spiega cosa fare dopo", "Da usare con logiche verificabili"]
+      },
+      {
+        id: "19",
+        title: "Multi Studio Admin",
+        subtitle: "Vista amministratore per gestire piu studi, utenti, permessi, piani e blocchi.",
+        badge: "Admin",
+        layout: "table",
+        tone: "compact",
+        tags: ["Super admin", "Studi", "Utenti", "Permessi"],
+        accent: "#4338ca",
+        accent2: "#0891b2",
+        rail: "#171738",
+        bg: "#f3f4ff",
+        notes: ["Coerente con la sezione Studi", "Tiene separati clienti e piattaforma", "Molto utile per vendere SaaS"]
+      },
+      {
+        id: "20",
+        title: "Tax Calendar",
+        subtitle: "Calendario fiscale visuale con vista mese, settimana e lista scadenze per cliente.",
+        badge: "Calendario",
+        layout: "timeline",
+        tone: "simple",
+        tags: ["Calendario", "Scadenze", "F24", "IVA"],
+        accent: "#ea580c",
+        accent2: "#0f766e",
+        rail: "#2f1f12",
+        bg: "#fff7ed",
+        notes: ["Perfetto come modulo Scadenzario", "Riduce ansia sulle date", "Da collegare a notifiche e promemoria"]
+      }
+    ];
+
+    const grid = document.getElementById("conceptGrid");
+    const search = document.getElementById("search");
+    const layoutFilter = document.getElementById("layoutFilter");
+    const toneFilter = document.getElementById("toneFilter");
+    const modal = document.getElementById("modal");
+    const modalTitle = document.getElementById("modalTitle");
+    const modalMock = document.getElementById("modalMock");
+    const modalNotes = document.getElementById("modalNotes");
+    const closeModal = document.getElementById("closeModal");
+
+    function styleVars(item) {
+      const railText = item.railText || "#f8fafc";
+      const surface = item.surface || "#ffffff";
+      const text = item.dark ? "#f8fafc" : "#111827";
+      return [
+        `--accent:${item.accent}`,
+        `--accent-2:${item.accent2}`,
+        `--rail:${item.rail}`,
+        `--rail-text:${railText}`,
+        `--app-bg:${item.bg}`,
+        `--surface:${surface}`,
+        `--ink:${text}`
+      ].join(";");
+    }
+
+    function shell(item, inside) {
+      const railStyle = item.railText ? "light" : "";
+      return `
+        <div class="mock">
+          <div class="app-frame">
+            <aside class="mini-rail ${railStyle}">
+              <div class="mini-logo">P</div>
+              <nav class="mini-nav">
+                <span class="active">Home</span>
+                <span>Aziende</span>
+                <span>Paghe</span>
+                <span>F24</span>
+                <span>Doc</span>
+                <span>Admin</span>
+              </nav>
+            </aside>
+            <section class="mini-body">
+              <div class="mini-top">
+                <div class="mini-title">
+                  <strong>${item.title}</strong>
+                  <span>Rossi S.r.l. · Giugno 2026</span>
+                </div>
+                <div class="mini-search">Cerca</div>
+                <div class="mini-action">+</div>
+              </div>
+              ${inside}
+            </section>
+          </div>
+        </div>
+      `;
+    }
+
+    function dashboardMock(item) {
+      return shell(item, `
+        <div class="kpis">
+          <div class="kpi"><span>Netto da pagare</span><strong>42k</strong></div>
+          <div class="kpi"><span>F24 in scadenza</span><strong>8</strong></div>
+          <div class="kpi"><span>Cedolini pronti</span><strong>38</strong></div>
+        </div>
+        <div class="split">
+          <div class="panel">
+            <h4>Andamento mese</h4>
+            <div class="bars">
+              <div class="bar"><i style="--w:76%"></i></div>
+              <div class="bar"><i style="--w:58%"></i></div>
+              <div class="bar"><i style="--w:88%"></i></div>
+              <div class="bar"><i style="--w:42%"></i></div>
+              <div class="bar"><i style="--w:68%"></i></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>Da fare oggi</h4>
+            <div class="rows">
+              <div class="row"><b>Controlla F24</b><span class="pill">Oggi</span></div>
+              <div class="row"><b>Invia 4 CU</b><span class="pill">Pronto</span></div>
+              <div class="row"><b>Firma LUL</b><span class="pill">2 file</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:8px">
+          <table class="table">
+            <thead><tr><th>Documento</th><th>Cliente</th><th>Stato</th><th>Importo</th></tr></thead>
+            <tbody>
+              <tr><td>F24</td><td>Rossi</td><td><span class="pill">Da inviare</span></td><td>8.240 €</td></tr>
+              <tr><td>Cedolini</td><td>Bianchi</td><td><span class="pill">Pronti</span></td><td>12.880 €</td></tr>
+              <tr><td>IVA</td><td>Verdi</td><td><span class="pill">Bozza</span></td><td>3.410 €</td></tr>
+            </tbody>
+          </table>
+        </div>
+      `);
+    }
+
+    function tableMock(item) {
+      return shell(item, `
+        <div class="cards-2">
+          <div class="large-card"><strong>38 cedolini</strong><span>Controllati e pronti per consegna.</span></div>
+          <div class="large-card"><strong>4 errori</strong><span>Da correggere prima della chiusura.</span></div>
+        </div>
+        <div class="panel" style="margin-top:8px">
+          <table class="table">
+            <thead><tr><th>Cliente</th><th>Tipo</th><th>Scadenza</th><th>Stato</th><th>Totale</th></tr></thead>
+            <tbody>
+              <tr><td>Rossi S.r.l.</td><td>F24</td><td>16/06</td><td><span class="pill">Urgente</span></td><td>8.240 €</td></tr>
+              <tr><td>Verdi S.p.A.</td><td>Paghe</td><td>20/06</td><td><span class="pill">Calcolo</span></td><td>21.900 €</td></tr>
+              <tr><td>Gialli SNC</td><td>IVA</td><td>30/06</td><td><span class="pill">Bozza</span></td><td>3.410 €</td></tr>
+              <tr><td>Neri SRL</td><td>CU</td><td>30/06</td><td><span class="pill">Pronta</span></td><td>960 €</td></tr>
+              <tr><td>Blu SAS</td><td>Firma</td><td>Oggi</td><td><span class="pill">Manca</span></td><td>--</td></tr>
+            </tbody>
+          </table>
+        </div>
+      `);
+    }
+
+    function boardMock(item) {
+      return shell(item, `
+        <div class="kpis">
+          <div class="kpi"><span>Bozze</span><strong>12</strong></div>
+          <div class="kpi"><span>Controllo</span><strong>7</strong></div>
+          <div class="kpi"><span>Inviati</span><strong>31</strong></div>
+        </div>
+        <div class="board">
+          <div class="lane">
+            <h4>Da fare</h4>
+            <div class="task">F24 Rossi <small>Scade oggi</small></div>
+            <div class="task">CU Verdi <small>Manca controllo</small></div>
+          </div>
+          <div class="lane">
+            <h4>In controllo</h4>
+            <div class="task">Cedolini Gialli <small>38 su 42</small></div>
+            <div class="task">IVA Neri <small>Quadratura</small></div>
+          </div>
+          <div class="lane">
+            <h4>Completati</h4>
+            <div class="task">UniEmens Blu <small>Ricevuta OK</small></div>
+            <div class="task">LUL Rosa <small>Firmato</small></div>
+          </div>
+        </div>
+      `);
+    }
+
+    function timelineMock(item) {
+      return shell(item, `
+        <div class="kpis">
+          <div class="kpi"><span>Oggi</span><strong>5</strong></div>
+          <div class="kpi"><span>7 giorni</span><strong>18</strong></div>
+          <div class="kpi"><span>Bloccati</span><strong>2</strong></div>
+        </div>
+        <div class="timeline">
+          <div class="event"><div class="datebox">16</div><b>F24 ritenute lavoro dipendente</b><span class="pill">Oggi</span></div>
+          <div class="event"><div class="datebox">20</div><b>UniEmens mese precedente</b><span class="pill">4 giorni</span></div>
+          <div class="event"><div class="datebox">25</div><b>Consegna cedolini clienti</b><span class="pill">Team</span></div>
+          <div class="event"><div class="datebox">30</div><b>Liquidazione IVA e controllo documenti</b><span class="pill">Fine mese</span></div>
+        </div>
+      `);
+    }
+
+    function wizardMock(item) {
+      return shell(item, `
+        <div class="wizard">
+          <div class="steps">
+            <div class="step"><i>1</i><span>Scegli azienda</span></div>
+            <div class="step"><i>2</i><span>Importa dati</span></div>
+            <div class="step"><i>3</i><span>Controlla errori</span></div>
+            <div class="step"><i>4</i><span>Calcola</span></div>
+            <div class="step"><i>5</i><span>Invia</span></div>
+          </div>
+          <div class="formgrid">
+            <div class="field"></div>
+            <div class="field"></div>
+            <div class="field wide"></div>
+            <div class="cards-2">
+              <div class="large-card"><strong>38 OK</strong><span>Dipendenti pronti</span></div>
+              <div class="large-card"><strong>4 avvisi</strong><span>Da controllare</span></div>
+            </div>
+          </div>
+        </div>
+      `);
+    }
+
+    function mobileMock(item) {
+      return `
+        <div class="mock">
+          <div class="phone-shell">
+            <div class="phone-head"><span>PaghePro</span><span>MR</span></div>
+            <div class="phone-card">5 scadenze oggi<br><span class="pill">F24 urgente</span></div>
+            <div class="phone-card">38 cedolini pronti<br><span class="pill">Consegna</span></div>
+            <div class="phone-card">2 documenti da firmare<br><span class="pill">Apri</span></div>
+            <div class="bars">
+              <div class="bar"><i style="--w:72%"></i></div>
+              <div class="bar"><i style="--w:44%"></i></div>
+              <div class="bar"><i style="--w:86%"></i></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function assistantMock(item) {
+      return shell(item, `
+        <div class="chat-layout">
+          <div class="chat">
+            <div class="bubble me">Cosa devo fare oggi per Rossi S.r.l.?</div>
+            <div class="bubble">Hai 3 priorita: F24 da inviare, 4 cedolini con avvisi, 2 documenti da firmare.</div>
+            <div class="bubble me">Mostrami solo gli errori.</div>
+            <div class="bubble">Il cedolino di Bianchi ha ore straordinarie non confermate. L'IVA di Verdi non quadra di 120 euro.</div>
+          </div>
+          <div class="insights">
+            <div class="insight">Errore paghe<br><span class="pill">Alta priorita</span></div>
+            <div class="insight">Documento mancante<br><span class="pill">Firma</span></div>
+            <div class="insight">Suggerimento<br><span class="pill">Automazione</span></div>
+          </div>
+        </div>
+      `);
+    }
+
+    function renderMockup(item) {
+      if (item.layout === "table") return tableMock(item);
+      if (item.layout === "board") return boardMock(item);
+      if (item.layout === "timeline") return timelineMock(item);
+      if (item.layout === "wizard") return wizardMock(item);
+      if (item.layout === "mobile") return mobileMock(item);
+      if (item.layout === "assistant") return assistantMock(item);
+      return dashboardMock(item);
+    }
+
+    function renderCard(item) {
+      const article = document.createElement("article");
+      article.className = "concept";
+      article.setAttribute("style", styleVars(item));
+      article.dataset.layout = item.layout;
+      article.dataset.tone = item.tone;
+      article.dataset.search = `${item.title} ${item.subtitle} ${item.tags.join(" ")}`.toLowerCase();
+      article.innerHTML = `
+        <div class="concept-head">
+          <div class="concept-title">
+            <h3>${item.id}. ${item.title}</h3>
+            <p>${item.subtitle}</p>
+          </div>
+          <span class="badge">${item.badge}</span>
+        </div>
+        ${renderMockup(item)}
+        <div class="tags">
+          ${item.tags.map((tag) => `<span>${tag}</span>`).join("")}
+          <button class="open-preview" type="button" data-id="${item.id}">Apri grande</button>
+        </div>
+      `;
+      return article;
+    }
+
+    function render() {
+      const q = search.value.trim().toLowerCase();
+      const layout = layoutFilter.value;
+      const tone = toneFilter.value;
+      grid.innerHTML = "";
+
+      const visible = concepts.filter((item) => {
+        const matchText = !q || `${item.title} ${item.subtitle} ${item.tags.join(" ")}`.toLowerCase().includes(q);
+        const matchLayout = layout === "all" || item.layout === layout;
+        const matchTone = tone === "all" || item.tone === tone;
+        return matchText && matchLayout && matchTone;
+      });
+
+      visible.forEach((item) => grid.appendChild(renderCard(item)));
+
+      if (!visible.length) {
+        grid.innerHTML = `
+          <article class="concept">
+            <div class="concept-head">
+              <div class="concept-title">
+                <h3>Nessun risultato</h3>
+                <p>Prova a cercare F24, documenti, paghe, scadenze, mobile o dashboard.</p>
+              </div>
+            </div>
+          </article>
+        `;
+      }
+    }
+
+    function openConcept(id) {
+      const item = concepts.find((concept) => concept.id === id);
+      if (!item) return;
+      modalTitle.textContent = `${item.id}. ${item.title}`;
+      modalMock.innerHTML = `<div class="concept" style="${styleVars(item)}">${renderMockup(item)}</div>`;
+      modalNotes.innerHTML = item.notes.map((note, index) => `
+        <div class="note">
+          <strong>${["Perche funziona", "Dove usarla", "Attenzione"][index] || "Nota"}</strong>
+          <span>${note}</span>
+        </div>
+      `).join("");
+      modal.classList.add("open");
+      modal.setAttribute("aria-hidden", "false");
+    }
+
+    search.addEventListener("input", render);
+    layoutFilter.addEventListener("change", render);
+    toneFilter.addEventListener("change", render);
+    grid.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-id]");
+      if (button) openConcept(button.dataset.id);
+    });
+    closeModal.addEventListener("click", () => {
+      modal.classList.remove("open");
+      modal.setAttribute("aria-hidden", "true");
+    });
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) closeModal.click();
+    });
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && modal.classList.contains("open")) closeModal.click();
+    });
+
+    render();
+  </script>
+</body>
+</html>

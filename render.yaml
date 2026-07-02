@@ -19,7 +19,7 @@ services:
     dockerContext: ./backend
     plan: free               # PER USO REALE: cambia in "starter" (~7$/mese, serve per il disco)
     region: frankfurt        # data center in Europa
-    healthCheckPath: /swagger/v1/swagger.json
+    healthCheckPath: /health
     # PER USO REALE: togli il "#" alle 4 righe qui sotto (disco persistente = dati salvati)
     # disk:
     #   name: paghe-data
@@ -30,6 +30,8 @@ services:
         value: Data Source=/tmp/paghe.db   # PER USO REALE: metti  Data Source=/data/paghe.db
       - key: Jwt__Key
         generateValue: true  # Render genera una chiave segreta forte e la tiene riservata
+      - key: Cors__Origini__0
+        sync: false          # da impostare a mano = URL pubblico del frontend (es. https://paghe-frontend.onrender.com)
 
   # 2) FRONTEND — sito statico (React/Vite). Gratis sempre. Punta all'URL del backend.
   - type: web

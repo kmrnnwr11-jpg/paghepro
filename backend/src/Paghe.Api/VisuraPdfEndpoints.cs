@@ -11,6 +11,9 @@ namespace Paghe.Api;
 /// </summary>
 public static class VisuraPdfEndpoints
 {
+    /// <summary>Dimensione massima accettata per il file caricato (una visura sta ampiamente sotto).</summary>
+    private const long DimensioneMassima = 10 * 1024 * 1024; // 10 MB
+
     public static IEndpointRouteBuilder MapImportVisuraPdf(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/aziende/da-visura", async (HttpRequest req) =>
@@ -22,15 +25,24 @@ public static class VisuraPdfEndpoints
             var file = form.Files["file"] ?? form.Files.FirstOrDefault();
             if (file is null || file.Length == 0)
                 return Results.BadRequest(new { errore = "Allegare il PDF della visura nel campo 'file'." });
-
-            using var ms = new MemoryStream();
-            await file.CopyToAsync(ms);
-            var dati = ms.ToArray();
+            if (file.Length > DimensioneMassima)
+                return Results.BadRequest(new { errore = "File troppo grande: il limite è 10 MB." });
 
             var nome = (file.FileName ?? "").ToLowerInvariant();
             var èImmagine = (file.ContentType ?? "").StartsWith("image/", StringComparison.OrdinalIgnoreCase)
                 || nome.EndsWith(".jpg") || nome.EndsWith(".jpeg") || nome.EndsWith(".png")
                 || nome.EndsWith(".webp") || nome.EndsWith(".tif") || nome.EndsWith(".tiff");
+            var èPdf = nome.EndsWith(".pdf")
+                || (file.ContentType ?? "").Contains("pdf", StringComparison.OrdinalIgnoreCase);
+            if (!èImmagine && !èPdf)
+                return Results.BadRequest(new
+                {
+                    errore = "Formato non supportato: caricare un PDF oppure una foto/scansione (JPG, PNG).",
+                });
+
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            var dati = ms.ToArray();
 
             string testo;
             if (èImmagine)

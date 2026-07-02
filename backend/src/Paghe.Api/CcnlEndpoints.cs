@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Persistence;
 
@@ -17,8 +18,15 @@ public static class CcnlEndpoints
 
         // Carica/aggiorna in blocco le tabelle CCNL (minimi tabellari reali) da un file JSON.
         // Cosi' "tutti i CCNL" = caricare i dati ufficiali, senza toccare il codice.
-        app.MapPost("/api/ccnl/importa", async (List<CcnlInput> input, PagheDbContext db) =>
+        // Le tabelle CCNL sono CONDIVISE tra tutti i tenant: la scrittura è riservata
+        // al super-admin di piattaforma, non a un normale studio autenticato.
+        app.MapPost("/api/ccnl/importa", async (List<CcnlInput> input, ClaimsPrincipal user, PagheDbContext db) =>
         {
+            if (!user.IsInRole(AuthService.RuoloSuperAdmin)
+                && user.FindFirst(ClaimTypes.Role)?.Value != AuthService.RuoloSuperAdmin)
+                return Results.Json(
+                    new { errore = "Operazione riservata all'amministratore della piattaforma." },
+                    statusCode: StatusCodes.Status403Forbidden);
             var (ccnl, livelli) = await new CcnlImportService(db).ImportaAsync(input);
             return Results.Ok(new { ccnlCaricati = ccnl, livelliCaricati = livelli });
         }).RequireAuthorization();

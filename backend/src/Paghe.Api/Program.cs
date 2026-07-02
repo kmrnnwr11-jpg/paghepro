@@ -165,15 +165,49 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// CORS per il frontend SPA (in sviluppo). In produzione restringere agli origin reali.
+// CORS per il frontend SPA: permissivo SOLO in sviluppo. In produzione gli origin ammessi
+// vanno elencati in "Cors:Origini" (es. https://paghe-frontend.onrender.com); senza lista
+// nessun sito esterno può chiamare l'API dal browser.
+var originiCors = builder.Configuration.GetSection("Cors:Origini").Get<string[]>() ?? [];
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
-    p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+{
+    if (builder.Environment.IsDevelopment())
+        p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+    else if (originiCors.Length > 0)
+        p.WithOrigins(originiCors).AllowAnyHeader().AllowAnyMethod();
+    // Produzione senza origin configurati: policy vuota, il browser blocca le chiamate cross-origin.
+}));
 
 var app = builder.Build();
 
+// In produzione senza origin CORS configurati il frontend su altro dominio non funziona:
+// avvisa chiaramente nei log invece di fallire in silenzio.
+if (!app.Environment.IsDevelopment() && originiCors.Length == 0)
+    app.Logger.LogWarning(
+        "CORS: nessun origin configurato in 'Cors:Origini'. Il browser bloccherà le chiamate " +
+        "da un frontend su altro dominio. Impostare es. Cors__Origini__0=https://tuo-frontend.");
+
 // Swagger UI su /swagger e spec OpenAPI su /swagger/v1/swagger.json.
-app.UseSwagger();
-app.UseSwaggerUI();
+// In produzione è spento di default (non esporre la mappa dell'API); riattivabile con Swagger:Abilitato=true.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue("Swagger:Abilitato", false))
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+// Header di sicurezza HTTP su ogni risposta. HSTS solo in produzione (impostato direttamente
+// perché dietro il proxy TLS del provider la richiesta arriva in HTTP).
+bool produzione = !app.Environment.IsDevelopment();
+app.Use(async (context, next) =>
+{
+    var h = context.Response.Headers;
+    h["X-Content-Type-Options"] = "nosniff";
+    h["X-Frame-Options"] = "DENY";
+    h["Referrer-Policy"] = "no-referrer";
+    if (produzione)
+        h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+    await next();
+});
 
 app.UseCors();
 app.UseRateLimiter();
@@ -397,7 +431,7 @@ app.MapPost("/api/auth/registra", async (RegistraRequest req, AuthService auth, 
     {
         return Results.BadRequest(new { errore = ex.Message });
     }
-});
+}).RequireRateLimiting("auth");
 
 app.MapPost("/api/auth/login", async (LoginRequest req, AuthService auth, TokenService tokens) =>
 {

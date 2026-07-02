@@ -14,6 +14,9 @@ public static class UnilavPdfEndpoints
     private static Guid Tenant(ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirst("tenant_id")?.Value, out var id) ? id : Guid.Empty;
 
+    /// <summary>Dimensione massima accettata per il PDF caricato (un UNILAV sta ampiamente sotto).</summary>
+    private const long DimensioneMassima = 10 * 1024 * 1024; // 10 MB
+
     public static IEndpointRouteBuilder MapImportUnilavPdf(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/unilav/pdf", async (HttpRequest req, ClaimsPrincipal user, PagheDbContext db) =>
@@ -25,6 +28,12 @@ public static class UnilavPdfEndpoints
             var file = form.Files["file"] ?? form.Files.FirstOrDefault();
             if (file is null || file.Length == 0)
                 return Results.BadRequest(new { errore = "Allegare il file PDF UNILAV nel campo 'file'." });
+            if (file.Length > DimensioneMassima)
+                return Results.BadRequest(new { errore = "File troppo grande: il limite è 10 MB." });
+            var nome = (file.FileName ?? "").ToLowerInvariant();
+            if (!nome.EndsWith(".pdf")
+                && !(file.ContentType ?? "").Contains("pdf", StringComparison.OrdinalIgnoreCase))
+                return Results.BadRequest(new { errore = "Formato non supportato: caricare il PDF dell'UNILAV." });
 
             using var ms = new MemoryStream();
             await file.CopyToAsync(ms);

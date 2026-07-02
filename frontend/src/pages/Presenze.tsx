@@ -75,11 +75,11 @@ export function Presenze() {
           <div className="timesheet-main">
             <div className="ts-kpi-grid">
               <article className="glass-card ts-kpi">
-                <span className="ts-kpi-icon" style={{ background: "#EFF6FF", color: "#2563EB" }}>👥</span>
+                <span className="ts-kpi-icon tone-icon blue">👥</span>
                 <div><span>Dipendenti</span><b className="num">{board?.totale ?? 0}</b><small>Totale azienda</small></div>
               </article>
               <article className="glass-card ts-kpi">
-                <span className="ts-kpi-icon" style={{ background: "#DCFCE7", color: "#16A34A" }}>✓</span>
+                <span className="ts-kpi-icon tone-icon green">✓</span>
                 <div><span>Cedolini elaborati</span><b className="num">{board?.elaborati ?? 0}/{board?.totale ?? 0}</b><small>Questo mese</small></div>
               </article>
             </div>

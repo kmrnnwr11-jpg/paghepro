@@ -40,75 +40,66 @@ export function Studi() {
   };
 
   return (
-    <section style={{ maxWidth: 840 }}>
-      <h1>🏢 Studi (super-admin)</h1>
-      <p style={{ color: "#555" }}>
-        Tutti gli studi della piattaforma. Da qui puoi <strong>sospendere</strong> o{" "}
-        <strong>riattivare</strong> l'accesso di ciascuno: uno studio sospeso non può più entrare.
-      </p>
+    <section className="detail-layout">
+      <div className="page-heading">
+        <div>
+          <h1>🏢 Studi (super-admin)</h1>
+          <p>
+            Tutti gli studi della piattaforma. Da qui puoi <strong>sospendere</strong> o{" "}
+            <strong>riattivare</strong> l'accesso di ciascuno: uno studio sospeso non può più entrare.
+          </p>
+        </div>
+      </div>
 
-      {errore && <p style={{ color: "#c0392b" }}>{errore}</p>}
+      {errore && <span className="errore">{errore}</span>}
 
-      {caricamento ? (
-        <p>Caricamento…</p>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "2px solid #e0e0e0" }}>
-              <th style={{ padding: "8px 6px" }}>Studio</th>
-              <th style={{ padding: "8px 6px" }}>Utenti</th>
-              <th style={{ padding: "8px 6px" }}>Stato</th>
-              <th style={{ padding: "8px 6px" }} aria-label="Azioni" />
-            </tr>
-          </thead>
-          <tbody>
-            {studi.map((s) => (
-              <tr key={s.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td style={{ padding: "8px 6px" }}>{s.ragioneSociale}</td>
-                <td style={{ padding: "8px 6px" }}>{s.numeroUtenti}</td>
-                <td style={{ padding: "8px 6px" }}>
-                  <span
-                    style={{
-                      padding: "2px 10px",
-                      borderRadius: 999,
-                      fontSize: 13,
-                      background: s.sospeso ? "#fdecea" : "#e8f5e9",
-                      color: s.sospeso ? "#c0392b" : "#2e7d32",
-                    }}
-                  >
-                    {s.sospeso ? "Sospeso" : "Attivo"}
-                  </span>
-                </td>
-                <td style={{ padding: "8px 6px" }}>
-                  <button
-                    type="button"
-                    onClick={() => void cambiaStato(s)}
-                    disabled={inCorso === s.id}
-                    style={{
-                      padding: "6px 14px",
-                      borderRadius: 8,
-                      border: "none",
-                      cursor: "pointer",
-                      color: "#fff",
-                      background: s.sospeso ? "#2e7d32" : "#c0392b",
-                      opacity: inCorso === s.id ? 0.6 : 1,
-                    }}
-                  >
-                    {inCorso === s.id ? "…" : s.sospeso ? "Riattiva" : "Sospendi"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {studi.length === 0 && (
-              <tr>
-                <td colSpan={4} style={{ padding: 12, color: "#888" }}>
-                  Nessuno studio registrato.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      )}
+      <div className="glass-card page-card">
+        {caricamento ? (
+          <div className="empty-state">Caricamento…</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table spacious">
+              <thead>
+                <tr>
+                  <th>Studio</th>
+                  <th>Utenti</th>
+                  <th>Stato</th>
+                  <th aria-label="Azioni" />
+                </tr>
+              </thead>
+              <tbody>
+                {studi.map((s) => (
+                  <tr key={s.id}>
+                    <td><strong>{s.ragioneSociale}</strong></td>
+                    <td className="num">{s.numeroUtenti}</td>
+                    <td>
+                      <span className={`status-pill ${s.sospeso ? "red" : "green"}`}>
+                        {s.sospeso ? "Sospeso" : "Attivo"}
+                      </span>
+                    </td>
+                    <td className="right">
+                      <button
+                        type="button"
+                        className="mini-action"
+                        onClick={() => void cambiaStato(s)}
+                        disabled={inCorso === s.id}
+                        style={{ color: s.sospeso ? "var(--green)" : "var(--red)" }}
+                      >
+                        {inCorso === s.id ? "…" : s.sospeso ? "Riattiva" : "Sospendi"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {studi.length === 0 && (
+                  <tr>
+                    <td colSpan={4}>Nessuno studio registrato.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </section>
   );
 }

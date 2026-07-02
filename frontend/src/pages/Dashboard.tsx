@@ -490,12 +490,13 @@ function DashboardHome({ onNavigate }: { onNavigate: (key: SectionKey) => void }
               Calendario
             </button>
           </div>
+          {workflow.length === 0 && (
+            <p className="muto" style={{ marginTop: 14 }}>
+              Nessun processo in corso. Il flusso si popolerà man mano che lavori (presenze, cedolini, F24…).
+            </p>
+          )}
           <div className="workflow">
-            {workflow.length === 0 ? (
-              <p className="muto" style={{ margin: "4px 2px" }}>
-                Nessun processo in corso. Il flusso si popolerà man mano che lavori (presenze, cedolini, F24…).
-              </p>
-            ) : (
+            {workflow.length === 0 ? null : (
               workflow.map((step, index) => (
                 <div key={step.label} className="workflow-step">
                   {index < workflow.length - 1 && <span className="workflow-line" />}

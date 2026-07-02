@@ -28,6 +28,16 @@ Aggiornato: 2 luglio 2026 (verifica coerenza calcoli, `CoerenzaAnnualeTests`).
    confermare caso per caso (es. acconto/saldo addizionale comunale 3847/3848, addizionali in
    rate). La sezione INPS richiede la matricola reale nel formato ufficiale.
 
+## Anagrafica comuni
+
+7. **CAP dei comuni nati da fusione (2 luglio 2026)**: l'anagrafica `frontend/public/comuni.json`
+   è stata allineata al dataset MEF 2026 (rimossi 15 comuni soppressi, aggiunti gli 8 nuovi
+   M432–M439: Misiliscemi, Bardello con Malgesso e Bregano, Moransengo-Tonengo, Uggiate con
+   Ronago, Sovizzo, Setteville, Santa Caterina d'Este, Castegnero Nanto). Il **CAP** dei nuovi
+   comuni è lasciato vuoto perché non presente in una fonte verificabile nel repo: il campo CAP
+   nel form resta da compilare a mano per questi 8 comuni. Le addizionali comunali NON ne
+   risentono (usano il codice catastale, coperto dal dataset MEF).
+
 ## Cosa è invece verificato automaticamente (test)
 
 - Coerenza incrociata su un anno intero: cedolini archiviati → CU → 770 → F24 mensili

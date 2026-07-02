@@ -67,4 +67,23 @@ public sealed class CaricaRegimiMefTests
             Assert.NotEmpty(reg[nome].Scaglioni);
         }
     }
+
+    [Fact]
+    public void Comunale2026_CoperturaCompleta_GrandiCittaENuoveFusioni()
+    {
+        var comunali = CaricaRegimiMef.PerAnno(2026).Comunali;
+
+        // Copertura nazionale: il dataset MEF 2026 elenca ~7.897 comuni.
+        Assert.True(comunali.Count >= 7800,
+            $"Copertura comuni incompleta: {comunali.Count} (attesi >= 7800)");
+
+        // Grandi città sempre presenti.
+        foreach (var codice in new[] { "H501" /*Roma*/, "F205" /*Milano*/, "F839" /*Napoli*/,
+                                       "L219" /*Torino*/, "G273" /*Palermo*/, "A944" /*Bologna*/ })
+            Assert.True(comunali.ContainsKey(codice), $"Manca il comune {codice}");
+
+        // Comuni nati dalle fusioni 2021-2025 (codici M432-M439): devono avere un regime.
+        foreach (var codice in new[] { "M432", "M433", "M434", "M435", "M436", "M437", "M438", "M439" })
+            Assert.True(comunali.ContainsKey(codice), $"Manca il comune da fusione {codice}");
+    }
 }

@@ -31,19 +31,42 @@ public static class UnilavPdfEndpoints
             if (file.Length > DimensioneMassima)
                 return Results.BadRequest(new { errore = "File troppo grande: il limite è 10 MB." });
             var nome = (file.FileName ?? "").ToLowerInvariant();
-            if (!nome.EndsWith(".pdf")
-                && !(file.ContentType ?? "").Contains("pdf", StringComparison.OrdinalIgnoreCase))
-                return Results.BadRequest(new { errore = "Formato non supportato: caricare il PDF dell'UNILAV." });
+            var èImmagine = (file.ContentType ?? "").StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                || nome.EndsWith(".jpg") || nome.EndsWith(".jpeg") || nome.EndsWith(".png")
+                || nome.EndsWith(".webp") || nome.EndsWith(".tif") || nome.EndsWith(".tiff");
+            var èPdf = nome.EndsWith(".pdf")
+                || (file.ContentType ?? "").Contains("pdf", StringComparison.OrdinalIgnoreCase);
+            if (!èImmagine && !èPdf)
+                return Results.BadRequest(new
+                {
+                    errore = "Formato non supportato: caricare il PDF dell'UNILAV oppure una foto/scansione (JPG, PNG).",
+                });
 
             using var ms = new MemoryStream();
             await file.CopyToAsync(ms);
 
-            string testo = EstrattoreTestoPdf.EstraiTesto(ms.ToArray());
+            string testo;
+            if (èImmagine)
+            {
+                // Foto/scansione → OCR locale con Tesseract (italiano), come per la visura.
+                if (!OcrTesseract.Disponibile)
+                    return Results.Json(new
+                    {
+                        errore = "Lettura da foto non disponibile: manca il motore OCR. " +
+                                 "Installa Tesseract (macOS: 'brew install tesseract tesseract-lang').",
+                    }, statusCode: 501);
+                testo = OcrTesseract.EstraiTesto(ms.ToArray(), "ita");
+            }
+            else
+            {
+                testo = EstrattoreTestoPdf.EstraiTesto(ms.ToArray());
+            }
+
             if (string.IsNullOrWhiteSpace(testo))
                 return Results.BadRequest(new
                 {
-                    errore = "Il PDF non contiene testo leggibile (probabile scansione/immagine). " +
-                             "Serve un UNILAV in PDF testuale, oppure usa l'import da XML.",
+                    errore = "Documento non leggibile. Se è un PDF scansionato, caricalo come foto/immagine " +
+                             "(JPG/PNG) per usare l'OCR; se è una foto, riprova con un'immagine più nitida.",
                 });
 
             try

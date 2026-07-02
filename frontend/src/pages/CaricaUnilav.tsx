@@ -52,8 +52,11 @@ export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: st
 
   async function gestisci(file: File | undefined | null) {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setErrore("Serve il PDF dell'UNILAV (un file .pdf).");
+    const nome = file.name.toLowerCase();
+    const ok = nome.endsWith(".pdf") || file.type.startsWith("image/")
+      || /\.(jpe?g|png|webp|tiff?)$/.test(nome);
+    if (!ok) {
+      setErrore("Serve il PDF dell'UNILAV oppure una sua foto/scansione (JPG, PNG).");
       return;
     }
     setErrore(null);
@@ -112,13 +115,13 @@ export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: st
           transition: "all .15s ease",
         }}
       >
-        <input ref={inputRef} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => gestisci(e.target.files?.[0])} />
+        <input ref={inputRef} type="file" accept="application/pdf,.pdf,image/*" hidden onChange={(e) => gestisci(e.target.files?.[0])} />
         {caricamento ? (
-          <strong>⏳ Sto leggendo il PDF e registrando i dati…</strong>
+          <strong>⏳ Sto leggendo il documento e registrando i dati…</strong>
         ) : (
           <>
             <div style={{ fontSize: 42, lineHeight: 1 }}>⬆️</div>
-            <strong style={{ fontSize: 17 }}>Trascina qui il PDF dell'UNILAV</strong>
+            <strong style={{ fontSize: 17 }}>Trascina qui il PDF dell'UNILAV (o una sua foto)</strong>
             <span style={{ color: "var(--muted, #64748b)" }}>oppure clicca per scegliere il file</span>
           </>
         )}

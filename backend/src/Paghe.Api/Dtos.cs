@@ -142,6 +142,16 @@ public sealed record CreaAziendaRequest(
     string Nazione = "IT",
     string RegimeFiscale = "RF01");
 
+/// <summary>Correzione anagrafica azienda: solo i campi presenti (non null) vengono cambiati.</summary>
+public sealed record CorreggiAziendaRequest(
+    string? RagioneSociale = null,
+    string? PartitaIva = null,
+    string? CodiceFiscale = null,
+    string? Indirizzo = null,
+    string? Cap = null,
+    string? Comune = null,
+    string? Provincia = null);
+
 /// <summary>Richiesta di generazione dell'F24 del mese pescando i cedolini archiviati dell'azienda.</summary>
 public sealed record F24MeseRequest(
     int Anno,

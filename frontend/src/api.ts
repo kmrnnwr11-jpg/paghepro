@@ -72,7 +72,10 @@ export interface DatiVisura {
   indirizzo?: string | null; cap?: string | null; comune?: string | null; provincia?: string | null;
   codiceAteco?: string | null; legaleRappresentante?: string | null; nota?: string;
 }
-export interface Azienda { id: string; ragioneSociale: string }
+export interface Azienda {
+  id: string; ragioneSociale: string;
+  partitaIva?: string | null; indirizzo?: string; cap?: string; comune?: string; provincia?: string;
+}
 export interface NuovaAzienda {
   ragioneSociale: string; partitaIva?: string; indirizzo: string;
   cap: string; comune: string; provincia: string;
@@ -273,6 +276,12 @@ export const api = {
   riattivaStudio: (id: string) =>
     req<{ id: string; sospeso: boolean }>(`/api/admin/studi/${id}/riattiva`, { method: "POST" }),
   aziende: () => req<Azienda[]>("/api/aziende"),
+  // Correzione anagrafica azienda (es. dopo una visura letta male): invia solo i campi da cambiare.
+  correggiAzienda: (id: string, campi: Partial<NuovaAzienda>) =>
+    req<{ id: string; ragioneSociale: string }>(`/api/aziende/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(campi),
+    }),
   creaAzienda: (a: NuovaAzienda) =>
     req<{ id: string; ragioneSociale: string }>("/api/aziende", {
       method: "POST",

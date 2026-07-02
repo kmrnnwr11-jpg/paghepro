@@ -13,6 +13,8 @@ export function Aziende() {
   const [daConfermare, setDaConfermare] = useState<NuovaAzienda | null>(null);
   const [notaVisura, setNotaVisura] = useState<string | null>(null);
   const [visuraInCorso, setVisuraInCorso] = useState(false);
+  // Correzione di un'azienda già salvata (es. visura letta male): id in modifica, o null.
+  const [inModificaId, setInModificaId] = useState<string | null>(null);
 
   async function caricaVisura(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -48,7 +50,38 @@ export function Aziende() {
   function chiediConferma(e: FormEvent) {
     e.preventDefault();
     setErrore(null);
+    if (inModificaId) { void salvaCorrezione(); return; }
     setDaConfermare(form);
+  }
+
+  function iniziaModifica(a: Azienda) {
+    setErrore(null);
+    setNotaVisura(null);
+    setInModificaId(a.id);
+    setForm({
+      ragioneSociale: a.ragioneSociale,
+      partitaIva: a.partitaIva ?? "",
+      indirizzo: a.indirizzo ?? "",
+      cap: a.cap ?? "",
+      comune: a.comune ?? "",
+      provincia: a.provincia ?? "",
+    });
+  }
+
+  function annullaModifica() {
+    setInModificaId(null);
+    setForm(vuota);
+  }
+
+  async function salvaCorrezione() {
+    if (!inModificaId) return;
+    try {
+      await api.correggiAzienda(inModificaId, form);
+      annullaModifica();
+      await carica();
+    } catch (err) {
+      setErrore(err instanceof Error ? err.message : "Salvataggio non riuscito. Riprova.");
+    }
   }
 
   async function conferma() {
@@ -85,6 +118,9 @@ export function Aziende() {
             <div className="company-row" key={a.id}>
               <span>{a.ragioneSociale.slice(0, 2).toUpperCase()}</span>
               <strong>{a.ragioneSociale}</strong>
+              <button className="mini-action" type="button" onClick={() => iniziaModifica(a)}>
+                ✏️ Modifica
+              </button>
               <em>Attiva</em>
             </div>
           ))}
@@ -131,6 +167,11 @@ export function Aziende() {
         </div>
       ) : (
         <form className="form-grid" onSubmit={chiediConferma}>
+          {inModificaId && (
+            <p className="muto wide-field" style={{ fontSize: 12.5 }}>
+              ✏️ Stai correggendo un'azienda già salvata: sistemare i campi e premere «Salva correzioni».
+            </p>
+          )}
           <label>
             <span>Nome azienda</span>
             <input placeholder="Es. Rossi Srl" value={form.ragioneSociale} onChange={set("ragioneSociale")} required />
@@ -158,9 +199,16 @@ export function Aziende() {
             <span>Provincia</span>
             <input value={form.provincia} onChange={set("provincia")} required maxLength={2} />
           </label>
-          <button className="btn primary wide-field" type="submit">
-            Aggiungi azienda
-          </button>
+          {inModificaId ? (
+            <div className="actions-row wide-field">
+              <button className="btn primary" type="submit">Salva correzioni</button>
+              <button className="btn secondary" type="button" onClick={annullaModifica}>Annulla</button>
+            </div>
+          ) : (
+            <button className="btn primary wide-field" type="submit">
+              Aggiungi azienda
+            </button>
+          )}
         </form>
       )}
       {errore && <p className="errore">{errore}</p>}

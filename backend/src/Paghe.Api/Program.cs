@@ -895,6 +895,19 @@ secured.MapPost("/api/aziende", async (CreaAziendaRequest req, AziendeService sv
 secured.MapGet("/api/aziende", async (AziendeService svc, ClaimsPrincipal user) =>
     Results.Ok(await svc.ElencoAsync(TenantCorrente(user))));
 
+// Correzione dell'anagrafica (es. dopo una visura/OCR letta male): aggiorna solo i campi inviati.
+secured.MapPatch("/api/aziende/{id:guid}", async (
+    Guid id, CorreggiAziendaRequest req, AziendeService svc, ClaimsPrincipal user) =>
+{
+    var a = await svc.CorreggiAsync(TenantCorrente(user), id,
+        new AziendeService.CorrezioneAzienda(
+            req.RagioneSociale, req.PartitaIva, req.CodiceFiscale,
+            req.Indirizzo, req.Cap, req.Comune, req.Provincia));
+    return a is null
+        ? Results.NotFound(new { errore = "Azienda non trovata per il tenant indicato." })
+        : Results.Ok(new { a.Id, a.RagioneSociale });
+});
+
 // --- Contabilità IVA persistita ---------------------------------------------------
 secured.MapPost("/api/aziende/{aziendaId:guid}/spese",
     async (Guid aziendaId, SalvaSpesaRequest req, ContabilitaIvaService svc, ClaimsPrincipal user) =>

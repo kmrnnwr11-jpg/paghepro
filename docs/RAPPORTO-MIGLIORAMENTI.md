@@ -94,7 +94,14 @@ Dettagli tecnici completi in `docs/AUDIT-SICUREZZA.md`. In sintesi:
   IBAN, qualifica, livello, mensilità, part-time, scatti, superminimo e data assunzione
   si correggono e si salvano (prima non era possibile). Protetto: ogni studio corregge
   solo i propri dipendenti; un dipendente anonimizzato (GDPR) non è modificabile.
-- **PDF busta paga** verificato: si genera correttamente con voci, totali e note.
+- **UNILAV anche da foto**: ora la Comunicazione Obbligatoria si può caricare anche come
+  foto/scansione (JPG, PNG), non solo come PDF testuale — la legge lo stesso OCR locale.
+  Provato dal vivo: datore, lavoratore, codice fiscale, data assunzione e qualifica
+  estratti correttamente, con avvertenze chiare su cosa completare a mano.
+- **Correzione anche per le aziende**: come per i dipendenti, ogni azienda salvata ha ora
+  il bottone "✏️ Modifica" — se la visura è stata letta male (o l'UNILAV non aveva
+  l'indirizzo), si corregge e si salva. Protetto per studio (tenant).
+- **PDF busta paga e PDF fattura** verificati: si generano correttamente.
 - Requisito per l'OCR da foto sul server: Tesseract installato (su questo computer c'è
   già; su un server Linux: `apt-get install tesseract-ocr tesseract-ocr-ita`). Senza,
   i PDF testuali funzionano comunque e le foto danno un messaggio chiaro.

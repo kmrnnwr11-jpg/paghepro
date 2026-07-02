@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 
 type Modo = "accedi" | "registra";
@@ -24,6 +24,9 @@ export function Accesso() {
   const [errore, setErrore] = useState<string | null>(null);
   const [attesa, setAttesa] = useState(false);
   const [infoGoogle, setInfoGoogle] = useState<string | null>(null);
+  // 2FA: il server ha chiesto il codice a 6 cifre dell'app di autenticazione.
+  const [serve2fa, setServe2fa] = useState(false);
+  const [codice2fa, setCodice2fa] = useState("");
 
   // Carica Google Identity Services e prepara il callback (solo se è configurato il client ID).
   useEffect(() => {
@@ -74,10 +77,20 @@ export function Accesso() {
         if (password.length < 8) throw new Error("La password deve avere almeno 8 caratteri.");
         await registrati(nome.trim(), email.trim(), password);
       } else {
-        await accedi(email.trim(), password);
+        await accedi(email.trim(), password, serve2fa ? codice2fa.trim() : undefined);
       }
     } catch (err) {
-      setErrore(err instanceof Error ? err.message : "Qualcosa è andato storto. Riprova.");
+      // L'account ha il 2FA attivo: mostra il campo per il codice a 6 cifre.
+      if (err instanceof ApiError && err.corpo?.serveCodice2fa) {
+        setServe2fa(true);
+        setErrore(
+          codice2fa
+            ? "Codice non valido: controlla l'app di autenticazione e riprova."
+            : "Questo account è protetto: inserisci il codice a 6 cifre dell'app di autenticazione.",
+        );
+      } else {
+        setErrore(err instanceof Error ? err.message : "Qualcosa è andato storto. Riprova.");
+      }
     } finally {
       setAttesa(false);
     }
@@ -112,7 +125,7 @@ export function Accesso() {
             role="tab"
             aria-selected={modo === "registra"}
             className={modo === "registra" ? "attivo" : ""}
-            onClick={() => { setModo("registra"); setErrore(null); }}
+            onClick={() => { setModo("registra"); setErrore(null); setServe2fa(false); setCodice2fa(""); }}
           >
             Crea account
           </button>
@@ -161,6 +174,21 @@ export function Accesso() {
               required
             />
           </label>
+          {modo === "accedi" && serve2fa && (
+            <label>
+              <span>Codice di verifica (app di autenticazione)</span>
+              <input
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={codice2fa}
+                onChange={(e) => setCodice2fa(e.target.value)}
+                placeholder="Es. 123456"
+                autoComplete="one-time-code"
+                autoFocus
+              />
+            </label>
+          )}
 
           {errore && <span className="errore">{errore}</span>}
 

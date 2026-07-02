@@ -95,5 +95,40 @@ public sealed class AuthServiceTests : IDisposable
         Assert.Null(await auth.AutenticaAsync("login2@alfa.it", "sbagliata"));
     }
 
+    [Fact]
+    public async Task UtenteGoogle_SenzaPassword_NonAccedeConPassword()
+    {
+        // Chi si è registrato via Google ha PasswordHash vuoto: il login con password
+        // deve fallire con QUALSIASI valore, compresa la stringa vuota.
+        await using var db = NuovoContesto();
+        var auth = new AuthService(db);
+        await auth.AccediConGoogleAsync("solo.google@alfa.it", "Solo Google");
+
+        Assert.Null(await auth.AutenticaAsync("solo.google@alfa.it", ""));
+        Assert.Null(await auth.AutenticaAsync("solo.google@alfa.it", "qualsiasi"));
+        Assert.Equal(EsitoAccesso.CredenzialiErrate,
+            (await auth.AccediAsync("solo.google@alfa.it", "")).Esito);
+    }
+
+    [Fact]
+    public async Task Accedi_EmailConMaiuscoleESpazi_Normalizzata()
+    {
+        await using var db = NuovoContesto();
+        var auth = new AuthService(db);
+        await auth.RegistraAsync("Alfa", "  CASA@Alfa.It ", "password1");
+
+        var r = await auth.AccediAsync("casa@alfa.it", "password1");
+        Assert.Equal(EsitoAccesso.Ok, r.Esito);
+    }
+
+    [Fact]
+    public async Task Accedi_EmailInesistente_CredenzialiErrate()
+    {
+        await using var db = NuovoContesto();
+        var r = await new AuthService(db).AccediAsync("nessuno@alfa.it", "password1");
+        Assert.Equal(EsitoAccesso.CredenzialiErrate, r.Esito);
+        Assert.Null(r.Utente);
+    }
+
     public void Dispose() => _connection.Dispose();
 }

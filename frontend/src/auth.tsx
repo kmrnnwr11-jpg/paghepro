@@ -8,8 +8,8 @@ const DEMO_PASSWORD = "demo-password-1";
 
 interface AuthState {
   token: string | null;
-  /** Accede a un account esistente con email + password. */
-  accedi: (email: string, password: string) => Promise<void>;
+  /** Accede a un account esistente con email + password (+ codice 2FA se attivo). */
+  accedi: (email: string, password: string, codice2fa?: string) => Promise<void>;
   /** Crea un nuovo account personale (spazio privato isolato) ed entra. */
   registrati: (ragioneSociale: string, email: string, password: string) => Promise<void>;
   /** Entra nell'account demo condiviso, solo per provare. */
@@ -29,8 +29,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const accedi = useCallback(
-    async (email: string, password: string) => {
-      const r = await api.login(email, password);
+    async (email: string, password: string, codice2fa?: string) => {
+      const r = await api.login(email, password, codice2fa);
       applica(r.token);
     },
     [applica],

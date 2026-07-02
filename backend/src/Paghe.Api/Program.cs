@@ -134,11 +134,14 @@ builder.Services.AddScoped<NotificheService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<PiattaformaAdminService>();
+// La chiave si valuta SUBITO (non nella lambda, che è lazy): in produzione senza una chiave
+// robusta l'avvio si blocca qui con un errore esplicito, non al primo login.
+var chiaveJwt = Encoding.UTF8.GetBytes(TokenService.ChiaveJwt(builder.Configuration));
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var chiave = Encoding.UTF8.GetBytes(TokenService.ChiaveJwt(builder.Configuration));
+        var chiave = chiaveJwt;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = false,
@@ -447,7 +450,7 @@ app.MapPost("/api/auth/login", async (LoginRequest req, AuthService auth, TokenS
             new { serveCodice2fa = true, errore = "Codice 2FA non valido." }, statusCode: 401),
         EsitoAccesso.AccountSospeso => Results.Json(
             new { errore = "Studio sospeso. Contatta l'amministratore della piattaforma." }, statusCode: 403),
-        _ => Results.Unauthorized(),
+        _ => Results.Json(new { errore = "Email o password non corretti." }, statusCode: 401),
     };
 }).RequireRateLimiting("auth");
 

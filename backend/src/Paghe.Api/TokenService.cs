@@ -68,8 +68,15 @@ public sealed class TokenService
         return chiave;
     }
 
-    private static bool AmbienteProduzione() =>
-        string.Equals(
-            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
-            "Production", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Come ASP.NET Core: ambiente NON impostato = Production. Così un deploy che dimentica
+    /// la variabile d'ambiente non gira mai con la chiave JWT di sviluppo.
+    /// </summary>
+    private static bool AmbienteProduzione()
+    {
+        var ambiente = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+        return string.IsNullOrWhiteSpace(ambiente)
+            || string.Equals(ambiente, "Production", StringComparison.OrdinalIgnoreCase);
+    }
 }

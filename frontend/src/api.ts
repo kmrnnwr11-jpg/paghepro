@@ -18,6 +18,18 @@ export function setRuolo(ruolo: string | null): void {
   else localStorage.removeItem("ruolo");
 }
 
+/** Errore API con il corpo della risposta (es. { serveCodice2fa: true } dal login). */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly corpo?: Record<string, unknown>;
+
+  constructor(messaggio: string, status: number, corpo?: Record<string, unknown>) {
+    super(messaggio);
+    this.status = status;
+    this.corpo = corpo;
+  }
+}
+
 async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -36,13 +48,14 @@ async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     let messaggio = `Errore ${res.status}`;
+    let corpo: Record<string, unknown> | undefined;
     try {
-      const body = await res.json();
-      if (body?.errore) messaggio = body.errore as string;
+      corpo = (await res.json()) as Record<string, unknown>;
+      if (corpo?.errore) messaggio = corpo.errore as string;
     } catch {
       /* corpo non JSON */
     }
-    throw new Error(messaggio);
+    throw new ApiError(messaggio, res.status, corpo);
   }
   if (res.status === 204) return undefined as T;
   const ct = res.headers.get("content-type") ?? "";

@@ -45,7 +45,18 @@ Ogni punto dice: **com'era**, **cosa è stato fatto**, oppure **cosa resta da de
 - **Ora**: attiva solo in sviluppo (riattivabile con `Swagger:Abilitato=true`);
   il health check di Render punta a `/health`.
 
-### 7. Test automatici di isolamento multi-tenant
+### 7. Chiave JWT: controllo davvero all'avvio e ambiente di default corretto
+- **Com'era**: il controllo "in produzione serve una chiave robusta" aveva due falle:
+  (a) considerava "produzione" solo se `ASPNETCORE_ENVIRONMENT=Production` era impostato
+  esplicitamente — ma per ASP.NET Core l'ambiente **non impostato È produzione**, quindi un
+  deploy senza variabile girava con la chiave di sviluppo; (b) il controllo stava dentro la
+  configurazione lazy del bearer token, quindi non bloccava l'avvio ma esplodeva al primo login.
+- **Ora**: ambiente non impostato = produzione (come ASP.NET Core, vale anche
+  `DOTNET_ENVIRONMENT`) e la chiave è valutata subito in `Program.cs`: senza chiave valida
+  l'avvio si ferma con l'errore esplicito. Verificato a runtime nei tre scenari
+  (produzione senza chiave = bloccato; sviluppo = ok; produzione con chiave = ok).
+
+### 8. Test automatici di isolamento multi-tenant
 - **Com'era**: isolamento verificato nei service (ogni query filtra per `TenantId`) ma
   con test solo su fatture, avvisi di pagamento e GDPR.
 - **Ora**: nuovo `IsolamentoTenantTests.cs` — un tenant "intruso" che conosce gli ID di

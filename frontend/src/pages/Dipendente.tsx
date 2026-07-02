@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api, type CedolinoArchiviato, type RapportoDettaglio } from "../api";
 
 type Tab = "anagrafica" | "rapporto" | "storico";
@@ -22,10 +22,12 @@ export function Dipendente({ rapportoId, onPayslip }: { rapportoId: string | nul
   const [cedolini, setCedolini] = useState<CedolinoArchiviato[]>([]);
   const [errore, setErrore] = useState<string | null>(null);
   const [caricamento, setCaricamento] = useState(true);
+  const [inModifica, setInModifica] = useState(false);
 
   useEffect(() => {
     if (!rapportoId) { setCaricamento(false); return; }
     setCaricamento(true);
+    setInModifica(false);
     Promise.all([api.rapportoDettaglio(rapportoId), api.cedoliniArchiviati(rapportoId)])
       .then(([det, ced]) => { setD(det); setCedolini(ced); })
       .catch((e) => setErrore(e instanceof Error ? e.message : "Errore"))
@@ -80,8 +82,20 @@ export function Dipendente({ rapportoId, onPayslip }: { rapportoId: string | nul
             {" · CF "}<span className="num">{d.codiceFiscale || "—"}</span>
           </div>
         </div>
+        {!d.anonimizzato && !inModifica && (
+          <button className="btn secondary" type="button" onClick={() => setInModifica(true)}>
+            ✏️ Correggi dati
+          </button>
+        )}
         <button className="btn secondary" type="button" onClick={onPayslip}>Cedolini</button>
       </header>
+
+      {inModifica && (
+        <CorreggiScheda
+          d={d}
+          onFatto={(aggiornato) => { setInModifica(false); if (aggiornato) setD(aggiornato); }}
+        />
+      )}
 
       <section className="glass-card emp-card">
         <div className="emp-tabs">
@@ -150,5 +164,98 @@ export function Dipendente({ rapportoId, onPayslip }: { rapportoId: string | nul
         </div>
       </section>
     </div>
+  );
+}
+
+/** Data in formato "gg/MM/aaaa" (dal dettaglio) → "aaaa-MM-gg" per l'input date. */
+function dataIso(it: string): string {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(it);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+
+/**
+ * Form di correzione della scheda: utile quando l'import automatico (UNILAV, OCR della visura)
+ * ha letto male un dato. Precompilato con i valori attuali; salva solo ciò che è cambiato.
+ */
+function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggiornato: RapportoDettaglio | null) => void }) {
+  const [f, setF] = useState({
+    nome: d.nome, cognome: d.cognome, codiceFiscale: d.codiceFiscale, iban: d.iban ?? "",
+    livello: d.livello, qualifica: d.qualifica,
+    numeroMensilita: String(d.numeroMensilita),
+    percentualePartTime: String(d.partTime ? d.percentualePartTime : 100),
+    scattiAnzianita: String(d.scattiAnzianita), superminimo: String(d.superminimo),
+    dataAssunzione: dataIso(d.dataAssunzione),
+  });
+  const [errore, setErrore] = useState<string | null>(null);
+  const [attesa, setAttesa] = useState(false);
+
+  const set = (k: keyof typeof f) => (e: { target: { value: string } }) =>
+    setF({ ...f, [k]: e.target.value });
+
+  async function salva(e: FormEvent) {
+    e.preventDefault();
+    setErrore(null);
+    setAttesa(true);
+    try {
+      const pct = Number(f.percentualePartTime) || 100;
+      await api.correggiRapporto(d.rapportoId, {
+        nome: f.nome.trim(), cognome: f.cognome.trim(), codiceFiscale: f.codiceFiscale.trim(),
+        iban: f.iban.trim(),
+        livello: f.livello.trim(), qualifica: f.qualifica,
+        numeroMensilita: Number(f.numeroMensilita) || d.numeroMensilita,
+        partTime: pct < 100, percentualePartTime: pct,
+        scattiAnzianita: Number(f.scattiAnzianita) || 0,
+        superminimo: Number(f.superminimo) || 0,
+        dataAssunzione: f.dataAssunzione || undefined,
+      });
+      const aggiornato = await api.rapportoDettaglio(d.rapportoId);
+      onFatto(aggiornato);
+    } catch (err) {
+      setErrore(err instanceof Error ? err.message : "Salvataggio non riuscito. Riprova.");
+      setAttesa(false);
+    }
+  }
+
+  return (
+    <form className="glass-card form-card" style={{ marginBottom: 14 }} onSubmit={salva}>
+      <div className="card-title-row">
+        <div>
+          <h2>Correggi i dati della scheda</h2>
+          <p>Se l'import automatico (UNILAV o lettura della visura) ha sbagliato, sistemalo qui e salva.</p>
+        </div>
+      </div>
+      <div className="form-grid">
+        <label><span>Nome</span><input value={f.nome} onChange={set("nome")} /></label>
+        <label><span>Cognome</span><input value={f.cognome} onChange={set("cognome")} /></label>
+        <label><span>Codice fiscale</span><input value={f.codiceFiscale} onChange={set("codiceFiscale")} maxLength={16} /></label>
+        <label><span>IBAN <small>(vuoto = rimuovi)</small></span><input value={f.iban} onChange={set("iban")} /></label>
+        <label>
+          <span>Qualifica</span>
+          <select value={f.qualifica} onChange={set("qualifica")}>
+            <option>Impiegato</option>
+            <option>Operaio</option>
+            <option>Quadro</option>
+            <option>Dirigente</option>
+            <option>Apprendista</option>
+          </select>
+        </label>
+        <label><span>Livello</span><input value={f.livello} onChange={set("livello")} /></label>
+        <label><span>Mensilità</span><input type="number" min={12} max={15} value={f.numeroMensilita} onChange={set("numeroMensilita")} /></label>
+        <label><span>Percentuale part-time <small>(100 = tempo pieno)</small></span>
+          <input type="number" min={1} max={100} value={f.percentualePartTime} onChange={set("percentualePartTime")} /></label>
+        <label><span>Scatti anzianità</span><input type="number" min={0} value={f.scattiAnzianita} onChange={set("scattiAnzianita")} /></label>
+        <label><span>Superminimo €</span><input type="number" min={0} step="0.01" value={f.superminimo} onChange={set("superminimo")} /></label>
+        <label><span>Data assunzione</span><input type="date" value={f.dataAssunzione} onChange={set("dataAssunzione")} /></label>
+      </div>
+      {errore && <span className="errore">{errore}</span>}
+      <div className="actions-row">
+        <button className="btn primary" type="submit" disabled={attesa}>
+          {attesa ? "Salvataggio…" : "Salva correzioni"}
+        </button>
+        <button className="btn secondary" type="button" disabled={attesa} onClick={() => onFatto(null)}>
+          Annulla
+        </button>
+      </div>
+    </form>
   );
 }

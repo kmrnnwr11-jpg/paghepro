@@ -105,6 +105,19 @@ public static partial class VisuraCameraleParser
                 comune = m.Groups[2].Value.Trim();
             }
         }
+
+        // Comune etichettato esplicitamente su una riga a parte ("COMUNE: MILANO (MI)"),
+        // layout frequente nelle visure lette via OCR da foto/scansione.
+        if (comune is null && DopoEtichetta(testo, "comune") is { } dopoComune)
+        {
+            var m = Regex.Match(dopoComune, @"^([A-Za-zÀ-ÿ' ]+?)\s*(?:\(([A-Za-z]{2})\))?\s*$");
+            if (m.Success)
+            {
+                comune = m.Groups[1].Value.Trim();
+                if (prov is null && m.Groups[2].Success)
+                    prov = m.Groups[2].Value;
+            }
+        }
         return (indirizzo, cap, comune, prov);
     }
 

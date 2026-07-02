@@ -44,6 +44,50 @@ public sealed class AnagraficheLavoroService
         _db.Rapporti.Include(r => r.Dipendente)
             .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct);
 
+    /// <summary>Campi correggibili di dipendente + rapporto (es. dopo un import UNILAV/OCR impreciso). Null = non cambiare.</summary>
+    public sealed record CorrezioneRapporto(
+        string? Nome = null, string? Cognome = null, string? CodiceFiscale = null, string? Iban = null,
+        string? CodiceCcnl = null, string? Livello = null, string? Qualifica = null,
+        int? NumeroMensilita = null, bool? PartTime = null, decimal? PercentualePartTime = null,
+        int? ScattiAnzianita = null, decimal? Superminimo = null,
+        string? Regione = null, string? CodiceCatastaleComune = null, DateOnly? DataAssunzione = null);
+
+    /// <summary>
+    /// Corregge i dati di un dipendente/rapporto (isolato per tenant). Pensato per rivedere ciò che
+    /// l'import automatico (UNILAV, OCR) ha letto male. Restituisce il rapporto aggiornato,
+    /// null se non esiste per il tenant. Un dipendente anonimizzato (GDPR) non è modificabile.
+    /// </summary>
+    public async Task<RapportoLavoroEntity?> CorreggiRapportoAsync(
+        Guid tenantId, Guid rapportoId, CorrezioneRapporto c, CancellationToken ct = default)
+    {
+        var r = await _db.Rapporti.Include(x => x.Dipendente)
+            .FirstOrDefaultAsync(x => x.Id == rapportoId && x.TenantId == tenantId, ct);
+        if (r is null) return null;
+        if (r.Dipendente is { Anonimizzato: true })
+            throw new InvalidOperationException("Dipendente anonimizzato (GDPR): non è modificabile.");
+
+        var d = r.Dipendente!;
+        if (c.Nome is not null) d.Nome = c.Nome.Trim();
+        if (c.Cognome is not null) d.Cognome = c.Cognome.Trim();
+        if (c.CodiceFiscale is not null) d.CodiceFiscale = c.CodiceFiscale.Trim().ToUpperInvariant();
+        if (c.Iban is not null) d.Iban = c.Iban.Trim().Length == 0 ? null : c.Iban.Trim();
+
+        if (c.CodiceCcnl is not null) r.CodiceCcnl = c.CodiceCcnl.Trim();
+        if (c.Livello is not null) r.Livello = c.Livello.Trim();
+        if (c.Qualifica is not null) r.Qualifica = c.Qualifica.Trim();
+        if (c.NumeroMensilita is { } nm) r.NumeroMensilita = nm;
+        if (c.PartTime is { } pt) r.PartTime = pt;
+        if (c.PercentualePartTime is { } ppt) r.PercentualePartTime = ppt;
+        if (c.ScattiAnzianita is { } sa) r.ScattiAnzianita = sa;
+        if (c.Superminimo is { } sm) r.Superminimo = sm;
+        if (c.Regione is not null) r.Regione = c.Regione.Trim();
+        if (c.CodiceCatastaleComune is not null) r.CodiceCatastaleComune = c.CodiceCatastaleComune.Trim().ToUpperInvariant();
+        if (c.DataAssunzione is { } da) r.DataAssunzione = da;
+
+        await _db.SaveChangesAsync(ct);
+        return r;
+    }
+
     /// <summary>
     /// GDPR — diritto all'oblio (art. 17): anonimizza i dati personali del dipendente (nome, cognome,
     /// codice fiscale, IBAN) <b>mantenendo</b> i record contabili collegati (cedolini), soggetti a

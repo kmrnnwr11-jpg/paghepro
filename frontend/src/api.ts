@@ -136,6 +136,14 @@ export interface RapportoDettaglio {
   numeroMensilita: number; partTime: boolean; percentualePartTime: number;
   scattiAnzianita: number; superminimo: number; regione: string; dataAssunzione: string;
 }
+/** Campi correggibili della scheda dipendente: solo quelli presenti vengono cambiati. */
+export interface CorrezioneRapporto {
+  nome?: string; cognome?: string; codiceFiscale?: string; iban?: string;
+  codiceCcnl?: string; livello?: string; qualifica?: string;
+  numeroMensilita?: number; partTime?: boolean; percentualePartTime?: number;
+  scattiAnzianita?: number; superminimo?: number;
+  regione?: string; codiceCatastaleComune?: string; dataAssunzione?: string;
+}
 export interface Fattura {
   id: string; numero: string; anno?: number; data?: string;
   cessionarioDenominazione?: string; totaleDocumento: number;
@@ -289,6 +297,12 @@ export const api = {
     }),
   rapportoDettaglio: (rapportoId: string) =>
     req<RapportoDettaglio>(`/api/rapporti/${rapportoId}`),
+  // Correzione della scheda (es. dopo un import UNILAV/OCR letto male): invia solo i campi da cambiare.
+  correggiRapporto: (rapportoId: string, campi: CorrezioneRapporto) =>
+    req<{ aggiornato: boolean }>(`/api/rapporti/${rapportoId}`, {
+      method: "PATCH",
+      body: JSON.stringify(campi),
+    }),
   presenzeMese: (aziendaId: string, anno: number, mese: number) =>
     req<PresenzeMese>(`/api/aziende/${aziendaId}/presenze/${anno}/${mese}`),
 

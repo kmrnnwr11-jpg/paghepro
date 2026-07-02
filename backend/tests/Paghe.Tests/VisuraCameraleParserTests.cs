@@ -40,4 +40,26 @@ public sealed class VisuraCameraleParserTests
         Assert.Null(d.PartitaIva);
         Assert.Null(d.Comune);
     }
+
+    [Fact]
+    public void Estrai_ComuneConEtichettaEsplicita_SuRigaSeparata()
+    {
+        // Layout da OCR di foto/scansione: sede su una riga, CAP e COMUNE etichettati a parte.
+        const string visura = """
+            CAMERA DI COMMERCIO DI MILANO
+            DENOMINAZIONE: TECNOEDIL COSTRUZIONI S.R.L.
+            PARTITA IVA: 12345678903
+            SEDE LEGALE: VIA GIUSEPPE VERDI 15
+            CAP: 20121 COMUNE: MILANO (MI)
+            AMMINISTRATORE UNICO: BIANCHI MARCO
+            """;
+
+        var d = VisuraCameraleParser.Estrai(visura);
+
+        Assert.Equal("VIA GIUSEPPE VERDI 15", d.Indirizzo);
+        Assert.Equal("20121", d.Cap);
+        Assert.Equal("MILANO", d.Comune);
+        Assert.Equal("MI", d.Provincia);
+        Assert.Equal("BIANCHI MARCO", d.LegaleRappresentante);
+    }
 }

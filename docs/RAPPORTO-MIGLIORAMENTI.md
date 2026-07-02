@@ -80,6 +80,25 @@ Dettagli tecnici completi in `docs/AUDIT-SICUREZZA.md`. In sintesi:
   veste: login, calcolo e archiviazione di un cedolino vero, CU, scadenzario,
   fatturazione, bilancio.
 
+## 5. Inserimento automatico da file (OCR) — verificato e completato
+
+- **Visura camerale**: carichi il PDF o una **foto/scansione** (letta con OCR Tesseract
+  locale, nessun servizio esterno) e il form azienda **si compila da solo**; i campi
+  restano modificabili e salvi solo dopo averli controllati. Provato dal vivo con una
+  visura di test: ragione sociale, P.IVA, CF, indirizzo, CAP, comune, ATECO e legale
+  rappresentante estratti correttamente. Migliorato il lettore per il layout
+  "COMUNE: MILANO (MI)" tipico delle scansioni.
+- **UNILAV**: carichi il PDF della Comunicazione Obbligatoria e vengono creati azienda,
+  lavoratore e rapporto. **Novità**: se l'import legge male un dato, nella scheda del
+  dipendente c'è ora il bottone **"✏️ Correggi dati"** — nome, cognome, codice fiscale,
+  IBAN, qualifica, livello, mensilità, part-time, scatti, superminimo e data assunzione
+  si correggono e si salvano (prima non era possibile). Protetto: ogni studio corregge
+  solo i propri dipendenti; un dipendente anonimizzato (GDPR) non è modificabile.
+- **PDF busta paga** verificato: si genera correttamente con voci, totali e note.
+- Requisito per l'OCR da foto sul server: Tesseract installato (su questo computer c'è
+  già; su un server Linux: `apt-get install tesseract-ocr tesseract-ocr-ita`). Senza,
+  i PDF testuali funzionano comunque e le foto danno un messaggio chiaro.
+
 ---
 
 ## Cosa devi fare tu (quando vuoi andare online)

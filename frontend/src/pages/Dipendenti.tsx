@@ -2,15 +2,41 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, type Azienda, type DipendenteRapporto, type Livello } from "../api";
 import { CaricaUnilav } from "./CaricaUnilav";
 import { ComuneAutocomplete } from "../ComuneAutocomplete";
+import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
 
-const CCNL = "COMMERCIO_TERZIARIO";
+const DEFAULT_CCNL = "COMMERCIO_TERZIARIO";
+const DEFAULT_LIVELLO = "3";
+
+function codiceCcnlAzienda(azienda: Azienda | null): string {
+  return azienda?.ccnlDefault?.trim() || DEFAULT_CCNL;
+}
+
+function livelloAzienda(azienda: Azienda | null): string {
+  return azienda?.livelloDefault?.trim() || DEFAULT_LIVELLO;
+}
+
+function nomeCcnl(codice: string): string {
+  const nomi: Record<string, string> = {
+    COMMERCIO_TERZIARIO: "Commercio",
+    TRASPORTI_LOGISTICA: "Logistica",
+    EDILIZIA_INDUSTRIA: "Edilizia",
+    METALMECCANICI_INDUSTRIA: "Metalmeccanici",
+    TURISMO_PUBBLICI_ESERCIZI: "Turismo",
+    MULTISERVIZI_PULIZIE: "Multiservizi",
+    STUDI_PROFESSIONALI: "Studi professionali",
+    ALIMENTARE_INDUSTRIA: "Alimentare",
+    AGRICOLTURA_OPERAI: "Agricoltura",
+  };
+  return nomi[codice] ?? codice;
+}
 
 const formVuoto = {
-  codiceFiscale: "", nome: "", cognome: "", livello: "3", iban: "", qualifica: "Impiegato",
+  codiceFiscale: "", nome: "", cognome: "", livello: DEFAULT_LIVELLO, iban: "", qualifica: "Impiegato",
   regione: "", codiceCatastaleComune: "", comuneNome: "",
 };
 
 export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void }) {
+  const [tutteAziende, setTutteAziende] = useState<Azienda[]>([]);
   const [azienda, setAzienda] = useState<Azienda | null>(null);
   const [lista, setLista] = useState<DipendenteRapporto[]>([]);
   const [livelli, setLivelli] = useState<Livello[]>([]);
@@ -23,19 +49,12 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
   useEffect(() => {
     (async () => {
       try {
-        // Contesto azienda: usa la prima azienda del tenant, creandone una demo se non esiste.
-        let aziende = await api.aziende();
-        if (aziende.length === 0) {
-          await api.creaAzienda({
-            ragioneSociale: "Rossi S.r.l.", partitaIva: "01567890123",
-            indirizzo: "Via Roma 10", cap: "20121", comune: "Milano", provincia: "MI",
-          });
-          aziende = await api.aziende();
-        }
-        const a = aziende[0] ?? null;
+        const aziende = await api.aziende();
+        setTutteAziende(aziende);
+        const a = scegliAziendaPreferita(aziende);
         setAzienda(a);
+        if (a) salvaAziendaCorrenteId(a.id);
         if (a) setLista(await api.dipendenti(a.id));
-        api.livelli(CCNL).then((r) => setLivelli(r.livelli)).catch(() => { /* ignora */ });
       } catch (e) {
         setErrore(e instanceof Error ? e.message : "Errore di caricamento");
       } finally {
@@ -44,9 +63,43 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
     })();
   }, []);
 
+  useEffect(() => {
+    if (!azienda) return;
+    let vivo = true;
+    const codice = codiceCcnlAzienda(azienda);
+    const livelloDefault = livelloAzienda(azienda);
+    setForm((f) => ({ ...f, livello: livelloDefault }));
+    setLivelli([]);
+    api.livelli(codice)
+      .then((r) => {
+        if (!vivo) return;
+        setLivelli(r.livelli);
+        setForm((f) => {
+          const livelloOk = r.livelli.some(l => l.codice === f.livello);
+          return { ...f, livello: livelloOk ? f.livello : (r.livelli[0]?.codice ?? livelloDefault) };
+        });
+      })
+      .catch(() => { if (vivo) setLivelli([]); });
+    return () => { vivo = false; };
+  }, [azienda?.id, azienda?.ccnlDefault, azienda?.livelloDefault]);
+
+  async function cambiaAzienda(id: string) {
+    const a = tutteAziende.find(x => x.id === id) ?? null;
+    setAzienda(a);
+    if (a) salvaAziendaCorrenteId(a.id);
+    setErrore(null);
+    setLista([]);
+    if (a) {
+      try { setLista(await api.dipendenti(a.id)); } catch { /* ignora */ }
+    }
+  }
+
   async function aggiungi(e: FormEvent) {
     e.preventDefault();
-    if (!azienda) return;
+    if (!azienda) {
+      setErrore("Prima aggiungi un'azienda oppure importa un UNILAV: ogni dipendente deve essere collegato a un datore di lavoro.");
+      return;
+    }
     setSalvataggio(true);
     setErrore(null);
     try {
@@ -54,8 +107,8 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
         codiceFiscale: form.codiceFiscale.trim().toUpperCase(),
         nome: form.nome.trim(),
         cognome: form.cognome.trim(),
-        codiceCcnl: CCNL,
-        livello: form.livello,
+        codiceCcnl: codiceCcnlAzienda(azienda),
+        livello: form.livello || livelloAzienda(azienda),
         iban: form.iban.trim() || undefined,
         qualifica: form.qualifica,
         regione: form.regione || undefined,
@@ -77,7 +130,20 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
   // Dopo l'import UNILAV: porta la lista sull'azienda (datore) creata/trovata dal PDF.
   const dopoImport = async (az: { id: string; ragioneSociale: string }) => {
     setAzienda(az);
-    try { setLista(await api.dipendenti(az.id)); } catch { /* ignora */ }
+    setErrore(null);
+    salvaAziendaCorrenteId(az.id);
+    setTutteAziende((correnti) =>
+      correnti.some((a) => a.id === az.id) ? correnti : [...correnti, az]);
+    try {
+      const [aziende, dipendenti] = await Promise.all([
+        api.aziende(),
+        api.dipendenti(az.id),
+      ]);
+      setTutteAziende(aziende);
+      setLista(dipendenti);
+    } catch {
+      try { setLista(await api.dipendenti(az.id)); } catch { /* ignora */ }
+    }
   };
 
   return (
@@ -87,14 +153,47 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
       <div className="card-title-row">
         <div>
           <h1>Dipendenti</h1>
-          <p>
-            Archivio lavoratori reali{azienda ? ` · ${azienda.ragioneSociale}` : ""} — dal database
-          </p>
+          <p>Archivio lavoratori — dal database</p>
         </div>
-        <button className="btn primary" type="button" onClick={() => setMostraForm((v) => !v)}>
+        <button
+          className="btn primary"
+          type="button"
+          onClick={() => {
+            if (!azienda && tutteAziende.length === 0) {
+              setErrore("Prima aggiungi un'azienda oppure importa un UNILAV: poi potrai salvare il dipendente.");
+              setMostraForm(false);
+              return;
+            }
+            setErrore(null);
+            setMostraForm((v) => !v);
+          }}
+        >
           {mostraForm ? "Chiudi" : "+ Nuovo dipendente"}
         </button>
       </div>
+
+      {/* selettore azienda */}
+      {tutteAziende.length === 0 ? (
+        <div className="empty-state" style={{ marginBottom: 16 }}>
+          Nessuna azienda registrata.{" "}
+          <a href="#" onClick={e => { e.preventDefault(); window.location.hash = "aziende"; }}>
+            Aggiungi un'azienda prima
+          </a>.
+        </div>
+      ) : (
+        <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <label style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>Azienda:</label>
+          <select
+            value={azienda?.id ?? ""}
+            onChange={e => { void cambiaAzienda(e.target.value); }}
+            style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid rgba(139, 115, 85, 0.45)",
+              background: "#fffdf6", boxShadow: "var(--incavo)", color: "var(--text)", fontSize: 14, flex: 1, maxWidth: 400 }}>
+            {tutteAziende.map(a => (
+              <option key={a.id} value={a.id}>{a.ragioneSociale}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {mostraForm && (
         <form className="form-grid" onSubmit={aggiungi} style={{ marginBottom: 4 }}>
@@ -121,10 +220,10 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
             <input value={form.cognome} onChange={set("cognome")} required />
           </label>
           <label>
-            <span>Livello CCNL Commercio</span>
+            <span>Livello CCNL {nomeCcnl(codiceCcnlAzienda(azienda))}</span>
             <select value={form.livello} onChange={set("livello")}>
               {livelli.length === 0
-                ? <option value="3">3</option>
+                ? <option value={livelloAzienda(azienda)}>{livelloAzienda(azienda)}</option>
                 : livelli.map((l) => <option key={l.codice} value={l.codice}>{l.codice} — {l.descrizione}</option>)}
             </select>
           </label>
@@ -141,7 +240,7 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
                 setForm((f) => ({ ...f, comuneNome: c.nome, codiceCatastaleComune: c.cat, regione: c.reg }))}
             />
           </label>
-          <button className="btn primary wide-field" type="submit" disabled={salvataggio}>
+          <button className="btn primary wide-field" type="submit" disabled={salvataggio || !azienda}>
             {salvataggio ? "Salvataggio…" : "Salva dipendente"}
           </button>
         </form>
@@ -178,7 +277,7 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
                   <td className="num">{d.dipendenteId.slice(0, 6).toUpperCase()}</td>
                   <td>{d.qualifica}</td>
                   <td>{d.livello}</td>
-                  <td>{d.codiceCcnl === CCNL ? "Commercio" : d.codiceCcnl}</td>
+                  <td>{nomeCcnl(d.codiceCcnl)}</td>
                   <td className="right">
                     <button className="mini-action" type="button" onClick={(e) => { e.stopPropagation(); onApri(d.rapportoId); }}>
                       Apri

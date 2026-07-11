@@ -25,9 +25,12 @@ public class RapportoLavoroEntity
     public Guid DipendenteId { get; set; }
     public DipendenteEntity? Dipendente { get; set; }
 
+    public string? Matricola { get; set; }
     public string CodiceCcnl { get; set; } = "";
     public string Livello { get; set; } = "";
     public string Qualifica { get; set; } = "Impiegato"; // nome enum Qualifica
+    public string TipoContratto { get; set; } = "Tempo indeterminato";
+    public decimal OreSettimanali { get; set; } = 40m;
     public int NumeroMensilita { get; set; } = 14;
     public bool PartTime { get; set; }
     public decimal PercentualePartTime { get; set; } = 100m;
@@ -38,6 +41,9 @@ public class RapportoLavoroEntity
     public bool DetrazioniLavoroDipendente { get; set; } = true;
     public int GiorniDetrazioneAnno { get; set; } = 365;
     public DateOnly DataAssunzione { get; set; }
+
+    /// <summary>Fondo TFR maturato prima dell'uso di questo software (per la rivalutazione).</summary>
+    public decimal? FondoTfrIniziale { get; set; }
 }
 
 /// <summary>Cartellino presenze mensile persistito.</summary>
@@ -53,7 +59,10 @@ public class CartellinoEntity
     public decimal OreStraordinarioFestivo { get; set; }
     public decimal GiorniFerie { get; set; }
     public decimal OrePermessi { get; set; }
+    public decimal OreExFestivita { get; set; }
     public decimal GiorniMalattia { get; set; }
+    public int NumeroEventoMalattiaAnno { get; set; } = 1;
+    public decimal GiorniInfortunio { get; set; }
     public decimal OreAssenzaNonRetribuita { get; set; }
 }
 
@@ -79,6 +88,17 @@ public class CedolinoEntity
     public decimal NettoInBusta { get; set; }
     public decimal QuotaTfr { get; set; }
     public decimal CostoAzienda { get; set; }
+
+    public decimal FerieMaturate { get; set; }
+    public decimal FerieGodute { get; set; }
+    public decimal FerieResidue { get; set; }
+
+    public decimal PermessiMaturati { get; set; }
+    public decimal PermessiGoduti { get; set; }
+    public decimal PermessiResidui { get; set; }
+
+    /// <summary>Conguaglio IRPEF applicato in busta (solo dicembre; >0 a debito, &lt;0 a credito).</summary>
+    public decimal ConguaglioIrpef { get; set; }
 
     public DateTime CalcolatoIl { get; set; }
     public List<CedolinoVoceEntity> Voci { get; set; } = new();

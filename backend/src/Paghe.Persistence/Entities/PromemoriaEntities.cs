@@ -77,8 +77,10 @@ public static class TipoPromemoria
     public const string Durc = "Durc";
     public const string F24 = "F24";
     public const string Manuale = "Manuale";
+    /// <summary>Generato automaticamente dal calendario scadenze fiscali (IRPEF, IVA, INAIL, ecc.).</summary>
+    public const string Calendario = "Calendario";
 
-    public static readonly string[] Tutti = { Durc, F24, Manuale };
+    public static readonly string[] Tutti = { Durc, F24, Manuale, Calendario };
 }
 
 /// <summary>Stati di un promemoria.</summary>

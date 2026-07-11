@@ -8,7 +8,7 @@ import { Dashboard } from "./pages/Dashboard";
 const VETRINA = import.meta.env.VITE_VETRINA === "1";
 
 export default function App() {
-  const { token } = useAuth();
+  const { token, ingressoInCorso } = useAuth();
   return (
     <>
       {VETRINA && (
@@ -30,8 +30,24 @@ export default function App() {
           sistema sarà online.
         </div>
       )}
-      {/* Senza account: schermata di accesso. Con account: l'applicazione. */}
-      {token ? <Dashboard /> : <Accesso />}
+      {/* Con account: l'applicazione. All'avvio si entra da soli (breve apertura);
+          la schermata di accesso compare solo se si esce di proposito (login opzionale). */}
+      {token ? <Dashboard /> : ingressoInCorso ? <Apertura /> : <Accesso />}
     </>
+  );
+}
+
+// Breve schermata di apertura durante l'ingresso automatico, al posto del login.
+function Apertura() {
+  return (
+    <div className="centro">
+      <div className="card accesso-card" style={{ textAlign: "center" }}>
+        <div className="accesso-brand" style={{ justifyContent: "center", marginBottom: 10 }}>
+          <div className="brand-mark">P</div>
+          <strong>PaghePro</strong>
+        </div>
+        <p className="muto" style={{ fontSize: 13 }}>Apertura in corso…</p>
+      </div>
+    </div>
   );
 }

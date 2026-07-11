@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="PdfPig" Version="0.1.15" />
+    <PackageReference Include="PDFsharp" Version="6.2.1" />
     <PackageReference Include="QuestPDF" Version="2026.6.1" />
   </ItemGroup>
 
@@ -13,6 +14,8 @@
     <!-- Schemi XSD ufficiali FatturaPA (Agenzia delle Entrate) per la validazione. -->
     <EmbeddedResource Include="Schemi\Schema_VFPR12.xsd" />
     <EmbeddedResource Include="Schemi\xmldsig-core-schema.xsd" />
+    <!-- Modello ufficiale AA7/10 (Agenzia delle Entrate 2025): compilato da Aa710PdfUfficiale. -->
+    <EmbeddedResource Include="Modelli\AA7_10_modello_2025.pdf" />
   </ItemGroup>
 
   <PropertyGroup>

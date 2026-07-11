@@ -106,7 +106,7 @@ export function Firma() {
             <div style={{ marginTop: 10 }}>
               <span style={{ fontSize: 12, color: "var(--muted, #64748b)" }}>Anteprima del contenuto</span>
               <pre style={{
-                marginTop: 4, maxHeight: 220, overflow: "auto", background: "rgba(15,23,42,0.04)",
+                marginTop: 4, maxHeight: 220, overflow: "auto", background: "rgba(92,71,42,0.06)",
                 borderRadius: 10, padding: 12, fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
               }}>{anteprima}</pre>

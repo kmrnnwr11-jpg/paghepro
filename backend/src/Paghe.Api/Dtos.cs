@@ -125,10 +125,18 @@ public sealed record CreaPraticaAperturaPartitaIvaRequest(
     bool AttivitaArtigiana = false,
     bool HaDipendentiPrevisti = false,
     bool SoggettaInail = false,
-    Guid? AziendaId = null);
+    Guid? AziendaId = null,
+    TipoPraticaComUnica TipoPratica = TipoPraticaComUnica.NuovaImpresa,
+    bool ImpresaAgricola = false);
 
 /// <summary>Aggiornamento stato di un adempimento dentro una pratica.</summary>
 public sealed record AggiornaAdempimentoPraticaRequest(string Stato, string? Note = null);
+
+/// <summary>Transizione di stato della pratica ComUnica.</summary>
+public sealed record CambiaStatoPraticaComUnicaRequest(string Stato);
+
+/// <summary>Testo libero incollato dall'utente da cui estrarre i dati della pratica.</summary>
+public sealed record AnalizzaTestoPraticaRequest(string Testo);
 
 /// <summary>Richiesta di creazione anagrafica azienda.</summary>
 public sealed record CreaAziendaRequest(
@@ -140,7 +148,28 @@ public sealed record CreaAziendaRequest(
     string? PartitaIva = null,
     string? CodiceFiscale = null,
     string Nazione = "IT",
-    string RegimeFiscale = "RF01");
+    string RegimeFiscale = "RF01",
+    string? Telefono = null,
+    string? Email = null,
+    string? Pec = null,
+    string? CodiceDestinatarioSdi = null,
+    string? CodiceCatastale = null,
+    string? Settore = null,
+    string? CodiceAteco = null,
+    string? MatricolaInps = null,
+    string? CodiceSedeInps = null,
+    string? CscInps = null,
+    string? PatInail = null,
+    string? CcnlDefault = null,
+    string? LivelloDefault = null,
+    string? Iban = null,
+    string? LegaleRappresentanteNome = null,
+    string? LegaleRappresentanteCognome = null,
+    string? LegaleRappresentanteCodiceFiscale = null,
+    string? CanalePredefinito = null,
+    bool HaDipendenti = false,
+    string? TipoContribuente = null,
+    bool AssoggettataIva = true);
 
 /// <summary>Correzione anagrafica azienda: solo i campi presenti (non null) vengono cambiati.</summary>
 public sealed record CorreggiAziendaRequest(
@@ -150,7 +179,30 @@ public sealed record CorreggiAziendaRequest(
     string? Indirizzo = null,
     string? Cap = null,
     string? Comune = null,
-    string? Provincia = null);
+    string? Provincia = null,
+    string? Telefono = null,
+    string? Email = null,
+    string? Pec = null,
+    string? CodiceDestinatarioSdi = null,
+    string? CodiceCatastale = null,
+    string? Settore = null,
+    string? CodiceAteco = null,
+    string? MatricolaInps = null,
+    string? CodiceSedeInps = null,
+    string? CscInps = null,
+    string? PatInail = null,
+    string? CcnlDefault = null,
+    string? LivelloDefault = null,
+    string? Iban = null,
+    string? LegaleRappresentanteNome = null,
+    string? LegaleRappresentanteCognome = null,
+    string? LegaleRappresentanteCodiceFiscale = null,
+    string? CanalePredefinito = null,
+    bool? HaDipendenti = null,
+    string? TipoContribuente = null,
+    bool? AssoggettataIva = null);
+
+public sealed record EliminaAziendeBulkRequest(List<Guid> Ids);
 
 /// <summary>Richiesta di generazione dell'F24 del mese pescando i cedolini archiviati dell'azienda.</summary>
 public sealed record F24MeseRequest(

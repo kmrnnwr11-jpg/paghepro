@@ -26,7 +26,9 @@ public sealed class TokenService
                 new Claim(ClaimTypes.Role, utente.Ruolo),
                 new Claim(JwtRegisteredClaimNames.Email, utente.Email),
             }),
-            Expires = DateTime.UtcNow.AddHours(8),
+            // Sessione a lunga durata (uso personale): resti dentro finché non fai logout,
+            // senza dover rifare l'accesso ogni giorno. Rinnovata a ogni nuovo login.
+            Expires = DateTime.UtcNow.AddDays(365),
             SigningCredentials = new SigningCredentials(
                 new SymmetricSecurityKey(chiave), SecurityAlgorithms.HmacSha256),
         };

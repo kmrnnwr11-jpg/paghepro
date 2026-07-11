@@ -1,8 +1,9 @@
 namespace Paghe.Core.PartiteIva;
 
 /// <summary>
-/// Genera una checklist pratica per apertura partita IVA e, quando dovuta, Comunicazione
-/// Unica/Camera di Commercio. Non effettua invii telematici: prepara dati e controlli.
+/// Genera una checklist pratica per apertura, variazione o cessazione partita IVA e, quando
+/// dovuta, Comunicazione Unica/Camera di Commercio. Non effettua invii telematici: prepara
+/// dati e controlli.
 /// </summary>
 public static class PianoAperturaPartitaIvaBuilder
 {
@@ -15,6 +16,29 @@ public static class PianoAperturaPartitaIvaBuilder
         bool impresa = pratica.FormaGiuridica != FormaGiuridicaApertura.ProfessionistaPersonaFisica;
         string modelloAe = personaFisica ? "AA9/12" : "AA7/10";
 
+        var adempimenti = pratica.TipoPratica switch
+        {
+            TipoPraticaComUnica.Variazione => AdempimentiVariazione(pratica, impresa, modelloAe),
+            TipoPraticaComUnica.Cessazione => AdempimentiCessazione(pratica, impresa, modelloAe),
+            _ => AdempimentiNuovaImpresa(pratica, impresa, modelloAe),
+        };
+
+        var avvertenze = Avvertenze(pratica, impresa).ToList();
+
+        return new PianoAperturaPartitaIva
+        {
+            ModelloAgenziaEntrate = modelloAe,
+            RichiedeComunicazioneUnica = impresa,
+            RichiedeRegistroImprese = impresa,
+            RichiedeCameraCommercio = impresa,
+            Adempimenti = adempimenti,
+            Avvertenze = avvertenze,
+        };
+    }
+
+    private static List<AdempimentoAperturaPartitaIva> AdempimentiNuovaImpresa(
+        PraticaAperturaPartitaIva pratica, bool impresa, string modelloAe)
+    {
         var adempimenti = new List<AdempimentoAperturaPartitaIva>
         {
             new("AE-INIZIO-IVA", "Agenzia Entrate",
@@ -50,6 +74,10 @@ public static class PianoAperturaPartitaIvaBuilder
                 "Verifica iscrizione alla gestione artigiani.", true));
         }
 
+        if (pratica.ImpresaAgricola)
+            adempimenti.Add(new("INPS-DA", "INPS",
+                "Iscrizione impresa agricola (denuncia aziendale DA) tramite ComUnica.", true));
+
         if (pratica.HaDipendentiPrevisti)
             adempimenti.Add(new("INPS-DIP", "INPS",
                 "Apertura/aggiornamento posizione contributiva per lavoratori dipendenti.", true));
@@ -64,17 +92,94 @@ public static class PianoAperturaPartitaIvaBuilder
                 : "Configurazione registri IVA vendite/acquisti, liquidazioni periodiche e conservazione documenti.",
             true));
 
-        var avvertenze = Avvertenze(pratica, impresa).ToList();
+        return adempimenti;
+    }
 
-        return new PianoAperturaPartitaIva
+    private static List<AdempimentoAperturaPartitaIva> AdempimentiVariazione(
+        PraticaAperturaPartitaIva pratica, bool impresa, string modelloAe)
+    {
+        var adempimenti = new List<AdempimentoAperturaPartitaIva>
         {
-            ModelloAgenziaEntrate = modelloAe,
-            RichiedeComunicazioneUnica = impresa,
-            RichiedeRegistroImprese = impresa,
-            RichiedeCameraCommercio = impresa,
-            Adempimenti = adempimenti,
-            Avvertenze = avvertenze,
+            new("AE-VARIAZIONE-IVA", "Agenzia Entrate",
+                $"Comunicazione di variazione dati IVA con modello {modelloAe}.", true),
         };
+
+        if (impresa)
+        {
+            adempimenti.Add(new("COMUNICA", "Registro Imprese",
+                "Comunicazione Unica di variazione (sede, attività, unità locali, cariche).", true));
+            adempimenti.Add(new("RI-REA", "Camera di Commercio",
+                "Aggiornamento della posizione al Registro Imprese / REA.", true));
+        }
+
+        if (pratica.AttivitaCommercio)
+            adempimenti.Add(new("SUAP-SCIA", "SUAP",
+                "Verifica se la variazione richiede nuova SCIA/comunicazione al Comune.", true));
+
+        if (pratica.AttivitaArtigiana)
+            adempimenti.Add(new("ALBO-ART", "Camera di Commercio",
+                "Variazione della posizione all'Albo delle Imprese Artigiane.", true));
+
+        if (pratica.ImpresaAgricola)
+            adempimenti.Add(new("INPS-DA", "INPS",
+                "Variazione della denuncia aziendale agricola (DA).", true));
+
+        if (pratica.HaDipendentiPrevisti)
+            adempimenti.Add(new("INPS-DIP", "INPS",
+                "Variazione dati/inquadramento della posizione contributiva datore di lavoro.", true));
+
+        if (pratica.SoggettaInail)
+            adempimenti.Add(new("INAIL", "INAIL",
+                "Denuncia di variazione INAIL (sedi, lavorazioni, P.A.T.).", true));
+
+        return adempimenti;
+    }
+
+    private static List<AdempimentoAperturaPartitaIva> AdempimentiCessazione(
+        PraticaAperturaPartitaIva pratica, bool impresa, string modelloAe)
+    {
+        var adempimenti = new List<AdempimentoAperturaPartitaIva>
+        {
+            new("AE-CESSAZIONE-IVA", "Agenzia Entrate",
+                $"Dichiarazione di cessazione attività IVA con modello {modelloAe}.", true),
+        };
+
+        if (impresa)
+        {
+            adempimenti.Add(new("COMUNICA", "Registro Imprese",
+                "Comunicazione Unica di cessazione attività.", true));
+            adempimenti.Add(new("RI-REA", "Camera di Commercio",
+                "Cancellazione dal Registro Imprese / chiusura posizione REA.", true));
+        }
+
+        if (pratica.AttivitaCommercio)
+            adempimenti.Add(new("INPS-COM", "INPS",
+                "Chiusura dell'iscrizione alla gestione commercianti.", true));
+
+        if (pratica.AttivitaArtigiana)
+        {
+            adempimenti.Add(new("ALBO-ART", "Camera di Commercio",
+                "Cancellazione dall'Albo delle Imprese Artigiane.", true));
+            adempimenti.Add(new("INPS-ART", "INPS",
+                "Chiusura dell'iscrizione alla gestione artigiani.", true));
+        }
+
+        if (pratica.ImpresaAgricola)
+            adempimenti.Add(new("INPS-DA", "INPS",
+                "Cessazione della denuncia aziendale agricola (DA).", true));
+
+        if (pratica.HaDipendentiPrevisti)
+            adempimenti.Add(new("INPS-DIP", "INPS",
+                "Chiusura della posizione contributiva datore di lavoro.", true));
+
+        if (pratica.SoggettaInail)
+            adempimenti.Add(new("INAIL", "INAIL",
+                "Denuncia di cessazione INAIL e chiusura P.A.T.", true));
+
+        adempimenti.Add(new("CONTABILITA", "Studio / Contabilità",
+            "Liquidazione IVA finale, fatturazione residua e conservazione dei documenti.", true));
+
+        return adempimenti;
     }
 
     private static void Valida(PraticaAperturaPartitaIva p)
@@ -94,11 +199,19 @@ public static class PianoAperturaPartitaIvaBuilder
             throw new ArgumentException("Sede, CAP, comune e provincia sono obbligatori.");
         if (p.DataInizioAttivita == default)
             throw new ArgumentException("La data inizio attività è obbligatoria.");
+        if (p.TipoPratica != TipoPraticaComUnica.NuovaImpresa && string.IsNullOrWhiteSpace(p.PartitaIva))
+            throw new ArgumentException("Per variazione o cessazione la partita IVA è obbligatoria.");
     }
 
     private static IEnumerable<string> Avvertenze(PraticaAperturaPartitaIva p, bool impresa)
     {
         yield return "Il software prepara la pratica: l'invio telematico richiede canali/credenziali ufficiali o intermediario abilitato.";
+
+        if (p.TipoPratica != TipoPraticaComUnica.NuovaImpresa)
+            yield return "Variazioni e cessazioni vanno comunicate di norma entro 30 giorni dalla data dell'evento.";
+
+        if (p.TipoPratica == TipoPraticaComUnica.Cessazione)
+            yield return "Prima della chiusura verificare liquidazione IVA finale, beni residui e rapporti di lavoro in essere.";
 
         if (impresa && string.IsNullOrWhiteSpace(p.Pec))
             yield return "Per le pratiche al Registro Imprese serve normalmente un domicilio digitale/PEC dell'impresa.";
@@ -109,7 +222,7 @@ public static class PianoAperturaPartitaIvaBuilder
         if (p.AttivitaCommercio)
             yield return "Le attività commerciali possono richiedere SCIA/autorizzazioni SUAP comunali prima dell'avvio effettivo.";
 
-        if (!string.IsNullOrWhiteSpace(p.PartitaIva))
+        if (p.TipoPratica == TipoPraticaComUnica.NuovaImpresa && !string.IsNullOrWhiteSpace(p.PartitaIva))
             yield return "La partita IVA indicata viene trattata come già attribuita: verificare coerenza con Agenzia Entrate.";
     }
 }

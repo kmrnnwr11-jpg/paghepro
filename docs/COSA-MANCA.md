@@ -49,10 +49,10 @@ Oggi diverse schermate mostrano **dati demo di esempio**, non quelli reali dal b
 ## 6) Infrastruttura e produzione (priorità ALTA prima del go-live)
 - ⚠️ **Migrazioni EF Core**: oggi `EnsureCreated` + SQL di compatibilità manuale in `PagheDbContext.EnsureSchemaSviluppoCompatibile`. Passare a migrazioni vere.
 - ⚠️ **Database**: SQLite OK per ora; per più utenti passare a **PostgreSQL** (`UseSqlite`→`UseNpgsql`, una riga in `Program.cs`). Vedi `DEPLOY.md`.
-- ❌ **JWT key da secret** in produzione (oggi default di sviluppo se non configurata).
+- ✅ **JWT key da secret**: `TokenService` in ambiente Production **rifiuta** il default di sviluppo e le chiavi < 32 byte (avvio bloccato). Resta da **fornire** il secret reale in produzione (`Jwt__Key`).
 - ⚠️ **CORS**: oggi `AllowAnyOrigin`; in produzione restringere agli origin reali.
 - ❌ **GDPR**: cifratura dati sensibili (IBAN, malattia), **audit log**, **retention/cancellazione**.
-- ❌ **Multi-utente reale**: oggi accesso demo automatico (login rimosso). Ripristinare login per utenti veri.
+- ✅ **Multi-utente reale**: login ripristinato — senza token si apre la schermata di accesso (Crea account / Accedi / 2FA / Google), ogni account è un tenant isolato. La **demo** ora è **isolata per browser** (un account demo per dispositivo), non più condivisa.
 
 ## 7) Dato normativo (sempre)
 - ⚠️ I valori in `Seed.cs` e i parametri sono **esempi**: vanno **validati con un Consulente del Lavoro**

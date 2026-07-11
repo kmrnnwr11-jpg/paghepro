@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   api,
+  scaricaBlob,
   type Azienda,
   type BilancioSintesi,
   type BilancioDettaglio,
@@ -118,6 +119,16 @@ export function Bilancio() {
       await apri(b.id);
     } catch (e) {
       setErrore((e as Error).message);
+    }
+  }
+
+  async function scaricaPdf(id: string) {
+    setErrore(null);
+    try {
+      const { blob, filename } = await api.bilancioPdf(id);
+      scaricaBlob(blob, filename);
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Impossibile scaricare il PDF.");
     }
   }
 
@@ -244,7 +255,8 @@ export function Bilancio() {
                       </span>
                     </td>
                     <td className="right">
-                      <button className="mini-action" type="button" onClick={() => void apri(b.id)}>Apri</button>
+                      <button className="mini-action" type="button" onClick={() => void apri(b.id)}>Apri</button>{" "}
+                      <button className="mini-action" type="button" onClick={() => void scaricaPdf(b.id)}>PDF</button>
                     </td>
                   </tr>
                 ))}
@@ -272,15 +284,16 @@ export function Bilancio() {
               <strong><span className={`status-pill ${dettaglio.quadra ? "green" : "amber"}`}>{dettaglio.quadra ? "OK" : "No"}</span></strong>
             </div>
 
-            {(transizioni[dettaglio.stato] ?? []).length > 0 && (
-              <div className="actions-row" style={{ marginTop: 10, flexWrap: "wrap", gap: 6 }}>
-                {(transizioni[dettaglio.stato] ?? []).map((t) => (
-                  <button key={t.stato} className="mini-action" type="button" onClick={() => void cambiaStato(t.stato)}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="actions-row" style={{ marginTop: 10, flexWrap: "wrap", gap: 6 }}>
+              <button className="btn primary" type="button" onClick={() => void scaricaPdf(dettaglio.id)}>
+                📄 Scarica PDF
+              </button>
+              {(transizioni[dettaglio.stato] ?? []).map((t) => (
+                <button key={t.stato} className="mini-action" type="button" onClick={() => void cambiaStato(t.stato)}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
 
             <details style={{ marginTop: 12 }}>
               <summary style={{ cursor: "pointer", fontSize: 13 }}>Prospetto completo</summary>

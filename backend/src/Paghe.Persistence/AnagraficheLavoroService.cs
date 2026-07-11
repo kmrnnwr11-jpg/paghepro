@@ -50,7 +50,8 @@ public sealed class AnagraficheLavoroService
         string? CodiceCcnl = null, string? Livello = null, string? Qualifica = null,
         int? NumeroMensilita = null, bool? PartTime = null, decimal? PercentualePartTime = null,
         int? ScattiAnzianita = null, decimal? Superminimo = null,
-        string? Regione = null, string? CodiceCatastaleComune = null, DateOnly? DataAssunzione = null);
+        string? Regione = null, string? CodiceCatastaleComune = null, DateOnly? DataAssunzione = null,
+        decimal? FondoTfrIniziale = null);
 
     /// <summary>
     /// Corregge i dati di un dipendente/rapporto (isolato per tenant). Pensato per rivedere ciò che
@@ -83,6 +84,7 @@ public sealed class AnagraficheLavoroService
         if (c.Regione is not null) r.Regione = c.Regione.Trim();
         if (c.CodiceCatastaleComune is not null) r.CodiceCatastaleComune = c.CodiceCatastaleComune.Trim().ToUpperInvariant();
         if (c.DataAssunzione is { } da) r.DataAssunzione = da;
+        if (c.FondoTfrIniziale is { } ft) r.FondoTfrIniziale = ft;
 
         await _db.SaveChangesAsync(ct);
         return r;

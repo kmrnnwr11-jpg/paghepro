@@ -10,8 +10,34 @@ public sealed class AziendeService
 
     public AziendeService(PagheDbContext db) => _db = db;
 
+    public sealed record AziendaSintesi(
+        AziendaEntity Azienda,
+        int NumeroDipendenti,
+        IReadOnlyList<string> DatiMancanti)
+    {
+        public bool DatiContributiviCompleti => !DatiMancanti.Any(d =>
+            d is "settore" or "codiceAteco" or "matricolaInps" or "ccnlDefault" or "livelloDefault");
+    }
+
     public async Task<AziendaEntity> CreaAsync(Guid tenantId, AziendaEntity azienda, CancellationToken ct = default)
     {
+        Normalizza(azienda);
+        var piva = azienda.PartitaIva;
+        var cf = azienda.CodiceFiscale;
+        if (!string.IsNullOrEmpty(piva))
+        {
+            var esiste = await _db.Aziende.AnyAsync(
+                a => a.TenantId == tenantId && a.PartitaIva == piva, ct);
+            if (esiste)
+                throw new InvalidOperationException($"Esiste già un'azienda con Partita IVA {piva}.");
+        }
+        if (!string.IsNullOrEmpty(cf))
+        {
+            var esiste = await _db.Aziende.AnyAsync(
+                a => a.TenantId == tenantId && a.CodiceFiscale == cf, ct);
+            if (esiste)
+                throw new InvalidOperationException($"Esiste già un'azienda con Codice Fiscale {cf}.");
+        }
         azienda.Id = azienda.Id == Guid.Empty ? Guid.NewGuid() : azienda.Id;
         azienda.TenantId = tenantId;
         _db.Aziende.Add(azienda);
@@ -19,13 +45,42 @@ public sealed class AziendeService
         return azienda;
     }
 
+    public async Task<bool> EliminaAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        var a = await _db.Aziende.FirstOrDefaultAsync(x => x.Id == id && x.TenantId == tenantId, ct);
+        if (a is null) return false;
+        _db.Aziende.Remove(a);
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<int> EliminaBulkAsync(Guid tenantId, IEnumerable<Guid> ids, CancellationToken ct = default)
+    {
+        var lista = ids.ToList();
+        var aziende = await _db.Aziende
+            .Where(a => a.TenantId == tenantId && lista.Contains(a.Id))
+            .ToListAsync(ct);
+        _db.Aziende.RemoveRange(aziende);
+        await _db.SaveChangesAsync(ct);
+        return aziende.Count;
+    }
+
     public Task<AziendaEntity?> GetAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         _db.Aziende.FirstOrDefaultAsync(a => a.Id == id && a.TenantId == tenantId, ct);
 
     /// <summary>Campi correggibili dell'anagrafica azienda (es. dopo una visura letta male). Null = non cambiare.</summary>
+    /// <summary>Campi correggibili dell'anagrafica azienda (es. dopo una visura letta male). Null = non cambiare.</summary>
     public sealed record CorrezioneAzienda(
         string? RagioneSociale = null, string? PartitaIva = null, string? CodiceFiscale = null,
-        string? Indirizzo = null, string? Cap = null, string? Comune = null, string? Provincia = null);
+        string? Indirizzo = null, string? Cap = null, string? Comune = null, string? Provincia = null,
+        string? Telefono = null, string? Email = null, string? CanalePredefinito = null,
+        bool? HaDipendenti = null, string? TipoContribuente = null, bool? AssoggettataIva = null,
+        string? Pec = null, string? CodiceDestinatarioSdi = null, string? CodiceCatastale = null,
+        string? Settore = null, string? CodiceAteco = null, string? MatricolaInps = null, string? CodiceSedeInps = null,
+        string? CscInps = null, string? PatInail = null, string? CcnlDefault = null,
+        string? LivelloDefault = null, string? Iban = null,
+        string? LegaleRappresentanteNome = null, string? LegaleRappresentanteCognome = null,
+        string? LegaleRappresentanteCodiceFiscale = null);
 
     /// <summary>
     /// Corregge l'anagrafica di un'azienda (isolata per tenant): aggiorna solo i campi indicati.
@@ -39,12 +94,36 @@ public sealed class AziendeService
         if (a is null) return null;
 
         if (c.RagioneSociale is not null) a.RagioneSociale = c.RagioneSociale.Trim();
-        if (c.PartitaIva is not null) a.PartitaIva = c.PartitaIva.Trim().Length == 0 ? null : c.PartitaIva.Trim();
-        if (c.CodiceFiscale is not null) a.CodiceFiscale = c.CodiceFiscale.Trim().Length == 0 ? null : c.CodiceFiscale.Trim().ToUpperInvariant();
+        if (c.PartitaIva is not null) a.PartitaIva = VuotoNull(c.PartitaIva);
+        if (c.CodiceFiscale is not null) a.CodiceFiscale = VuotoNull(c.CodiceFiscale)?.ToUpperInvariant();
         if (c.Indirizzo is not null) a.Indirizzo = c.Indirizzo.Trim();
         if (c.Cap is not null) a.Cap = c.Cap.Trim();
         if (c.Comune is not null) a.Comune = c.Comune.Trim();
         if (c.Provincia is not null) a.Provincia = c.Provincia.Trim().ToUpperInvariant();
+        if (c.Telefono is not null) a.Telefono = VuotoNull(c.Telefono);
+        if (c.Email is not null) a.Email = VuotoNull(c.Email)?.ToLowerInvariant();
+        if (c.CanalePredefinito is not null) a.CanalePredefinito = VuotoNull(c.CanalePredefinito);
+        if (c.HaDipendenti is not null) a.HaDipendenti = c.HaDipendenti.Value;
+        if (c.TipoContribuente is not null) a.TipoContribuente = VuotoNull(c.TipoContribuente);
+        if (c.AssoggettataIva is not null) a.AssoggettataIva = c.AssoggettataIva.Value;
+        if (c.Pec is not null) a.Pec = VuotoNull(c.Pec)?.ToLowerInvariant();
+        if (c.CodiceDestinatarioSdi is not null) a.CodiceDestinatarioSdi = VuotoNull(c.CodiceDestinatarioSdi)?.ToUpperInvariant();
+        if (c.CodiceCatastale is not null) a.CodiceCatastale = VuotoNull(c.CodiceCatastale)?.ToUpperInvariant();
+        if (c.Settore is not null) a.Settore = VuotoNull(c.Settore);
+        if (c.CodiceAteco is not null) a.CodiceAteco = VuotoNull(c.CodiceAteco);
+        if (c.MatricolaInps is not null) a.MatricolaInps = VuotoNull(c.MatricolaInps);
+        if (c.CodiceSedeInps is not null) a.CodiceSedeInps = VuotoNull(c.CodiceSedeInps);
+        if (c.CscInps is not null) a.CscInps = VuotoNull(c.CscInps);
+        if (c.PatInail is not null) a.PatInail = VuotoNull(c.PatInail);
+        if (c.CcnlDefault is not null) a.CcnlDefault = VuotoNull(c.CcnlDefault);
+        if (c.LivelloDefault is not null) a.LivelloDefault = VuotoNull(c.LivelloDefault);
+        if (c.Iban is not null) a.Iban = VuotoNull(c.Iban)?.Replace(" ", "").ToUpperInvariant();
+        if (c.LegaleRappresentanteNome is not null) a.LegaleRappresentanteNome = VuotoNull(c.LegaleRappresentanteNome);
+        if (c.LegaleRappresentanteCognome is not null) a.LegaleRappresentanteCognome = VuotoNull(c.LegaleRappresentanteCognome);
+        if (c.LegaleRappresentanteCodiceFiscale is not null) a.LegaleRappresentanteCodiceFiscale = VuotoNull(c.LegaleRappresentanteCodiceFiscale)?.ToUpperInvariant();
+
+        await VerificaDuplicatiAsync(tenantId, a, ct);
+        Normalizza(a);
 
         await _db.SaveChangesAsync(ct);
         return a;
@@ -52,4 +131,89 @@ public sealed class AziendeService
 
     public Task<List<AziendaEntity>> ElencoAsync(Guid tenantId, CancellationToken ct = default) =>
         _db.Aziende.Where(a => a.TenantId == tenantId).OrderBy(a => a.RagioneSociale).ToListAsync(ct);
+
+    public async Task<List<AziendaSintesi>> ElencoSintesiAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var aziende = await ElencoAsync(tenantId, ct);
+        var conteggi = await _db.Rapporti
+            .Where(r => r.TenantId == tenantId)
+            .GroupBy(r => r.AziendaId)
+            .Select(g => new { AziendaId = g.Key, Numero = g.Count() })
+            .ToDictionaryAsync(x => x.AziendaId, x => x.Numero, ct);
+        return aziende
+            .Select(a => new AziendaSintesi(a, conteggi.GetValueOrDefault(a.Id), DatiMancanti(a)))
+            .ToList();
+    }
+
+    public async Task<AziendaSintesi?> GetSintesiAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        var azienda = await GetAsync(tenantId, id, ct);
+        if (azienda is null) return null;
+        var numero = await _db.Rapporti.CountAsync(r => r.TenantId == tenantId && r.AziendaId == id, ct);
+        return new AziendaSintesi(azienda, numero, DatiMancanti(azienda));
+    }
+
+    private async Task VerificaDuplicatiAsync(Guid tenantId, AziendaEntity azienda, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(azienda.PartitaIva))
+        {
+            var esiste = await _db.Aziende.AnyAsync(
+                a => a.TenantId == tenantId && a.Id != azienda.Id && a.PartitaIva == azienda.PartitaIva, ct);
+            if (esiste)
+                throw new InvalidOperationException($"Esiste già un'azienda con Partita IVA {azienda.PartitaIva}.");
+        }
+        if (!string.IsNullOrWhiteSpace(azienda.CodiceFiscale))
+        {
+            var esiste = await _db.Aziende.AnyAsync(
+                a => a.TenantId == tenantId && a.Id != azienda.Id && a.CodiceFiscale == azienda.CodiceFiscale, ct);
+            if (esiste)
+                throw new InvalidOperationException($"Esiste già un'azienda con Codice Fiscale {azienda.CodiceFiscale}.");
+        }
+    }
+
+    private static IReadOnlyList<string> DatiMancanti(AziendaEntity a)
+    {
+        var mancanti = new List<string>();
+        if (string.IsNullOrWhiteSpace(a.PartitaIva) && string.IsNullOrWhiteSpace(a.CodiceFiscale)) mancanti.Add("partitaIvaOCodiceFiscale");
+        if (string.IsNullOrWhiteSpace(a.Settore)) mancanti.Add("settore");
+        if (string.IsNullOrWhiteSpace(a.CodiceAteco)) mancanti.Add("codiceAteco");
+        if (string.IsNullOrWhiteSpace(a.MatricolaInps)) mancanti.Add("matricolaInps");
+        if (string.IsNullOrWhiteSpace(a.CcnlDefault)) mancanti.Add("ccnlDefault");
+        if (string.IsNullOrWhiteSpace(a.LivelloDefault)) mancanti.Add("livelloDefault");
+        if (string.IsNullOrWhiteSpace(a.Indirizzo) || string.IsNullOrWhiteSpace(a.Cap) || string.IsNullOrWhiteSpace(a.Comune)) mancanti.Add("sedeLegale");
+        return mancanti;
+    }
+
+    private static void Normalizza(AziendaEntity a)
+    {
+        a.RagioneSociale = a.RagioneSociale.Trim();
+        a.PartitaIva = VuotoNull(a.PartitaIva);
+        a.CodiceFiscale = VuotoNull(a.CodiceFiscale)?.ToUpperInvariant();
+        a.Indirizzo = a.Indirizzo.Trim();
+        a.Cap = a.Cap.Trim();
+        a.Comune = a.Comune.Trim();
+        a.Provincia = a.Provincia.Trim().ToUpperInvariant();
+        a.Telefono = VuotoNull(a.Telefono);
+        a.Email = VuotoNull(a.Email)?.ToLowerInvariant();
+        a.Pec = VuotoNull(a.Pec)?.ToLowerInvariant();
+        a.CodiceDestinatarioSdi = VuotoNull(a.CodiceDestinatarioSdi)?.ToUpperInvariant();
+        a.CodiceCatastale = VuotoNull(a.CodiceCatastale)?.ToUpperInvariant();
+        a.Settore = VuotoNull(a.Settore);
+        a.CodiceAteco = VuotoNull(a.CodiceAteco);
+        a.MatricolaInps = VuotoNull(a.MatricolaInps);
+        a.CodiceSedeInps = VuotoNull(a.CodiceSedeInps);
+        a.CscInps = VuotoNull(a.CscInps);
+        a.PatInail = VuotoNull(a.PatInail);
+        a.CcnlDefault = VuotoNull(a.CcnlDefault);
+        a.LivelloDefault = VuotoNull(a.LivelloDefault);
+        a.Iban = VuotoNull(a.Iban)?.Replace(" ", "").ToUpperInvariant();
+        a.LegaleRappresentanteNome = VuotoNull(a.LegaleRappresentanteNome);
+        a.LegaleRappresentanteCognome = VuotoNull(a.LegaleRappresentanteCognome);
+        a.LegaleRappresentanteCodiceFiscale = VuotoNull(a.LegaleRappresentanteCodiceFiscale)?.ToUpperInvariant();
+        a.CanalePredefinito = VuotoNull(a.CanalePredefinito);
+        a.TipoContribuente = VuotoNull(a.TipoContribuente);
+    }
+
+    private static string? VuotoNull(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }

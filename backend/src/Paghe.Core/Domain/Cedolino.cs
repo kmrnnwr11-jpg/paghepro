@@ -49,4 +49,13 @@ public sealed class Cedolino
 
     /// <summary>Costo aziendale totale del lavoratore (lordo + contributi c/datore + quota TFR).</summary>
     public decimal CostoAzienda { get; set; }
+
+    // Saldi Ferie e Permessi ROL
+    public decimal FerieMaturate { get; set; }
+    public decimal FerieGodute { get; set; }
+    public decimal FerieResidue { get; set; }
+
+    public decimal PermessiMaturati { get; set; }
+    public decimal PermessiGoduti { get; set; }
+    public decimal PermessiResidui { get; set; }
 }

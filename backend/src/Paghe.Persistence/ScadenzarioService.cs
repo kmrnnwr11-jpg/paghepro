@@ -1,5 +1,7 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.Notifiche;
+using Paghe.Core.Scadenzario;
 using Paghe.Persistence.Entities;
 
 namespace Paghe.Persistence;
@@ -269,6 +271,156 @@ public sealed class ScadenzarioService
             per un saldo di {Euro(p.SaldoFinale)}.
             Predisporre per tempo la disponibilità e l'invio del modello.
             """;
+    }
+
+    // --- Calendario scadenze fiscali -------------------------------------------
+
+    /// <summary>
+    /// Genera promemoria per tutte le scadenze fiscali/contributive dell'anno indicato
+    /// per ogni azienda del tenant, filtrando per profilo (dipendenti, tipo, IVA).
+    /// Idempotente: usa chiave Tipo="Calendario" + RiferimentoId="{codice}:{anno}/{mese}:{aziendaId}".
+    /// </summary>
+    public async Task<int> RigeneraCalendarioAsync(Guid tenantId, int? anno = null, CancellationToken ct = default)
+    {
+        int annoTarget = anno ?? DateTime.UtcNow.Year;
+        var ora = DateTime.UtcNow;
+
+        var aziende = await _db.Aziende.Where(a => a.TenantId == tenantId).ToListAsync(ct);
+
+        var esistenti = await _db.Promemoria
+            .Where(p => p.TenantId == tenantId && p.Tipo == TipoPromemoria.Calendario && p.RiferimentoId != null)
+            .ToListAsync(ct);
+        var perRif = esistenti.ToDictionary(p => p.RiferimentoId!);
+
+        int tocchi = 0;
+
+        foreach (var az in aziende)
+        {
+            foreach (var tipo in ScadenzeCalendario.Tutti)
+            {
+                if (!ScadenzeCalendario.Applicabile(tipo, az.HaDipendenti, az.TipoContribuente, az.AssoggettataIva))
+                    continue;
+
+                foreach (var dataScadenza in ScadenzeCalendario.CalcolaDate(tipo.Ripetizione, annoTarget))
+                {
+                    string rifId = $"{tipo.Codice}:{dataScadenza:yyyy/MM}:{az.Id}";
+                    string periodo = dataScadenza.ToString("MM/yyyy", CultureInfo.InvariantCulture);
+                    string titolo = $"{tipo.Descrizione} – {az.RagioneSociale}";
+                    var msg = MessaggiScadenze.Crea(tipo.Codice, az.RagioneSociale, dataScadenza, periodo: periodo);
+                    string messaggio = msg.Corpo;
+
+                    if (perRif.TryGetValue(rifId, out var p))
+                    {
+                        if (p.Titolo == titolo && p.DataScadenza == dataScadenza && p.GiorniPreavviso == tipo.GiorniPreavviso)
+                            continue;
+                        p.Titolo = titolo;
+                        p.DataScadenza = dataScadenza;
+                        p.GiorniPreavviso = tipo.GiorniPreavviso;
+                        p.Messaggio = messaggio;
+                        p.UltimoAggiornamento = ora;
+                        tocchi++;
+                    }
+                    else
+                    {
+                        var nuovo = new PromemoriaEntity
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = tenantId,
+                            AziendaId = az.Id,
+                            Tipo = TipoPromemoria.Calendario,
+                            RiferimentoId = rifId,
+                            Titolo = titolo,
+                            Descrizione = tipo.Nota ?? tipo.Descrizione,
+                            DataScadenza = dataScadenza,
+                            GiorniPreavviso = tipo.GiorniPreavviso,
+                            Stato = StatoPromemoria.Aperto,
+                            Messaggio = messaggio,
+                            CreatoIl = ora,
+                            UltimoAggiornamento = ora,
+                        };
+                        _db.Promemoria.Add(nuovo);
+                        perRif[rifId] = nuovo;
+                        tocchi++;
+                    }
+                }
+            }
+        }
+
+        if (tocchi > 0)
+            await _db.SaveChangesAsync(ct);
+        return tocchi;
+    }
+
+    /// <summary>
+    /// Invia automaticamente tutti i promemoria in stato Aperto che rientrano nel preavviso,
+    /// usando il canale e il destinatario configurati sull'azienda collegata.
+    /// Salta i promemoria senza azienda o senza canale/destinatario configurati.
+    /// Restituisce { inviati, saltati }.
+    /// </summary>
+    public async Task<(int Inviati, int Saltati)> InviaAutomaticheAsync(
+        Guid tenantId, NotificheService notifiche, CancellationToken ct = default)
+    {
+        var oggi = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var candidati = await _db.Promemoria
+            .Where(p => p.TenantId == tenantId && p.Stato == StatoPromemoria.Aperto && p.AziendaId != null)
+            .ToListAsync(ct);
+
+        // Solo quelli che rientrano nel preavviso
+        candidati = candidati
+            .Where(p => p.DataScadenza.AddDays(-p.GiorniPreavviso) <= oggi)
+            .ToList();
+
+        if (candidati.Count == 0) return (0, 0);
+
+        var aziendaIds = candidati.Select(p => p.AziendaId!.Value).Distinct().ToList();
+        var aziende = await _db.Aziende
+            .Where(a => aziendaIds.Contains(a.Id) && a.TenantId == tenantId)
+            .ToDictionaryAsync(a => a.Id, ct);
+
+        int inviati = 0, saltati = 0;
+
+        foreach (var p in candidati)
+        {
+            if (!aziende.TryGetValue(p.AziendaId!.Value, out var az)) { saltati++; continue; }
+            if (string.IsNullOrWhiteSpace(az.CanalePredefinito)) { saltati++; continue; }
+
+            string? destinatario = az.CanalePredefinito switch
+            {
+                "Email"    => az.Email,
+                "Sms"      => az.Telefono,
+                "WhatsApp" => az.Telefono,
+                _          => null,
+            };
+            if (string.IsNullOrWhiteSpace(destinatario)) { saltati++; continue; }
+
+            try
+            {
+                var canale = Canali.Parse(az.CanalePredefinito);
+                var messaggio = FormattatoreNotifiche.DaTesto(p.Titolo, p.Messaggio);
+                var esito = await notifiche.InviaAsync(canale, destinatario, messaggio, ct);
+                if (esito.Inviato)
+                {
+                    p.Stato = StatoPromemoria.Inviato;
+                    p.InviatoIl = DateTime.UtcNow;
+                    p.UltimoAggiornamento = DateTime.UtcNow;
+                    inviati++;
+                }
+                else
+                {
+                    saltati++;
+                }
+            }
+            catch
+            {
+                saltati++;
+            }
+        }
+
+        if (inviati > 0)
+            await _db.SaveChangesAsync(ct);
+
+        return (inviati, saltati);
     }
 
     private static string Data(DateOnly d) => d.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);

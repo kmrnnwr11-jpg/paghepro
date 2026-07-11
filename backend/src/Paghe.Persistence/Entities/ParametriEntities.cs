@@ -14,6 +14,9 @@ public class ParametriAnnoEntity
     public decimal MaggiorazioneStraordinarioFestivo { get; set; }
     public decimal TfrDivisore { get; set; }
     public decimal TfrContributoFondo { get; set; }
+
+    /// <summary>Variazione ISTAT per la rivalutazione TFR dell'anno (es. 0,01 = +1%). Null se non ancora inserita.</summary>
+    public decimal? VariazioneIstatTfr { get; set; }
 }
 
 /// <summary>Aliquota contributiva INPS per anno e qualifica.</summary>

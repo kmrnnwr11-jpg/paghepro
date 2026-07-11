@@ -16,6 +16,7 @@ using Paghe.Core.Fatturazione;
 using Paghe.Core.Fatturazione.Trasmissione;
 using Paghe.Core.Notifiche;
 using Paghe.Core.Parametri;
+using Paghe.Core.PartiteIva;
 using Paghe.Documenti;
 using Paghe.Firma;
 using Paghe.Persistence;
@@ -62,6 +63,7 @@ builder.Services.AddScoped<ContabilitaIvaService>();
 builder.Services.AddScoped<BilancioService>();
 builder.Services.AddScoped<UniEmensService>();
 builder.Services.AddScoped<ScadenzarioService>();
+builder.Services.AddScoped<DocumentiScadenzeService>();
 builder.Services.AddScoped<ConfigurazioneSdiService>();
 builder.Services.AddScoped<CertificazioneUnicaService>();
 builder.Services.AddScoped<LipeService>();
@@ -71,7 +73,9 @@ builder.Services.AddScoped<RedditiPfService>();
 builder.Services.AddScoped<IrapService>();
 builder.Services.AddScoped<IresService>();
 builder.Services.AddScoped<ImuService>();
+builder.Services.AddScoped<InailService>();
 builder.Services.AddScoped<IntrastatService>();
+builder.Services.AddScoped<PersoneService>();
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
@@ -265,10 +269,67 @@ using (var scope = app.Services.CreateScope())
         // Colonne aggiunte dopo la prima creazione dello schema (Postgres supporta IF NOT EXISTS).
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"Tenants\" ADD COLUMN IF NOT EXISTS \"Sospeso\" boolean NOT NULL DEFAULT false;");
+
+        // Fine anno: conguaglio in busta, rivalutazione TFR, posizioni INAIL.
+        db.Database.ExecuteSqlRaw("""
+            ALTER TABLE "Cedolini" ADD COLUMN IF NOT EXISTS "ConguaglioIrpef" numeric(15,2) NOT NULL DEFAULT 0;
+            ALTER TABLE "ParametriAnno" ADD COLUMN IF NOT EXISTS "VariazioneIstatTfr" numeric(12,5) NULL;
+            ALTER TABLE "Rapporti" ADD COLUMN IF NOT EXISTS "FondoTfrIniziale" numeric(15,2) NULL;
+            ALTER TABLE "Aziende" ADD COLUMN IF NOT EXISTS "AssoggettataIva" boolean NOT NULL DEFAULT true;
+            CREATE TABLE IF NOT EXISTS "PosizioniInail" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_PosizioniInail" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "AziendaId" uuid NOT NULL,
+                "Anno" integer NOT NULL,
+                "Pat" text NOT NULL,
+                "VoceTariffa" text NOT NULL,
+                "TassoPerMille" numeric(8,3) NOT NULL,
+                "AggiornataIl" timestamptz NOT NULL,
+                CONSTRAINT "FK_PosizioniInail_Aziende_AziendaId"
+                    FOREIGN KEY ("AziendaId") REFERENCES "Aziende" ("Id") ON DELETE CASCADE
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosizioniInail_TenantId_AziendaId_Anno"
+                ON "PosizioniInail" ("TenantId", "AziendaId", "Anno");
+            CREATE INDEX IF NOT EXISTS "IX_PosizioniInail_AziendaId"
+                ON "PosizioniInail" ("AziendaId");
+            """);
+
+        // Archivio persone fisiche per la compilazione automatica dei moduli ufficiali (AA7/10).
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "Persone" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_Persone" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "Cognome" text NOT NULL,
+                "Nome" text NOT NULL,
+                "CodiceFiscale" text NOT NULL,
+                "Sesso" text NULL,
+                "DataNascita" date NULL,
+                "ComuneNascita" text NULL,
+                "ProvinciaNascita" text NULL,
+                "IndirizzoResidenza" text NULL,
+                "CapResidenza" text NULL,
+                "ComuneResidenza" text NULL,
+                "ProvinciaResidenza" text NULL,
+                "Telefono" text NULL,
+                "Email" text NULL,
+                "CreataIl" timestamptz NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Persone_TenantId_CodiceFiscale"
+                ON "Persone" ("TenantId", "CodiceFiscale");
+            """);
     }
+
+    // Rete di sicurezza generica: aggiunge le colonne del modello EF assenti dal database
+    // (schema EnsureCreated evoluto nel tempo), su SQLite e PostgreSQL.
+    db.AllineaColonneMancanti();
 
     scope.ServiceProvider.GetRequiredService<ParametriNormativiService>()
         .ImportaSeedSeVuotoAsync().GetAwaiter().GetResult();
+
+    // Sovrascrive i minimi CCNL d'esempio del Seed con il dataset ufficiale (fonti CNEL),
+    // anche sui database già esistenti: upsert idempotente per (codice + anno).
+    new CcnlImportService(db)
+        .ImportaAsync(CcnlDatasetUfficiale.Carica()).GetAwaiter().GetResult();
 }
 
 // Tenant corrente derivato dal claim "tenant_id" del token JWT (utente autenticato).
@@ -368,6 +429,7 @@ app.MapGet("/", () => Results.Ok(new
         "GET  /api/aziende/{id}/bilanci/precompila?anno=",
         "GET  /api/aziende/{id}/bilanci",
         "GET  /api/bilanci/{id}",
+        "GET  /api/bilanci/{id}/pdf",
         "POST /api/bilanci/{id}/stato",
         "POST /api/contabilita/iva/liquidazione",
         "POST /api/aziende            (richiede Bearer token)",
@@ -383,6 +445,9 @@ app.MapGet("/", () => Results.Ok(new
         "GET  /api/pratiche/apertura-partita-iva",
         "GET  /api/pratiche/apertura-partita-iva/{id}",
         "PATCH /api/pratiche/apertura-partita-iva/{praticaId}/adempimenti/{adempimentoId}",
+        "POST /api/pratiche/apertura-partita-iva/{id}/stato",
+        "GET  /api/pratiche/apertura-partita-iva/{id}/distinta",
+        "POST /api/pratiche/apertura-partita-iva/analizza-testo",
         "POST /api/aziende/{id}/fatture",
         "GET  /api/aziende/{id}/fatture",
         "GET  /api/fatture/{id}",
@@ -415,6 +480,7 @@ app.MapGet("/", () => Results.Ok(new
         "POST /api/scadenzario/{id}/stato",
         "POST /api/scadenzario/{id}/invia",
         "POST /api/cedolini/pdf",
+        "GET  /api/cedolini/{id}/pdf",
         "POST /api/fatture/pdf",
         "GET  /api/fatture/{id}/pdf"
     }
@@ -842,6 +908,22 @@ secured.MapGet("/api/bilanci/{id:guid}", async (Guid id, BilancioService svc, Cl
     });
 });
 
+// Fascicolo PDF del bilancio: intestazione, sintesi, SP affiancato, CE scalare, dettaglio conti.
+secured.MapGet("/api/bilanci/{id:guid}/pdf",
+    async (Guid id, BilancioService svc, PagheDbContext db, ClaimsPrincipal user) =>
+{
+    var b = await svc.GetAsync(TenantCorrente(user), id);
+    if (b is null)
+        return Results.NotFound(new { errore = "Bilancio non trovato." });
+
+    var bilancio = JsonSerializer.Deserialize<Bilancio>(b.BilancioJson)!;
+    var azienda = await db.Aziende.FirstAsync(a => a.Id == b.AziendaId);
+    byte[] pdf = BilancioPdf.Genera(
+        bilancio, b.Anno, azienda.RagioneSociale, azienda.PartitaIva, b.Stato,
+        b.Righe.Select(r => new RigaBilancioPdf(r.Codice, r.Descrizione, r.Voce, r.Importo)).ToList());
+    return Results.File(pdf, "application/pdf", $"bilancio-{b.Anno}.pdf");
+});
+
 secured.MapPost("/api/bilanci/{id:guid}/stato",
     async (Guid id, CambiaStatoBilancioRequest req, BilancioService svc, ClaimsPrincipal user) =>
 {
@@ -877,23 +959,59 @@ app.MapPost("/api/contabilita/iva/liquidazione", (LiquidazioneIvaRequest req) =>
 // --- Aziende (persistite) ----------------------------------------------------------
 secured.MapPost("/api/aziende", async (CreaAziendaRequest req, AziendeService svc, ClaimsPrincipal user) =>
 {
-    var azienda = await svc.CreaAsync(TenantCorrente(user), new Paghe.Persistence.Entities.AziendaEntity
+    try
     {
-        RagioneSociale = req.RagioneSociale,
-        PartitaIva = req.PartitaIva,
-        CodiceFiscale = req.CodiceFiscale,
-        Indirizzo = req.Indirizzo,
-        Cap = req.Cap,
-        Comune = req.Comune,
-        Provincia = req.Provincia,
-        Nazione = req.Nazione,
-        RegimeFiscale = req.RegimeFiscale,
-    });
-    return Results.Created($"/api/aziende/{azienda.Id}", new { azienda.Id, azienda.RagioneSociale });
+        var azienda = await svc.CreaAsync(TenantCorrente(user), new Paghe.Persistence.Entities.AziendaEntity
+        {
+            RagioneSociale = req.RagioneSociale,
+            PartitaIva = req.PartitaIva,
+            CodiceFiscale = req.CodiceFiscale,
+            Indirizzo = req.Indirizzo,
+            Cap = req.Cap,
+            Comune = req.Comune,
+            Provincia = req.Provincia,
+            Nazione = req.Nazione,
+            RegimeFiscale = req.RegimeFiscale,
+            Telefono = req.Telefono,
+            Email = req.Email,
+            Pec = req.Pec,
+            CodiceDestinatarioSdi = req.CodiceDestinatarioSdi,
+            CodiceCatastale = req.CodiceCatastale,
+            Settore = req.Settore,
+            CodiceAteco = req.CodiceAteco,
+            MatricolaInps = req.MatricolaInps,
+            CodiceSedeInps = req.CodiceSedeInps,
+            CscInps = req.CscInps,
+            PatInail = req.PatInail,
+            CcnlDefault = req.CcnlDefault,
+            LivelloDefault = req.LivelloDefault,
+            Iban = req.Iban,
+            LegaleRappresentanteNome = req.LegaleRappresentanteNome,
+            LegaleRappresentanteCognome = req.LegaleRappresentanteCognome,
+            LegaleRappresentanteCodiceFiscale = req.LegaleRappresentanteCodiceFiscale,
+            CanalePredefinito = req.CanalePredefinito,
+            HaDipendenti = req.HaDipendenti,
+            TipoContribuente = req.TipoContribuente,
+            AssoggettataIva = req.AssoggettataIva,
+        });
+        return Results.Created($"/api/aziende/{azienda.Id}", new { azienda.Id, azienda.RagioneSociale });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { errore = ex.Message });
+    }
 });
 
 secured.MapGet("/api/aziende", async (AziendeService svc, ClaimsPrincipal user) =>
     Results.Ok(await svc.ElencoAsync(TenantCorrente(user))));
+
+secured.MapGet("/api/aziende/{id:guid}", async (Guid id, AziendeService svc, ClaimsPrincipal user) =>
+{
+    var sintesi = await svc.GetSintesiAsync(TenantCorrente(user), id);
+    return sintesi is null
+        ? Results.NotFound(new { errore = "Azienda non trovata." })
+        : Results.Ok(sintesi);
+});
 
 // Correzione dell'anagrafica (es. dopo una visura/OCR letta male): aggiorna solo i campi inviati.
 secured.MapPatch("/api/aziende/{id:guid}", async (
@@ -902,10 +1020,32 @@ secured.MapPatch("/api/aziende/{id:guid}", async (
     var a = await svc.CorreggiAsync(TenantCorrente(user), id,
         new AziendeService.CorrezioneAzienda(
             req.RagioneSociale, req.PartitaIva, req.CodiceFiscale,
-            req.Indirizzo, req.Cap, req.Comune, req.Provincia));
+            req.Indirizzo, req.Cap, req.Comune, req.Provincia,
+            req.Telefono, req.Email, req.CanalePredefinito,
+            req.HaDipendenti, req.TipoContribuente, req.AssoggettataIva,
+            req.Pec, req.CodiceDestinatarioSdi, req.CodiceCatastale,
+            req.Settore, req.CodiceAteco, req.MatricolaInps, req.CodiceSedeInps,
+            req.CscInps, req.PatInail, req.CcnlDefault,
+            req.LivelloDefault, req.Iban,
+            req.LegaleRappresentanteNome, req.LegaleRappresentanteCognome,
+            req.LegaleRappresentanteCodiceFiscale));
     return a is null
         ? Results.NotFound(new { errore = "Azienda non trovata per il tenant indicato." })
         : Results.Ok(new { a.Id, a.RagioneSociale });
+});
+
+secured.MapDelete("/api/aziende/{id:guid}", async (
+    Guid id, AziendeService svc, ClaimsPrincipal user) =>
+{
+    var eliminata = await svc.EliminaAsync(TenantCorrente(user), id);
+    return eliminata ? Results.NoContent() : Results.NotFound(new { errore = "Azienda non trovata." });
+});
+
+secured.MapPost("/api/aziende/elimina-bulk", async (
+    EliminaAziendeBulkRequest req, AziendeService svc, ClaimsPrincipal user) =>
+{
+    var n = await svc.EliminaBulkAsync(TenantCorrente(user), req.Ids);
+    return Results.Ok(new { eliminate = n });
 });
 
 // --- Contabilità IVA persistita ---------------------------------------------------
@@ -1016,7 +1156,9 @@ static PraticaAperturaPartitaIvaInput ToInput(CreaPraticaAperturaPartitaIvaReque
     req.AttivitaArtigiana,
     req.HaDipendentiPrevisti,
     req.SoggettaInail,
-    req.AziendaId);
+    req.AziendaId,
+    req.TipoPratica,
+    req.ImpresaAgricola);
 
 secured.MapPost("/api/pratiche/apertura-partita-iva/simula", (CreaPraticaAperturaPartitaIvaRequest req) =>
 {
@@ -1070,6 +1212,41 @@ secured.MapPatch("/api/pratiche/apertura-partita-iva/{praticaId:guid}/adempiment
         return Results.BadRequest(new { errore = ex.Message });
     }
 });
+
+secured.MapPost("/api/pratiche/apertura-partita-iva/{id:guid}/stato",
+    async (Guid id, CambiaStatoPraticaComUnicaRequest req,
+        PraticheAperturaPartitaIvaService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        return Results.Ok(await svc.CambiaStatoAsync(TenantCorrente(user), id, req.Stato));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
+secured.MapGet("/api/pratiche/apertura-partita-iva/{id:guid}/distinta",
+    async (Guid id, PraticheAperturaPartitaIvaService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        return Results.Ok(new { distinta = await svc.DistintaAsync(TenantCorrente(user), id) });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.NotFound(new { errore = ex.Message });
+    }
+});
+
+// Analizza testo libero (email, appunti, messaggio del cliente) e propone i dati della pratica.
+secured.MapPost("/api/pratiche/apertura-partita-iva/analizza-testo",
+    (AnalizzaTestoPraticaRequest req) => Results.Ok(EstrattoreTestoPratica.Estrai(req.Testo ?? "")));
 
 // --- Fatture (persistite, numerazione automatica) ----------------------------------
 secured.MapPost("/api/aziende/{aziendaId:guid}/fatture",
@@ -1252,6 +1429,21 @@ secured.MapGet("/api/rapporti/{rapportoId:guid}/conguaglio",
     }
 });
 
+// Rivalutazione annua del fondo TFR (variazione ISTAT dalla query o dai parametri dell'anno).
+secured.MapGet("/api/rapporti/{rapportoId:guid}/tfr/rivalutazione",
+    async (Guid rapportoId, int anno, decimal? variazioneIstat, CedoliniService svc, ClaimsPrincipal user) =>
+{
+    try
+    {
+        return Results.Ok(await svc.CalcolaRivalutazioneTfrAsync(
+            TenantCorrente(user), rapportoId, anno, variazioneIstat));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
 // --- Cedolini calcolati e archiviati -----------------------------------------------
 secured.MapPost("/api/rapporti/{rapportoId:guid}/cedolini",
     async (Guid rapportoId, Cartellino cartellino, CedoliniService svc, ClaimsPrincipal user) =>
@@ -1276,6 +1468,16 @@ secured.MapGet("/api/cedolini/{id:guid}", async (Guid id, CedoliniService svc, C
 {
     var c = await svc.GetAsync(TenantCorrente(user), id);
     return c is null ? Results.NotFound(new { errore = "Cedolino non trovato." }) : Results.Ok(c);
+});
+
+// PDF di un cedolino archiviato: rigenerato dal backend (ricalcolo read-only), isolato per tenant.
+secured.MapGet("/api/cedolini/{id:guid}/pdf", async (Guid id, CedoliniService svc, ClaimsPrincipal user) =>
+{
+    var dati = await svc.RicalcolaPerPdfAsync(TenantCorrente(user), id);
+    if (dati is null) return Results.NotFound(new { errore = "Cedolino non trovato." });
+    byte[] pdf = CedolinoPdf.Genera(dati.Cedolino, dati.Intestazione);
+    return Results.File(pdf, "application/pdf",
+        $"cedolino-{dati.Cedolino.Anno}-{dati.Cedolino.Mese:00}.pdf");
 });
 
 // Genera l'F24 del mese pescando in automatico i cedolini archiviati dell'azienda.
@@ -1672,15 +1874,32 @@ secured.MapGet("/api/aziende/{aziendaId:guid}/durc",
             d.Id, d.AziendaId, d.Numero, d.DataEmissione, d.DataScadenza, d.Regolare, d.Note,
         })));
 
-// Elenco dei promemoria: rigenera prima in automatico dalle fonti (DURC, F24), poi ordina per scadenza.
+// Elenco dei promemoria: solo lettura. L'invio automatico resta esplicito su POST /api/scadenzario/invia-automatiche.
 secured.MapGet("/api/scadenzario",
     async (ScadenzarioService svc, ClaimsPrincipal user) =>
-        Results.Ok((await svc.ElencoAsync(TenantCorrente(user))).Select(PromemoriaDto)));
+{
+    var tenantId = TenantCorrente(user);
+    var lista = await svc.ElencoAsync(tenantId, rigenera: false);
+    return Results.Ok(lista.Select(PromemoriaDto));
+});
 
 // Forza la rigenerazione dei promemoria dalle fonti e restituisce quanti ne ha creati/aggiornati.
 secured.MapPost("/api/scadenzario/rigenera",
     async (ScadenzarioService svc, ClaimsPrincipal user) =>
         Results.Ok(new { aggiornati = await svc.RigeneraAsync(TenantCorrente(user)) }));
+
+// Genera promemoria per tutte le scadenze fiscali/contributive dell'anno (idempotente).
+secured.MapPost("/api/scadenzario/rigenera-calendario",
+    async (ScadenzarioService svc, ClaimsPrincipal user, int? anno = null) =>
+        Results.Ok(new { aggiornati = await svc.RigeneraCalendarioAsync(TenantCorrente(user), anno) }));
+
+// Invia automaticamente i promemoria urgenti usando il canale/destinatario dell'azienda.
+secured.MapPost("/api/scadenzario/invia-automatiche",
+    async (ScadenzarioService svc, NotificheService notifiche, ClaimsPrincipal user) =>
+{
+    var (inviati, saltati) = await svc.InviaAutomaticheAsync(TenantCorrente(user), notifiche);
+    return Results.Ok(new { inviati, saltati });
+});
 
 // Inserisce un promemoria a mano.
 secured.MapPost("/api/scadenzario",
@@ -1742,6 +1961,55 @@ secured.MapPost("/api/scadenzario/{id:guid}/invia",
     });
 });
 
+// Carica un documento scadenza (es. DURC PDF): estrae P.IVA + date, collega l'azienda e crea il promemoria.
+secured.MapPost("/api/documenti-scadenze",
+    async (HttpRequest request, DocumentiScadenzeService svc, ClaimsPrincipal user) =>
+{
+    if (!request.HasFormContentType)
+        return Results.BadRequest(new { errore = "Richiesta multipart/form-data attesa." });
+    var form = await request.ReadFormAsync();
+    var file = form.Files["file"];
+    if (file is null || file.Length == 0)
+        return Results.BadRequest(new { errore = "Allegare un file (campo 'file')." });
+    if (file.Length > 10 * 1024 * 1024)
+        return Results.BadRequest(new { errore = "Il PDF è troppo grande: massimo 10 MB." });
+    if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(file.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
+        return Results.BadRequest(new { errore = "Caricare un PDF DURC testuale. Le foto/scansioni vanno prima convertite con OCR." });
+
+    Guid? aziendaId = form["aziendaId"].FirstOrDefault() is { Length: > 0 } s && Guid.TryParse(s, out var g) ? g : null;
+
+    byte[] bytes;
+    using (var ms = new MemoryStream())
+    {
+        await file.CopyToAsync(ms);
+        bytes = ms.ToArray();
+    }
+
+    string testo;
+    try
+    {
+        // Estrai testo con PdfPig (testo vuoto per PDF scansionati: l'esito lo segnala).
+        testo = Paghe.Documenti.EstrattoreTestoPdf.EstraiTesto(bytes);
+    }
+    catch
+    {
+        return Results.BadRequest(new { errore = "PDF non leggibile: caricare un DURC PDF testuale valido." });
+    }
+
+    var esito = await svc.ParseDocumentoAsync(testo, TenantCorrente(user), aziendaId);
+    return Results.Ok(new
+    {
+        esito.AziendaTrovata,
+        esito.RagioneSociale,
+        esito.PartitaIva,
+        scadenza = esito.DataScadenza?.ToString("dd/MM/yyyy"),
+        esito.NumeroDocumento,
+        esito.PromemoriaCreatoId,
+        esito.Errore,
+    });
+});
+
 // Collegamento self-service del provider SdI (configurazione per tenant).
 app.MapConfigurazioneSdi();
 app.MapCertificazioneUnica();
@@ -1753,9 +2021,11 @@ app.MapRedditiPf();
 app.MapIrap();
 app.MapIres();
 app.MapImu();
+app.MapInail();
 app.MapIntrastat();
 app.MapImportUnilavPdf(); // UNILAV: carica il PDF → registra datore + lavoratore + rapporto
 app.MapImportVisuraPdf(); // Visura camerale: carica il PDF → estrae i dati azienda (da confermare)
+app.MapModuli();          // archivio Persone + modello ufficiale AA7/10 compilato (PDF AdE)
 app.MapCcnl();            // elenco dei CCNL configurati (menu busta paga)
 
 app.Run();

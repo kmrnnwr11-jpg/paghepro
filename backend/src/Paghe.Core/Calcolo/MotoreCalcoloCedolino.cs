@@ -38,9 +38,13 @@ public sealed class MotoreCalcoloCedolino
         decimal scatti = liv.ImportoScatto * rapporto.ScattiAnzianita;
         decimal superminimo = rapporto.Superminimo;
 
-        // Paga oraria (su base full-time) per straordinari e assenze.
+        // Paga oraria e giornaliera (su base full-time/part-time) per straordinari, permessi e assenze.
         decimal retribuzioneMensileFullTime = minimo + edr + scatti + superminimo;
+        decimal retribuzioneMensileEffettiva = Arrotondamento.Euro(retribuzioneMensileFullTime * coeffPt);
         decimal pagaOraria = retribuzioneMensileFullTime / _parametri.DivisoreOrario;
+        decimal pagaGiornaliera = Arrotondamento.Euro(retribuzioneMensileEffettiva / 26m);
+        // RMG per indennità INPS (comprensiva dei ratei 13a e 14a su base 30esimi)
+        decimal rmgInps = Arrotondamento.Euro((retribuzioneMensileEffettiva * (rapporto.NumeroMensilita / 12m)) / 30m);
 
         // ---- 2. Competenze ------------------------------------------------------------
         AggiungiRiga(cedolino, "PAGA_BASE", "Minimo tabellare", TipoVoce.Competenza,
@@ -59,12 +63,39 @@ public sealed class MotoreCalcoloCedolino
             AggiungiRiga(cedolino, "SUPERMIN", "Superminimo individuale", TipoVoce.Competenza,
                 importo: Arrotondamento.Euro(superminimo * coeffPt));
 
+        // Ferie e Permessi goduti (voci informative/giustificative)
+        if (cartellino.GiorniFerie > 0m)
+        {
+            AggiungiRiga(cedolino, "FERIE", "Ferie godute", TipoVoce.Competenza,
+                quantita: cartellino.GiorniFerie, @base: pagaGiornaliera, importo: 0m);
+        }
+
+        decimal orePermessiTot = cartellino.OrePermessi + cartellino.OreExFestivita;
+        if (orePermessiTot > 0m)
+        {
+            AggiungiRiga(cedolino, "ROL", "Permessi ROL / Ex-festività goduti", TipoVoce.Competenza,
+                quantita: orePermessiTot, @base: pagaOraria, importo: 0m);
+        }
+
+        // Straordinari
         AggiungiStraordinario(cedolino, "STRAORD", "Lavoro straordinario",
             cartellino.OreStraordinario, pagaOraria, _parametri.MaggiorazioneStraordinario);
         AggiungiStraordinario(cedolino, "STRAORD_NOTT", "Straordinario notturno",
             cartellino.OreStraordinarioNotturno, pagaOraria, _parametri.MaggiorazioneStraordinarioNotturno);
         AggiungiStraordinario(cedolino, "STRAORD_FEST", "Straordinario festivo",
             cartellino.OreStraordinarioFestivo, pagaOraria, _parametri.MaggiorazioneStraordinarioFestivo);
+
+        // Malattia INPS + Integrazione Datore
+        if (cartellino.GiorniMalattia > 0m)
+        {
+            CalcolaMalattia(cedolino, cartellino.GiorniMalattia, cartellino.NumeroEventoMalattiaAnno, pagaGiornaliera, rmgInps);
+        }
+
+        // Infortunio INAIL + Integrazione Datore
+        if (cartellino.GiorniInfortunio > 0m)
+        {
+            CalcolaInfortunio(cedolino, cartellino.GiorniInfortunio, pagaGiornaliera);
+        }
 
         // Assenze non retribuite: decurtano il lordo.
         if (cartellino.OreAssenzaNonRetribuita > 0m)
@@ -131,7 +162,7 @@ public sealed class MotoreCalcoloCedolino
         AggiungiRiga(cedolino, "INPS_DATORE", $"Contributi INPS c/datore ({aliquota.Datore:P2})",
             TipoVoce.Figurativa, @base: imponibileInps, importo: contributiDatore);
 
-        // ---- 7. Totali ----------------------------------------------------------------
+        // ---- 7. Totali e Saldi Ferie/Permessi ----------------------------------------
         decimal totaleTrattenute = SommaTrattenute(cedolino);
 
         cedolino.TotaleCompetenze = totaleCompetenze;
@@ -149,7 +180,117 @@ public sealed class MotoreCalcoloCedolino
         cedolino.QuotaTfr = quotaTfr;
         cedolino.CostoAzienda = Arrotondamento.Euro(totaleCompetenze + contributiDatore + quotaTfr);
 
+        // Saldi Ferie (es. 2.1667 gg/mese per CCNL Commercio full-time)
+        decimal ferieMaturate = Arrotondamento.Euro(2.1667m * cartellino.Mese * coeffPt);
+        decimal ferieGodute = cartellino.GiorniFerie;
+        cedolino.FerieMaturate = ferieMaturate;
+        cedolino.FerieGodute = ferieGodute;
+        cedolino.FerieResidue = Math.Max(0m, ferieMaturate - ferieGodute);
+
+        // Saldi Permessi ROL/Ex-Festività (es. 6 ore/mese per CCNL Commercio full-time)
+        decimal permessiMaturati = Arrotondamento.Euro(6.00m * cartellino.Mese * coeffPt);
+        decimal permessiGoduti = orePermessiTot;
+        cedolino.PermessiMaturati = permessiMaturati;
+        cedolino.PermessiGoduti = permessiGoduti;
+        cedolino.PermessiResidui = Math.Max(0m, permessiMaturati - permessiGoduti);
+
         return cedolino;
+    }
+
+    private static void CalcolaMalattia(Cedolino cedolino, decimal giorniMalattia, int nEvento, decimal pagaGiornaliera, decimal rmgInps)
+    {
+        // Percentuale integrazione carenza a carico azienda in base al numero di eventi nell'anno
+        decimal pctCarenzaDatore = nEvento switch
+        {
+            1 => 1.00m,
+            2 => 1.00m,
+            3 => 0.66m,
+            4 => 0.50m,
+            _ => 0.00m
+        };
+
+        // Carenza (Giorni 1-3)
+        decimal giorniCarenza = Math.Min(giorniMalattia, 3m);
+        if (giorniCarenza > 0m && pctCarenzaDatore > 0m)
+        {
+            decimal importoCarenza = Arrotondamento.Euro(giorniCarenza * pagaGiornaliera * pctCarenzaDatore);
+            AggiungiRiga(cedolino, "MAL_CARENZA", $"Malattia - Carenza a carico azienda ({pctCarenzaDatore:P0})", TipoVoce.Competenza,
+                quantita: giorniCarenza, @base: pagaGiornaliera, importo: importoCarenza);
+        }
+
+        // Giorni 4-20
+        decimal giorniFascia1 = Math.Min(Math.Max(0m, giorniMalattia - 3m), 17m);
+        if (giorniFascia1 > 0m)
+        {
+            decimal indennitaInpsF1 = Arrotondamento.Euro(giorniFascia1 * rmgInps * 0.50m);
+            decimal targetLordoF1 = giorniFascia1 * pagaGiornaliera * 0.75m * pctCarenzaDatore;
+            decimal integrazioneF1 = Math.Max(0m, Arrotondamento.Euro(targetLordoF1 - indennitaInpsF1));
+
+            AggiungiRiga(cedolino, "MAL_INPS", "Malattia - Indennità INPS (50%)", TipoVoce.Competenza,
+                quantita: giorniFascia1, @base: Arrotondamento.Euro(rmgInps * 0.50m), importo: indennitaInpsF1);
+
+            if (integrazioneF1 > 0m)
+            {
+                AggiungiRiga(cedolino, "MAL_INTEGR", "Malattia - Integrazione azienda (75%)", TipoVoce.Competenza,
+                    quantita: giorniFascia1, importo: integrazioneF1);
+            }
+        }
+
+        // Giorni 21+
+        decimal giorniFascia2 = Math.Max(0m, giorniMalattia - 20m);
+        if (giorniFascia2 > 0m)
+        {
+            decimal indennitaInpsF2 = Arrotondamento.Euro(giorniFascia2 * rmgInps * 0.6666m);
+            decimal targetLordoF2 = giorniFascia2 * pagaGiornaliera * 1.00m * pctCarenzaDatore;
+            decimal integrazioneF2 = Math.Max(0m, Arrotondamento.Euro(targetLordoF2 - indennitaInpsF2));
+
+            AggiungiRiga(cedolino, "MAL_INPS21", "Malattia - Indennità INPS (66,66%)", TipoVoce.Competenza,
+                quantita: giorniFascia2, @base: Arrotondamento.Euro(rmgInps * 0.6666m), importo: indennitaInpsF2);
+
+            if (integrazioneF2 > 0m)
+            {
+                AggiungiRiga(cedolino, "MAL_INTEGR21", "Malattia - Integrazione azienda (100%)", TipoVoce.Competenza,
+                    quantita: giorniFascia2, importo: integrazioneF2);
+            }
+        }
+    }
+
+    private static void CalcolaInfortunio(Cedolino cedolino, decimal giorniInfortunio, decimal pagaGiornaliera)
+    {
+        // Carenza (Giorni 1-3): a carico datore al 60%
+        decimal giorniCarenza = Math.Min(giorniInfortunio, 3m);
+        if (giorniCarenza > 0m)
+        {
+            decimal importoCarenza = Arrotondamento.Euro(giorniCarenza * pagaGiornaliera * 0.60m);
+            AggiungiRiga(cedolino, "INF_CARENZA", "Infortunio INAIL - Carenza azienda (60%)", TipoVoce.Competenza,
+                quantita: giorniCarenza, @base: pagaGiornaliera, importo: importoCarenza);
+        }
+
+        // Giorni 4-90 (INAIL 60% + Integrazione datore 40%)
+        decimal giorniFascia1 = Math.Min(Math.Max(0m, giorniInfortunio - 3m), 87m);
+        if (giorniFascia1 > 0m)
+        {
+            decimal indennitaInailF1 = Arrotondamento.Euro(giorniFascia1 * pagaGiornaliera * 0.60m);
+            decimal integrazioneF1 = Arrotondamento.Euro(giorniFascia1 * pagaGiornaliera * 0.40m);
+
+            AggiungiRiga(cedolino, "INF_INAIL", "Infortunio INAIL - Indennità (60%)", TipoVoce.Competenza,
+                quantita: giorniFascia1, @base: Arrotondamento.Euro(pagaGiornaliera * 0.60m), importo: indennitaInailF1);
+            AggiungiRiga(cedolino, "INF_INTEGR", "Infortunio INAIL - Integrazione azienda (40%)", TipoVoce.Competenza,
+                quantita: giorniFascia1, importo: integrazioneF1);
+        }
+
+        // Giorni 91+ (INAIL 75% + Integrazione datore 25%)
+        decimal giorniFascia2 = Math.Max(0m, giorniInfortunio - 90m);
+        if (giorniFascia2 > 0m)
+        {
+            decimal indennitaInailF2 = Arrotondamento.Euro(giorniFascia2 * pagaGiornaliera * 0.75m);
+            decimal integrazioneF2 = Arrotondamento.Euro(giorniFascia2 * pagaGiornaliera * 0.25m);
+
+            AggiungiRiga(cedolino, "INF_INAIL91", "Infortunio INAIL - Indennità (75%)", TipoVoce.Competenza,
+                quantita: giorniFascia2, @base: Arrotondamento.Euro(pagaGiornaliera * 0.75m), importo: indennitaInailF2);
+            AggiungiRiga(cedolino, "INF_INTEGR91", "Infortunio INAIL - Integrazione azienda (25%)", TipoVoce.Competenza,
+                quantita: giorniFascia2, importo: integrazioneF2);
+        }
     }
 
     private static void AggiungiStraordinario(

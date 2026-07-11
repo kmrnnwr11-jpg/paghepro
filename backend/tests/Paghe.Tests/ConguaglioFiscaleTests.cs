@@ -1,4 +1,5 @@
 using Paghe.Core.Calcolo;
+using Paghe.Core.Domain;
 using Paghe.Core.Parametri;
 using Xunit;
 
@@ -46,5 +47,53 @@ public sealed class ConguaglioFiscaleTests
         Assert.Equal(1150m, r.IrpefLordaAnnua);
         Assert.Equal(0m, r.IrpefNettaAnnua);
         Assert.Equal(0m, r.Conguaglio);
+    }
+
+    private static Cedolino CedolinoBase() => new()
+    {
+        Anno = 2026, Mese = 12,
+        TotaleCompetenze = 2000m, TotaleTrattenute = 500m,
+        IrpefNetta = 200m, NettoInBusta = 1500m, CostoAzienda = 2700m,
+    };
+
+    [Fact]
+    public void ApplicaACedolino_ADebito_AggiungeTrattenutaERiduceNetto()
+    {
+        var c = CedolinoBase();
+        ConguaglioFiscale.ApplicaACedolino(c, 150m);
+
+        var voce = Assert.Single(c.Righe, r => r.Codice == "CONGUAGLIO_IRPEF");
+        Assert.Equal(TipoVoce.Trattenuta, voce.Tipo);
+        Assert.Equal(-150m, voce.Importo);
+        Assert.Equal(650m, c.TotaleTrattenute);
+        Assert.Equal(2000m, c.TotaleCompetenze);
+        Assert.Equal(350m, c.IrpefNetta);
+        Assert.Equal(1350m, c.NettoInBusta);
+        Assert.Equal(2700m, c.CostoAzienda); // il conguaglio è imposta del lavoratore
+    }
+
+    [Fact]
+    public void ApplicaACedolino_ACredito_AggiungeCompetenzaEAumentaNetto()
+    {
+        var c = CedolinoBase();
+        ConguaglioFiscale.ApplicaACedolino(c, -300m);
+
+        var voce = Assert.Single(c.Righe, r => r.Codice == "CONGUAGLIO_IRPEF");
+        Assert.Equal(TipoVoce.Competenza, voce.Tipo);
+        Assert.Equal(300m, voce.Importo);
+        Assert.Equal(2300m, c.TotaleCompetenze);
+        Assert.Equal(500m, c.TotaleTrattenute);
+        Assert.Equal(-100m, c.IrpefNetta); // rimborso maggiore dell'imposta del mese
+        Assert.Equal(1800m, c.NettoInBusta);
+    }
+
+    [Fact]
+    public void ApplicaACedolino_Zero_NonAggiungeVoci()
+    {
+        var c = CedolinoBase();
+        ConguaglioFiscale.ApplicaACedolino(c, 0m);
+
+        Assert.Empty(c.Righe);
+        Assert.Equal(1500m, c.NettoInBusta);
     }
 }

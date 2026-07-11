@@ -28,12 +28,12 @@ COME USARLA
 • Menu a sinistra → salti subito alla sezione che vuoi.
 • "Voce narrante" (in alto) → la spunti/togli se NON vuoi l'audio.
 
-COSA CONTIENE (16 schede)
+COSA CONTIENE (17 schede)
 -------------------------
 Benvenuto · Come muoversi · Aziende clienti · Dipendenti · Cedolini ·
 Adempimenti · F24 · Scadenzario · Contabilità · Bilancio ·
-Pagamenti clienti · Firma digitale · Documenti · Impostazioni ·
-Utenti e permessi · Riepilogo finale.
+Dichiarazioni e imposte · Pagamenti clienti · Firma digitale · Documenti ·
+Impostazioni · Utenti e permessi · Riepilogo finale.
 
 PER CONDIVIDERLA
 ----------------

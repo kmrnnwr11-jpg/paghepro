@@ -17,7 +17,8 @@ public sealed record CorreggiRapportoRequest(
     string? CodiceCcnl, string? Livello, string? Qualifica,
     int? NumeroMensilita, bool? PartTime, decimal? PercentualePartTime,
     int? ScattiAnzianita, decimal? Superminimo,
-    string? Regione, string? CodiceCatastaleComune, string? DataAssunzione);
+    string? Regione, string? CodiceCatastaleComune, string? DataAssunzione,
+    decimal? FondoTfrIniziale);
 
 /// <summary>
 /// Endpoint per il dettaglio di un rapporto (scheda dipendente reale), isolato per tenant.
@@ -78,7 +79,8 @@ public static class RapportoEndpoints
                         req.CodiceCcnl, req.Livello, req.Qualifica,
                         req.NumeroMensilita, req.PartTime, req.PercentualePartTime,
                         req.ScattiAnzianita, req.Superminimo,
-                        req.Regione, req.CodiceCatastaleComune, dataAssunzione));
+                        req.Regione, req.CodiceCatastaleComune, dataAssunzione,
+                        req.FondoTfrIniziale));
                 return r is null
                     ? Results.NotFound(new { errore = "Rapporto non trovato per il tenant indicato." })
                     : Results.Ok(new { aggiornato = true });

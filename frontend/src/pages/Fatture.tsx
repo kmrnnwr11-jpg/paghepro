@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { api, type Azienda, type Fattura, type Trasmissione } from "../api";
+import { api, scaricaBlob, type Azienda, type Fattura, type Trasmissione } from "../api";
 
 // Mappa lo stato di trasmissione SdI a un "tone" del design system (status-pill).
 const statoTone: Record<string, string> = {
@@ -138,12 +138,7 @@ export function Fatture() {
   async function scaricaXml(fatturaId: string, numero: string) {
     try {
       const xml = await api.fatturaXml(fatturaId);
-      const url = URL.createObjectURL(new Blob([xml], { type: "application/xml" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `fattura-${numero.replace("/", "-")}.xml`;
-      a.click();
-      URL.revokeObjectURL(url);
+      scaricaBlob(new Blob([xml], { type: "application/xml" }), `fattura-${numero.replace("/", "-")}.xml`);
     } catch (e) {
       setErrore((e as Error).message);
     }

@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
 import { api, type Azienda } from "../api";
+import { salvaAziendaCorrenteId } from "../aziendaCorrente";
 
 // Elaborazione cedolini: collegata ai dati reali (niente più dipendenti finti).
 // Mostra le aziende reali; il calcolo vero dei cedolini si fa dalla pagina Cedolini.
-export function Elaborazione() {
+export function Elaborazione({
+  onApriSezione,
+}: {
+  onApriSezione?: (sezione: "dipendenti" | "cedolini") => void;
+}) {
   const [aziende, setAziende] = useState<Azienda[]>([]);
   const [errore, setErrore] = useState<string | null>(null);
   const [caricamento, setCaricamento] = useState(true);
@@ -19,6 +24,11 @@ export function Elaborazione() {
       }
     })();
   }, []);
+
+  function apri(a: Azienda, sezione: "dipendenti" | "cedolini") {
+    salvaAziendaCorrenteId(a.id);
+    onApriSezione?.(sezione);
+  }
 
   return (
     <div className="detail-layout">
@@ -45,15 +55,22 @@ export function Elaborazione() {
       ) : (
         <div className="glass-card" style={{ padding: 24 }}>
           <p style={{ marginBottom: 12 }}>
-            Aziende disponibili: <strong>{aziende.length}</strong>. Apri i{" "}
-            <strong>Dipendenti</strong> di un'azienda e genera i cedolini reali dalla pagina{" "}
-            <strong>Cedolini</strong>.
+            Aziende disponibili: <strong>{aziende.length}</strong>. Scegli un'azienda: controlla prima i{" "}
+            <strong>Dipendenti</strong>, poi genera le buste dalla pagina <strong>Cedolini</strong>.
           </p>
           <div className="company-list">
             {aziende.map((a) => (
               <div className="company-row" key={a.id}>
                 <span>{a.ragioneSociale.slice(0, 2).toUpperCase()}</span>
                 <strong>{a.ragioneSociale}</strong>
+                <div className="company-row-buttons">
+                  <button className="mini-action" type="button" onClick={() => apri(a, "dipendenti")}>
+                    Dipendenti
+                  </button>
+                  <button className="mini-action" type="button" onClick={() => apri(a, "cedolini")}>
+                    Cedolini
+                  </button>
+                </div>
                 <em>Attiva</em>
               </div>
             ))}

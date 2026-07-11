@@ -114,5 +114,56 @@ public sealed class PersistenzaCedoliniTests : IDisposable
             svc.CalcolaEArchiviaAsync(tenant, Guid.NewGuid(), new Cartellino { Anno = 2026, Mese = 6 }));
     }
 
+    [Fact]
+    public async Task RicalcolaPerPdf_DopoArchiviazione_RestituisceDominioENomi()
+    {
+        var (tenant, aziendaId) = await CreaAziendaAsync();
+        var rapportoId = await CreaRapportoAsync(tenant, aziendaId);
+
+        Guid cedolinoId;
+        decimal nettoArchiviato;
+        await using (var db = NuovoContesto())
+        {
+            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            var c = await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino { Anno = 2026, Mese = 6 });
+            cedolinoId = c.Id;
+            nettoArchiviato = c.NettoInBusta;
+        }
+
+        await using (var db = NuovoContesto())
+        {
+            var dati = await new CedoliniService(db, new ParametriNormativiService(db))
+                .RicalcolaPerPdfAsync(tenant, cedolinoId);
+            Assert.NotNull(dati);
+            Assert.Equal("Alfa Srl", dati!.Intestazione.Azienda);
+            Assert.Equal("Rossi Mario", dati.Intestazione.Dipendente);
+            Assert.Equal(6, dati.Cedolino.Mese);
+            Assert.Equal(2026, dati.Cedolino.Anno);
+            Assert.NotEmpty(dati.Cedolino.Righe);          // le voci per il PDF ci sono
+            Assert.Equal(nettoArchiviato, dati.Cedolino.NettoInBusta); // ricalcolo == archiviato
+        }
+    }
+
+    [Fact]
+    public async Task RicalcolaPerPdf_TenantDiverso_RestituisceNull()
+    {
+        var (tenant, aziendaId) = await CreaAziendaAsync();
+        var rapportoId = await CreaRapportoAsync(tenant, aziendaId);
+
+        Guid cedolinoId;
+        await using (var db = NuovoContesto())
+        {
+            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            cedolinoId = (await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino { Anno = 2026, Mese = 6 })).Id;
+        }
+
+        await using (var db = NuovoContesto())
+        {
+            var dati = await new CedoliniService(db, new ParametriNormativiService(db))
+                .RicalcolaPerPdfAsync(Guid.NewGuid(), cedolinoId); // tenant estraneo
+            Assert.Null(dati);
+        }
+    }
+
     public void Dispose() => _connection.Dispose();
 }

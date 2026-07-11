@@ -19,7 +19,7 @@ export const aiutoPerSezione: Record<string, SchedaAiuto> = {
       "Guarda i 4 riquadri in alto: dipendenti, cedolini, fatture e IVA da pagare.",
       "Nel riquadro 'Scadenze' a destra vedi cosa scade nei prossimi giorni.",
       "Se c'è scritto 'Errori da correggere', cliccaci sopra per andare subito a sistemarli.",
-      "Per cominciare un lavoro nuovo premi il pulsante blu '+ Nuova attività'.",
+      "Per preparare le buste paga premi il pulsante blu 'Elabora cedolini'.",
     ],
     faq: [
       {
@@ -170,6 +170,33 @@ export const aiutoPerSezione: Record<string, SchedaAiuto> = {
     ],
   },
 
+  pratiche: {
+    titolo: "Pratiche ComUnica (apri, cambia o chiudi un'attività)",
+    aCosaServe:
+      "Prepara le pratiche per aprire una partita IVA o un'impresa, cambiare i dati o cessare l'attività: il sistema ti dice quali enti coinvolgere (Agenzia Entrate, Registro Imprese, INPS, INAIL, SUAP) e prepara il riepilogo pronto da consegnare.",
+    passi: [
+      "Strada veloce: incolla i dati che hai (email, messaggio, appunti) nell'Assistente compilazione e premi 'Analizza e compila' — il modulo si riempie da solo e ti viene chiesto solo quello che manca.",
+      "Oppure premi '+ Nuova pratica' e scegli il tipo: nuova impresa, variazione o cessazione.",
+      "Compila o controlla i dati (nome, codice fiscale, attività ATECO, sede) e spunta le caselle giuste (commercio, artigiana, agricola, dipendenti, INAIL).",
+      "Premi 'Simula piano adempimenti' per vedere in anticipo cosa serve, poi 'Crea pratica'.",
+      "Lavora la checklist: segna ogni adempimento quando è pronto o presentato.",
+      "Premi 'Genera distinta': ottieni il documento con tutti i dati, da copiare su ComunicaStarweb/DIRE o da dare al commercialista.",
+      "Aggiorna lo stato della pratica man mano: Pronta → Presentata → Protocollata → Evasa.",
+    ],
+    faq: [
+      {
+        domanda: "La pratica parte da sola verso la Camera di Commercio?",
+        risposta:
+          "No. Il software prepara tutti i dati e la distinta, ma l'invio vero si fa sui canali ufficiali InfoCamere (ComunicaStarweb/DIRE con utenza Telemaco) o tramite un intermediario abilitato, ad esempio il commercialista.",
+      },
+      {
+        domanda: "Quale modello Agenzia Entrate viene usato?",
+        risposta:
+          "Lo sceglie il sistema: AA9/12 per persone fisiche e professionisti, AA7/10 per società. Per variazione e cessazione serve indicare la partita IVA.",
+      },
+    ],
+  },
+
   scadenzario: {
     titolo: "Scadenzario e promemoria",
     aCosaServe:
@@ -185,6 +212,11 @@ export const aiutoPerSezione: Record<string, SchedaAiuto> = {
         domanda: "Manda i messaggi da solo?",
         risposta:
           "Prepara sempre il testo. Per inviarlo davvero servono i collegamenti a email o WhatsApp; altrimenti copi e incolli a mano.",
+      },
+      {
+        domanda: "Posso richiedere il DURC direttamente dall'app?",
+        risposta:
+          "No: la richiesta si fa solo sul portale ufficiale 'Durc On Line' (INPS/INAIL) entrando con SPID, CIE o CNS — lo Stato non offre un canale per i software esterni. L'app però ti avvisa da sola quando è ora (banner in alto e campanella), il pulsante 'Richiedi Durc On Line' ti porta al portale giusto, e quando ricevi il nuovo DURC lo registri qui: vale 120 giorni e il promemoria riparte.",
       },
     ],
   },
@@ -316,6 +348,24 @@ export const aiutoPerSezione: Record<string, SchedaAiuto> = {
         domanda: "Gli importi sono giusti?",
         risposta:
           "Sono calcolati dai cedolini del mese. Controlla sempre prima di pagare e, in caso di dubbio, chiedi al Consulente del Lavoro.",
+      },
+    ],
+  },
+
+  "fine-anno": {
+    titolo: "Fine anno (conguagli, TFR, INAIL)",
+    aCosaServe:
+      "Le tre operazioni di chiusura dell'anno: il conguaglio delle tasse dei dipendenti, la rivalutazione del TFR e il premio INAIL.",
+    passi: [
+      "Conguaglio: scegli il dipendente e premi 'Calcola'. Quando archivi la busta di dicembre, il conguaglio ci finisce dentro da solo.",
+      "TFR: inserisci la variazione ISTAT dell'anno (la trovi sul sito ISTAT o te la dà il consulente) e premi 'Calcola'.",
+      "INAIL: copia PAT e tasso dalla lettera 'basi di calcolo' che l'INAIL manda all'azienda, poi premi 'Calcola'.",
+    ],
+    faq: [
+      {
+        domanda: "L'INAIL si paga da qui?",
+        risposta:
+          "No: qui vedi gli importi. Il pagamento va fatto con F24 e l'invio della dichiarazione sui servizi online INAIL.",
       },
     ],
   },

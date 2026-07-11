@@ -32,12 +32,13 @@ const SLIDES = [
     img:"img/v-aziende.png", hotspot:{x:48,y:74},
     passi:[
       "Apri <b>Aziende clienti</b> dal menu. Vedi l'elenco delle aziende già inserite e il loro stato.",
-      "Compila i campi: <b>Nome azienda</b>, <b>Partita IVA</b>, indirizzo, comune, CAP e provincia.",
+      "<b>Scorciatoia:</b> premi <b>“Carica visura (PDF o foto)”</b> e allega la visura camerale (va bene anche una foto): il software <b>compila da solo</b> ragione sociale, P.IVA e indirizzo. Tu controlli e salvi.",
+      "Oppure compila a mano i campi: <b>Nome azienda</b>, <b>Partita IVA</b>, indirizzo, comune, CAP e provincia.",
       "Premi <b>“Aggiungi azienda”</b>: l'azienda entra nell'archivio ed è pronta per dipendenti, paghe e fatture.",
       "Il riquadro <b>“Stato anagrafiche”</b> a destra ti dice quante aziende sono attive e se qualche scheda è incompleta."
     ],
-    tip:"Inserisci almeno la Partita IVA: serve per F24, fatture elettroniche e adempimenti telematici.",
-    narr:"Il primo passo è aggiungere le aziende clienti, cioè le aziende per cui lavori. Apri la sezione Aziende, compila nome, partita IVA e indirizzo, e premi Aggiungi azienda. Da quel momento l'azienda è pronta per ricevere dipendenti, buste paga e fatture. Il riquadro a destra ti avvisa se qualche scheda è ancora incompleta."
+    tip:"Inserisci almeno la Partita IVA: serve per F24, fatture elettroniche e adempimenti telematici. Se la visura viene letta male, correggi in ogni momento con <b>“✏️ Modifica”</b> sulla riga dell'azienda.",
+    narr:"Il primo passo è aggiungere le aziende clienti, cioè le aziende per cui lavori. Puoi fare prima: premi Carica visura e allega la visura camerale, anche in foto, e il software compila da solo ragione sociale, partita IVA e indirizzo. Altrimenti scrivi i dati a mano e premi Aggiungi azienda. Da quel momento l'azienda è pronta per ricevere dipendenti, buste paga e fatture, e se qualcosa è stato letto male lo correggi con il pulsante Modifica."
   },
   {
     tipo:"feature", menu:"Dipendenti", icona:"👥",
@@ -62,10 +63,11 @@ const SLIDES = [
       "Apri <b>Elaborazioni</b> e scegli il <b>mese</b> (qui “Giugno 2026”).",
       "Per ogni dipendente vedi il <b>cartellino</b> (presenze) e lo stato del cedolino: <b>Aperto</b>, Bozza o Calcolato.",
       "<b>Spunta</b> i dipendenti da elaborare e premi <b>“Calcola selezionati”</b>: il software calcola lordo, netto e contributi.",
-      "Le colonne <b>Lordo</b> e <b>Netto</b> si riempiono e la spunta verde ✓ conferma il cedolino calcolato."
+      "Le colonne <b>Lordo</b> e <b>Netto</b> si riempiono e la spunta verde ✓ conferma il cedolino calcolato.",
+      "Per rivedere le buste già fatte apri <b>Cedolini</b>: ogni cedolino archiviato ha il pulsante <b>“📄 PDF”</b> che <b>scarica la busta paga</b> pronta da stampare o consegnare al dipendente."
     ],
     tip:"L'avviso in basso ti ricorda che un cartellino ancora “Aperto” calcola su dati non definitivi: chiudi le presenze prima di stampare i cedolini ufficiali.",
-    narr:"Arriviamo al cuore del software: le buste paga. Nella sezione Elaborazioni scegli il mese, spunti i dipendenti e premi Calcola selezionati. Il software calcola lordo, netto e contributi per tutti insieme. La spunta verde conferma che il cedolino è pronto. Attenzione ai cartellini ancora aperti: chiudi prima le presenze per avere importi definitivi."
+    narr:"Arriviamo al cuore del software: le buste paga. Nella sezione Elaborazioni scegli il mese, spunti i dipendenti e premi Calcola selezionati. Il software calcola lordo, netto e contributi per tutti insieme. La spunta verde conferma che il cedolino è pronto. Nella pagina Cedolini ritrovi tutte le buste archiviate e, con il pulsante PDF, scarichi il cedolino da stampare o consegnare. Attenzione ai cartellini ancora aperti: chiudi prima le presenze per avere importi definitivi."
   },
   {
     tipo:"feature", menu:"Adempimenti", icona:"📋",
@@ -138,8 +140,22 @@ const SLIDES = [
     narr:"Il software prepara anche il Bilancio d'esercizio: Stato Patrimoniale e Conto Economico secondo lo schema del Codice Civile. Scegli l'anno e premi Precompila: ricavi e costi vengono presi da fatture, spese e cedolini già inseriti. Puoi anche caricare un bilancio d'esempio già quadrato per capire come funziona."
   },
   {
+    tipo:"feature", menu:"Dichiarazioni e imposte", icona:"🧮",
+    titolo:"9 · Dichiarazioni e imposte",
+    tagline:"IVA, 770, CU, Redditi, IRAP, IRES e IMU: il software prepara le bozze partendo dai dati che hai già inserito.",
+    img:"img/v-dichiarazioni.png", hotspot:{x:8,y:30},
+    passi:[
+      "Nel menu, sotto le paghe, trovi i moduli fiscali: <b>LIPE / IVA</b>, <b>IVA annuale</b>, <b>CU / CUD</b>, <b>Modello 770</b>, <b>Redditi PF / 730</b>, <b>IRAP</b>, <b>IRES società</b>, <b>IMU</b> e <b>Intrastat</b>.",
+      "Apri il modulo che ti serve e scegli l'<b>anno d'imposta</b>: il software mostra una <b>bozza</b> compilata dai tuoi dati (liquidazioni IVA, cedolini, fatture, spese).",
+      "Il pannello <b>“Cos'è questa schermata”</b> a destra spiega a cosa serve il modulo e a che punto è la lavorazione.",
+      "Usa questi numeri per <b>controllo e stima</b>: sono un punto di partenza già calcolato, da rivedere prima dell'invio."
+    ],
+    tip:"In chiaro: il software prepara e quadra le bozze, ma il <b>file ufficiale</b> e l'<b>invio all'Agenzia delle Entrate (Entratel)</b> sono ancora “Da fare 🔑” — richiedono i canali telematici ufficiali e la validazione di un professionista.",
+    narr:"Oltre alle paghe, il software prepara le principali dichiarazioni e imposte: IVA e LIPE, Certificazione Unica, Modello 770, Redditi delle persone fisiche, IRAP, IRES e IMU. Apri il modulo, scegli l'anno, e vedi una bozza già compilata con i dati che hai inserito: liquidazioni, cedolini e fatture. Sono numeri di controllo e di stima, un ottimo punto di partenza. Attenzione però: il file ufficiale e l'invio all'Agenzia delle Entrate non sono ancora automatici, vanno fatti con i canali ufficiali e con l'aiuto di un professionista."
+  },
+  {
     tipo:"feature", menu:"Pagamenti clienti", icona:"💳",
-    titolo:"9 · Pagamenti e solleciti ai clienti",
+    titolo:"10 · Pagamenti e solleciti ai clienti",
     tagline:"Crei avvisi di pagamento e solleciti per i tuoi clienti, seguendo una procedura guidata.",
     img:"img/v-pagamenti.png", hotspot:{x:33,y:62},
     passi:[
@@ -153,7 +169,7 @@ const SLIDES = [
   },
   {
     tipo:"feature", menu:"Firma digitale", icona:"✒️",
-    titolo:"10 · Firma digitale dei documenti",
+    titolo:"11 · Firma digitale dei documenti",
     tagline:"Firmi fatture e documenti in CAdES (.p7m) o XAdES, con certificato o smart card / CNS.",
     img:"img/v-firma.png", hotspot:{x:30,y:35},
     passi:[
@@ -167,7 +183,7 @@ const SLIDES = [
   },
   {
     tipo:"feature", menu:"Documenti", icona:"📁",
-    titolo:"11 · Archivio documenti",
+    titolo:"12 · Archivio documenti",
     tagline:"Tutti i file prodotti dal software in un posto: cedolini, F24, CU, UniEmens, fatture e ricevute.",
     img:"img/v-documenti.png", hotspot:{x:88,y:17},
     passi:[
@@ -181,7 +197,7 @@ const SLIDES = [
   },
   {
     tipo:"feature", menu:"Impostazioni", icona:"⚙️",
-    titolo:"12 · Impostazioni dello studio",
+    titolo:"13 · Impostazioni dello studio",
     tagline:"Parametri fiscali, contratto CCNL, intestazione dei PDF e notifiche: si configurano una volta sola.",
     img:"img/v-impostazioni.png", hotspot:{x:88,y:17},
     passi:[
@@ -195,7 +211,7 @@ const SLIDES = [
   },
   {
     tipo:"feature", menu:"Utenti e permessi", icona:"🔐",
-    titolo:"13 · Utenti e permessi",
+    titolo:"14 · Utenti e permessi",
     tagline:"Inviti i collaboratori dello studio e decidi cosa può fare ciascuno.",
     img:"img/v-utenti.png", hotspot:{x:88,y:17},
     passi:[

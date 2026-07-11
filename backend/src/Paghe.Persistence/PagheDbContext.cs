@@ -61,8 +61,14 @@ public class PagheDbContext : DbContext
     // Immobili per il calcolo IMU
     public DbSet<ImmobileEntity> Immobili => Set<ImmobileEntity>();
 
+    // Posizioni assicurative INAIL (PAT + tasso) per l'autoliquidazione
+    public DbSet<PosizioneInailEntity> PosizioniInail => Set<PosizioneInailEntity>();
+
     // Audit log (GDPR / tracciabilità): chi/cosa/quando, scritto dall'interceptor
     public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
+
+    // Archivio persone fisiche (rappresentanti, soci): riusate per compilare i moduli ufficiali
+    public DbSet<PersonaEntity> Persone => Set<PersonaEntity>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -465,6 +471,140 @@ public class PagheDbContext : DbContext
         if (!ColonnaSqliteEsiste("Tenants", "Sospeso"))
             Database.ExecuteSqlRaw(
                 "ALTER TABLE \"Tenants\" ADD COLUMN \"Sospeso\" INTEGER NOT NULL DEFAULT 0;");
+
+        // Conguaglio IRPEF di dicembre archiviato sul cedolino.
+        if (!ColonnaSqliteEsiste("Cedolini", "ConguaglioIrpef"))
+            Database.ExecuteSqlRaw(
+                "ALTER TABLE \"Cedolini\" ADD COLUMN \"ConguaglioIrpef\" TEXT NOT NULL DEFAULT '0.0';");
+
+        // Variazione ISTAT per la rivalutazione TFR, per anno.
+        if (!ColonnaSqliteEsiste("ParametriAnno", "VariazioneIstatTfr"))
+            Database.ExecuteSqlRaw(
+                "ALTER TABLE \"ParametriAnno\" ADD COLUMN \"VariazioneIstatTfr\" TEXT NULL;");
+
+        // Fondo TFR maturato prima dell'uso del software, sul rapporto.
+        if (!ColonnaSqliteEsiste("Rapporti", "FondoTfrIniziale"))
+            Database.ExecuteSqlRaw(
+                "ALTER TABLE \"Rapporti\" ADD COLUMN \"FondoTfrIniziale\" TEXT NULL;");
+
+        // Settore attività dell'azienda: serve a guidare ATECO, CCNL e cedolini.
+        if (!ColonnaSqliteEsiste("Aziende", "Settore"))
+            Database.ExecuteSqlRaw(
+                "ALTER TABLE \"Aziende\" ADD COLUMN \"Settore\" TEXT NULL;");
+
+        // Assoggettamento IVA: le aziende esistenti restano assoggettate (default vero).
+        if (!ColonnaSqliteEsiste("Aziende", "AssoggettataIva"))
+            Database.ExecuteSqlRaw(
+                "ALTER TABLE \"Aziende\" ADD COLUMN \"AssoggettataIva\" INTEGER NOT NULL DEFAULT 1;");
+
+        // Posizioni INAIL (PAT + tasso) per l'autoliquidazione.
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "PosizioniInail" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_PosizioniInail" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "AziendaId" TEXT NOT NULL,
+                "Anno" INTEGER NOT NULL,
+                "Pat" TEXT NOT NULL,
+                "VoceTariffa" TEXT NOT NULL,
+                "TassoPerMille" TEXT NOT NULL,
+                "AggiornataIl" TEXT NOT NULL,
+                CONSTRAINT "FK_PosizioniInail_Aziende_AziendaId"
+                    FOREIGN KEY ("AziendaId") REFERENCES "Aziende" ("Id") ON DELETE CASCADE
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosizioniInail_TenantId_AziendaId_Anno"
+                ON "PosizioniInail" ("TenantId", "AziendaId", "Anno");
+            CREATE INDEX IF NOT EXISTS "IX_PosizioniInail_AziendaId"
+                ON "PosizioniInail" ("AziendaId");
+            """);
+
+        // Archivio persone fisiche per la compilazione automatica dei moduli ufficiali.
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "Persone" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Persone" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "Cognome" TEXT NOT NULL,
+                "Nome" TEXT NOT NULL,
+                "CodiceFiscale" TEXT NOT NULL,
+                "Sesso" TEXT NULL,
+                "DataNascita" TEXT NULL,
+                "ComuneNascita" TEXT NULL,
+                "ProvinciaNascita" TEXT NULL,
+                "IndirizzoResidenza" TEXT NULL,
+                "CapResidenza" TEXT NULL,
+                "ComuneResidenza" TEXT NULL,
+                "ProvinciaResidenza" TEXT NULL,
+                "Telefono" TEXT NULL,
+                "Email" TEXT NULL,
+                "CreataIl" TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Persone_TenantId_CodiceFiscale"
+                ON "Persone" ("TenantId", "CodiceFiscale");
+            """);
+    }
+
+    /// <summary>
+    /// Allinea il database allo schema del modello EF aggiungendo le COLONNE mancanti
+    /// (schema creato con EnsureCreated e poi evoluto nel codice). Le nuove tabelle restano
+    /// gestite dai blocchi CREATE TABLE espliciti; le tabelle non ancora presenti vengono
+    /// saltate. Supporta SQLite (sviluppo) e PostgreSQL/Supabase. Le colonne NOT NULL
+    /// ricevono un DEFAULT neutro per riempire le righe esistenti. In produzione la strada
+    /// maestra restano le migrazioni EF.
+    /// </summary>
+    public void AllineaColonneMancanti()
+    {
+        bool sqlite = Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+        bool postgres = Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL";
+        if (!sqlite && !postgres)
+            return;
+
+        var conn = Database.GetDbConnection();
+        if (conn.State != ConnectionState.Open) conn.Open();
+
+        foreach (var entita in Model.GetEntityTypes())
+        {
+            var tabella = entita.GetTableName();
+            if (tabella is null) continue;
+
+            // Colonne già presenti nel database (tabella assente => la creano i blocchi dedicati).
+            var esistenti = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = sqlite
+                    ? $"SELECT name FROM pragma_table_info('{tabella}');"
+                    : "SELECT column_name FROM information_schema.columns " +
+                      $"WHERE table_schema = 'public' AND table_name = '{tabella}';";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read()) esistenti.Add(reader.GetString(0));
+            }
+            if (esistenti.Count == 0) continue;
+
+            var idTabella = Microsoft.EntityFrameworkCore.Metadata.StoreObjectIdentifier
+                .Table(tabella, entita.GetSchema());
+            foreach (var prop in entita.GetProperties())
+            {
+                var colonna = prop.GetColumnName(idTabella);
+                if (colonna is null || esistenti.Contains(colonna)) continue;
+
+                string tipo = prop.GetColumnType();
+                string sql = $"ALTER TABLE \"{tabella}\" ADD COLUMN \"{colonna}\" {tipo}";
+                if (!prop.IsColumnNullable(idTabella))
+                    sql += $" NOT NULL DEFAULT {DefaultNeutro(prop.ClrType, postgres)}";
+                Database.ExecuteSqlRaw(sql + ";");
+            }
+        }
+    }
+
+    /// <summary>Letterale SQL di riempimento per le colonne NOT NULL aggiunte a posteriori.</summary>
+    private static string DefaultNeutro(Type clr, bool postgres)
+    {
+        var t = Nullable.GetUnderlyingType(clr) ?? clr;
+        if (t == typeof(bool)) return postgres ? "false" : "0";
+        if (t == typeof(Guid)) return "'00000000-0000-0000-0000-000000000000'";
+        if (t == typeof(DateTime) || t == typeof(DateTimeOffset)) return "'1970-01-01 00:00:00+00'";
+        if (t == typeof(DateOnly)) return "'1970-01-01'";
+        if (t.IsEnum || t == typeof(string) || t == typeof(char)) return "''";
+        if (t.IsPrimitive || t == typeof(decimal)) return "0";
+        return "''";
     }
 
     /// <summary>True se la colonna esiste già nella tabella SQLite (via PRAGMA table_info).</summary>
@@ -535,7 +675,8 @@ public class PagheDbContext : DbContext
                 nameof(ParametriAnnoEntity.MaggiorazioneStraordinarioNotturno),
                 nameof(ParametriAnnoEntity.MaggiorazioneStraordinarioFestivo),
                 nameof(ParametriAnnoEntity.TfrDivisore),
-                nameof(ParametriAnnoEntity.TfrContributoFondo) })
+                nameof(ParametriAnnoEntity.TfrContributoFondo),
+                nameof(ParametriAnnoEntity.VariazioneIstatTfr) })
                 e.Property(p).HasPrecision(12, 5);
         });
         mb.Entity<InpsAliquotaEntity>(e =>
@@ -598,6 +739,7 @@ public class PagheDbContext : DbContext
             e.HasIndex(x => new { x.TenantId, x.AziendaId });
             e.Property(x => x.PercentualePartTime).HasPrecision(6, 3);
             e.Property(x => x.Superminimo).HasPrecision(15, 2);
+            e.Property(x => x.FondoTfrIniziale).HasPrecision(15, 2);
         });
         mb.Entity<CartellinoEntity>(e =>
         {
@@ -620,7 +762,7 @@ public class PagheDbContext : DbContext
                 nameof(CedolinoEntity.ImponibileIrpef), nameof(CedolinoEntity.IrpefNetta),
                 nameof(CedolinoEntity.AddizionaleRegionale), nameof(CedolinoEntity.AddizionaleComunale),
                 nameof(CedolinoEntity.NettoInBusta), nameof(CedolinoEntity.QuotaTfr),
-                nameof(CedolinoEntity.CostoAzienda) })
+                nameof(CedolinoEntity.CostoAzienda), nameof(CedolinoEntity.ConguaglioIrpef) })
                 e.Property(p).HasPrecision(15, 2);
             e.HasMany(x => x.Voci).WithOne().HasForeignKey(v => v.CedolinoId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -715,6 +857,14 @@ public class PagheDbContext : DbContext
             e.HasIndex(x => new { x.TenantId, x.AziendaId, x.DataScadenza });
             e.HasOne<AziendaEntity>().WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.Cascade);
         });
+
+        mb.Entity<PosizioneInailEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.AziendaId, x.Anno }).IsUnique();
+            e.Property(x => x.TassoPerMille).HasPrecision(8, 3);
+            e.HasOne<AziendaEntity>().WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.Cascade);
+        });
         mb.Entity<PromemoriaEntity>(e =>
         {
             e.HasKey(x => x.Id);
@@ -759,6 +909,13 @@ public class PagheDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.QuandoUtc });
             e.HasIndex(x => new { x.TenantId, x.Entita });
+        });
+
+        // --- Archivio persone fisiche ---
+        mb.Entity<PersonaEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.CodiceFiscale }).IsUnique();
         });
     }
 }

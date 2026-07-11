@@ -27,13 +27,13 @@ public sealed class PersistenzaAvvisiPagamentoTests : IDisposable
         return new PagheDbContext(options);
     }
 
-    private async Task<Guid> CreaAziendaAsync(Guid tenant, string nome = "Alfa Srl")
+    private async Task<Guid> CreaAziendaAsync(Guid tenant, string nome = "Alfa Srl", string? piva = null)
     {
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
             RagioneSociale = nome,
-            PartitaIva = "01234567890",
+            PartitaIva = piva,
             Indirizzo = "Via Roma 1",
             Cap = "20100",
             Comune = "Milano",

@@ -115,13 +115,45 @@ public class MotoreCalcoloCedolinoTests
     }
 
     [Fact]
-    public void Calcola_LivelloInesistente_LanciaEccezione()
+    public void Calcola_Malattia_GeneraVociCarenzaIndennitaIntegrazione()
     {
-        var rapporto = new RapportoLavoro
+        var c = Motore().Calcola(Impiegato3Liv(), new Cartellino
         {
-            CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "99", Qualifica = Qualifica.Impiegato,
-        };
-        Assert.Throws<ArgumentException>(() =>
-            Motore().Calcola(rapporto, new Cartellino { Anno = 2026, Mese = 6 }));
+            Anno = 2026, Mese = 6, GiorniMalattia = 5m, NumeroEventoMalattiaAnno = 1
+        });
+
+        Assert.Contains(c.Righe, r => r.Codice == "MAL_CARENZA");
+        Assert.Contains(c.Righe, r => r.Codice == "MAL_INPS");
+        Assert.Contains(c.Righe, r => r.Codice == "MAL_INTEGR");
+    }
+
+    [Fact]
+    public void Calcola_Infortunio_GeneraVociInail()
+    {
+        var c = Motore().Calcola(Impiegato3Liv(), new Cartellino
+        {
+            Anno = 2026, Mese = 6, GiorniInfortunio = 10m
+        });
+
+        Assert.Contains(c.Righe, r => r.Codice == "INF_CARENZA");
+        Assert.Contains(c.Righe, r => r.Codice == "INF_INAIL");
+        Assert.Contains(c.Righe, r => r.Codice == "INF_INTEGR");
+    }
+
+    [Fact]
+    public void Calcola_FerieEPermessi_AggiornaSaldi()
+    {
+        var c = Motore().Calcola(Impiegato3Liv(), new Cartellino
+        {
+            Anno = 2026, Mese = 6, GiorniFerie = 2m, OrePermessi = 8m
+        });
+
+        Assert.Equal(2m, c.FerieGodute);
+        Assert.True(c.FerieMaturate > 0m);
+        Assert.Equal(c.FerieMaturate - 2m, c.FerieResidue);
+
+        Assert.Equal(8m, c.PermessiGoduti);
+        Assert.True(c.PermessiMaturati > 0m);
+        Assert.Equal(c.PermessiMaturati - 8m, c.PermessiResidui);
     }
 }

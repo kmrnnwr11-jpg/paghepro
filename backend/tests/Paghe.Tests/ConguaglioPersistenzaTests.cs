@@ -88,6 +88,57 @@ public sealed class ConguaglioPersistenzaTests : IDisposable
     }
 
     [Fact]
+    public async Task ArchiviaDicembre_ApplicaIlConguaglioInBusta()
+    {
+        var (tenant, rapportoId) = await CreaRapportoAsync();
+
+        await using (var db = NuovoContesto())
+        {
+            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            for (int mese = 1; mese <= 12; mese++)
+                await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino { Anno = 2026, Mese = mese });
+        }
+
+        await using (var db = NuovoContesto())
+        {
+            var cedolini = await db.Cedolini.Include(c => c.Voci)
+                .Where(c => c.TenantId == tenant && c.RapportoLavoroId == rapportoId && c.Anno == 2026)
+                .ToListAsync();
+            var gennaio = cedolini.Single(c => c.Mese == 1);
+            var dicembre = cedolini.Single(c => c.Mese == 12);
+
+            // Atteso: mesi tutti uguali (nessuna variabile) → presuntiva dicembre = presuntiva gennaio.
+            decimal imponibileAnnuo = cedolini.Sum(c => c.ImponibileIrpef);
+            decimal presuntivaAnnua = gennaio.IrpefNetta * 12m;
+            var parametri = await new ParametriNormativiService(db).CaricaParametriAsync(2026);
+            decimal detrazioni = CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(imponibileAnnuo, 365);
+            var atteso = ConguaglioFiscale.Calcola(
+                imponibileAnnuo, presuntivaAnnua, detrazioni, parametri.ScaglioniIrpef);
+
+            Assert.Equal(atteso.Conguaglio, dicembre.ConguaglioIrpef);
+            Assert.NotEqual(0m, dicembre.ConguaglioIrpef); // gli arrotondamenti mensili lasciano un residuo
+            Assert.Contains(dicembre.Voci, v => v.Codice == "CONGUAGLIO_IRPEF");
+            Assert.Equal(gennaio.IrpefNetta + atteso.Conguaglio, dicembre.IrpefNetta);
+            Assert.Equal(gennaio.NettoInBusta - atteso.Conguaglio, dicembre.NettoInBusta);
+
+            // Mese non-dicembre: nessun conguaglio.
+            Assert.Equal(0m, gennaio.ConguaglioIrpef);
+            Assert.DoesNotContain(gennaio.Voci, v => v.Codice == "CONGUAGLIO_IRPEF");
+
+            // Il PDF (ricalcolo dal motore) riapplica il conguaglio archiviato: stesso netto.
+            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            var perPdf = await svc.RicalcolaPerPdfAsync(tenant, dicembre.Id);
+            Assert.NotNull(perPdf);
+            Assert.Contains(perPdf!.Cedolino.Righe, r => r.Codice == "CONGUAGLIO_IRPEF");
+            Assert.Equal(dicembre.NettoInBusta, perPdf.Cedolino.NettoInBusta);
+
+            // Dopo dicembre il conguaglio annuale residuo è zero: anno già sistemato.
+            var residuo = await svc.CalcolaConguaglioAnnualeAsync(tenant, rapportoId, 2026);
+            Assert.Equal(0m, residuo.Conguaglio);
+        }
+    }
+
+    [Fact]
     public async Task ConguaglioAnnuale_SenzaCedolini_Lancia()
     {
         var (tenant, rapportoId) = await CreaRapportoAsync();

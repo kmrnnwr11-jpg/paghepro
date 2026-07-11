@@ -1,3 +1,4 @@
+using Paghe.Core.Domain;
 using Paghe.Core.Parametri;
 
 namespace Paghe.Core.Calcolo;
@@ -34,5 +35,35 @@ public static class ConguaglioFiscale
         decimal trattenuta = Arrotondamento.Euro(irpefGiaTrattenuta);
         decimal conguaglio = netta - trattenuta;
         return new RisultatoConguaglio(lorda, detrazioni, netta, trattenuta, conguaglio, conguaglio > 0m);
+    }
+
+    /// <summary>
+    /// Applica il conguaglio al cedolino (tipicamente quello di dicembre): aggiunge la voce
+    /// CONGUAGLIO_IRPEF (trattenuta se a debito, competenza se a credito) e aggiorna totali,
+    /// netto e IrpefNetta. Con un credito ampio l'IrpefNetta del mese può diventare negativa
+    /// (rimborso maggiore dell'imposta del mese). Il costo azienda non cambia: è imposta del
+    /// lavoratore. Helper puro, riusato identico alla rigenerazione del PDF.
+    /// </summary>
+    public static void ApplicaACedolino(Cedolino cedolino, decimal conguaglio)
+    {
+        if (conguaglio == 0m)
+            return;
+
+        bool aDebito = conguaglio > 0m;
+        cedolino.Righe.Add(new CedolinoRiga
+        {
+            Codice = "CONGUAGLIO_IRPEF",
+            Descrizione = $"Conguaglio IRPEF fine anno ({(aDebito ? "a debito" : "a credito")})",
+            Tipo = aDebito ? TipoVoce.Trattenuta : TipoVoce.Competenza,
+            Importo = -conguaglio,
+        });
+
+        if (aDebito)
+            cedolino.TotaleTrattenute = Arrotondamento.Euro(cedolino.TotaleTrattenute + conguaglio);
+        else
+            cedolino.TotaleCompetenze = Arrotondamento.Euro(cedolino.TotaleCompetenze - conguaglio);
+
+        cedolino.IrpefNetta = Arrotondamento.Euro(cedolino.IrpefNetta + conguaglio);
+        cedolino.NettoInBusta = Arrotondamento.Euro(cedolino.NettoInBusta - conguaglio);
     }
 }

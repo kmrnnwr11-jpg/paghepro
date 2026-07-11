@@ -53,6 +53,9 @@ public sealed class ParametriNormativi
     /// <summary>Contributo al fondo TFR a carico del lavoratore (0,50%).</summary>
     public decimal TfrContributoFondo { get; init; } = 0.005m;
 
+    /// <summary>Variazione ISTAT per la rivalutazione TFR dell'anno (es. 0,01 = +1%). Null se non inserita.</summary>
+    public decimal? TfrVariazioneIstat { get; init; }
+
     public AliquotaInps AliquotaInps(Qualifica qualifica) =>
         AliquoteInps.TryGetValue(qualifica, out var a)
             ? a

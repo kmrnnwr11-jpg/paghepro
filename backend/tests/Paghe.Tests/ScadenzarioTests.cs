@@ -87,6 +87,23 @@ public sealed class ScadenzarioTests : IDisposable
     }
 
     [Fact]
+    public async Task Elenco_SenzaRigenera_NonCreaPromemoria()
+    {
+        var tenant = Guid.NewGuid();
+        var aziendaId = await CreaAziendaAsync(tenant);
+        await using (var db = NuovoContesto())
+            await new ScadenzarioService(db).RegistraDurcAsync(tenant, new DurcInput(
+                aziendaId, "PROT-READ", new DateOnly(2026, 1, 1)));
+
+        await using (var db = NuovoContesto())
+        {
+            var svc = new ScadenzarioService(db);
+            Assert.Empty(await svc.ElencoAsync(tenant, rigenera: false));
+            Assert.Single(await svc.ElencoAsync(tenant));
+        }
+    }
+
+    [Fact]
     public async Task Rigenera_PreservaStatoDecisoDallUtente()
     {
         var tenant = Guid.NewGuid();
@@ -190,13 +207,41 @@ public sealed class ScadenzarioTests : IDisposable
         }
     }
 
-    private async Task<Guid> CreaAziendaAsync(Guid tenant)
+    [Fact]
+    public async Task ParseDocumento_AziendaForzataConPivaDiversa_NonCreaPromemoria()
+    {
+        var tenant = Guid.NewGuid();
+        await CreaAziendaAsync(tenant, "Alfa Srl", "01234567890");
+        var aziendaScelta = await CreaAziendaAsync(tenant, "Beta Srl", "99999999999");
+        const string testo = """
+            DURC On Line
+            Partita IVA 01234567890
+            Numero PROT-2026-001
+            Data emissione 01/01/2026
+            Scadenza 30/04/2026
+            """;
+
+        await using var db = NuovoContesto();
+        var svc = new DocumentiScadenzeService(db, new ScadenzarioService(db));
+
+        var esito = await svc.ParseDocumentoAsync(testo, tenant, aziendaScelta);
+
+        Assert.False(esito.AziendaTrovata);
+        Assert.Contains("non corrisponde", esito.Errore);
+        Assert.False(await db.Durc.AnyAsync());
+        Assert.False(await db.Promemoria.AnyAsync());
+    }
+
+    private async Task<Guid> CreaAziendaAsync(
+        Guid tenant,
+        string ragioneSociale = "Alfa Srl",
+        string partitaIva = "01234567890")
     {
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl",
-            PartitaIva = "01234567890",
+            RagioneSociale = ragioneSociale,
+            PartitaIva = partitaIva,
             Indirizzo = "Via Roma 1",
             Cap = "20100",
             Comune = "Milano",

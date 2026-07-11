@@ -110,8 +110,8 @@ export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: st
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
           gap: 8, textAlign: "center", cursor: "pointer", userSelect: "none",
           padding: "36px 20px", borderRadius: 16,
-          border: `2px dashed ${trascina ? "#3b82f6" : "rgba(148,163,184,.5)"}`,
-          background: trascina ? "rgba(59,130,246,.08)" : "rgba(148,163,184,.06)",
+          border: `2px dashed ${trascina ? "#3b82f6" : "rgba(139,115,85,.5)"}`,
+          background: trascina ? "rgba(59,130,246,.08)" : "rgba(139,115,85,.06)",
           transition: "all .15s ease",
         }}
       >

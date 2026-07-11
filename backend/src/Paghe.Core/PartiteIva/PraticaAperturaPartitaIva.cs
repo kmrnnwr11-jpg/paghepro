@@ -9,6 +9,46 @@ public enum FormaGiuridicaApertura
     SocietaCapitali,
 }
 
+/// <summary>Tipo di pratica gestita dalla Comunicazione Unica / Agenzia Entrate.</summary>
+public enum TipoPraticaComUnica
+{
+    NuovaImpresa,
+    Variazione,
+    Cessazione,
+}
+
+/// <summary>Stato complessivo della pratica ComUnica (dalla bozza all'esito).</summary>
+public enum StatoPraticaComUnica
+{
+    Bozza,
+    Pronta,
+    Presentata,
+    Protocollata,
+    Evasa,
+    Scartata,
+    Annullata,
+}
+
+/// <summary>Macchina a stati della pratica ComUnica: solo le transizioni ammesse.</summary>
+public static class StatiPraticaComUnica
+{
+    private static readonly IReadOnlyDictionary<StatoPraticaComUnica, StatoPraticaComUnica[]> Transizioni =
+        new Dictionary<StatoPraticaComUnica, StatoPraticaComUnica[]>
+        {
+            [StatoPraticaComUnica.Bozza] = [StatoPraticaComUnica.Pronta, StatoPraticaComUnica.Annullata],
+            [StatoPraticaComUnica.Pronta] =
+                [StatoPraticaComUnica.Presentata, StatoPraticaComUnica.Bozza, StatoPraticaComUnica.Annullata],
+            [StatoPraticaComUnica.Presentata] = [StatoPraticaComUnica.Protocollata, StatoPraticaComUnica.Scartata],
+            [StatoPraticaComUnica.Protocollata] = [StatoPraticaComUnica.Evasa, StatoPraticaComUnica.Scartata],
+            [StatoPraticaComUnica.Scartata] = [StatoPraticaComUnica.Bozza],
+            [StatoPraticaComUnica.Evasa] = [],
+            [StatoPraticaComUnica.Annullata] = [],
+        };
+
+    public static bool PuoTransizionare(StatoPraticaComUnica da, StatoPraticaComUnica a) =>
+        Transizioni.TryGetValue(da, out var ammessi) && Array.IndexOf(ammessi, a) >= 0;
+}
+
 /// <summary>Regime contabile/fiscale scelto in fase di avvio.</summary>
 public enum RegimeContabilePartitaIva
 {
@@ -30,8 +70,13 @@ public enum StatoAdempimentoPratica
 /// <summary>Dati raccolti per preparare una pratica di apertura partita IVA / ComUnica.</summary>
 public sealed class PraticaAperturaPartitaIva
 {
+    /// <summary>Nuova impresa (default), variazione dati o cessazione attività.</summary>
+    public TipoPraticaComUnica TipoPratica { get; init; } = TipoPraticaComUnica.NuovaImpresa;
+
     public required FormaGiuridicaApertura FormaGiuridica { get; init; }
     public required RegimeContabilePartitaIva RegimeContabile { get; init; }
+
+    /// <summary>Data di decorrenza: inizio attività, effetto della variazione o cessazione.</summary>
     public required DateOnly DataInizioAttivita { get; init; }
 
     public required string Denominazione { get; init; }
@@ -49,6 +94,7 @@ public sealed class PraticaAperturaPartitaIva
 
     public bool AttivitaCommercio { get; init; }
     public bool AttivitaArtigiana { get; init; }
+    public bool ImpresaAgricola { get; init; }
     public bool HaDipendentiPrevisti { get; init; }
     public bool SoggettaInail { get; init; }
 }

@@ -115,6 +115,7 @@ public sealed class ParametriNormativiService
             MaggiorazioneStraordinarioFestivo = pa.MaggiorazioneStraordinarioFestivo,
             TfrDivisore = pa.TfrDivisore,
             TfrContributoFondo = pa.TfrContributoFondo,
+            TfrVariazioneIstat = pa.VariazioneIstatTfr,
         };
     }
 

@@ -39,6 +39,8 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Logica Completa Onboarding Azienda & Anagrafica Contributiva/Fiscale (Multi-Tenant)**: Estesa e completata la logica di aggiunta e correzione anagrafica aziendale sia nel backend (`AziendaEntity.cs`, `Dtos.cs`, `Program.cs`, `AziendeService`) sia nel frontend (`api.ts`, `Aziende.tsx`). Supporta ora tutti i dati normativi, fiscali, bancari e contributivi previsti dagli standard nazionali e internazionali (P.IVA, Codice Fiscale, PEC, Codice Destinatario SdI, Codice Catastale Comune per addizionali IRPEF, CSC INPS 5 cifre, P.A.T. INAIL 8 cifre/cc, Matricola INPS, Codice Sede INPS, CCNL e Livello di default, IBAN aziendale per SEPA/F24, dati del Legale Rappresentante). Verifica duplicati P.IVA/CF isolata per tenant. Test unitari e di integrazione aggiornati in `AziendaCreazioneTests.cs` (416 test verdi).
+- **Redesign UI Skeuomorfico "Scrivania del Consulente"**: riprogettazione completa dell'estetica del frontend (`frontend/src/index.css`) sostituendo il glassmorphism con materiali fisici: scrivania in tessuto caldo con grana SVG e vignettatura, pannelli/card in carta opaca (`--panel #fcf8ef` + `--grana`), bottoni 3D in rilievo con pressione fisica su `:active` (token `--rilievo`/`--bottone`), campi incassati come incisioni (`--incavo`), tab a linguetta da classificatore, tabelle-registro con righe a penna, pill/etichette timbrate, kbd a keycap, busta paga e foglio fiscale come veri fogli di carta (righe + margine rosso), inchiostro seppia caldo (`#2e2618`). Zero `backdrop-filter`; PWA `theme_color #f2eada`.
 - Swagger/OpenAPI attivo: UI su `/swagger`, spec su `/swagger/v1/swagger.json`.
 - Validazione FatturaPA contro XSD ufficiale (Schema_VFPR12 1.2.3) in `FatturaPaValidator`,
   XSD incorporati come risorse, validazione offline.
@@ -59,8 +61,22 @@ dotnet run --project src/Paghe.Demo -c Release
   schema stabile; script `scripts/backup-db.sh` (SQLite/PostgreSQL, rotazione); checklist
   `docs/PRODUZIONE.md`; documenti commerciali in `docs/commerciale/` (posizionamento, disclaimer,
   bozza Termini di Servizio, listino). Piano completo in `PIANO.md`, guida agente in `AGENTS.md`.
-- Pratiche apertura P.IVA / Camera di Commercio / ComUnica con checklist adempimenti e
-  persistenza tenant-isolata (`PraticheAperturaPartitaIvaService`).
+- **Pratiche ComUnica complete (apertura, variazione, cessazione)**: `TipoPraticaComUnica`
+  (NuovaImpresa/Variazione/Cessazione) con adempimenti per ente dedotti per tipo (AE AA9/AA7,
+  Registro Imprese/REA, INPS commercianti/artigiani/agricoli DA/datori, INAIL, SUAP, Albo
+  Artigiani), macchina a stati pratica (`StatiPraticaComUnica`:
+  Bozza→Pronta→Presentata→Protocollata→Evasa/Scartata/Annullata) e **distinta di riepilogo**
+  (`DistintaComUnica`) pronta per ComunicaStarweb/DIRE o intermediario. Persistenza
+  tenant-isolata (`PraticheAperturaPartitaIvaService`), endpoint
+  `POST /api/pratiche/apertura-partita-iva/{id}/stato` e `GET .../{id}/distinta`, pagina SPA
+  **Pratiche ComUnica** (wizard con simulazione piano, checklist adempimenti, distinta
+  copiabile/scaricabile). **Assistente compilazione a chat**: l'utente incolla testo libero
+  (email/appunti), `EstrattoreTestoPratica` (euristico, riusa `VisuraCameraleParser`) estrae
+  i campi via `POST .../analizza-testo`, il modulo si precompila e la chat elenca i campi
+  mancanti da fornire. L'invio telematico reale resta sui canali ufficiali InfoCamere
+  (utenza Telemaco) o intermediario abilitato: il backlog per il web service ufficiale è in
+  `docs/integrazione-ufficiale/TODO-COMUNICA-CAMERA-INAIL-INPS.md` (gli asset XSD/WSDL/JAR
+  citati lì NON sono nel repo).
 - Liquidazione IVA vendite/acquisti con registri di periodo (`CalcoloLiquidazioneIva`) e
   salvataggio di spese/liquidazioni per azienda (`ContabilitaIvaService`).
 - **Bilancio d'esercizio persistito** (Stato Patrimoniale + Conto Economico, schema CEE
@@ -79,10 +95,12 @@ dotnet run --project src/Paghe.Demo -c Release
   7 gg) — con il **testo del messaggio già precompilato** (oggetto + corpo). La rigenerazione è
   idempotente (chiave Tipo+RiferimentoId) e **preserva lo stato deciso dall'utente**
   (Aperto→Inviato→Completato/Annullato, finali bloccati). Endpoint: `GET /api/scadenzario`
-  (rigenera + elenca con `giorniAllaScadenza`/`urgenza`), `POST /api/scadenzario/rigenera`,
+  (solo elenco con `giorniAllaScadenza`/`urgenza`), `POST /api/scadenzario/rigenera`,
   `POST /api/scadenzario` (manuale), `GET /api/scadenzario/{id}`, `POST /api/scadenzario/{id}/stato`,
-  `POST /api/aziende/{id}/durc`, `GET /api/aziende/{id}/durc`. UI: pagina **Scadenzario** nella SPA
-  (contatori scaduti/in scadenza, messaggio copiabile, form registrazione DURC, invio multi-canale).
+  `POST /api/aziende/{id}/durc`, `GET /api/aziende/{id}/durc`, `POST /api/documenti-scadenze`
+  (upload DURC PDF testuale con controllo P.IVA/azienda). UI: pagina **Scadenzario** nella SPA
+  (contatori scaduti/in scadenza, messaggio copiabile, form registrazione DURC, promemoria manuale,
+  upload PDF, invio multi-canale).
   Isolato per tenant.
 - **Canali di notifica** (`Paghe.Core/Notifiche`): astrazione `INotificatore` + `NotificheService`
   per recapitare promemoria/solleciti su **Email** (SMTP, `NotificatoreEmailSmtp`), **SMS**
@@ -138,6 +156,39 @@ dotnet run --project src/Paghe.Demo -c Release
   + data). UI: pagina **Firma digitale** nella SPA (anteprima documento, scelta formato/dispositivo,
   risultato firmato verificato e scaricabile). Config sezione `Firma`. La firma CNS richiede il
   middleware PKCS#11 + carta sulla macchina che firma (desktop/agente locale, non backend cloud).
+- **Cedolino mensile completo + busta paga professionale**: la pagina **Cedolini** della SPA
+  raccoglie tutte le variabili del mese (straordinari normale/notturno/festivo, ferie, permessi
+  ROL/ex-festività, malattia con n° evento nell'anno, infortunio INAIL, assenze non retribuite)
+  e le passa al motore già esistente via `POST /api/rapporti/{id}/cedolini`. Il PDF
+  (`CedolinoPdf`) è ridisegnato con il layout classico della busta paga italiana: testata ditta
+  con P.IVA e matricola INPS/P.A.T. INAIL, riquadro inquadramento dipendente (CF, qualifica,
+  livello, CCNL, mensilità, orario), corpo voci con colonne competenze/trattenute, dati
+  previdenziali e fiscali, saldi ferie/ROL, TFR e costo azienda, netto del mese in evidenza.
+  L'anagrafica arriva da `IntestazioneCedolino` (Paghe.Core/Domain) costruita in
+  `CedoliniService.RicalcolaPerPdfAsync`.
+- **Allineamento schema automatico** (`PagheDbContext.AllineaColonneMancanti`, chiamato in
+  `Program.cs` all'avvio): aggiunge le colonne del modello EF mancanti nel database — SQLite e
+  PostgreSQL/Supabase — come rete di sicurezza per gli schemi creati con `EnsureCreated` ed
+  evoluti nel tempo (es. `Aziende.AssoggettataIva`). Le colonne NOT NULL ricevono un DEFAULT
+  neutro; i casi in cui il riempimento neutro sarebbe sbagliato vanno gestiti con un ALTER
+  esplicito PRIMA del passaggio generico (pattern esistente in `Program.cs` per Postgres e in
+  `EnsureSchemaSviluppoCompatibile` per SQLite).
+- **Archivio Persone + modello AA7/10 ufficiale compilato**: anagrafica persone fisiche
+  (`PersonaEntity`/`PersoneService`, tenant-isolata, CRUD `/api/persone`, CF unico per tenant) —
+  si registrano una volta rappresentanti/soci e si riusano nei moduli. `ModuloAa710`
+  (`Paghe.Core/AdeTelematico`) modella testata + quadri A/B/C con le tabelle ufficiali natura
+  giuridica e codici carica (istruzioni 2025) e validazione interna; `Aa710PdfUfficiale`
+  (`Paghe.Documenti`, PDFsharp MIT) scrive i dati **sul PDF ufficiale AdE 2025 incorporato come
+  risorsa** (overlay Courier con coordinate calibrate cella per cella: NON è un fac-simile, il
+  modello resta l'originale). Endpoint: `GET /api/moduli/aa7-10/tabelle`,
+  `POST /api/moduli/aa7-10/pdf` (pesca azienda + persona dagli archivi, 400 con `errori` se
+  incompleto). UI: pagina **Moduli ufficiali** nella SPA (archivio persone, compilazione guidata,
+  download). Verificato end-to-end (API viva → PDF renderizzato) + test `ModuloAa710Tests`.
+  La presentazione resta sui canali ufficiali AdE/intermediario; per le nuove imprese iscritte
+  al Registro Imprese l'apertura IVA passa da ComUnica, l'AA7/10 da solo copre variazioni,
+  cessazioni ed enti non-impresa. Fonte modello/specifiche: kit in
+  `~/ade-official-integration-kit/agenzia-entrate-partita-iva/` (JAR controllo
+  `Ctrl_AA7_AA9_AT6VA.jar` non ancora integrato: serve per il file telematico, non per il PDF).
 
 ## Prossimi lavori utili
 

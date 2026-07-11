@@ -18,6 +18,25 @@ export function setRuolo(ruolo: string | null): void {
   else localStorage.removeItem("ruolo");
 }
 
+/**
+ * Utility per avviare il download nel browser di un file Blob (PDF, XML, zip, ecc.).
+ * Gestisce l'ancora DOM nel document.body ed il rilascio differito dell'object URL
+ * per piena compatibilità con Safari su Mac, iOS, Chrome e Firefox.
+ */
+export function scaricaBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
 /** Errore API con il corpo della risposta (es. { serveCodice2fa: true } dal login). */
 export class ApiError extends Error {
   readonly status: number;
@@ -74,18 +93,39 @@ export interface DatiVisura {
 }
 export interface Azienda {
   id: string; ragioneSociale: string;
-  partitaIva?: string | null; indirizzo?: string; cap?: string; comune?: string; provincia?: string;
+  partitaIva?: string | null; codiceFiscale?: string | null; indirizzo?: string; cap?: string; comune?: string; provincia?: string;
+  codiceCatastale?: string | null; telefono?: string | null; email?: string | null; pec?: string | null;
+  codiceDestinatarioSdi?: string | null; settore?: string | null; codiceAteco?: string | null;
+  matricolaInps?: string | null; codiceSedeInps?: string | null; cscInps?: string | null; patInail?: string | null;
+  ccnlDefault?: string | null; livelloDefault?: string | null; iban?: string | null;
+  legaleRappresentanteNome?: string | null; legaleRappresentanteCognome?: string | null; legaleRappresentanteCodiceFiscale?: string | null;
+  canalePredefinito?: string | null; haDipendenti?: boolean; tipoContribuente?: string | null; assoggettataIva?: boolean;
 }
 export interface NuovaAzienda {
-  ragioneSociale: string; partitaIva?: string; indirizzo: string;
-  cap: string; comune: string; provincia: string;
+  ragioneSociale: string; partitaIva?: string; codiceFiscale?: string; indirizzo: string;
+  cap: string; comune: string; provincia: string; codiceCatastale?: string; nazione?: string; regimeFiscale?: string;
+  telefono?: string; email?: string; pec?: string; codiceDestinatarioSdi?: string; settore?: string; codiceAteco?: string;
+  matricolaInps?: string; codiceSedeInps?: string; cscInps?: string; patInail?: string; ccnlDefault?: string; livelloDefault?: string;
+  iban?: string; legaleRappresentanteNome?: string; legaleRappresentanteCognome?: string; legaleRappresentanteCodiceFiscale?: string;
+  canalePredefinito?: string; haDipendenti?: boolean; tipoContribuente?: string; assoggettataIva?: boolean;
+}
+export interface EsitoCaricamentoScadenza {
+  aziendaTrovata: boolean; ragioneSociale?: string | null;
+  scadenza?: string | null; numero?: string | null;
+  promemoriaCreatoId?: string | null; errore?: string | null;
 }
 export interface Livello { codice: string; descrizione: string; minimoTabellare: number }
 export interface Rapporto {
   codiceCcnl: string; livello: string; qualifica: string; numeroMensilita: number;
   scattiAnzianita: number; regione: string; codiceCatastaleComune: string;
 }
-export interface Cartellino { anno: number; mese: number; oreStraordinario: number }
+export interface Cartellino {
+  anno: number; mese: number;
+  oreStraordinario: number; oreStraordinarioNotturno?: number; oreStraordinarioFestivo?: number;
+  giorniFerie?: number; orePermessi?: number; oreExFestivita?: number;
+  giorniMalattia?: number; numeroEventoMalattiaAnno?: number; giorniInfortunio?: number;
+  oreAssenzaNonRetribuita?: number;
+}
 export interface VoceCedolino { codice: string; descrizione: string; tipo: string; importo: number }
 export interface Cedolino {
   totaleCompetenze: number; totaleTrattenute: number; nettoInBusta: number;
@@ -95,6 +135,24 @@ export interface CedolinoArchiviato {
   id: string; anno: number; mese: number;
   nettoInBusta: number; costoAzienda: number;
   imponibileIrpef?: number; irpefNetta?: number;
+  conguaglioIrpef?: number;
+}
+export interface ConguaglioAnnuale {
+  irpefLordaAnnua: number; detrazioniSpettanti: number; irpefNettaAnnua: number;
+  irpefGiaTrattenuta: number; conguaglio: number; aDebito: boolean;
+}
+export interface TfrRivalutazione {
+  anno: number; fondoAl31DicembrePrecedente: number; variazioneIstat: number;
+  coefficiente: number; rivalutazioneLorda: number; impostaSostitutiva: number;
+  rivalutazioneNetta: number; fondoRivalutato: number; quoteMaturateAnno: number; fondoFinale: number;
+}
+export interface PosizioneInail {
+  anno: number; pat: string; voceTariffa: string; tassoPerMille: number;
+}
+export interface InailAutoliquidazione {
+  anno: number; pat: string; voceTariffa: string; numeroCedolini: number;
+  retribuzioniAnno: number; tassoPerMille: number; regolazione: number;
+  rataAnticipata: number; rataGiaVersata: number; totaleDaVersare: number; nota: string;
 }
 export interface PresenzaRiga {
   rapportoId: string; nominativo: string; oreStraordinario: number; elaborato: boolean; netto: number;
@@ -146,6 +204,7 @@ export interface CorrezioneRapporto {
   numeroMensilita?: number; partTime?: boolean; percentualePartTime?: number;
   scattiAnzianita?: number; superminimo?: number;
   regione?: string; codiceCatastaleComune?: string; dataAssunzione?: string;
+  fondoTfrIniziale?: number;
 }
 export interface Fattura {
   id: string; numero: string; anno?: number; data?: string;
@@ -220,6 +279,46 @@ export interface BilancioDettaglio extends BilancioSintesi {
 }
 export interface NuovoBilancio { anno: number; voci: VoceBilancio[] }
 export interface PrecompilaBilancio { anno: number; voci: VoceBilancio[]; nota: string }
+export interface AdempimentoPratica {
+  id: string; codice: string; ente: string; descrizione: string;
+  obbligatorio: boolean; stato: string; note?: string | null;
+}
+export interface PraticaComUnica {
+  id: string; tipoPratica: string; formaGiuridica: string; regimeContabile: string;
+  dataInizioAttivita: string; denominazione: string; codiceFiscale: string;
+  partitaIva?: string | null; codiceAteco: string; descrizioneAttivita: string;
+  indirizzoSede: string; cap: string; comune: string; provincia: string; pec?: string | null;
+  attivitaCommercio: boolean; attivitaArtigiana: boolean; impresaAgricola: boolean;
+  haDipendentiPrevisti: boolean; soggettaInail: boolean;
+  modelloAgenziaEntrate: string; richiedeComunicazioneUnica: boolean;
+  richiedeRegistroImprese: boolean; richiedeCameraCommercio: boolean;
+  stato: string; creataIl: string; adempimenti: AdempimentoPratica[];
+}
+export interface PianoComUnica {
+  modelloAgenziaEntrate: string; richiedeComunicazioneUnica: boolean;
+  richiedeRegistroImprese: boolean; richiedeCameraCommercio: boolean;
+  adempimenti: { codice: string; ente: string; descrizione: string; obbligatorio: boolean; stato: string }[];
+  avvertenze: string[];
+}
+export interface NuovaPraticaComUnica {
+  tipoPratica: string; formaGiuridica: string; regimeContabile: string;
+  dataInizioAttivita: string; denominazione: string; codiceFiscale: string;
+  partitaIva?: string; pec?: string; codiceAteco: string; descrizioneAttivita: string;
+  indirizzoSede: string; cap: string; comune: string; provincia: string;
+  attivitaCommercio?: boolean; attivitaArtigiana?: boolean; impresaAgricola?: boolean;
+  haDipendentiPrevisti?: boolean; soggettaInail?: boolean; aziendaId?: string;
+}
+export interface DatiPraticaEstratti {
+  tipoPratica?: string | null; formaGiuridica?: string | null; regimeContabile?: string | null;
+  dataDecorrenza?: string | null; denominazione?: string | null; codiceFiscale?: string | null;
+  partitaIva?: string | null; pec?: string | null; codiceAteco?: string | null;
+  descrizioneAttivita?: string | null; indirizzo?: string | null; cap?: string | null;
+  comune?: string | null; provincia?: string | null;
+  attivitaCommercio?: boolean | null; attivitaArtigiana?: boolean | null;
+  impresaAgricola?: boolean | null; haDipendentiPrevisti?: boolean | null;
+  soggettaInail?: boolean | null;
+  campiMancanti: string[];
+}
 export type FormatoFirma = "cades" | "xades";
 export interface EsitoVerifica {
   valido: boolean;
@@ -287,6 +386,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify(a),
     }),
+  eliminaAzienda: (id: string) =>
+    req<void>(`/api/aziende/${id}`, { method: "DELETE" }),
+  eliminaAziendeBulk: (ids: string[]) =>
+    req<{ eliminate: number }>("/api/aziende/elimina-bulk", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
   livelli: (codice: string) =>
     req<{ codice: string; descrizione: string; livelli: Livello[] }>(
       `/api/ccnl/${codice}/livelli`,
@@ -304,6 +410,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify(cartellino),
     }),
+  // Scarica il PDF di un cedolino archiviato (rigenerato dal backend).
+  cedolinoPdf: async (id: string): Promise<{ blob: Blob; filename: string }> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/cedolini/${id}/pdf`, { headers });
+    if (!res.ok) {
+      let messaggio = `Errore ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.errore) messaggio = body.errore as string;
+      } catch {
+        /* corpo non JSON */
+      }
+      throw new Error(messaggio);
+    }
+    const dispo = res.headers.get("Content-Disposition") ?? "";
+    const match = /filename="?([^"]+)"?/.exec(dispo);
+    const filename = match?.[1] ?? `cedolino-${id}.pdf`;
+    return { blob: await res.blob(), filename };
+  },
   rapportoDettaglio: (rapportoId: string) =>
     req<RapportoDettaglio>(`/api/rapporti/${rapportoId}`),
   // Correzione della scheda (es. dopo un import UNILAV/OCR letto male): invia solo i campi da cambiare.
@@ -314,6 +441,31 @@ export const api = {
     }),
   presenzeMese: (aziendaId: string, anno: number, mese: number) =>
     req<PresenzeMese>(`/api/aziende/${aziendaId}/presenze/${anno}/${mese}`),
+
+  // --- Fine anno: conguaglio IRPEF, rivalutazione TFR, autoliquidazione INAIL ---
+  conguaglioAnnuale: (rapportoId: string, anno: number) =>
+    req<ConguaglioAnnuale>(`/api/rapporti/${rapportoId}/conguaglio?anno=${anno}`),
+  tfrRivalutazione: (rapportoId: string, anno: number, variazioneIstat?: number) =>
+    req<TfrRivalutazione>(
+      `/api/rapporti/${rapportoId}/tfr/rivalutazione?anno=${anno}`
+      + (variazioneIstat !== undefined ? `&variazioneIstat=${variazioneIstat}` : "")),
+  // Posizione INAIL dell'anno; null se non ancora registrata (404).
+  inailPosizione: async (aziendaId: string, anno: number): Promise<PosizioneInail | null> => {
+    try {
+      return await req<PosizioneInail>(`/api/aziende/${aziendaId}/inail/posizione?anno=${anno}`);
+    } catch {
+      return null;
+    }
+  },
+  salvaPosizioneInail: (aziendaId: string, p: PosizioneInail) =>
+    req<PosizioneInail>(`/api/aziende/${aziendaId}/inail/posizione`, {
+      method: "POST",
+      body: JSON.stringify(p),
+    }),
+  inailAutoliquidazione: (aziendaId: string, anno: number, rataVersata?: number) =>
+    req<InailAutoliquidazione>(
+      `/api/aziende/${aziendaId}/inail/autoliquidazione?anno=${anno}`
+      + (rataVersata ? `&rataVersata=${rataVersata}` : "")),
 
   // --- Dichiarazioni: Fase 4 Redditi PF / 730 (bozza) ---
   redditiPf: (rapportoId: string, anno: number) =>
@@ -475,6 +627,58 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ stato }),
     }),
+  // Scarica il fascicolo PDF del bilancio (SP + CE + dettaglio conti).
+  bilancioPdf: async (id: string): Promise<{ blob: Blob; filename: string }> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/bilanci/${id}/pdf`, { headers });
+    if (!res.ok) {
+      let messaggio = `Errore ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.errore) messaggio = body.errore as string;
+      } catch {
+        /* corpo non JSON */
+      }
+      throw new Error(messaggio);
+    }
+    const dispo = res.headers.get("Content-Disposition") ?? "";
+    const match = /filename="?([^"]+)"?/.exec(dispo);
+    const filename = match?.[1] ?? `bilancio-${id}.pdf`;
+    return { blob: await res.blob(), filename };
+  },
+
+  // --- Pratiche ComUnica (apertura/variazione/cessazione P.IVA e impresa) ---
+  pratiche: () => req<PraticaComUnica[]>("/api/pratiche/apertura-partita-iva"),
+  pratica: (id: string) => req<PraticaComUnica>(`/api/pratiche/apertura-partita-iva/${id}`),
+  simulaPratica: (p: NuovaPraticaComUnica) =>
+    req<PianoComUnica>("/api/pratiche/apertura-partita-iva/simula", {
+      method: "POST",
+      body: JSON.stringify(p),
+    }),
+  creaPratica: (p: NuovaPraticaComUnica) =>
+    req<PraticaComUnica>("/api/pratiche/apertura-partita-iva", {
+      method: "POST",
+      body: JSON.stringify(p),
+    }),
+  aggiornaAdempimentoPratica: (praticaId: string, adempimentoId: string, stato: string, note?: string) =>
+    req<AdempimentoPratica>(`/api/pratiche/apertura-partita-iva/${praticaId}/adempimenti/${adempimentoId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ stato, note }),
+    }),
+  cambiaStatoPratica: (id: string, stato: string) =>
+    req<PraticaComUnica>(`/api/pratiche/apertura-partita-iva/${id}/stato`, {
+      method: "POST",
+      body: JSON.stringify({ stato }),
+    }),
+  distintaPratica: (id: string) =>
+    req<{ distinta: string }>(`/api/pratiche/apertura-partita-iva/${id}/distinta`),
+  analizzaTestoPratica: (testo: string) =>
+    req<DatiPraticaEstratti>("/api/pratiche/apertura-partita-iva/analizza-testo", {
+      method: "POST",
+      body: JSON.stringify({ testo }),
+    }),
 
   // --- Scadenzario / promemoria (DURC, F24, manuali) ---
   scadenzario: () => req<Promemoria[]>("/api/scadenzario"),
@@ -496,6 +700,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ canale, destinatario }),
     }),
+  inviaAutomatiche: () =>
+    req<{ inviati: number; saltati: number }>("/api/scadenzario/invia-automatiche", { method: "POST" }),
+  caricaDocumentoScadenza: async (file: File, aziendaId?: string): Promise<EsitoCaricamentoScadenza> => {
+    const form = new FormData();
+    form.append("file", file);
+    if (aziendaId) form.append("aziendaId", aziendaId);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/documenti-scadenze`, { method: "POST", body: form, headers });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as { errore?: string }).errore ?? `Errore ${res.status}`); }
+    return (await res.json()) as EsitoCaricamentoScadenza;
+  },
 
   // --- Configurazione SdI self-service (collega provider) ---
   configSdi: () => req<ConfigSdi>("/api/configurazione-sdi"),
@@ -570,7 +787,76 @@ export const api = {
   // --- Dichiarazioni: Fase 3 IVA annuale (bozza) ---
   ivaAnnualeBozza: (aziendaId: string, anno: number) =>
     req<IvaAnnualeBozza>(`/api/aziende/${aziendaId}/iva-annuale/${anno}`),
+
+  // --- Archivio persone (rappresentanti, soci): riusate per compilare i moduli ufficiali ---
+  persone: () => req<Persona[]>("/api/persone"),
+  creaPersona: (p: PersonaReq) =>
+    req<Persona>("/api/persone", { method: "POST", body: JSON.stringify(p) }),
+  aggiornaPersona: (id: string, p: PersonaReq) =>
+    req<Persona>(`/api/persone/${id}`, { method: "PUT", body: JSON.stringify(p) }),
+  eliminaPersona: (id: string) =>
+    req<void>(`/api/persone/${id}`, { method: "DELETE" }),
+
+  // --- Modello ufficiale AA7/10 (PDF Agenzia delle Entrate compilato) ---
+  tabelleAa710: () => req<TabelleAa710>("/api/moduli/aa7-10/tabelle"),
+  compilaAa710: async (richiesta: CompilaAa710Req): Promise<{ blob: Blob; filename: string }> => {
+    const token = getToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/moduli/aa7-10/pdf`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(richiesta),
+    });
+    if (!res.ok) {
+      let messaggio = `Errore ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.errore) messaggio = body.errore as string;
+        else if (Array.isArray(body?.errori)) messaggio = (body.errori as string[]).join(" ");
+      } catch {
+        /* corpo non JSON */
+      }
+      throw new Error(messaggio);
+    }
+    const match = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") ?? "");
+    return { blob: await res.blob(), filename: match?.[1] ?? "AA7-10.pdf" };
+  },
 };
+
+export interface Persona {
+  id: string; cognome: string; nome: string; codiceFiscale: string;
+  sesso?: string | null; dataNascita?: string | null;
+  comuneNascita?: string | null; provinciaNascita?: string | null;
+  indirizzoResidenza?: string | null; capResidenza?: string | null;
+  comuneResidenza?: string | null; provinciaResidenza?: string | null;
+  telefono?: string | null; email?: string | null;
+}
+export interface PersonaReq {
+  cognome: string; nome: string; codiceFiscale: string;
+  sesso?: string; dataNascita?: string;
+  comuneNascita?: string; provinciaNascita?: string;
+  indirizzoResidenza?: string; capResidenza?: string;
+  comuneResidenza?: string; provinciaResidenza?: string;
+  telefono?: string; email?: string;
+}
+export interface VoceTabellaAa710 { codice: string; descrizione: string; }
+export interface TabelleAa710 {
+  natureGiuridiche: VoceTabellaAa710[];
+  codiciCarica: VoceTabellaAa710[];
+}
+export interface CompilaAa710Req {
+  aziendaId: string; personaId: string;
+  tipoDichiarazione: number; data: string;
+  naturaGiuridica: string; codiceCarica?: string;
+  sigla?: string; scrittureContabiliInSede?: boolean;
+  descrizioneAttivita?: string; volumeAffariPresunto?: number;
+  dataInizioProcedimento?: string;
+  estremiRegistrazione?: {
+    data?: string; ufficio?: string; numero?: string;
+    sottoNumero?: string; serie?: string;
+  };
+}
 
 export interface IvaAnnualeBozza {
   anno: number; numeroLiquidazioni: number;

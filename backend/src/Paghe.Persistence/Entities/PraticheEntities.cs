@@ -8,6 +8,7 @@ public class PraticaAperturaPartitaIvaEntity
     public Guid? AziendaId { get; set; }
     public AziendaEntity? Azienda { get; set; }
 
+    public string TipoPratica { get; set; } = "NuovaImpresa";
     public string FormaGiuridica { get; set; } = "";
     public string RegimeContabile { get; set; } = "";
     public DateOnly DataInizioAttivita { get; set; }
@@ -26,6 +27,7 @@ public class PraticaAperturaPartitaIvaEntity
 
     public bool AttivitaCommercio { get; set; }
     public bool AttivitaArtigiana { get; set; }
+    public bool ImpresaAgricola { get; set; }
     public bool HaDipendentiPrevisti { get; set; }
     public bool SoggettaInail { get; set; }
 

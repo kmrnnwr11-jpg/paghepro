@@ -577,17 +577,19 @@ F-1 → F0/F0B → F1 → F2/F3 → F4 → F5
 
 **Obiettivo:** creare una baseline attribuibile prima di qualsiasi mutazione del master plan.
 
-- [ ] 👤 Identificare owner e scopo di tutte le modifiche tracciate e dei nuovi file presenti.
-- [ ] 👤 Decidere per ogni lavoro: completare, mettere in pausa su branch/worktree o accantonare
+- [x] 👤 Identificare owner e scopo di tutte le modifiche tracciate e dei nuovi file presenti.
+- [x] 👤 Decidere per ogni lavoro: completare, mettere in pausa su branch/worktree o accantonare
   esplicitamente; nessuna cancellazione implicita.
-- [ ] 🤖 Evitare merge manuali negli hotspot finché gli owner non hanno concluso.
-- [ ] 🤖 Ottenere un commit/tag baseline pulito con build, test e frontend verificati.
+- [x] 🤖 Evitare merge manuali negli hotspot finché gli owner non hanno concluso.
+- [x] 🤖 Ottenere un commit/tag baseline pulito con build, test e frontend verificati.
 - [ ] 🤖 Creare branch/worktree separato per ogni epic e ownership esclusiva temporanea di
   `Program.cs`, `PagheDbContext.cs`, `Dtos.cs`, `api.ts` e altri hotspot.
-- [ ] 🤖 Registrare hash commit, schema DB, toolchain e risultati della baseline.
+  *(da applicare all'apertura della prossima epic: nessuna epic aperta al momento del tag)*
+- [x] 🤖 Registrare hash commit, schema DB, toolchain e risultati della baseline.
 
-**Gate F-1:** worktree di esecuzione pulito, lavori concorrenti attribuiti, baseline verde e piano
-di integrazione concordato. Finché non è verde, questo documento resta soltanto una proposta.
+**Gate F-1: SUPERATO il 15/07/2026** — commit `fcf9e8d`, tag `baseline-f1-2026-07-15`,
+487/487 test verdi, attribuzione completa in `docs/baseline/BASELINE-F1-2026-07-15.md`.
+Le fasi successive restano non autorizzate finché il fondatore non le richiede.
 
 ### Fase 0 — Truth baseline e blocco del perimetro
 

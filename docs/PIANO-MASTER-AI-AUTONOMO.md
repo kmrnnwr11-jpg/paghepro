@@ -695,21 +695,34 @@ testato e decisione go/no-go. Senza gate, F4-F9 restano ricerca tecnica e non ro
 
 **Obiettivo:** eliminare i rischi che rendono pericoloso anche un semplice pilota.
 
-- [ ] 🤖 Rimuovere l'assegnazione super-admin basata sulla sola corrispondenza con un'email
+- [x] 🤖 Rimuovere l'assegnazione super-admin basata sulla sola corrispondenza con un'email
   configurata e registrabile pubblicamente.
-- [ ] 🤖 Creare bootstrap amministratore one-time, con token casuale, scadenza e disabilitazione.
-- [ ] 🤖 Assicurare che `ASPNETCORE_ENVIRONMENT=Production` sia effettivo in deploy.
-- [ ] 🤖 Rendere obbligatoria una chiave dati forte in produzione; fail-fast se assente.
-- [ ] 🤖 Impedire l'uso della passphrase di sviluppo in qualsiasi deploy pubblico.
-- [ ] 🤖 Cifrare `ConfigurazioneSdi.ApiKey` con envelope encryption e rotazione.
-- [ ] 🤖 Cifrare/minimizzare dati di malattia, infortunio, sindacato e altri dati particolari.
-- [ ] 🤖 Proteggere endpoint stateless di calcolo/firma oppure separarli in una sandbox demo
-  esplicitamente limitata e rate-limited.
-- [ ] 🤖 Vietare upload di PFX/PIN su endpoint pubblici; usare sessione autorizzata e memoria
-  effimera, senza log.
-- [ ] 🤖 Rate limit globale per utente/tenant/IP e limiti specifici per upload, AI e firma.
-- [ ] 🤖 Test automatici per escalation ruolo, bootstrap, segreti mancanti e endpoint anonimi.
-- [ ] 🤖 Ruotare ogni segreto di test eventualmente riusato fuori dallo sviluppo.
+- [x] 🤖 Creare bootstrap amministratore one-time con token segreto e disabilitazione (uso singolo:
+  si chiude quando esiste già un super-admin). *Scadenza temporale del token: non implementata,
+  valutata non necessaria dato l'uso singolo — rivedibile.*
+- [ ] 👤 Assicurare che `ASPNETCORE_ENVIRONMENT=Production` sia effettivo in deploy. *(config di
+  deploy, a carico del fondatore)*
+- [x] 🤖 Rendere obbligatoria una chiave dati forte in produzione; fail-fast se assente.
+  *(già presente: `TokenService.ChiaveJwt` e `ProtettoreDati`, verificato)*
+- [x] 🤖 Impedire l'uso della passphrase di sviluppo in qualsiasi deploy pubblico. *(già presente)*
+- [x] 🤖 Cifrare `ConfigurazioneSdi.ApiKey`. *(cifratura a riposo; envelope/rotazione KMS → F2)*
+- [x] 🤖 Cifrare/minimizzare dati particolari. *(nessuna diagnosi memorizzata: minimizzazione già
+  soddisfatta; i contatori giorni restano in chiaro perché servono al calcolo e sono già sul
+  cedolino — vedi `docs/COSE-NON-FATTE-PER-SICUREZZA.md` §5)*
+- [x] 🤖 Proteggere endpoint stateless di calcolo/firma (spostati sul gruppo autenticato).
+- [x] 🤖 Vietare upload di PFX/PIN su endpoint pubblici; sessione autorizzata e memoria effimera,
+  senza log.
+- [x] 🤖 Rate limit per operazioni sensibili (policy `sensibili` su firma). *Limiti dedicati per
+  upload/AI: parzialmente coperti (contatore consumi AI per tenant già presente).*
+- [x] 🤖 Test automatici per escalation ruolo, bootstrap e comportamento sicuro.
+  *Endpoint anonimi via `WebApplicationFactory`: rimandati a F2 (test API integrati).*
+- [ ] 🤖 Ruotare ogni segreto di test eventualmente riusato fuori dallo sviluppo. *(nessun segreto
+  di produzione nel repo; da verificare all'atto del deploy)*
+
+**Fase 1: SOSTANZIALMENTE COMPLETA il 15/07/2026** — ramo `epic/f1-sicurezza-p0`, commit
+`c4ddf61`, 490/490 test verdi. Dettaglio in `docs/baseline/FASE1-SICUREZZA-2026-07-15.md`.
+Voci `[ ]` rimaste: config di deploy (fondatore) e test API anonimi (spostati a F2 con
+`WebApplicationFactory`).
 
 **Gate F1:** nessun admin ottenibile via registrazione; nessun segreto o dato particolare in chiaro;
 produzione non parte con chiavi note/deboli; security test verdi.

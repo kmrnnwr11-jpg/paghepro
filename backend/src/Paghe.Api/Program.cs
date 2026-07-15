@@ -191,6 +191,12 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(
             http.Connection.RemoteIpAddress?.ToString() ?? "sconosciuto",
             _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+    // Operazioni costose e sensibili (firma, upload, AI): limite per utente autenticato, poi per IP.
+    options.AddPolicy("sensibili", http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            http.User.FindFirst("sub")?.Value
+                ?? http.Connection.RemoteIpAddress?.ToString() ?? "sconosciuto",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
 });
 
 // Documentazione interattiva degli endpoint (Swagger / OpenAPI).
@@ -609,6 +615,25 @@ static bool ÈSuperAdmin(ClaimsPrincipal u) =>
     || u.FindFirst(ClaimTypes.Role)?.Value == AuthService.RuoloSuperAdmin
     || u.FindFirst("role")?.Value == AuthService.RuoloSuperAdmin;
 
+// Bootstrap del super-admin: unico canale per ottenere il ruolo. Richiede utente autenticato
+// e il token segreto 'SuperAdmin:BootstrapToken'; funziona una sola volta (finché non esiste
+// già un super-admin). Sostituisce la vecchia promozione automatica via email registrabile.
+secured.MapPost("/api/admin/bootstrap-superadmin",
+    async (BootstrapSuperAdminRequest req, ClaimsPrincipal user, AuthService auth) =>
+{
+    if (UtenteCorrente(user) is not { } uid) return Results.Unauthorized();
+    try
+    {
+        return await auth.BootstrapSuperAdminAsync(uid, req.Token)
+            ? Results.Ok(new { promosso = true })
+            : Results.StatusCode(StatusCodes.Status403Forbidden);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { errore = ex.Message });
+    }
+}).RequireRateLimiting("auth");
+
 secured.MapGet("/api/admin/studi", async (ClaimsPrincipal user, PiattaformaAdminService svc) =>
     ÈSuperAdmin(user)
         ? Results.Ok(await svc.ElencaStudiAsync())
@@ -685,7 +710,7 @@ app.MapGet("/api/ccnl/{codice}/livelli", async (string codice, int? anno, Parame
 });
 
 // Calcolo del cedolino lordo -> netto. I parametri sono caricati dal DB per l'anno del cartellino.
-app.MapPost("/api/cedolini/calcola", async (CalcolaCedolinoRequest req, ParametriNormativiService svc) =>
+secured.MapPost("/api/cedolini/calcola", async (CalcolaCedolinoRequest req, ParametriNormativiService svc) =>
 {
     if (req.Rapporto is null || req.Cartellino is null)
         return Results.BadRequest(new { errore = "Rapporto e cartellino sono obbligatori." });
@@ -735,7 +760,7 @@ app.MapPost("/api/f24/da-paghe", (F24DaPagheRequest req) =>
 });
 
 // Calcolo di imponibili, IVA e totali di una fattura.
-app.MapPost("/api/fatture/calcola", (Fattura fattura) =>
+secured.MapPost("/api/fatture/calcola", (Fattura fattura) =>
 {
     if (fattura.Righe.Count == 0)
         return Results.BadRequest(new { errore = "La fattura non ha righe." });
@@ -752,7 +777,7 @@ app.MapPost("/api/fatture/xml", (Fattura fattura) =>
 });
 
 // Validazione FatturaPA: schema XSD ufficiale + controlli semantici SdI.
-app.MapPost("/api/fatture/valida", (Fattura fattura) =>
+secured.MapPost("/api/fatture/valida", (Fattura fattura) =>
 {
     if (fattura.Righe.Count == 0)
         return Results.BadRequest(new { errore = "La fattura non ha righe." });
@@ -804,7 +829,7 @@ app.MapPost("/api/firma/cades", async (HttpRequest http, FirmaOptions firma) =>
     catch (NotSupportedException ex) { return Results.BadRequest(new { errore = ex.Message }); }
     catch (Exception ex) { return Results.BadRequest(new { errore = $"Firma non riuscita: {ex.Message}" }); }
     finally { (firmatore as IDisposable)?.Dispose(); }
-}).DisableAntiforgery();
+}).RequireAuthorization().RequireRateLimiting("sensibili").DisableAntiforgery();
 
 // Verifica un documento firmato (.p7m CAdES o XML XAdES): riconosce il formato, controlla la
 // validità della firma e restituisce firmatario e data. multipart/form-data con campo "file".
@@ -827,7 +852,7 @@ app.MapPost("/api/firma/verifica", async (HttpRequest http) =>
         dataFirmaUtc = r.DataFirmaUtc,
         algoritmoDigest = r.AlgoritmoDigest,
     });
-}).DisableAntiforgery();
+}).RequireAuthorization().RequireRateLimiting("sensibili").DisableAntiforgery();
 
 // Genera l'XML FatturaPA, lo valida e lo firma in CAdES (.xml.p7m) con il certificato configurato
 // nella sezione "Firma". Per la CNS il PIN può essere passato nell'header "X-Firma-Pin".
@@ -1128,7 +1153,7 @@ secured.MapPost("/api/aziende/{id:guid}/logo", async (
 
     var salvato = await svc.SalvaLogoAsync(TenantCorrente(user), id, logo);
     return salvato ? Results.Ok(new { salvato = true }) : Results.NotFound(new { errore = "Azienda non trovata." });
-}).DisableAntiforgery();
+}).RequireAuthorization().RequireRateLimiting("sensibili").DisableAntiforgery();
 
 secured.MapGet("/api/aziende/{id:guid}/logo", async (Guid id, AziendeService svc, ClaimsPrincipal user) =>
 {
@@ -1713,7 +1738,7 @@ secured.MapPost("/api/f24/{id:guid}/esporta", async (Guid id, PraticheF24Service
 });
 
 // --- Documenti PDF -----------------------------------------------------------------
-app.MapPost("/api/cedolini/pdf", async (CedolinoPdfRequest req, ParametriNormativiService svc) =>
+secured.MapPost("/api/cedolini/pdf", async (CedolinoPdfRequest req, ParametriNormativiService svc) =>
 {
     try
     {
@@ -1731,7 +1756,7 @@ app.MapPost("/api/cedolini/pdf", async (CedolinoPdfRequest req, ParametriNormati
     }
 });
 
-app.MapPost("/api/fatture/pdf", (Fattura fattura) =>
+secured.MapPost("/api/fatture/pdf", (Fattura fattura) =>
 {
     if (fattura.Righe.Count == 0)
         return Results.BadRequest(new { errore = "La fattura non ha righe." });

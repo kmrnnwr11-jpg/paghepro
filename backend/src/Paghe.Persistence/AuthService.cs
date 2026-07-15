@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Paghe.Persistence.Entities;
@@ -55,7 +56,7 @@ public sealed class AuthService
         var utente = new UtenteEntity
         {
             Id = Guid.NewGuid(), TenantId = tenant.Id, Email = email,
-            PasswordHash = PasswordHasher.Hash(password), Ruolo = RuoloPerEmail(email),
+            PasswordHash = PasswordHasher.Hash(password), Ruolo = "admin",
             Attivo = true, CreatoIl = DateTime.UtcNow,
         };
 
@@ -91,7 +92,7 @@ public sealed class AuthService
         {
             Id = Guid.NewGuid(), TenantId = tenant.Id, Email = email,
             PasswordHash = "", // niente password: accesso solo via Google
-            Ruolo = RuoloPerEmail(email), Attivo = true, CreatoIl = DateTime.UtcNow,
+            Ruolo = "admin", Attivo = true, CreatoIl = DateTime.UtcNow,
         };
 
         _db.Tenants.Add(tenant);
@@ -100,13 +101,33 @@ public sealed class AuthService
         return utente;
     }
 
-    /// <summary>Ruolo da assegnare a un'email: superadmin se coincide con <c>SuperAdmin:Email</c>, altrimenti admin.</summary>
-    private string RuoloPerEmail(string emailNormalizzata)
+    /// <summary>
+    /// Bootstrap del super-admin di piattaforma (unico canale per ottenere il ruolo): promuove
+    /// l'utente indicato a <see cref="RuoloSuperAdmin"/> SOLO se il token corrisponde a
+    /// <c>SuperAdmin:BootstrapToken</c> (segreto lungo da variabile d'ambiente) e SOLO finché non
+    /// esiste già un super-admin. Una volta creato il primo, il canale si chiude da sé: il token
+    /// non è più utilizzabile. Non c'è più promozione automatica da email registrabile.
+    /// </summary>
+    public async Task<bool> BootstrapSuperAdminAsync(Guid utenteId, string? token, CancellationToken ct = default)
     {
-        var emailSuper = _config?["SuperAdmin:Email"];
-        return !string.IsNullOrWhiteSpace(emailSuper)
-               && string.Equals(emailNormalizzata, Normalizza(emailSuper), StringComparison.Ordinal)
-            ? RuoloSuperAdmin : "admin";
+        var atteso = _config?["SuperAdmin:BootstrapToken"];
+        if (string.IsNullOrWhiteSpace(atteso) || atteso.Length < 32)
+            throw new InvalidOperationException(
+                "Bootstrap super-admin non configurato: impostare 'SuperAdmin:BootstrapToken' (>= 32 caratteri) via secret.");
+        if (string.IsNullOrEmpty(token)
+            || !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(token), Encoding.UTF8.GetBytes(atteso)))
+            return false;
+
+        if (await _db.Utenti.AnyAsync(u => u.Ruolo == RuoloSuperAdmin, ct))
+            throw new InvalidOperationException(
+                "Esiste già un super-admin: il bootstrap è a uso singolo. Rimuovere il token dalla configurazione.");
+
+        var utente = await _db.Utenti.FirstOrDefaultAsync(u => u.Id == utenteId, ct);
+        if (utente is null) return false;
+        utente.Ruolo = RuoloSuperAdmin;
+        await _db.SaveChangesAsync(ct);
+        return true;
     }
 
     /// <summary>Restituisce l'utente se le credenziali sono valide, altrimenti null. (Solo password.)</summary>

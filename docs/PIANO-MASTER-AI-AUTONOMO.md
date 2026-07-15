@@ -7,6 +7,11 @@
 > lasciando alle persone soltanto approvazioni, deleghe, firme, validazioni professionali e
 > attività che la legge o un ente non permettono di automatizzare.
 
+> **Profilo scelto per la prima versione:** il piano ristretto
+> [`PIANO-PERSONALE-PRIVACY-FIRST.md`](PIANO-PERSONALE-PRIVACY-FIRST.md) prevale su questo master.
+> Disabilita chat generale, AI cloud, connettori esterni e lettura non esplicita dei file. Questo
+> master resta una mappa di possibilità future, da non eseguire fuori dal profilo personale.
+
 ---
 
 ## 0. Risposta diretta: cosa significa «completamente AI»

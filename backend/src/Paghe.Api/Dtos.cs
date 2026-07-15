@@ -16,6 +16,9 @@ public sealed record LoginRequest(string Email, string Password, string? Codice2
 /// <summary>Codice TOTP a 6 cifre per attivare/disattivare il secondo fattore.</summary>
 public sealed record Codice2faRequest(string Codice);
 
+/// <summary>Richiesta di bootstrap del super-admin: token segreto di piattaforma.</summary>
+public sealed record BootstrapSuperAdminRequest(string Token);
+
 /// <summary>Accesso con Google: "credential" è l'ID token restituito da Google Identity Services.</summary>
 public sealed record GoogleLoginRequest(string Credential);
 

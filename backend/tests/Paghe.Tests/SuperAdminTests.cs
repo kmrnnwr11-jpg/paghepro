@@ -7,8 +7,10 @@ using Xunit;
 namespace Paghe.Tests;
 
 /// <summary>
-/// Test del super-admin di piattaforma: l'email configurata riceve il ruolo superadmin alla
-/// registrazione; gli studi sospesi non possono accedere (ma il super-admin sì); elenco/sospensione studi.
+/// Test del super-admin di piattaforma. Sicurezza (Fase 1): la registrazione NON concede più il
+/// ruolo superadmin — nemmeno all'email un tempo configurata (era registrabile pubblicamente).
+/// L'unico canale è il bootstrap con token segreto, a uso singolo. Gli studi sospesi non accedono
+/// (il super-admin sì); elenco/sospensione studi.
 /// </summary>
 public sealed class SuperAdminTests : IDisposable
 {
@@ -30,13 +32,29 @@ public sealed class SuperAdminTests : IDisposable
             .AddInMemoryCollection(new Dictionary<string, string?> { ["SuperAdmin:Email"] = superEmail })
             .Build();
 
+    private static IConfiguration ConfigBootstrap(string? token) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["SuperAdmin:BootstrapToken"] = token })
+            .Build();
+
+    private const string TokenValido = "token-super-lungo-di-piattaforma-0123456789";
+
     [Fact]
-    public async Task Registra_EmailSuperAdmin_AssegnaRuoloSuperadmin()
+    public async Task Registra_EmailUnTempoSuperAdmin_OraNonConcedeSuperadmin()
     {
+        // Sicurezza F1: anche registrandosi con l'email in SuperAdmin:Email il ruolo resta admin.
         await using var db = NuovoContesto();
         var utente = await new AuthService(db, Config("boss@studio.it"))
-            .RegistraAsync("Studio Boss", "BOSS@studio.it", "password1"); // email con maiuscole: normalizzata
-        Assert.Equal(AuthService.RuoloSuperAdmin, utente.Ruolo);
+            .RegistraAsync("Studio Boss", "BOSS@studio.it", "password1");
+        Assert.Equal("admin", utente.Ruolo);
+    }
+
+    [Fact]
+    public async Task Google_EmailUnTempoSuperAdmin_OraNonConcedeSuperadmin()
+    {
+        await using var db = NuovoContesto();
+        var u = await new AuthService(db, Config("boss@z.it")).AccediConGoogleAsync("BOSS@z.it", "Capo");
+        Assert.Equal("admin", u.Ruolo);
     }
 
     [Fact]
@@ -46,6 +64,56 @@ public sealed class SuperAdminTests : IDisposable
         var utente = await new AuthService(db, Config("boss@studio.it"))
             .RegistraAsync("Studio Pippo", "pippo@x.it", "password1");
         Assert.Equal("admin", utente.Ruolo);
+    }
+
+    [Fact]
+    public async Task Bootstrap_TokenValido_PromuoveUnaVoltaSola()
+    {
+        Guid utenteId;
+        await using (var db = NuovoContesto())
+            utenteId = (await new AuthService(db).RegistraAsync("Studio", "a@a.it", "password1")).Id;
+
+        // Token corretto: promozione riuscita.
+        await using (var db = NuovoContesto())
+            Assert.True(await new AuthService(db, ConfigBootstrap(TokenValido))
+                .BootstrapSuperAdminAsync(utenteId, TokenValido));
+
+        await using (var db = NuovoContesto())
+            Assert.Equal(AuthService.RuoloSuperAdmin,
+                (await db.Utenti.FindAsync(utenteId))!.Ruolo);
+
+        // Uso singolo: un secondo utente non può più bootstrap-arsi (esiste già un super-admin).
+        Guid altro;
+        await using (var db = NuovoContesto())
+            altro = (await new AuthService(db).RegistraAsync("Studio2", "b@b.it", "password1")).Id;
+        await using (var db = NuovoContesto())
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new AuthService(db, ConfigBootstrap(TokenValido)).BootstrapSuperAdminAsync(altro, TokenValido));
+    }
+
+    [Fact]
+    public async Task Bootstrap_TokenErrato_NonPromuove()
+    {
+        Guid utenteId;
+        await using (var db = NuovoContesto())
+            utenteId = (await new AuthService(db).RegistraAsync("Studio", "a@a.it", "password1")).Id;
+
+        await using var db2 = NuovoContesto();
+        Assert.False(await new AuthService(db2, ConfigBootstrap(TokenValido))
+            .BootstrapSuperAdminAsync(utenteId, "token-sbagliato"));
+        Assert.Equal("admin", (await db2.Utenti.FindAsync(utenteId))!.Ruolo);
+    }
+
+    [Fact]
+    public async Task Bootstrap_TokenNonConfigurato_Errore()
+    {
+        Guid utenteId;
+        await using (var db = NuovoContesto())
+            utenteId = (await new AuthService(db).RegistraAsync("Studio", "a@a.it", "password1")).Id;
+
+        await using var db2 = NuovoContesto();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new AuthService(db2, ConfigBootstrap(null)).BootstrapSuperAdminAsync(utenteId, "qualsiasi"));
     }
 
     [Fact]
@@ -72,16 +140,22 @@ public sealed class SuperAdminTests : IDisposable
     [Fact]
     public async Task SuperAdmin_NonBloccato_AncheConTenantSospeso()
     {
-        var cfg = Config("boss@z.it");
-        Guid tenantId;
+        Guid tenantId, utenteId;
         await using (var db = NuovoContesto())
-            tenantId = (await new AuthService(db, cfg).RegistraAsync("Studio Boss", "boss@z.it", "password1")).TenantId;
+        {
+            var u = await new AuthService(db).RegistraAsync("Studio Boss", "boss@z.it", "password1");
+            tenantId = u.TenantId; utenteId = u.Id;
+        }
+
+        // Promozione a super-admin tramite il canale sicuro (bootstrap), non più via email.
+        await using (var db = NuovoContesto())
+            await new AuthService(db, ConfigBootstrap(TokenValido)).BootstrapSuperAdminAsync(utenteId, TokenValido);
 
         await using (var db = NuovoContesto())
             await new PiattaformaAdminService(db).ImpostaSospensioneAsync(tenantId, true);
 
         await using (var db = NuovoContesto())
-            Assert.Equal(EsitoAccesso.Ok, (await new AuthService(db, cfg).AccediAsync("boss@z.it", "password1")).Esito);
+            Assert.Equal(EsitoAccesso.Ok, (await new AuthService(db).AccediAsync("boss@z.it", "password1")).Esito);
     }
 
     [Fact]
@@ -113,15 +187,6 @@ public sealed class SuperAdminTests : IDisposable
         Assert.Equal("admin", u.Ruolo);
         Assert.Equal("", u.PasswordHash); // accesso solo via Google
         Assert.Equal(1, await db.Utenti.CountAsync());
-    }
-
-    [Fact]
-    public async Task Google_EmailSuperAdmin_RuoloSuperadmin()
-    {
-        await using var db = NuovoContesto();
-        var u = await new AuthService(db, Config("boss@z.it"))
-            .AccediConGoogleAsync("BOSS@z.it", "Capo");
-        Assert.Equal(AuthService.RuoloSuperAdmin, u.Ruolo);
     }
 
     [Fact]

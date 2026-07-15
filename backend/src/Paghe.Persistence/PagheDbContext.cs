@@ -740,6 +740,10 @@ public class PagheDbContext : DbContext
             e.Property(x => x.SegretoTotp).HasConversion(protettore.ConverterStringa()); // GDPR: cifrato a riposo
         });
 
+        // Segreto del provider SdI: cifrato a riposo (non deve stare in chiaro nel DB).
+        mb.Entity<ConfigurazioneSdiEntity>(e =>
+            e.Property(x => x.ApiKey).HasConversion(protettore.ConverterStringa()));
+
         // --- Anagrafiche e cedolini del lavoro ---
         mb.Entity<DipendenteEntity>(e =>
         {

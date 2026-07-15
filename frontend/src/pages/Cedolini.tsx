@@ -1,42 +1,21 @@
-import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Calculator } from "lucide-react";
 import { api, scaricaBlob, type Azienda, type CedolinoArchiviato, type DipendenteRapporto } from "../api";
 import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
 
 const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const mesi = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
-/** Presenze e assenze del mese: tutti i campi accettati dal motore di calcolo. */
-interface PresenzeMeseForm {
-  oreStraordinario: number; oreStraordinarioNotturno: number; oreStraordinarioFestivo: number;
-  giorniFerie: number; orePermessi: number; oreExFestivita: number;
-  giorniMalattia: number; numeroEventoMalattiaAnno: number; giorniInfortunio: number;
-  oreAssenzaNonRetribuita: number;
-}
-const presenzeVuote: PresenzeMeseForm = {
-  oreStraordinario: 0, oreStraordinarioNotturno: 0, oreStraordinarioFestivo: 0,
-  giorniFerie: 0, orePermessi: 0, oreExFestivita: 0,
-  giorniMalattia: 0, numeroEventoMalattiaAnno: 1, giorniInfortunio: 0,
-  oreAssenzaNonRetribuita: 0,
-};
-
-const stileSezione: CSSProperties = {
-  margin: "8px 0 -4px", paddingBottom: 4, fontSize: 11.5, fontWeight: 800,
-  color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em",
-  borderBottom: "1px solid rgba(100, 116, 139, 0.25)",
-};
-
-export function Cedolini() {
+export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
   const [azienda, setAzienda] = useState<Azienda | null>(null);
   const [dipendenti, setDipendenti] = useState<DipendenteRapporto[]>([]);
   const [rapportoId, setRapportoId] = useState("");
   const [lista, setLista] = useState<CedolinoArchiviato[]>([]);
-  const [anno, setAnno] = useState(2026);
-  const [mese, setMese] = useState(1);
-  const [presenze, setPresenze] = useState<PresenzeMeseForm>(presenzeVuote);
   const [caricamento, setCaricamento] = useState(true);
-  const [salvataggio, setSalvataggio] = useState(false);
   const [scaricandoId, setScaricandoId] = useState<string | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
+  const [annoCu, setAnnoCu] = useState<number | null>(null);
+  const [scaricandoCu, setScaricandoCu] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -85,44 +64,50 @@ export function Cedolini() {
     }
   }
 
-  async function genera(e: FormEvent) {
-    e.preventDefault();
-    if (!rapportoId) return;
-    setSalvataggio(true);
+  // Anni con almeno un cedolino archiviato: alimentano la Certificazione Unica.
+  const anniCu = [...new Set(lista.map((c) => c.anno))].sort((a, b) => b - a);
+  const annoCuScelto = annoCu && anniCu.includes(annoCu) ? annoCu : anniCu[0];
+
+  async function scaricaCu() {
+    if (!rapportoId || !annoCuScelto) return;
     setErrore(null);
+    setScaricandoCu(true);
     try {
-      await api.archiviaCedolino(rapportoId, { anno, mese, ...presenze });
-      setLista(await api.cedoliniArchiviati(rapportoId));
+      const { blob, filename } = await api.certificazioneUnicaPdf(rapportoId, annoCuScelto);
+      scaricaBlob(blob, filename);
     } catch (e) {
-      setErrore(e instanceof Error ? e.message : "Errore nel calcolo");
+      setErrore(e instanceof Error ? e.message : "Impossibile scaricare la CU.");
     } finally {
-      setSalvataggio(false);
+      setScaricandoCu(false);
     }
   }
-
-  const campo = (etichetta: string, chiave: keyof PresenzeMeseForm, aiuto?: string, min = 0) => (
-    <label>
-      <span>{etichetta}</span>
-      <input
-        type="number"
-        min={min}
-        step={chiave === "numeroEventoMalattiaAnno" ? 1 : 0.5}
-        value={presenze[chiave]}
-        onChange={(e) => setPresenze({ ...presenze, [chiave]: Number(e.target.value) })}
-      />
-      {aiuto && <small>{aiuto}</small>}
-    </label>
-  );
 
   return (
     <div className="module-layout wide">
       <section className="glass-card page-card">
         <div className="card-title-row">
-          <div>
-            <h1>Cedolini</h1>
-            <p>Calcola e archivia i cedolini reali{azienda ? ` · ${azienda.ragioneSociale}` : ""} — alimentano CU e 770</p>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="Torna a Presenze"
+              title="Torna al passaggio precedente: Presenze"
+              onClick={onTornaPresenze}
+            >
+              <ArrowLeft size={19} aria-hidden="true" />
+            </button>
+            <div>
+              <h1>Cedolini</h1>
+              <p>Archivio bozze cedolino{azienda ? ` · ${azienda.ragioneSociale}` : ""} - alimentano CU e 770</p>
+            </div>
           </div>
-          <span className="status-pill blue">2026</span>
+          <div className="actions-row">
+            <button className="btn primary" type="button" onClick={onTornaPresenze}>
+              <Calculator size={16} aria-hidden="true" />
+              Genera busta paga
+            </button>
+            <span className="status-pill amber">Bozza da validare</span>
+          </div>
         </div>
 
         {caricamento ? (
@@ -131,7 +116,7 @@ export function Cedolini() {
           <div className="empty-state">Nessun dipendente. Aggiungine uno in “Dipendenti”, poi torna qui a generare i cedolini.</div>
         ) : (
           <>
-            <form className="form-grid" onSubmit={genera}>
+            <div className="form-grid">
               <label>
                 <span>Dipendente</span>
                 <select value={rapportoId} onChange={(e) => setRapportoId(e.target.value)}>
@@ -140,41 +125,17 @@ export function Cedolini() {
                   ))}
                 </select>
               </label>
-              <label>
-                <span>Anno</span>
-                <input type="number" min={2000} max={2100} value={anno} onChange={(e) => setAnno(Number(e.target.value))} />
-              </label>
-              <label>
-                <span>Mese</span>
-                <select value={mese} onChange={(e) => setMese(Number(e.target.value))}>
-                  {mesi.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-                </select>
-              </label>
-              <div className="wide-field" style={stileSezione}>Straordinari</div>
-              {campo("Ore straordinario", "oreStraordinario")}
-              {campo("Ore straordinario notturno", "oreStraordinarioNotturno")}
-              {campo("Ore straordinario festivo", "oreStraordinarioFestivo")}
-
-              <div className="wide-field" style={stileSezione}>Ferie e permessi retribuiti</div>
-              {campo("Giorni di ferie goduti", "giorniFerie", "giorni presi nel mese")}
-              {campo("Ore permessi ROL", "orePermessi")}
-              {campo("Ore ex-festività", "oreExFestivita")}
-
-              <div className="wide-field" style={stileSezione}>Malattia e infortunio</div>
-              {campo("Giorni di malattia", "giorniMalattia", "con certificato medico")}
-              {campo("N° malattia nell'anno", "numeroEventoMalattiaAnno", "1ª, 2ª, 3ª… malattia del dipendente nell'anno", 1)}
-              {campo("Giorni di infortunio (INAIL)", "giorniInfortunio")}
-
-              <div className="wide-field" style={stileSezione}>Assenze non retribuite</div>
-              {campo("Ore di assenza non retribuita", "oreAssenzaNonRetribuita", "scalano dallo stipendio")}
-
-              <button className="btn primary wide-field" type="submit" disabled={salvataggio}>
-                {salvataggio ? "Calcolo…" : "Calcola e archivia cedolino"}
-              </button>
-            </form>
+              <div className="empty-state wide-field">
+                Presenze e assenze si compilano solo nella pagina Presenze. Qui trovi lo storico
+                approvato dal flusso mensile e puoi scaricare il PDF.
+              </div>
+            </div>
 
             {lista.length === 0 ? (
-              <div className="empty-state">Nessun cedolino archiviato per questo dipendente. Generane uno qui sopra.</div>
+              <div className="empty-state">
+                Nessun cedolino archiviato per questo dipendente. Premi “Genera busta paga”,
+                controlla presenze e assenze del mese, quindi conferma il calcolo.
+              </div>
             ) : (
               <div className="table-wrap">
                 <table className="data-table spacious">
@@ -210,6 +171,29 @@ export function Cedolini() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {lista.length > 0 && (
+              <div style={{ marginTop: 18, padding: 14, borderRadius: 10,
+                background: "var(--panel-strong)", border: "1px solid var(--line)",
+                display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <strong style={{ fontSize: 14 }}>Certificazione Unica (CU)</strong>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, opacity: 0.7 }}>
+                    Riepilogo annuale del dipendente sul modello ufficiale dell'Agenzia delle Entrate,
+                    compilato dai cedolini archiviati. Bozza da validare con il consulente.
+                  </p>
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  Anno
+                  <select value={annoCuScelto} onChange={(e) => setAnnoCu(Number(e.target.value))}>
+                    {anniCu.map((a) => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </label>
+                <button className="btn secondary" type="button" disabled={scaricandoCu} onClick={scaricaCu}>
+                  {scaricandoCu ? "⏳ Download..." : "📄 Scarica CU"}
+                </button>
               </div>
             )}
           </>

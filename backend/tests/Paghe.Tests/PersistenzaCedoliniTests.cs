@@ -44,12 +44,16 @@ public sealed class PersistenzaCedoliniTests : IDisposable
         await using var db = NuovoContesto();
         var rapporto = await new AnagraficheLavoroService(db).CreaDipendenteERapportoAsync(
             tenant, aziendaId,
-            new DipendenteEntity { CodiceFiscale = "RSSMRA80A01F205X", Nome = "Mario", Cognome = "Rossi" },
+            new DipendenteEntity
+            {
+                CodiceFiscale = "RSSMRA80A01F205X", Nome = "Mario", Cognome = "Rossi",
+                Iban = "IT60X0542811101000000123456",
+            },
             new RapportoLavoroEntity
             {
                 CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3", Qualifica = "Impiegato",
                 NumeroMensilita = 14, Regione = "Lombardia", CodiceCatastaleComune = "F205",
-                DataAssunzione = new DateOnly(2020, 1, 1),
+                DataAssunzione = new DateOnly(2020, 1, 1), TipoContratto = "Tempo indeterminato",
             });
         return rapporto.Id;
     }
@@ -115,6 +119,28 @@ public sealed class PersistenzaCedoliniTests : IDisposable
     }
 
     [Fact]
+    public async Task Calcola_CartellinoNonValido_NonVieneArchiviato()
+    {
+        var (tenant, aziendaId) = await CreaAziendaAsync();
+        var rapportoId = await CreaRapportoAsync(tenant, aziendaId);
+
+        await using var db = NuovoContesto();
+        var svc = new CedoliniService(db, new ParametriNormativiService(db));
+        var errore = await Assert.ThrowsAsync<ArgumentException>(() =>
+            svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino
+            {
+                Anno = 2026,
+                Mese = 2,
+                GiorniFerie = 20m,
+                GiorniMalattia = 10m,
+            }));
+
+        Assert.Contains("il mese ne contiene 28", errore.Message);
+        Assert.Empty(await db.Cartellini.Where(c => c.TenantId == tenant).ToListAsync());
+        Assert.Empty(await db.Cedolini.Where(c => c.TenantId == tenant).ToListAsync());
+    }
+
+    [Fact]
     public async Task RicalcolaPerPdf_DopoArchiviazione_RestituisceDominioENomi()
     {
         var (tenant, aziendaId) = await CreaAziendaAsync();
@@ -137,10 +163,13 @@ public sealed class PersistenzaCedoliniTests : IDisposable
             Assert.NotNull(dati);
             Assert.Equal("Alfa Srl", dati!.Intestazione.Azienda);
             Assert.Equal("Rossi Mario", dati.Intestazione.Dipendente);
+            Assert.Equal("IT60X0542811101000000123456", dati.Intestazione.IbanDipendente);
+            Assert.Equal("Tempo indeterminato", dati.Intestazione.TipoContratto);
             Assert.Equal(6, dati.Cedolino.Mese);
             Assert.Equal(2026, dati.Cedolino.Anno);
             Assert.NotEmpty(dati.Cedolino.Righe);          // le voci per il PDF ci sono
             Assert.Equal(nettoArchiviato, dati.Cedolino.NettoInBusta); // ricalcolo == archiviato
+            Assert.Equal(6, dati.Cartellino.Mese);
         }
     }
 

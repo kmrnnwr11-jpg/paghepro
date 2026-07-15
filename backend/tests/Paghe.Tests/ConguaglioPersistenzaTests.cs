@@ -15,6 +15,11 @@ namespace Paghe.Tests;
 /// </summary>
 public sealed class ConguaglioPersistenzaTests : IDisposable
 {
+
+    // I test archiviano cedolini di tutto l'anno: orologio fermo al 31/12 per la regola
+    // che blocca i periodi futuri.
+    private static readonly TimeProvider ClockFineAnno =
+        new OrologioFisso(new DateTimeOffset(2026, 12, 31, 12, 0, 0, TimeSpan.Zero));
     private readonly SqliteConnection _connection;
 
     public ConguaglioPersistenzaTests()
@@ -58,14 +63,14 @@ public sealed class ConguaglioPersistenzaTests : IDisposable
         // Archivia tre mesi.
         await using (var db = NuovoContesto())
         {
-            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            var svc = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
             foreach (var mese in new[] { 1, 2, 3 })
                 await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino { Anno = 2026, Mese = mese });
         }
 
         await using (var db = NuovoContesto())
         {
-            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            var svc = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
             var r = await svc.CalcolaConguaglioAnnualeAsync(tenant, rapportoId, 2026);
 
             // Ricostruisce l'atteso dai cedolini archiviati con lo stesso motore pubblico.
@@ -94,7 +99,7 @@ public sealed class ConguaglioPersistenzaTests : IDisposable
 
         await using (var db = NuovoContesto())
         {
-            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            var svc = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
             for (int mese = 1; mese <= 12; mese++)
                 await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino { Anno = 2026, Mese = mese });
         }
@@ -126,7 +131,7 @@ public sealed class ConguaglioPersistenzaTests : IDisposable
             Assert.DoesNotContain(gennaio.Voci, v => v.Codice == "CONGUAGLIO_IRPEF");
 
             // Il PDF (ricalcolo dal motore) riapplica il conguaglio archiviato: stesso netto.
-            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            var svc = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
             var perPdf = await svc.RicalcolaPerPdfAsync(tenant, dicembre.Id);
             Assert.NotNull(perPdf);
             Assert.Contains(perPdf!.Cedolino.Righe, r => r.Codice == "CONGUAGLIO_IRPEF");
@@ -143,7 +148,7 @@ public sealed class ConguaglioPersistenzaTests : IDisposable
     {
         var (tenant, rapportoId) = await CreaRapportoAsync();
         await using var db = NuovoContesto();
-        var svc = new CedoliniService(db, new ParametriNormativiService(db));
+        var svc = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
         await Assert.ThrowsAsync<ArgumentException>(() =>
             svc.CalcolaConguaglioAnnualeAsync(tenant, rapportoId, 2026));
     }

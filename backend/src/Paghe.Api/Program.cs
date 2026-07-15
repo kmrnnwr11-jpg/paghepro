@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Paghe.Api;
 using Paghe.Core.AdeTelematico;
+using Paghe.Core.Ai;
 using Paghe.Core.Calcolo;
 using Paghe.Core.Contabilita;
 using Paghe.Core.Domain;
@@ -50,6 +51,7 @@ builder.Services.AddDbContext<PagheDbContext>(o =>
         o.UseSqlite(connectionString);
 });
 builder.Services.AddScoped<AziendeService>();
+builder.Services.AddScoped<DemoDatasetService>();
 builder.Services.AddScoped<FattureService>();
 builder.Services.AddScoped<AvvisiPagamentoService>();
 
@@ -76,6 +78,7 @@ builder.Services.AddScoped<ImuService>();
 builder.Services.AddScoped<InailService>();
 builder.Services.AddScoped<IntrastatService>();
 builder.Services.AddScoped<PersoneService>();
+builder.Services.AddScoped<ConsumoAiService>();
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
@@ -92,6 +95,28 @@ builder.Services.AddSingleton(acubeOptions);
 var firmaOptions = new FirmaOptions();
 builder.Configuration.GetSection("Firma").Bind(firmaOptions);
 builder.Services.AddSingleton(firmaOptions);
+
+// Livello AI di lettura documenti (sezione "Ai"): default "Spento" (nessuna chiamata esterna).
+// Provider a scelta: "Claude" (SDK ufficiale Anthropic), "DeepSeek", "Glm" o "Compatibile"
+// (qualsiasi endpoint OpenAI-compatibile, anche Ollama in locale). Regola architetturale:
+// l'AI legge e PROPONE soltanto — la conferma resta all'utente, i calcoli nel codice.
+var aiOptions = new AiOptions();
+builder.Configuration.GetSection("Ai").Bind(aiOptions);
+builder.Services.AddSingleton(aiOptions);
+switch (aiOptions.Provider.ToLowerInvariant())
+{
+    case "claude":
+        builder.Services.AddSingleton<IEstrattoreAiDocumenti, EstrattoreAiAnthropic>();
+        break;
+    case "deepseek":
+    case "glm":
+    case "compatibile":
+        builder.Services.AddHttpClient<IEstrattoreAiDocumenti, EstrattoreAiCompatibile>();
+        break;
+    default:
+        builder.Services.AddSingleton<IEstrattoreAiDocumenti, EstrattoreAiSpento>();
+        break;
+}
 
 // Canale "Sdi": "Rest" (provider accreditato), "Simulato" (demo, ciclo completo senza invio reale),
 // "Manuale" (default, prepara il file da firmare/caricare).
@@ -317,6 +342,20 @@ using (var scope = app.Services.CreateScope())
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_Persone_TenantId_CodiceFiscale"
                 ON "Persone" ("TenantId", "CodiceFiscale");
             """);
+
+        // Contatore mensile delle chiamate AI per tenant ("AI inclusa nel canone").
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "ConsumiAi" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_ConsumiAi" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "Anno" integer NOT NULL,
+                "Mese" integer NOT NULL,
+                "Chiamate" integer NOT NULL,
+                "AggiornatoIl" timestamptz NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_ConsumiAi_TenantId_Anno_Mese"
+                ON "ConsumiAi" ("TenantId", "Anno", "Mese");
+            """);
     }
 
     // Rete di sicurezza generica: aggiunge le colonne del modello EF assenti dal database
@@ -384,6 +423,14 @@ static async Task<byte[]> LeggiFile(IFormFile file)
     await file.CopyToAsync(ms);
     return ms.ToArray();
 }
+
+// Riconosce dal contenuto il tipo di immagine accettato per il logo aziendale (PNG/JPEG).
+static string? TipoImmagineLogo(byte[] dati) => dati switch
+{
+    [0x89, (byte)'P', (byte)'N', (byte)'G', ..] => "image/png",
+    [0xFF, 0xD8, 0xFF, ..] => "image/jpeg",
+    _ => null,
+};
 
 // Proietta un promemoria aggiungendo i giorni mancanti e l'urgenza calcolata a oggi.
 static object PromemoriaDto(Paghe.Persistence.Entities.PromemoriaEntity p)
@@ -482,7 +529,11 @@ app.MapGet("/", () => Results.Ok(new
         "POST /api/cedolini/pdf",
         "GET  /api/cedolini/{id}/pdf",
         "POST /api/fatture/pdf",
-        "GET  /api/fatture/{id}/pdf"
+        "GET  /api/fatture/{id}/pdf",
+        "POST /api/aziende/{id}/logo",
+        "GET  /api/aziende/{id}/logo",
+        "DELETE /api/aziende/{id}/logo",
+        "GET  /api/rapporti/{id}/cu/{anno}/pdf"
     }
 }));
 
@@ -1005,6 +1056,16 @@ secured.MapPost("/api/aziende", async (CreaAziendaRequest req, AziendeService sv
 secured.MapGet("/api/aziende", async (AziendeService svc, ClaimsPrincipal user) =>
     Results.Ok(await svc.ElencoAsync(TenantCorrente(user))));
 
+// Dataset demo: solo account @paghe.local, per rendere la prova ripetibile in ogni browser.
+secured.MapPost("/api/demo/dataset", async (
+    DemoDatasetService svc, ClaimsPrincipal user, CancellationToken ct) =>
+{
+    var email = user.FindFirst("email")?.Value ?? user.FindFirst(ClaimTypes.Email)?.Value ?? "";
+    if (!email.EndsWith("@paghe.local", StringComparison.OrdinalIgnoreCase))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    return Results.Ok(await svc.CreaSeMancanteAsync(TenantCorrente(user), ct));
+});
+
 secured.MapGet("/api/aziende/{id:guid}", async (Guid id, AziendeService svc, ClaimsPrincipal user) =>
 {
     var sintesi = await svc.GetSintesiAsync(TenantCorrente(user), id);
@@ -1046,6 +1107,42 @@ secured.MapPost("/api/aziende/elimina-bulk", async (
 {
     var n = await svc.EliminaBulkAsync(TenantCorrente(user), req.Ids);
     return Results.Ok(new { eliminate = n });
+});
+
+// --- Logo aziendale (facoltativo, mostrato sui documenti: es. busta paga) ----------
+secured.MapPost("/api/aziende/{id:guid}/logo", async (
+    Guid id, HttpRequest http, AziendeService svc, ClaimsPrincipal user) =>
+{
+    if (!http.HasFormContentType)
+        return Results.BadRequest(new { errore = "Inviare multipart/form-data con il campo 'file'." });
+    var form = await http.ReadFormAsync();
+    var file = form.Files["file"];
+    if (file is null || file.Length == 0)
+        return Results.BadRequest(new { errore = "Immagine del logo mancante (campo 'file')." });
+    if (file.Length > 1_000_000)
+        return Results.BadRequest(new { errore = "Logo troppo grande: massimo 1 MB." });
+
+    byte[] logo = await LeggiFile(file);
+    if (TipoImmagineLogo(logo) is null)
+        return Results.BadRequest(new { errore = "Formato non supportato: usare un'immagine PNG o JPEG." });
+
+    var salvato = await svc.SalvaLogoAsync(TenantCorrente(user), id, logo);
+    return salvato ? Results.Ok(new { salvato = true }) : Results.NotFound(new { errore = "Azienda non trovata." });
+}).DisableAntiforgery();
+
+secured.MapGet("/api/aziende/{id:guid}/logo", async (Guid id, AziendeService svc, ClaimsPrincipal user) =>
+{
+    var azienda = await svc.GetAsync(TenantCorrente(user), id);
+    if (azienda is null) return Results.NotFound(new { errore = "Azienda non trovata." });
+    return azienda.Logo is null
+        ? Results.NotFound(new { errore = "L'azienda non ha un logo." })
+        : Results.File(azienda.Logo, TipoImmagineLogo(azienda.Logo) ?? "application/octet-stream");
+});
+
+secured.MapDelete("/api/aziende/{id:guid}/logo", async (Guid id, AziendeService svc, ClaimsPrincipal user) =>
+{
+    var rimosso = await svc.SalvaLogoAsync(TenantCorrente(user), id, null);
+    return rimosso ? Results.NoContent() : Results.NotFound(new { errore = "Azienda non trovata." });
 });
 
 // --- Contabilità IVA persistita ---------------------------------------------------
@@ -1445,14 +1542,19 @@ secured.MapGet("/api/rapporti/{rapportoId:guid}/tfr/rivalutazione",
 });
 
 // --- Cedolini calcolati e archiviati -----------------------------------------------
+// ?forza=true: consente il ricalcolo di un mese con F24 già inviato (correzione di un errore
+// confermata dall'utente; l'F24 del mese andrà rigenerato).
 secured.MapPost("/api/rapporti/{rapportoId:guid}/cedolini",
-    async (Guid rapportoId, Cartellino cartellino, CedoliniService svc, ClaimsPrincipal user) =>
+    async (Guid rapportoId, Cartellino cartellino, CedoliniService svc, ClaimsPrincipal user,
+           bool forza = false) =>
 {
     try
     {
-        var c = await svc.CalcolaEArchiviaAsync(TenantCorrente(user), rapportoId, cartellino);
+        var c = await svc.CalcolaEArchiviaAsync(
+            TenantCorrente(user), rapportoId, cartellino, forzaRicalcolo: forza);
         return Results.Created($"/api/cedolini/{c.Id}",
-            new { c.Id, c.Anno, c.Mese, c.NettoInBusta, c.CostoAzienda });
+            new { c.Id, c.Anno, c.Mese, c.NettoInBusta, c.CostoAzienda,
+                  c.FerieResidue, c.PermessiResidui });
     }
     catch (ArgumentException ex)
     {
@@ -1475,7 +1577,7 @@ secured.MapGet("/api/cedolini/{id:guid}/pdf", async (Guid id, CedoliniService sv
 {
     var dati = await svc.RicalcolaPerPdfAsync(TenantCorrente(user), id);
     if (dati is null) return Results.NotFound(new { errore = "Cedolino non trovato." });
-    byte[] pdf = CedolinoPdf.Genera(dati.Cedolino, dati.Intestazione);
+    byte[] pdf = CedolinoPdf.Genera(dati.Cedolino, dati.Intestazione, dati.Cartellino);
     return Results.File(pdf, "application/pdf",
         $"cedolino-{dati.Cedolino.Anno}-{dati.Cedolino.Mese:00}.pdf");
 });
@@ -1617,7 +1719,10 @@ app.MapPost("/api/cedolini/pdf", async (CedolinoPdfRequest req, ParametriNormati
     {
         var motore = await CostruisciMotore(svc, req.Rapporto, req.Cartellino.Anno);
         var cedolino = motore.Calcola(req.Rapporto, req.Cartellino);
-        byte[] pdf = CedolinoPdf.Genera(cedolino, req.Azienda, req.Dipendente);
+        byte[] pdf = CedolinoPdf.Genera(
+            cedolino,
+            new IntestazioneCedolino { Azienda = req.Azienda, Dipendente = req.Dipendente },
+            req.Cartellino);
         return Results.File(pdf, "application/pdf", $"cedolino-{cedolino.Anno}-{cedolino.Mese:00}.pdf");
     }
     catch (ArgumentException ex)
@@ -2013,6 +2118,7 @@ secured.MapPost("/api/documenti-scadenze",
 // Collegamento self-service del provider SdI (configurazione per tenant).
 app.MapConfigurazioneSdi();
 app.MapCertificazioneUnica();
+app.MapAi();
 app.MapLipe();
 app.MapModello770();
 app.MapRapportoDettaglio();

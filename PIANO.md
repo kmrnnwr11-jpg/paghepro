@@ -60,6 +60,9 @@ più avanti nel piano. Sono il collo di bottiglia. Vedi la sezione "Da avviare o
 - ✅ Motore di firma CAdES/XAdES (manca solo il certificato vero).
 - ✅ Infrastruttura per spedire allo SdI, incluso il connettore **A-Cube** (manca l'account).
 - ✅ Frontend (SPA) per usare tutto senza comandi tecnici.
+- ✅ Dataset di prova isolato per browser: 5 aziende di settori diversi e 5 dipendenti,
+  creati automaticamente negli account demo vuoti e visibili insieme nell'archivio lavoratori;
+  link diretti alle sezioni della SPA.
 - ✅ Autenticazione, multi-azienda (multi-tenant), 158 test automatici verdi.
 
 **Manca per essere un prodotto vero da vendere:**
@@ -186,6 +189,34 @@ e hai i documenti privacy pronti.
 
 ⏱️ 2–3 giorni 🔧 + ⏳ 1–2 sett. · 💶 ~30–60 € ogni ~3 anni (se serve) · ✅ **Fatto quando:**
 firmi un file e la firma risulta valida — oppure hai deciso che firma A-Cube e non serve.
+
+---
+
+### Fase 5-bis — Presenze e cedolino professionale
+**Obiettivo:** sostituire il PDF dimostrativo con un flusso paghe tracciabile, senza presentarlo
+come ufficiale prima dei controlli e della validazione professionale.
+
+- [x] 🔧 **Primo blocco mensile**: il cruscotto Presenze raccoglie e conserva straordinari,
+  ferie, ROL, ex-festività, malattia, infortunio e assenze non retribuite; richiede conferma prima
+  dell'elaborazione, valida quantità e calendario e riporta le causali nel PDF. Il PDF usa ora
+  un modulo paghe classico su una pagina A4, confrontato visivamente con cedolini reali: testata,
+  inquadramento, saldi, griglia voci, contributi, fisco e netto; resta marcato “bozza da validare”.
+- [x] 🔧 Corretto il doppio pagamento di malattia/infortunio: la quota ordinaria delle giornate
+  viene stornata prima di applicare indennità e integrazioni (ancora da validare per CCNL).
+- [ ] 🔧 **Cartellino giornaliero**: ore ordinarie, causale per data/intervallo, PUC malattia,
+  controlli di sovrapposizione e quadratura con l'orario teorico; salvataggio separato dal calcolo.
+- [ ] 🔧 Rendere tutte le regole di maturazione ferie/ROL e malattia/infortunio versionate per
+  anno e CCNL nel DB; eliminare i valori ancora cablati nel motore.
+- [ ] 🔧 Ciclo bozza → controllata → validata → chiusa, snapshot immutabile di dati/voci/parametri
+  e PDF dallo snapshot; aggiungere codice unico CNEL, firma/sigla/timbro e calendario.
+- [ ] 🧑 Far validare casi reali, regole e fac-simile da un Consulente del Lavoro; scegliere e
+  formalizzare la modalità di tenuta del Libro Unico del Lavoro.
+
+Ricerca, confronto Zucchetti/TeamSystem/INAZ e backlog: `docs/RICERCA-CEDOLINO-PROFESSIONALE-2026.md`.
+
+⏱️ 2–4 mesi 🔧 + validazione professionale · ✅ **Fatto quando:** il caso mensile completo passa
+diagnostica, calcolo e confronto con cedolino campione; documento e LUL rispettano il processo
+scelto e validato dal professionista.
 
 ---
 

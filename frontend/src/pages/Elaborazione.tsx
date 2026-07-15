@@ -3,11 +3,11 @@ import { api, type Azienda } from "../api";
 import { salvaAziendaCorrenteId } from "../aziendaCorrente";
 
 // Elaborazione cedolini: collegata ai dati reali (niente più dipendenti finti).
-// Mostra le aziende reali; il calcolo vero dei cedolini si fa dalla pagina Cedolini.
+// Mostra le aziende reali; il calcolo vero dei cedolini parte dalla pagina Presenze.
 export function Elaborazione({
   onApriSezione,
 }: {
-  onApriSezione?: (sezione: "dipendenti" | "cedolini") => void;
+  onApriSezione?: (sezione: "dipendenti" | "presenze") => void;
 }) {
   const [aziende, setAziende] = useState<Azienda[]>([]);
   const [errore, setErrore] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export function Elaborazione({
     })();
   }, []);
 
-  function apri(a: Azienda, sezione: "dipendenti" | "cedolini") {
+  function apri(a: Azienda, sezione: "dipendenti" | "presenze") {
     salvaAziendaCorrenteId(a.id);
     onApriSezione?.(sezione);
   }
@@ -49,14 +49,14 @@ export function Elaborazione({
           <p className="muto" style={{ lineHeight: 1.6 }}>
             Per elaborare i cedolini: <strong>1)</strong> aggiungi un'azienda dalla pagina{" "}
             <strong>Aziende</strong>, <strong>2)</strong> inserisci i <strong>Dipendenti</strong>,{" "}
-            <strong>3)</strong> genera le buste dalla pagina <strong>Cedolini</strong>.
+            <strong>3)</strong> controlla presenze e genera le buste dalla pagina <strong>Presenze</strong>.
           </p>
         </div>
       ) : (
         <div className="glass-card" style={{ padding: 24 }}>
           <p style={{ marginBottom: 12 }}>
             Aziende disponibili: <strong>{aziende.length}</strong>. Scegli un'azienda: controlla prima i{" "}
-            <strong>Dipendenti</strong>, poi genera le buste dalla pagina <strong>Cedolini</strong>.
+            <strong>Dipendenti</strong>, poi genera le buste dalla pagina <strong>Presenze</strong>.
           </p>
           <div className="company-list">
             {aziende.map((a) => (
@@ -67,8 +67,8 @@ export function Elaborazione({
                   <button className="mini-action" type="button" onClick={() => apri(a, "dipendenti")}>
                     Dipendenti
                   </button>
-                  <button className="mini-action" type="button" onClick={() => apri(a, "cedolini")}>
-                    Cedolini
+                  <button className="mini-action" type="button" onClick={() => apri(a, "presenze")}>
+                    Genera buste
                   </button>
                 </div>
                 <em>Attiva</em>

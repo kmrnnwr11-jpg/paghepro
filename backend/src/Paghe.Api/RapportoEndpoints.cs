@@ -9,7 +9,8 @@ public sealed record RapportoDettaglioDto(
     string Nome, string Cognome, string CodiceFiscale, string? Iban, bool Anonimizzato,
     string CodiceCcnl, string Livello, string Qualifica,
     int NumeroMensilita, bool PartTime, decimal PercentualePartTime,
-    int ScattiAnzianita, decimal Superminimo, string Regione, string DataAssunzione);
+    int ScattiAnzianita, decimal Superminimo, string Regione, string DataAssunzione,
+    string? DataCessazione);
 
 /// <summary>Correzione della scheda dipendente: solo i campi presenti (non null) vengono cambiati.</summary>
 public sealed record CorreggiRapportoRequest(
@@ -18,7 +19,8 @@ public sealed record CorreggiRapportoRequest(
     int? NumeroMensilita, bool? PartTime, decimal? PercentualePartTime,
     int? ScattiAnzianita, decimal? Superminimo,
     string? Regione, string? CodiceCatastaleComune, string? DataAssunzione,
-    decimal? FondoTfrIniziale);
+    decimal? FondoTfrIniziale,
+    string? DataCessazione, bool? RimuoviDataCessazione);
 
 /// <summary>
 /// Endpoint per il dettaglio di un rapporto (scheda dipendente reale), isolato per tenant.
@@ -55,7 +57,8 @@ public static class RapportoEndpoints
                 ScattiAnzianita: r.ScattiAnzianita,
                 Superminimo: r.Superminimo,
                 Regione: r.Regione,
-                DataAssunzione: r.DataAssunzione.ToString("dd/MM/yyyy")));
+                DataAssunzione: r.DataAssunzione.ToString("dd/MM/yyyy"),
+                DataCessazione: r.DataCessazione?.ToString("dd/MM/yyyy")));
         }).RequireAuthorization();
 
         // Correzione della scheda (es. dopo un import UNILAV/OCR letto male): aggiorna solo
@@ -70,6 +73,13 @@ public static class RapportoEndpoints
                     return Results.BadRequest(new { errore = "Data di assunzione non valida (usa il formato AAAA-MM-GG)." });
                 dataAssunzione = da;
             }
+            DateOnly? dataCessazione = null;
+            if (!string.IsNullOrWhiteSpace(req.DataCessazione))
+            {
+                if (!DateOnly.TryParse(req.DataCessazione, out var dc))
+                    return Results.BadRequest(new { errore = "Data di cessazione non valida (usa il formato AAAA-MM-GG)." });
+                dataCessazione = dc;
+            }
 
             try
             {
@@ -80,10 +90,15 @@ public static class RapportoEndpoints
                         req.NumeroMensilita, req.PartTime, req.PercentualePartTime,
                         req.ScattiAnzianita, req.Superminimo,
                         req.Regione, req.CodiceCatastaleComune, dataAssunzione,
-                        req.FondoTfrIniziale));
+                        req.FondoTfrIniziale,
+                        dataCessazione, req.RimuoviDataCessazione));
                 return r is null
                     ? Results.NotFound(new { errore = "Rapporto non trovato per il tenant indicato." })
                     : Results.Ok(new { aggiornato = true });
+            }
+            catch (ArgumentException ex) // es. cessazione prima dell'assunzione
+            {
+                return Results.BadRequest(new { errore = ex.Message });
             }
             catch (InvalidOperationException ex) // anonimizzato GDPR
             {

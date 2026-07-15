@@ -39,6 +39,10 @@ public class AziendaEntity
     /// <summary>null = usa il default globale (Manuale). Valori: "Email", "Sms", "WhatsApp".</summary>
     public string? CanalePredefinito { get; set; }
 
+    /// <summary>Logo aziendale (PNG o JPEG) mostrato sui documenti, es. la busta paga. Facoltativo.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public byte[]? Logo { get; set; }
+
     public bool HaDipendenti { get; set; }
     /// <summary>"Artigiano", "Commerciante", "Professionista", "Societa".</summary>
     public string? TipoContribuente { get; set; }

@@ -2411,6 +2411,135 @@ p {
   min-width: 0;
 }
 
+.presence-period {
+  max-width: 520px;
+  margin-bottom: 14px;
+}
+
+.presence-table {
+  min-width: 820px;
+}
+
+.presence-summary {
+  max-width: 360px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.icon-command {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.presence-editor-row > td {
+  padding: 0 !important;
+  background: rgba(232, 238, 246, 0.42);
+}
+
+.presence-editor {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-top: 2px solid var(--blue);
+}
+
+.presence-section {
+  display: grid;
+  gap: 8px;
+}
+
+.presence-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.presence-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.presence-fields label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.presence-number {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-strong);
+}
+
+.presence-number input {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.presence-number > span {
+  padding: 0 9px;
+  color: var(--soft);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.presence-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.presence-confirm > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  max-width: 600px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.presence-confirm input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  margin-top: 1px;
+}
+
+.presence-confirm .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.presence-note {
+  margin-top: 14px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
 .ts-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3149,6 +3278,15 @@ p {
   .payslip-cols,
   .emp-grid {
     grid-template-columns: 1fr;
+  }
+
+  .presence-fields {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .presence-confirm {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

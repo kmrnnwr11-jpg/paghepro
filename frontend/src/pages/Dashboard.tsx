@@ -225,6 +225,13 @@ const sectionTitle: Record<SectionKey, string> = {
   studi: "Studi — super-admin",
 };
 
+function sezioneDaHash(): SectionKey {
+  const candidata = decodeURIComponent(window.location.hash.slice(1)).trim().toLowerCase();
+  return candidata && Object.hasOwn(sectionTitle, candidata)
+    ? candidata as SectionKey
+    : "dashboard";
+}
+
 const kpis = [
   {
     icon: FileText,
@@ -274,7 +281,7 @@ const documentQueue: {
 
 export function Dashboard() {
   const { esci } = useAuth();
-  const [active, setActive] = useState<SectionKey>("dashboard");
+  const [active, setActive] = useState<SectionKey>(sezioneDaHash);
   const [rapportoSel, setRapportoSel] = useState<string | null>(null);
   const [aiutoAperto, setAiutoAperto] = useState(false);
   const [slidebarAperta, setSlidebarAperta] = useState(false);
@@ -329,8 +336,15 @@ export function Dashboard() {
   const crumbs = useMemo(() => crumbsFor[active] ?? ["Home", sectionTitle[active]], [active]);
   const vaiA = (key: SectionKey) => {
     setActive(key);
+    if (window.location.hash !== `#${key}`) window.location.hash = key;
     setSlidebarAperta(false);
   };
+
+  useEffect(() => {
+    const aggiornaDaHash = () => setActive(sezioneDaHash());
+    window.addEventListener("hashchange", aggiornaDaHash);
+    return () => window.removeEventListener("hashchange", aggiornaDaHash);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1064,7 +1078,7 @@ function ModuleScreen({
     );
   }
 
-  if (active === "cedolini") return <Cedolini />;
+  if (active === "cedolini") return <Cedolini onTornaPresenze={() => onNavigate("presenze")} />;
 
   if (active === "calcolo") {
     return (

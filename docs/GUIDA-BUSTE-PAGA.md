@@ -4,7 +4,7 @@ Tre modi per provare a generare buste paga, dal più semplice. **Avvertenza:** i
 **parametri di esempio** (aliquote, CCNL Commercio) → prima dell'uso reale vanno **validati da un
 Consulente del Lavoro**. Le prove servono a vedere che il meccanismo funziona.
 
-Aggiornato al 2026-06-28.
+Aggiornato al 2026-07-11.
 
 ---
 
@@ -55,8 +55,10 @@ cd frontend && npm install && npm run dev
 Apri il link che compare (di solito <http://localhost:5173>) e segui le pagine:
 1. **Aziende** → crea l'azienda.
 2. **Dipendenti** → aggiungi un dipendente (codice fiscale, CCNL, livello, regione).
-3. **Cedolini** → calcola la busta per ogni mese.
-4. **Scadenzario / documenti** → consulta CU e promemoria.
+3. **Presenze** → compila ferie, permessi, malattia, infortunio, assenze e straordinari;
+   controlla e conferma il cartellino prima del calcolo.
+4. **Cedolini** → consulta l'archivio e scarica il PDF marcato come bozza.
+5. **Scadenzario / documenti** → consulta CU e promemoria.
 
 ---
 
@@ -86,7 +88,8 @@ echo "creato busta.pdf"
 |---|---|
 | 12 buste paga + Certificazione Unica (CU) | ✅ funziona, provato end-to-end |
 | Conguaglio fiscale di fine anno | ✅ funziona |
-| PDF della busta paga e del LUL | ✅ disponibile |
+| PDF strutturato della busta paga | Disponibile come **bozza da validare** |
+| Libro Unico del Lavoro ufficiale | Non ancora: mancano calendario giornaliero e processo di tenuta conforme |
 | Redditi PF / "Unico" persona fisica | 🛠️ modulo in costruzione |
 | **Presentare/inviare** all'Agenzia Entrate | ❌ non dal software (serve Entratel / Desktop Telematico) |
 

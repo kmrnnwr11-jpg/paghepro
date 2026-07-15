@@ -136,6 +136,7 @@ export interface CedolinoArchiviato {
   nettoInBusta: number; costoAzienda: number;
   imponibileIrpef?: number; irpefNetta?: number;
   conguaglioIrpef?: number;
+  ferieResidue?: number; permessiResidui?: number;
 }
 export interface ConguaglioAnnuale {
   irpefLordaAnnua: number; detrazioniSpettanti: number; irpefNettaAnnua: number;
@@ -155,7 +156,11 @@ export interface InailAutoliquidazione {
   rataAnticipata: number; rataGiaVersata: number; totaleDaVersare: number; nota: string;
 }
 export interface PresenzaRiga {
-  rapportoId: string; nominativo: string; oreStraordinario: number; elaborato: boolean; netto: number;
+  rapportoId: string; nominativo: string;
+  oreStraordinario: number; oreStraordinarioNotturno: number; oreStraordinarioFestivo: number;
+  giorniFerie: number; orePermessi: number; oreExFestivita: number;
+  giorniMalattia: number; numeroEventoMalattiaAnno: number; giorniInfortunio: number;
+  oreAssenzaNonRetribuita: number; elaborato: boolean; netto: number;
 }
 export interface PresenzeMese {
   anno: number; mese: number; totale: number; elaborati: number; righe: PresenzaRiga[];
@@ -196,6 +201,7 @@ export interface RapportoDettaglio {
   codiceCcnl: string; livello: string; qualifica: string;
   numeroMensilita: number; partTime: boolean; percentualePartTime: number;
   scattiAnzianita: number; superminimo: number; regione: string; dataAssunzione: string;
+  dataCessazione?: string | null;
 }
 /** Campi correggibili della scheda dipendente: solo quelli presenti vengono cambiati. */
 export interface CorrezioneRapporto {
@@ -205,6 +211,7 @@ export interface CorrezioneRapporto {
   scattiAnzianita?: number; superminimo?: number;
   regione?: string; codiceCatastaleComune?: string; dataAssunzione?: string;
   fondoTfrIniziale?: number;
+  dataCessazione?: string; rimuoviDataCessazione?: boolean;
 }
 export interface Fattura {
   id: string; numero: string; anno?: number; data?: string;
@@ -375,6 +382,7 @@ export const api = {
   riattivaStudio: (id: string) =>
     req<{ id: string; sospeso: boolean }>(`/api/admin/studi/${id}/riattiva`, { method: "POST" }),
   aziende: () => req<Azienda[]>("/api/aziende"),
+  creaDatasetDemo: () => req<{ aziende: number; dipendenti: number }>("/api/demo/dataset", { method: "POST" }),
   // Correzione anagrafica azienda (es. dopo una visura letta male): invia solo i campi da cambiare.
   correggiAzienda: (id: string, campi: Partial<NuovaAzienda>) =>
     req<{ id: string; ragioneSociale: string }>(`/api/aziende/${id}`, {
@@ -393,6 +401,43 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ids }),
     }),
+  // --- Logo aziendale (PNG/JPEG, facoltativo): compare in testata della busta paga ---
+  caricaLogoAzienda: async (id: string, file: File): Promise<void> => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/aziende/${id}/logo`, { method: "POST", body: form, headers });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error((e as { errore?: string }).errore ?? `Errore ${res.status}`);
+    }
+  },
+  // Object URL dell'immagine del logo, o null se l'azienda non ne ha uno.
+  logoAzienda: async (id: string): Promise<string | null> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/aziende/${id}/logo`, { headers });
+    if (!res.ok) return null;
+    return URL.createObjectURL(await res.blob());
+  },
+  rimuoviLogoAzienda: (id: string) => req<void>(`/api/aziende/${id}/logo`, { method: "DELETE" }),
+  // Certificazione Unica (CU) di un dipendente per anno: PDF sul modello ufficiale AdE.
+  certificazioneUnicaPdf: async (rapportoId: string, anno: number): Promise<{ blob: Blob; filename: string }> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/rapporti/${rapportoId}/cu/${anno}/pdf`, { headers });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error((e as { errore?: string }).errore ?? `Errore ${res.status}`);
+    }
+    const dispo = res.headers.get("Content-Disposition") ?? "";
+    const match = /filename="?([^"]+)"?/.exec(dispo);
+    return { blob: await res.blob(), filename: match?.[1] ?? `certificazione-unica-${anno}.pdf` };
+  },
   livelli: (codice: string) =>
     req<{ codice: string; descrizione: string; livelli: Livello[] }>(
       `/api/ccnl/${codice}/livelli`,
@@ -405,8 +450,9 @@ export const api = {
   // Cedolini archiviati per dipendente (rapporto): alimentano CU e 770.
   cedoliniArchiviati: (rapportoId: string) =>
     req<CedolinoArchiviato[]>(`/api/rapporti/${rapportoId}/cedolini`),
-  archiviaCedolino: (rapportoId: string, cartellino: Cartellino) =>
-    req<CedolinoArchiviato>(`/api/rapporti/${rapportoId}/cedolini`, {
+  // forza=true: ricalcolo confermato di un mese con F24 già inviato (correzione errore).
+  archiviaCedolino: (rapportoId: string, cartellino: Cartellino, forza = false) =>
+    req<CedolinoArchiviato>(`/api/rapporti/${rapportoId}/cedolini${forza ? "?forza=true" : ""}`, {
       method: "POST",
       body: JSON.stringify(cartellino),
     }),

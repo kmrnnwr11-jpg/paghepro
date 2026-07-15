@@ -8,6 +8,8 @@ namespace Paghe.Core.Domain;
 public sealed record IntestazioneCedolino
 {
     public string Azienda { get; init; } = "Azienda";
+    /// <summary>Logo aziendale (PNG/JPEG) mostrato in testata; null = nessun logo.</summary>
+    public byte[]? Logo { get; init; }
     public string? AziendaIndirizzo { get; init; }
     /// <summary>Riga "CAP Comune (Provincia)" già composta.</summary>
     public string? AziendaComune { get; init; }
@@ -19,11 +21,14 @@ public sealed record IntestazioneCedolino
     public string Dipendente { get; init; } = "Dipendente";
     public string? CodiceFiscaleDipendente { get; init; }
     public string? Matricola { get; init; }
+    /// <summary>IBAN usato per l'accredito dello stipendio.</summary>
+    public string? IbanDipendente { get; init; }
     /// <summary>Data assunzione già formattata (gg/mm/aaaa).</summary>
     public string? DataAssunzione { get; init; }
     public string? Qualifica { get; init; }
     public string? Livello { get; init; }
     public string? Ccnl { get; init; }
+    public string? TipoContratto { get; init; }
     public int? Mensilita { get; init; }
     /// <summary>Es. "40 ore/sett." oppure "Part-time 50%".</summary>
     public string? Orario { get; init; }

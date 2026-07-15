@@ -125,6 +125,9 @@ public class MotoreCalcoloCedolinoTests
         Assert.Contains(c.Righe, r => r.Codice == "MAL_CARENZA");
         Assert.Contains(c.Righe, r => r.Codice == "MAL_INPS");
         Assert.Contains(c.Righe, r => r.Codice == "MAL_INTEGR");
+        var storno = Assert.Single(c.Righe, r => r.Codice == "MAL_STORNO");
+        Assert.Equal(5m, storno.Quantita);
+        Assert.True(storno.Importo < 0m);
     }
 
     [Fact]
@@ -138,6 +141,9 @@ public class MotoreCalcoloCedolinoTests
         Assert.Contains(c.Righe, r => r.Codice == "INF_CARENZA");
         Assert.Contains(c.Righe, r => r.Codice == "INF_INAIL");
         Assert.Contains(c.Righe, r => r.Codice == "INF_INTEGR");
+        var storno = Assert.Single(c.Righe, r => r.Codice == "INF_STORNO");
+        Assert.Equal(10m, storno.Quantita);
+        Assert.True(storno.Importo < 0m);
     }
 
     [Fact]
@@ -155,5 +161,18 @@ public class MotoreCalcoloCedolinoTests
         Assert.Equal(8m, c.PermessiGoduti);
         Assert.True(c.PermessiMaturati > 0m);
         Assert.Equal(c.PermessiMaturati - 8m, c.PermessiResidui);
+    }
+
+    [Fact]
+    public void Calcola_FerieOltreIlMaturato_SaldoNegativoNonAzzerato()
+    {
+        // Ferie anticipate: il residuo deve poter andare sotto zero (alimenta l'avviso in UI).
+        var c = Motore().Calcola(Impiegato3Liv(), new Cartellino
+        {
+            Anno = 2026, Mese = 6, GiorniFerie = 25m
+        });
+
+        Assert.True(c.FerieResidue < 0m);
+        Assert.Equal(c.FerieMaturate - 25m, c.FerieResidue);
     }
 }

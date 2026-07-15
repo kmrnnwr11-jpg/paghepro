@@ -4,6 +4,7 @@ using Paghe.Core.Domain;
 using Paghe.Core.Fatturazione;
 using Paghe.Core.Parametri;
 using Paghe.Documenti;
+using UglyToad.PdfPig;
 using Xunit;
 
 namespace Paghe.Tests;
@@ -29,6 +30,86 @@ public class PdfTests
 
         Assert.True(IsPdf(pdf), "Il file generato non inizia con l'header %PDF-.");
         Assert.True(pdf.Length > 1000, "Il PDF è troppo piccolo per essere valido.");
+    }
+
+    [Fact]
+    public void CedolinoPdf_ConPresenzeEAssenze_ProduceUnPdfValido()
+    {
+        var cartellino = new Cartellino
+        {
+            Anno = 2026,
+            Mese = 7,
+            GiorniFerie = 2m,
+            OrePermessi = 4m,
+            OreExFestivita = 2m,
+            GiorniMalattia = 5m,
+            NumeroEventoMalattiaAnno = 2,
+            GiorniInfortunio = 3m,
+            OreAssenzaNonRetribuita = 8m,
+            OreStraordinario = 6m,
+            OreStraordinarioNotturno = 2m,
+            OreStraordinarioFestivo = 2m,
+        };
+        var motore = new MotoreCalcoloCedolino(Seed.Parametri2026(), Seed.CcnlCommercio2026());
+        var cedolino = motore.Calcola(
+            new RapportoLavoro
+            {
+                CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3", Qualifica = Qualifica.Impiegato,
+                Regione = "Lombardia", CodiceCatastaleComune = "F205",
+            },
+            cartellino);
+
+        byte[] pdf = CedolinoPdf.Genera(cedolino, new IntestazioneCedolino
+        {
+            Azienda = "Alfa Srl",
+            Dipendente = "Rossi Mario",
+            CodiceFiscaleDipendente = "RSSMRA80A01F205X",
+            Ccnl = "CCNL Commercio e Terziario",
+            Livello = "3",
+            Qualifica = "Impiegato",
+        }, cartellino);
+
+        Assert.True(IsPdf(pdf));
+        Assert.True(pdf.Length > 3_000, "Il riepilogo completo non risulta nel documento PDF.");
+
+        string testo = EstrattoreTestoPdf.EstraiTesto(pdf);
+        Assert.Contains("MESE DI RETRIBUZIONE", testo);
+        Assert.Contains("INQUADRAMENTO E DATI CONTRATTUALI", testo);
+        Assert.Contains("FERIE (GIORNI)", testo);
+        Assert.Contains("MALATTIA", testo);
+        Assert.Contains("DATI FISCALI DEL MESE", testo);
+        Assert.Contains("NETTO IN BUSTA", testo);
+        Assert.Contains("BOZZA DA VALIDARE", testo);
+
+        using var documento = PdfDocument.Open(pdf);
+        Assert.Single(documento.GetPages());
+    }
+
+    [Fact]
+    public void CedolinoPdf_ConLogoAziendale_ProduceUnPdfValido()
+    {
+        // PNG 1x1 valido: basta per verificare che la testata accetti e renda il logo.
+        byte[] logoPng = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+
+        var motore = new MotoreCalcoloCedolino(Seed.Parametri2026(), Seed.CcnlCommercio2026());
+        var cedolino = motore.Calcola(
+            new RapportoLavoro
+            {
+                CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3", Qualifica = Qualifica.Impiegato,
+                Regione = "Lombardia", CodiceCatastaleComune = "F205",
+            },
+            new Cartellino { Anno = 2026, Mese = 6 });
+
+        byte[] pdf = CedolinoPdf.Genera(cedolino, new IntestazioneCedolino
+        {
+            Azienda = "Alfa Srl",
+            Logo = logoPng,
+            Dipendente = "Rossi Mario",
+        });
+
+        Assert.True(IsPdf(pdf));
+        Assert.Contains("ALFA SRL", EstrattoreTestoPdf.EstraiTesto(pdf));
     }
 
     [Fact]

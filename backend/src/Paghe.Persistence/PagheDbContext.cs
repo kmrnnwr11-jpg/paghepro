@@ -69,6 +69,7 @@ public class PagheDbContext : DbContext
 
     // Archivio persone fisiche (rappresentanti, soci): riusate per compilare i moduli ufficiali
     public DbSet<PersonaEntity> Persone => Set<PersonaEntity>();
+    public DbSet<ConsumoAiEntity> ConsumiAi => Set<ConsumoAiEntity>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -540,6 +541,20 @@ public class PagheDbContext : DbContext
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_Persone_TenantId_CodiceFiscale"
                 ON "Persone" ("TenantId", "CodiceFiscale");
             """);
+
+        // Contatore mensile delle chiamate AI per tenant ("AI inclusa nel canone").
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "ConsumiAi" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ConsumiAi" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "Anno" INTEGER NOT NULL,
+                "Mese" INTEGER NOT NULL,
+                "Chiamate" INTEGER NOT NULL,
+                "AggiornatoIl" TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_ConsumiAi_TenantId_Anno_Mese"
+                ON "ConsumiAi" ("TenantId", "Anno", "Mese");
+            """);
     }
 
     /// <summary>
@@ -916,6 +931,13 @@ public class PagheDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.CodiceFiscale }).IsUnique();
+        });
+
+        // --- Contatore mensile chiamate AI per tenant (AI inclusa nel canone) ---
+        mb.Entity<ConsumoAiEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.Anno, x.Mese }).IsUnique();
         });
     }
 }

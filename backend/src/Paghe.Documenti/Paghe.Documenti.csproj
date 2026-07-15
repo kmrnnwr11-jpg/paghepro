@@ -16,6 +16,8 @@
     <EmbeddedResource Include="Schemi\xmldsig-core-schema.xsd" />
     <!-- Modello ufficiale AA7/10 (Agenzia delle Entrate 2025): compilato da Aa710PdfUfficiale. -->
     <EmbeddedResource Include="Modelli\AA7_10_modello_2025.pdf" />
+    <!-- Modello ufficiale CU sintetico (Agenzia delle Entrate 2026): compilato da CuPdfUfficiale. -->
+    <EmbeddedResource Include="Modelli\CU_sintetico_2026.pdf" />
   </ItemGroup>
 
   <PropertyGroup>

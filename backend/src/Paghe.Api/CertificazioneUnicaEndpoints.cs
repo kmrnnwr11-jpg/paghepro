@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Paghe.Documenti;
 using Paghe.Persistence;
 
 namespace Paghe.Api;
@@ -21,6 +22,30 @@ public static class CertificazioneUnicaEndpoints
             return bozza is null
                 ? Results.NotFound(new { errore = "Rapporto non trovato per il tenant indicato." })
                 : Results.Ok(bozza);
+        }).RequireAuthorization();
+
+        // PDF della CU sul modello ufficiale AdE (sintetico): anagrafiche, parte B fiscale,
+        // previdenza INPS e annotazioni compilate dai cedolini archiviati dell'anno.
+        app.MapGet("/api/rapporti/{rapportoId:guid}/cu/{anno:int}/pdf", async (
+            Guid rapportoId, int anno, ClaimsPrincipal user, CertificazioneUnicaService svc) =>
+        {
+            try
+            {
+                var cu = await svc.CostruisciModelloAsync(Tenant(user), rapportoId, anno);
+                if (cu is null)
+                    return Results.NotFound(new { errore = "Rapporto non trovato per il tenant indicato." });
+                var errori = cu.Valida();
+                if (errori.Count > 0)
+                    return Results.BadRequest(new { errori });
+                byte[] pdf = CuPdfUfficiale.Compila(cu);
+                string cognome = string.Concat(cu.Percipiente.Cognome.Split(Path.GetInvalidFileNameChars()))
+                    .Replace(' ', '-');
+                return Results.File(pdf, "application/pdf", $"CU-{anno}-{cognome}.pdf");
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { errore = ex.Message });
+            }
         }).RequireAuthorization();
 
         // Tutte le CU dei dipendenti di un'azienda per l'anno.

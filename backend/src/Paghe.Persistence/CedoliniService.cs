@@ -15,19 +15,64 @@ public sealed class CedoliniService
 {
     private readonly PagheDbContext _db;
     private readonly ParametriNormativiService _parametri;
+    private readonly TimeProvider _clock;
 
-    public CedoliniService(PagheDbContext db, ParametriNormativiService parametri)
+    public CedoliniService(PagheDbContext db, ParametriNormativiService parametri, TimeProvider? clock = null)
     {
         _db = db;
         _parametri = parametri;
+        _clock = clock ?? TimeProvider.System;
     }
 
+    /// <param name="forzaRicalcolo">true = l'utente ha confermato il ricalcolo di un mese con
+    /// F24 già inviato (correzione di un errore); le altre regole restano attive.</param>
     public async Task<CedolinoEntity> CalcolaEArchiviaAsync(
-        Guid tenantId, Guid rapportoId, Cartellino cartellino, CancellationToken ct = default)
+        Guid tenantId, Guid rapportoId, Cartellino cartellino, CancellationToken ct = default,
+        bool forzaRicalcolo = false)
     {
+        ValidaCartellino(cartellino);
+        BloccaPeriodiFuturi(cartellino);
+
         var rapporto = await _db.Rapporti
             .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct)
             ?? throw new ArgumentException("Rapporto di lavoro non trovato per il tenant indicato.");
+
+        // Regola: niente busta paga per mesi interamente precedenti all'assunzione.
+        if (rapporto.DataAssunzione != default)
+        {
+            var fineMese = new DateOnly(cartellino.Anno, cartellino.Mese,
+                DateTime.DaysInMonth(cartellino.Anno, cartellino.Mese));
+            if (fineMese < rapporto.DataAssunzione)
+                throw new ArgumentException(
+                    $"Il periodo {cartellino.Mese:00}/{cartellino.Anno} precede la data di assunzione "
+                    + $"({rapporto.DataAssunzione:dd/MM/yyyy}): busta paga non elaborabile.");
+        }
+
+        // Regola: niente busta paga per mesi interamente successivi alla cessazione del rapporto.
+        if (rapporto.DataCessazione is { } cessazione
+            && new DateOnly(cartellino.Anno, cartellino.Mese, 1) > cessazione)
+            throw new ArgumentException(
+                $"Il periodo {cartellino.Mese:00}/{cartellino.Anno} è successivo alla cessazione "
+                + $"del rapporto ({cessazione:dd/MM/yyyy}): busta paga non elaborabile.");
+
+        // Regola: un mese il cui F24 risulta già inviato o quietanzato non si ricalcola —
+        // cambierebbe ritenute e contributi già versati. Se il commercialista deve correggere
+        // un errore può forzare il ricalcolo (conferma esplicita); l'F24 andrà rigenerato.
+        // Le pratiche in bozza/generata/pronta non bloccano; una Scartata nemmeno.
+        if (!forzaRicalcolo)
+        {
+            bool f24Versato = await _db.PraticheF24.AnyAsync(p =>
+                p.TenantId == tenantId && p.AziendaId == rapporto.AziendaId
+                && p.Anno == cartellino.Anno && p.Mese == cartellino.Mese
+                && (p.Stato == nameof(StatoPraticaTelematica.InviataManualmente)
+                    || p.Stato == nameof(StatoPraticaTelematica.RicevutaAcquisita)), ct);
+            if (f24Versato)
+                throw new ArgumentException(
+                    $"Il periodo {cartellino.Mese:00}/{cartellino.Anno} ha un F24 già inviato o "
+                    + "quietanzato: ricalcolare la busta paga cambierebbe importi già versati. "
+                    + "Se devi correggere un errore, conferma il ricalcolo forzato: "
+                    + "l'F24 del mese andrà poi rigenerato.");
+        }
 
         var dominio = ToDominio(rapporto);
         var parametri = await _parametri.CaricaParametriAsync(cartellino.Anno, ct);
@@ -267,6 +312,7 @@ public sealed class CedoliniService
         var intestazione = new IntestazioneCedolino
         {
             Azienda = string.IsNullOrWhiteSpace(azienda?.RagioneSociale) ? "Azienda" : azienda!.RagioneSociale,
+            Logo = azienda?.Logo,
             AziendaIndirizzo = azienda?.Indirizzo,
             AziendaComune = string.IsNullOrWhiteSpace(comuneRiga) ? null : comuneRiga.Trim(),
             PartitaIva = azienda?.PartitaIva,
@@ -276,19 +322,68 @@ public sealed class CedoliniService
             Dipendente = dipendenteNome,
             CodiceFiscaleDipendente = dipendente?.CodiceFiscale,
             Matricola = rapporto.Matricola,
+            IbanDipendente = dipendente?.Iban,
             DataAssunzione = rapporto.DataAssunzione == default
                 ? null
                 : rapporto.DataAssunzione.ToString("dd/MM/yyyy"),
             Qualifica = rapporto.Qualifica,
             Livello = rapporto.Livello,
             Ccnl = ccnl.Descrizione,
+            TipoContratto = rapporto.TipoContratto,
             Mensilita = rapporto.NumeroMensilita,
             Orario = rapporto.PartTime
                 ? $"Part-time {rapporto.PercentualePartTime:0.#}%"
                 : $"{rapporto.OreSettimanali:0.#} ore/sett.",
         };
 
-        return new CedolinoPerPdf(cedolino, intestazione);
+        return new CedolinoPerPdf(cedolino, intestazione, ToDominio(cartellino));
+    }
+
+    /// <summary>
+    /// Regola di chiusura periodi: la busta paga si elabora al massimo per il mese corrente.
+    /// I mesi futuri sono bloccati (il simulatore stateless resta libero: qui si blocca solo
+    /// l'archiviazione, che alimenta F24, CU e 770).
+    /// </summary>
+    private void BloccaPeriodiFuturi(Cartellino c)
+    {
+        var oggi = DateOnly.FromDateTime(_clock.GetLocalNow().DateTime);
+        if (c.Anno > oggi.Year || (c.Anno == oggi.Year && c.Mese > oggi.Month))
+            throw new ArgumentException(
+                $"Il periodo {c.Mese:00}/{c.Anno} è nel futuro: la busta paga si può elaborare "
+                + $"al massimo per il mese corrente ({oggi.Month:00}/{oggi.Year}).");
+    }
+
+    private static void ValidaCartellino(Cartellino c)
+    {
+        if (c.Anno is < 2000 or > 2100)
+            throw new ArgumentException("L'anno del cartellino deve essere compreso tra 2000 e 2100.");
+        if (c.Mese is < 1 or > 12)
+            throw new ArgumentException("Il mese del cartellino deve essere compreso tra 1 e 12.");
+
+        var quantita = new (string Nome, decimal Valore)[]
+        {
+            ("ore di straordinario", c.OreStraordinario),
+            ("ore di straordinario notturno", c.OreStraordinarioNotturno),
+            ("ore di straordinario festivo", c.OreStraordinarioFestivo),
+            ("giorni di ferie", c.GiorniFerie),
+            ("ore di permesso", c.OrePermessi),
+            ("ore di ex-festivita", c.OreExFestivita),
+            ("giorni di malattia", c.GiorniMalattia),
+            ("giorni di infortunio", c.GiorniInfortunio),
+            ("ore di assenza non retribuita", c.OreAssenzaNonRetribuita),
+        };
+        var negativa = quantita.FirstOrDefault(x => x.Valore < 0m);
+        if (negativa.Valore < 0m)
+            throw new ArgumentException($"Il valore '{negativa.Nome}' non puo essere negativo.");
+
+        int giorniMese = DateTime.DaysInMonth(c.Anno, c.Mese);
+        decimal giorniConCausale = c.GiorniFerie + c.GiorniMalattia + c.GiorniInfortunio;
+        if (giorniConCausale > giorniMese)
+            throw new ArgumentException(
+                $"Ferie, malattia e infortunio totalizzano {giorniConCausale:0.##} giorni, "
+                + $"ma il mese ne contiene {giorniMese}.");
+        if (c.GiorniMalattia > 0m && c.NumeroEventoMalattiaAnno < 1)
+            throw new ArgumentException("Indicare il numero progressivo dell'evento di malattia nell'anno.");
     }
 
     private async Task RimuoviEsistenti(Guid tenantId, Guid rapportoId, int anno, int mese, CancellationToken ct)
@@ -341,7 +436,10 @@ public sealed class CedoliniService
 }
 
 /// <summary>Cedolino ricalcolato e pronto per il PDF, con l'anagrafica già risolta.</summary>
-public sealed record CedolinoPerPdf(Cedolino Cedolino, IntestazioneCedolino Intestazione);
+public sealed record CedolinoPerPdf(
+    Cedolino Cedolino,
+    IntestazioneCedolino Intestazione,
+    Cartellino Cartellino);
 
 /// <summary>Esito della rivalutazione annua del fondo TFR di un rapporto.</summary>
 public sealed record RivalutazioneTfrAnnuale(

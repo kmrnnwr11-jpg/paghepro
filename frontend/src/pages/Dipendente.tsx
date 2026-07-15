@@ -64,6 +64,7 @@ export function Dipendente({ rapportoId, onPayslip }: { rapportoId: string | nul
     ["Superminimo", `${euro(d.superminimo)} €`],
     ["Regione", d.regione || "—"],
     ["Data assunzione", d.dataAssunzione],
+    ["Data cessazione", d.dataCessazione ?? "In forza"],
   ];
 
   return (
@@ -185,6 +186,7 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
     percentualePartTime: String(d.partTime ? d.percentualePartTime : 100),
     scattiAnzianita: String(d.scattiAnzianita), superminimo: String(d.superminimo),
     dataAssunzione: dataIso(d.dataAssunzione),
+    dataCessazione: d.dataCessazione ? dataIso(d.dataCessazione) : "",
   });
   const [errore, setErrore] = useState<string | null>(null);
   const [attesa, setAttesa] = useState(false);
@@ -207,6 +209,8 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
         scattiAnzianita: Number(f.scattiAnzianita) || 0,
         superminimo: Number(f.superminimo) || 0,
         dataAssunzione: f.dataAssunzione || undefined,
+        dataCessazione: f.dataCessazione || undefined,
+        rimuoviDataCessazione: f.dataCessazione ? undefined : true,
       });
       const aggiornato = await api.rapportoDettaglio(d.rapportoId);
       onFatto(aggiornato);
@@ -246,6 +250,8 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
         <label><span>Scatti anzianità</span><input type="number" min={0} value={f.scattiAnzianita} onChange={set("scattiAnzianita")} /></label>
         <label><span>Superminimo €</span><input type="number" min={0} step="0.01" value={f.superminimo} onChange={set("superminimo")} /></label>
         <label><span>Data assunzione</span><input type="date" value={f.dataAssunzione} onChange={set("dataAssunzione")} /></label>
+        <label><span>Data cessazione <small>(vuoto = ancora in forza)</small></span>
+          <input type="date" value={f.dataCessazione} onChange={set("dataCessazione")} /></label>
       </div>
       {errore && <span className="errore">{errore}</span>}
       <div className="actions-row">

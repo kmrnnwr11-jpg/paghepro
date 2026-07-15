@@ -19,15 +19,43 @@ public sealed class AnagraficheLavoroService
             .FirstOrDefaultAsync(a => a.Id == aziendaId && a.TenantId == tenantId, ct)
             ?? throw new ArgumentException("Azienda non trovata per il tenant indicato.");
 
-        dipendente.Id = dipendente.Id == Guid.Empty ? Guid.NewGuid() : dipendente.Id;
-        dipendente.TenantId = tenantId;
+        // Regola anti-doppione: lo stesso codice fiscale non può risultare assunto due volte
+        // nella stessa azienda (un doppio rapporto produrrebbe una doppia busta paga per sbaglio).
+        // Se la persona esiste già nell'archivio (stesso CF nel tenant) si riusa la sua
+        // anagrafica e si crea solo il nuovo rapporto: può lavorare per due clienti dello
+        // studio, e ogni busta paga nasce dal rapporto della propria azienda di assunzione.
+        string cf = dipendente.CodiceFiscale?.Trim().ToUpperInvariant() ?? "";
+        dipendente.CodiceFiscale = cf;
+        var anagrafica = dipendente;
+        if (cf.Length > 0)
+        {
+            var esistente = await _db.Dipendenti
+                .FirstOrDefaultAsync(d => d.TenantId == tenantId && d.CodiceFiscale == cf, ct);
+            if (esistente is not null)
+            {
+                bool giaAssuntoQui = await _db.Rapporti.AnyAsync(r =>
+                    r.TenantId == tenantId && r.AziendaId == aziendaId
+                    && r.DipendenteId == esistente.Id, ct);
+                if (giaAssuntoQui)
+                    throw new ArgumentException(
+                        $"Il codice fiscale {cf} risulta già assunto in «{azienda.RagioneSociale}»: "
+                        + "non creo un doppione. Per correggere il rapporto esistente usare la scheda dipendente.");
+                anagrafica = esistente;
+            }
+        }
+
+        if (anagrafica == dipendente)
+        {
+            anagrafica.Id = anagrafica.Id == Guid.Empty ? Guid.NewGuid() : anagrafica.Id;
+            anagrafica.TenantId = tenantId;
+            _db.Dipendenti.Add(anagrafica);
+        }
 
         rapporto.Id = Guid.NewGuid();
         rapporto.TenantId = tenantId;
         rapporto.AziendaId = aziendaId;
-        rapporto.DipendenteId = dipendente.Id;
+        rapporto.DipendenteId = anagrafica.Id;
 
-        _db.Dipendenti.Add(dipendente);
         _db.Rapporti.Add(rapporto);
         await _db.SaveChangesAsync(ct);
         return rapporto;
@@ -51,7 +79,8 @@ public sealed class AnagraficheLavoroService
         int? NumeroMensilita = null, bool? PartTime = null, decimal? PercentualePartTime = null,
         int? ScattiAnzianita = null, decimal? Superminimo = null,
         string? Regione = null, string? CodiceCatastaleComune = null, DateOnly? DataAssunzione = null,
-        decimal? FondoTfrIniziale = null);
+        decimal? FondoTfrIniziale = null,
+        DateOnly? DataCessazione = null, bool? RimuoviDataCessazione = null);
 
     /// <summary>
     /// Corregge i dati di un dipendente/rapporto (isolato per tenant). Pensato per rivedere ciò che
@@ -85,6 +114,13 @@ public sealed class AnagraficheLavoroService
         if (c.CodiceCatastaleComune is not null) r.CodiceCatastaleComune = c.CodiceCatastaleComune.Trim().ToUpperInvariant();
         if (c.DataAssunzione is { } da) r.DataAssunzione = da;
         if (c.FondoTfrIniziale is { } ft) r.FondoTfrIniziale = ft;
+        if (c.RimuoviDataCessazione == true) r.DataCessazione = null;
+        else if (c.DataCessazione is { } dc) r.DataCessazione = dc;
+
+        if (r.DataCessazione is { } cessazione && r.DataAssunzione != default && cessazione < r.DataAssunzione)
+            throw new ArgumentException(
+                $"La data di cessazione ({cessazione:dd/MM/yyyy}) non può precedere "
+                + $"l'assunzione ({r.DataAssunzione:dd/MM/yyyy}).");
 
         await _db.SaveChangesAsync(ct);
         return r;

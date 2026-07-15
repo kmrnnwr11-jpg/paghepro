@@ -40,7 +40,7 @@ dotnet run --project src/Paghe.Demo -c Release
 ## Fatto
 
 - **Logica Completa Onboarding Azienda & Anagrafica Contributiva/Fiscale (Multi-Tenant)**: Estesa e completata la logica di aggiunta e correzione anagrafica aziendale sia nel backend (`AziendaEntity.cs`, `Dtos.cs`, `Program.cs`, `AziendeService`) sia nel frontend (`api.ts`, `Aziende.tsx`). Supporta ora tutti i dati normativi, fiscali, bancari e contributivi previsti dagli standard nazionali e internazionali (P.IVA, Codice Fiscale, PEC, Codice Destinatario SdI, Codice Catastale Comune per addizionali IRPEF, CSC INPS 5 cifre, P.A.T. INAIL 8 cifre/cc, Matricola INPS, Codice Sede INPS, CCNL e Livello di default, IBAN aziendale per SEPA/F24, dati del Legale Rappresentante). Verifica duplicati P.IVA/CF isolata per tenant. Test unitari e di integrazione aggiornati in `AziendaCreazioneTests.cs` (416 test verdi).
-- **Redesign UI Skeuomorfico "Scrivania del Consulente"**: riprogettazione completa dell'estetica del frontend (`frontend/src/index.css`) sostituendo il glassmorphism con materiali fisici: scrivania in tessuto caldo con grana SVG e vignettatura, pannelli/card in carta opaca (`--panel #fcf8ef` + `--grana`), bottoni 3D in rilievo con pressione fisica su `:active` (token `--rilievo`/`--bottone`), campi incassati come incisioni (`--incavo`), tab a linguetta da classificatore, tabelle-registro con righe a penna, pill/etichette timbrate, kbd a keycap, busta paga e foglio fiscale come veri fogli di carta (righe + margine rosso), inchiostro seppia caldo (`#2e2618`). Zero `backdrop-filter`; PWA `theme_color #f2eada`.
+- **Redesign UI ibrido skeuomorfismo + glass**: il frontend usa superfici in vetro satinato ad alto contrasto con fallback opaco, su un piano neutro freddo/caldo; bottoni in rilievo, campi incassati, tab fisiche e risposta alla pressione mantengono la componente skeuomorfica. Navigazione, barra mobile, comandi rapidi e KPI usano icone Lucide coerenti al posto delle emoji. Il sistema resta responsive e accessibile (`prefers-reduced-motion`, focus visibile).
 - Swagger/OpenAPI attivo: UI su `/swagger`, spec su `/swagger/v1/swagger.json`.
 - Validazione FatturaPA contro XSD ufficiale (Schema_VFPR12 1.2.3) in `FatturaPaValidator`,
   XSD incorporati come risorse, validazione offline.
@@ -50,6 +50,12 @@ dotnet run --project src/Paghe.Demo -c Release
   per anno**, caricati da `ParametriNormativiService`. `Seed.cs` serve solo a inizializzare il DB.
 - Persistenza del lavoro: **dipendenti, rapporti, cartellini e cedolini archiviati** su DB
   (`AnagraficheLavoroService`, `CedoliniService`). Il calcolo di un cedolino lo archivia e si rilegge.
+- **Dataset demo ripetibile e tenant-isolato**: gli account `@paghe.local` vuoti possono creare
+  automaticamente 5 aziende di settori/CCNL diversi e un dipendente per azienda tramite
+  `POST /api/demo/dataset` (`DemoDatasetService`). Le pagine Aziende e Dipendenti lo richiamano
+  quando l'archivio demo è vuoto; Dipendenti apre su “Tutte le aziende” e mostra i 5 lavoratori
+  con il relativo datore. La navigazione SPA rispetta l'hash (es. `#dipendenti`) e i pulsanti
+  avanti/indietro, quindi i link aprono davvero la sezione richiesta.
 - **Autenticazione JWT**: `POST /api/auth/registra` e `/api/auth/login` emettono un token; gli
   endpoint dati sono nel gruppo `secured` (`RequireAuthorization`). Il tenant deriva dal claim
   `tenant_id` del token (helper `TenantCorrente(ClaimsPrincipal)`), non più da un header.
@@ -156,16 +162,24 @@ dotnet run --project src/Paghe.Demo -c Release
   + data). UI: pagina **Firma digitale** nella SPA (anteprima documento, scelta formato/dispositivo,
   risultato firmato verificato e scaricabile). Config sezione `Firma`. La firma CNS richiede il
   middleware PKCS#11 + carta sulla macchina che firma (desktop/agente locale, non backend cloud).
-- **Cedolino mensile completo + busta paga professionale**: la pagina **Cedolini** della SPA
-  raccoglie tutte le variabili del mese (straordinari normale/notturno/festivo, ferie, permessi
-  ROL/ex-festività, malattia con n° evento nell'anno, infortunio INAIL, assenze non retribuite)
-  e le passa al motore già esistente via `POST /api/rapporti/{id}/cedolini`. Il PDF
-  (`CedolinoPdf`) è ridisegnato con il layout classico della busta paga italiana: testata ditta
+- **Primo blocco cedolino professionale (ancora bozza)**: la pagina **Presenze** della SPA e
+  l'unico editor delle variabili mensili (straordinari normale/notturno/festivo, ferie,
+  permessi ROL/ex-festività, malattia con n° evento nell'anno, infortunio INAIL, assenze non
+  retribuite). Il cruscotto Presenze rilegge l'intero cartellino, richiede conferma esplicita e il
+  backend blocca quantità negative o giornate incompatibili col mese. Malattia e infortunio
+  stornano la paga ordinaria prima delle indennità, evitando il precedente doppio pagamento. Il
+  PDF (`CedolinoPdf`) usa un modulo tabellare classico A4, verificato visivamente contro due
+  cedolini reali di mesi diversi; la pagina **Cedolini** e
+  solo archivio/download per evitare ricalcoli concorrenti che azzerino le causali. Il PDF ha testata ditta
   con P.IVA e matricola INPS/P.A.T. INAIL, riquadro inquadramento dipendente (CF, qualifica,
-  livello, CCNL, mensilità, orario), corpo voci con colonne competenze/trattenute, dati
-  previdenziali e fiscali, saldi ferie/ROL, TFR e costo azienda, netto del mese in evidenza.
+  livello, CCNL, tipo contratto, mensilità, orario e IBAN), corpo voci con colonne
+  quantità/base/competenze/trattenute e griglia estesa fino ai riepiloghi, dati
+  previdenziali e fiscali, riepilogo causali, saldi ferie/ROL, TFR e costo azienda, netto.
   L'anagrafica arriva da `IntestazioneCedolino` (Paghe.Core/Domain) costruita in
-  `CedoliniService.RicalcolaPerPdfAsync`.
+  `CedoliniService.RicalcolaPerPdfAsync`. Resta **BOZZA DA VALIDARE**: mancano calendario
+  giornaliero, regole CCNL tutte versionate, saldi storici, codice unico CNEL 2026, snapshot
+  immutabile e validazione del Consulente del Lavoro. Vedi
+  `docs/RICERCA-CEDOLINO-PROFESSIONALE-2026.md`.
 - **Allineamento schema automatico** (`PagheDbContext.AllineaColonneMancanti`, chiamato in
   `Program.cs` all'avvio): aggiunge le colonne del modello EF mancanti nel database — SQLite e
   PostgreSQL/Supabase — come rete di sicurezza per gli schemi creati con `EnsureCreated` ed
@@ -190,6 +204,79 @@ dotnet run --project src/Paghe.Demo -c Release
   `~/ade-official-integration-kit/agenzia-entrate-partita-iva/` (JAR controllo
   `Ctrl_AA7_AA9_AT6VA.jar` non ancora integrato: serve per il file telematico, non per il PDF).
 
+- **Logo aziendale sulla busta paga**: ogni azienda può caricare un logo facoltativo (PNG/JPEG,
+  max 1 MB, riconoscimento dal contenuto) con `POST/GET/DELETE /api/aziende/{id}/logo`
+  (`AziendaEntity.Logo`, escluso dal JSON). Il PDF del cedolino lo mostra in testata a sinistra
+  del blocco datore (`IntestazioneCedolino.Logo`, reso da `CedolinoPdf.Testata`). UI: pannello
+  carica/sostituisci/rimuovi con anteprima nella scheda «Correggi azienda» della pagina Aziende.
+- **Certificazione Unica sul modello ufficiale AdE**: oltre alla bozza JSON/CSV
+  (`CuBozza`), `CertificazioneUnicaService.CostruisciModelloAsync` costruisce la CU completa di
+  un rapporto/anno dai cedolini archiviati (anagrafiche sostituto/percipiente con sesso-nascita
+  decodificati dal codice fiscale via `AnagraficaCodiceFiscale` — omocodia gestita — e comune da
+  `ComuniCatastali` sul CSV MEF; parte B fiscale con totali annui ricalcolati con gli scaglioni
+  dell'anno; sezione previdenziale INPS; annotazioni con quota TFR e conguaglio).
+  `CuPdfUfficiale` (Paghe.Documenti) scrive i dati **sul PDF ufficiale CU sintetico 2026
+  incorporato come risorsa** (overlay Courier calibrato e verificato visivamente pagina per
+  pagina: anagrafica, dati fiscali punti 1/6/8/10/21/22/27/361/367/374/375, previdenza INPS con
+  mesi UniEmens, annotazioni con a-capo automatico). L'overlay condiviso con l'AA7/10 è in
+  `OverlayModuloUfficiale`. Endpoint `GET /api/rapporti/{id}/cu/{anno}/pdf`; UI: blocco
+  «Certificazione Unica» nella pagina Cedolini (scelta anno + download). NOTE: il modello 2026
+  certifica i redditi 2025 — per anni successivi la stampa è una bozza in attesa del modello
+  definitivo; resta BOZZA DA VALIDARE (annotazione nel PDF) e manca il file telematico
+  (specifiche + `ModuliControlloCUR26.jar` nel kit). Esempi renderizzati in `output/pdf/`.
+
+- **Regole anti-errore paghe** (chieste dal fondatore per proteggere il commercialista).
+  Prima: *niente buste paga di mesi futuri* — `CedoliniService.BloccaPeriodiFuturi` blocca
+  l'archiviazione oltre il mese corrente (orologio `TimeProvider` iniettabile: i test che
+  caricano l'anno intero usano `OrologioFisso`; il simulatore stateless resta libero); la
+  pagina Presenze disabilita i mesi futuri nel selettore. Seconda: *niente busta prima
+  dell'assunzione* — il periodo che precede `DataAssunzione` è rifiutato con messaggio chiaro.
+  Terza: *anti-doppione dipendente* — `CreaDipendenteERapportoAsync` normalizza il CF e: stesso
+  CF già assunto nella STESSA azienda → errore (eviterebbe doppia busta); stesso CF in un'ALTRA
+  azienda del tenant → riusa l'anagrafica esistente e crea solo il nuovo rapporto (il vincolo
+  unico (TenantId, CodiceFiscale) su Dipendenti resta rispettato). La busta paga non può
+  finire sull'azienda sbagliata per costruzione: nasce dal rapporto, che è legato all'azienda
+  di assunzione. Test in `BloccoPeriodiFuturiTests`; verificato anche dal vivo (400 + messaggio).
+- **Regole anti-errore paghe, secondo blocco**: 4) *cessazione rapporto* —
+  `RapportoLavoroEntity.DataCessazione` (nullable; PATCH rapporto con `dataCessazione` /
+  `rimuoviDataCessazione`, validata ≥ assunzione, campo in scheda dipendente UI): i mesi
+  interamente successivi alla cessazione sono bloccati; la CU compila la data cessazione
+  (punto 9) e barra «In forza al 31/12» solo se il rapporto non è cessato nell'anno.
+  5) *mesi con F24 inviato protetti* — se il periodo ha una pratica F24 in stato
+  `InviataManualmente`/`RicevutaAcquisita`, il ricalcolo del cedolino è rifiutato; il
+  commercialista può correggere un errore col **ricalcolo forzato** (`?forza=true`, in UI
+  Presenze un confirm + promemoria di rigenerare l'F24). 6) *avviso ferie/permessi negativi* —
+  il motore non azzera più i residui sotto zero (ferie anticipate = informazione vera, anche sul
+  PDF); la risposta dell'archiviazione espone `ferieResidue`/`permessiResidui` e la pagina
+  Presenze mostra un avviso non bloccante. Test in `BloccoPeriodiFuturiTests` +
+  `MotoreCalcoloCedolinoTests`; verificato dal vivo (catena stati F24 completa).
+
+- **Livello AI di lettura documenti (AI-first, multi-provider)**: seam `IEstrattoreAiDocumenti`
+  in `Paghe.Core/Ai` con default `EstrattoreAiSpento` (zero chiamate esterne — il prodotto è
+  completo anche senza AI). Provider a scelta in sezione config `Ai`: `Claude` (SDK ufficiale
+  Anthropic, structured output con schema JSON), `DeepSeek`/`Glm` (default endpoint/modello
+  precompilati) o `Compatibile` (qualsiasi endpoint OpenAI-compatibile, incluso Ollama locale)
+  via `EstrattoreAiCompatibile` (typed HttpClient, testato con handler finto). Contratto comune
+  `{campi:[{nome,valore,confidenza}]}` interpretato da `PropostaAiJson`. Regole architetturali
+  (le stesse dei piani di finanziamento): l'AI legge e PROPONE soltanto, il parser deterministico
+  vince sempre, l'AI riempie solo i campi vuoti sopra `SogliaConfidenza` (default 0,6), la
+  conferma resta all'utente e i calcoli nel codice. Primo innesto: `/api/aziende/da-visura`
+  (la nota elenca i campi proposti dall'AI); errore del provider ⇒ fallback silenzioso
+  sull'euristica. Piano completo e fasi successive in `docs/PIANO-AI-FIRST.md`.
+  **Modello "AI inclusa nel canone"**: la chiave del provider è centrale (config del server,
+  il cliente non configura nulla); consumi conteggiati per studio/mese (`ConsumiAi` +
+  `ConsumoAiService`, limite `Ai:LimiteMensileChiamate`, default 300, 0 = illimitato per AI
+  locale); oltre il limite si torna alla sola euristica con nota esplicita. Percorso verso
+  l'AI locale senza costi API (Ollama/vLLM su server proprio, provider `Compatibile`):
+  `docs/PIANO-AI-INCLUSA.md`. **Percorso "vista" per le foto** (OCR di nuova generazione):
+  `EstraiDaImmagineAsync`/`VedeImmagini` sul seam — il modello vision legge direttamente
+  l'immagine (layout compreso) invece del giro Tesseract→testo. `Ai:ModelloVisione`
+  (default: GLM → `glm-4v-flash`; Claude vede col modello principale; DeepSeek senza vista;
+  Ollama es. `qwen2.5vl:7b`). Nella visura: foto → vista se disponibile (l'assenza di
+  Tesseract non è più bloccante), PDF testuali → AI sul testo; `PropostaAiJson` tollera le
+  cornici ```json```. Endpoint di servizio: `GET /api/ai/stato` (provider, visione, consumo
+  mese/limite) e `POST /api/ai/prova` (test di configurazione, non conteggiato).
+
 ## Prossimi lavori utili
 
 Piano di completamento dettagliato (gap analysis, priorità, effort, sequenza): vedi
@@ -205,6 +292,11 @@ Piano di completamento dettagliato (gap analysis, priorità, effort, sequenza): 
 
 Integrazione telematica ufficiale (Agenzia Entrate, ComUnica/Registro Imprese, INAIL,
 INPS, SUAP): fonti, kit, modello dati e backlog a fasi in `docs/integrazione-ufficiale/`.
+File telematico AA7/10-AA9/12 (apertura/variazione/cessazione P.IVA): piano completo e
+de-rischiato in `docs/integrazione-ufficiale/PIANO-AA7-AA9-TELEMATICO.md` — tracciato 3503
+char (record A/B/C/D/Z), JAR `Ctrl_AA7_AA9_AT6VA.jar` già provato in locale (entrypoint
+`finanze.anag.main.GestoreControlli`, stessa CLI dell'F24), criterio = esito positivo del
+controllo ufficiale.
 
 ## Linee guida di comportamento (stile Karpathy)
 

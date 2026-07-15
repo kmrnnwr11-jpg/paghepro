@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, type Azienda, type NuovaAzienda } from "../api";
+import { api, type Azienda, type DipendenteRapporto, type NuovaAzienda } from "../api";
 import { ComuneAutocomplete } from "../ComuneAutocomplete";
 import { AZIENDA_CORRENTE_CAMBIATA, leggiAziendaCorrenteId, salvaAziendaCorrenteId } from "../aziendaCorrente";
 
@@ -168,6 +168,7 @@ export function Aziende({
   onAziendeCambiate?: () => void;
 } = {}) {
   const [aziende, setAziende] = useState<Azienda[]>([]);
+  const [dipendentiPerAzienda, setDipendentiPerAzienda] = useState<Record<string, DipendenteRapporto[]>>({});
   const [correnteId, setCorrenteId] = useState<string | null>(() => leggiAziendaCorrenteId());
   const [erroreApi, setErroreApi] = useState<string | null>(null);
   const [form, setForm] = useState<NuovaAzienda>(vuota);
@@ -184,6 +185,8 @@ export function Aziende({
   const [confermaInCorso, setConfermaInCorso] = useState(false);
   const [successoBanner, setSuccessoBanner] = useState<string | null>(null);
   const [idAppenaAggiunta, setIdAppenaAggiunta] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoInCorso, setLogoInCorso] = useState(false);
 
   const refSezioni = useRef<Record<string, HTMLDivElement | null>>({});
   const refForm = useRef<HTMLFormElement | null>(null);
@@ -191,9 +194,22 @@ export function Aziende({
 
   // ---------- carica ----------
   async function carica() {
-    try {
-      const elenco = await api.aziende();
+      try {
+      let elenco = await api.aziende();
+      if (elenco.length === 0) {
+        try {
+          await api.creaDatasetDemo();
+          elenco = await api.aziende();
+        } catch {
+          // Account non demo: lascia il normale archivio vuoto.
+        }
+      }
+      const dipendenti = await Promise.all(elenco.map(async (azienda) => {
+        try { return [azienda.id, await api.dipendenti(azienda.id)] as const; }
+        catch { return [azienda.id, []] as const; }
+      }));
       setAziende(elenco);
+      setDipendentiPerAzienda(Object.fromEntries(dipendenti));
       const corrente = leggiAziendaCorrenteId();
       if (corrente && elenco.some((a) => a.id === corrente)) {
         setCorrenteId(corrente);
@@ -244,6 +260,44 @@ export function Aziende({
     input.type = "file"; input.accept = "application/pdf,.pdf,image/*";
     input.onchange = () => { const f = input.files?.[0]; if (f) void elaboraVisura(f); };
     input.click();
+  }
+
+  // ---------- logo aziendale (compare sulla busta paga) ----------
+  function aggiornaAnteprimaLogo(url: string | null) {
+    setLogoUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+  }
+
+  async function caricaAnteprimaLogo(aziendaId: string) {
+    aggiornaAnteprimaLogo(await api.logoAzienda(aziendaId));
+  }
+
+  function apriSelettoreLogo() {
+    if (!inModificaId || logoInCorso) return;
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "image/png,image/jpeg";
+    input.onchange = async () => {
+      const f = input.files?.[0];
+      if (!f || !inModificaId) return;
+      setLogoInCorso(true); setErroreApi(null);
+      try {
+        await api.caricaLogoAzienda(inModificaId, f);
+        await caricaAnteprimaLogo(inModificaId);
+        mostraSuccesso("Logo salvato: comparirà in testata della busta paga.");
+      } catch (err) { setErroreApi(err instanceof Error ? err.message : "Caricamento logo non riuscito."); }
+      finally { setLogoInCorso(false); }
+    };
+    input.click();
+  }
+
+  async function rimuoviLogo() {
+    if (!inModificaId || logoInCorso) return;
+    setLogoInCorso(true); setErroreApi(null);
+    try {
+      await api.rimuoviLogoAzienda(inModificaId);
+      aggiornaAnteprimaLogo(null);
+      mostraSuccesso("Logo rimosso.");
+    } catch (err) { setErroreApi(err instanceof Error ? err.message : "Rimozione logo non riuscita."); }
+    finally { setLogoInCorso(false); }
   }
 
   // ---------- selezione bulk ----------
@@ -319,6 +373,7 @@ export function Aziende({
   function iniziaModifica(a: Azienda) {
     setErroreApi(null); setNotaVisura(null); setTentato(false); setErrori({});
     setInModificaId(a.id);
+    void caricaAnteprimaLogo(a.id);
     salvaAziendaCorrenteId(a.id);
     setCorrenteId(a.id);
     setForm({
@@ -345,6 +400,7 @@ export function Aziende({
 
   function annullaModifica() {
     setInModificaId(null); setForm(vuota); setErrori({}); setTentato(false);
+    aggiornaAnteprimaLogo(null);
   }
 
   async function salvaCorrezione() {
@@ -398,7 +454,7 @@ export function Aziende({
           <h2>Archivio aziende</h2>
           <p>Anagrafiche clienti disponibili per elaborazione paghe e documenti fiscali</p>
         </div>
-        <span className="count blue">{aziende.length}</span>
+        <span className="count blue">{aziende.length} aziende · {Object.values(dipendentiPerAzienda).reduce((totale, elenco) => totale + elenco.length, 0)} dipendenti</span>
       </div>
 
       {/* banner successo */}
@@ -432,6 +488,7 @@ export function Aziende({
           <div className="company-list">
             {aziende.map((a) => {
               const selezionata = correnteId === a.id;
+              const dipendenti = dipendentiPerAzienda[a.id] ?? [];
               const dettagli = [
                 a.partitaIva ? `P.IVA ${a.partitaIva}` : null,
                 a.settore ? labelSettore(a.settore) : null,
@@ -456,6 +513,11 @@ export function Aziende({
                     <span className="company-row-copy">
                       <strong>{a.ragioneSociale}</strong>
                       <small>{dettagli}</small>
+                      <small style={{ color: "var(--blue)", fontWeight: 700 }}>
+                        {dipendenti.length === 0
+                          ? "Nessun dipendente collegato"
+                          : `${dipendenti.length} dipendent${dipendenti.length === 1 ? "e" : "i"}: ${dipendenti.map(d => d.nominativo || "Senza nome").join(", ")}`}
+                      </small>
                     </span>
                   </button>
 
@@ -492,6 +554,39 @@ export function Aziende({
           : "Compila le sezioni qui sotto, scorri verso il basso e premi «Aggiungi azienda»."
         }
       </p>
+
+      {/* logo aziendale: solo per aziende già salvate, compare sulla busta paga */}
+      {inModificaId && (
+        <div style={{ marginBottom: 18, padding: 14, borderRadius: 10,
+          background: "var(--panel-strong)", border: "1px solid var(--line)",
+          display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          {logoUrl ? (
+            <img src={logoUrl} alt="Logo aziendale"
+              style={{ width: 64, height: 64, objectFit: "contain", borderRadius: 8,
+                background: "#fff", border: "1px solid var(--line)", padding: 4 }} />
+          ) : (
+            <span style={{ width: 64, height: 64, borderRadius: 8, display: "flex",
+              alignItems: "center", justifyContent: "center", fontSize: 24,
+              background: "var(--panel)", border: "1px dashed var(--line)" }}>🏷️</span>
+          )}
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <strong style={{ fontSize: 14 }}>Logo aziendale (facoltativo)</strong>
+            <p style={{ margin: "2px 0 0", fontSize: 12, opacity: 0.7 }}>
+              Compare in testata della busta paga. PNG o JPEG, massimo 1 MB.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn secondary" type="button" disabled={logoInCorso} onClick={apriSelettoreLogo}>
+              {logoInCorso ? "Attendere…" : logoUrl ? "Sostituisci logo" : "Carica logo"}
+            </button>
+            {logoUrl && (
+              <button className="btn danger compact" type="button" disabled={logoInCorso} onClick={rimuoviLogo}>
+                Rimuovi
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* import rapido */}
       {!daConfermare && (

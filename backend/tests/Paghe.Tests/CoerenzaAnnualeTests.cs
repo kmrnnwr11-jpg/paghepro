@@ -14,6 +14,11 @@ namespace Paghe.Tests;
 /// </summary>
 public sealed class CoerenzaAnnualeTests : IDisposable
 {
+
+    // I test archiviano cedolini di tutto l'anno: orologio fermo al 31/12 per la regola
+    // che blocca i periodi futuri.
+    private static readonly TimeProvider ClockFineAnno =
+        new OrologioFisso(new DateTimeOffset(2026, 12, 31, 12, 0, 0, TimeSpan.Zero));
     private const int Anno = 2026;
     private readonly SqliteConnection _connection;
     private readonly Guid _tenant = Guid.NewGuid();
@@ -70,7 +75,7 @@ public sealed class CoerenzaAnnualeTests : IDisposable
             });
         _rapportoPartTimeId = partTime.Id;
 
-        var cedolini = new CedoliniService(db, new ParametriNormativiService(db));
+        var cedolini = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
         for (int mese = 1; mese <= 12; mese++)
             await cedolini.CalcolaEArchiviaAsync(_tenant, _rapportoFullTimeId,
                 new Cartellino { Anno = Anno, Mese = mese });
@@ -168,7 +173,7 @@ public sealed class CoerenzaAnnualeTests : IDisposable
     {
         var cedolini = await CedoliniDellAnno();
         await using var db = NuovoContesto();
-        var svc = new CedoliniService(db, new ParametriNormativiService(db));
+        var svc = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
 
         decimal irpefVersata = 0m, addRegVersata = 0m, addComVersata = 0m, inpsVersati = 0m;
         for (int mese = 1; mese <= 12; mese++)

@@ -42,6 +42,9 @@ public class RapportoLavoroEntity
     public int GiorniDetrazioneAnno { get; set; } = 365;
     public DateOnly DataAssunzione { get; set; }
 
+    /// <summary>Fine del rapporto (dimissioni/licenziamento); null = ancora in forza.</summary>
+    public DateOnly? DataCessazione { get; set; }
+
     /// <summary>Fondo TFR maturato prima dell'uso di questo software (per la rivalutazione).</summary>
     public decimal? FondoTfrIniziale { get; set; }
 }

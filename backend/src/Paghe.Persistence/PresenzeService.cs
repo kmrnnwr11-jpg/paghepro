@@ -7,6 +7,15 @@ public sealed record PresenzaRiga(
     string RapportoId,
     string Nominativo,
     decimal OreStraordinario,
+    decimal OreStraordinarioNotturno,
+    decimal OreStraordinarioFestivo,
+    decimal GiorniFerie,
+    decimal OrePermessi,
+    decimal OreExFestivita,
+    decimal GiorniMalattia,
+    int NumeroEventoMalattiaAnno,
+    decimal GiorniInfortunio,
+    decimal OreAssenzaNonRetribuita,
     bool Elaborato,
     decimal Netto);
 
@@ -20,8 +29,8 @@ public sealed record PresenzeMese(
 
 /// <summary>
 /// Cruscotto presenze del mese: per ogni dipendente dell'azienda indica le ore di straordinario
-/// (dal cartellino, l'unico dato che oggi il motore cedolino utilizza), lo stato di elaborazione
-/// del cedolino e il netto. Isolato per tenant.
+/// con tutte le variabili archiviate, lo stato di elaborazione del cedolino e il netto.
+/// Isolato per tenant.
 /// </summary>
 public sealed class PresenzeService
 {
@@ -54,6 +63,15 @@ public sealed class PresenzeService
                     RapportoId: r.Id.ToString(),
                     Nominativo: $"{r.Dipendente?.Cognome} {r.Dipendente?.Nome}".Trim(),
                     OreStraordinario: cart?.OreStraordinario ?? 0m,
+                    OreStraordinarioNotturno: cart?.OreStraordinarioNotturno ?? 0m,
+                    OreStraordinarioFestivo: cart?.OreStraordinarioFestivo ?? 0m,
+                    GiorniFerie: cart?.GiorniFerie ?? 0m,
+                    OrePermessi: cart?.OrePermessi ?? 0m,
+                    OreExFestivita: cart?.OreExFestivita ?? 0m,
+                    GiorniMalattia: cart?.GiorniMalattia ?? 0m,
+                    NumeroEventoMalattiaAnno: Math.Max(1, cart?.NumeroEventoMalattiaAnno ?? 1),
+                    GiorniInfortunio: cart?.GiorniInfortunio ?? 0m,
+                    OreAssenzaNonRetribuita: cart?.OreAssenzaNonRetribuita ?? 0m,
                     Elaborato: ced is not null,
                     Netto: ced?.NettoInBusta ?? 0m);
             })

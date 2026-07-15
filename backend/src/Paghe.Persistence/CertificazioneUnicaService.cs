@@ -1,6 +1,9 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.AdeTelematico;
+using Paghe.Core.Calcolo;
+using Paghe.Core.Parametri;
 
 namespace Paghe.Persistence;
 
@@ -52,6 +55,122 @@ public sealed class CertificazioneUnicaService
             TotaleImponibileInps: cedolini.Sum(c => c.ImponibileInps),
             TotaleNetto: cedolini.Sum(c => c.NettoInBusta));
     }
+
+    /// <summary>
+    /// Costruisce la Certificazione Unica completa (per la stampa sul modello ufficiale AdE) di un
+    /// rapporto e un anno: anagrafiche di sostituto e percipiente (sesso/nascita ricavati dal codice
+    /// fiscale, domicilio fiscale dal comune delle addizionali), parte B fiscale con i totali annui
+    /// ricalcolati con gli scaglioni dell'anno (imposta lorda, detrazioni, imposta netta) e sezione
+    /// previdenziale INPS. Null se il rapporto non esiste per il tenant; lancia se l'anno non ha
+    /// cedolini archiviati.
+    /// </summary>
+    public async Task<CertificazioneUnica?> CostruisciModelloAsync(
+        Guid tenantId, Guid rapportoId, int anno, CancellationToken ct = default)
+    {
+        var rapporto = await _db.Rapporti
+            .Include(r => r.Dipendente)
+            .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct);
+        if (rapporto is null) return null;
+
+        var azienda = await _db.Aziende
+            .FirstOrDefaultAsync(a => a.Id == rapporto.AziendaId && a.TenantId == tenantId, ct);
+
+        var cedolini = await _db.Cedolini
+            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId && c.Anno == anno)
+            .ToListAsync(ct);
+        if (cedolini.Count == 0)
+            throw new ArgumentException($"Nessun cedolino archiviato per l'anno {anno}.");
+
+        decimal imponibileIrpef = cedolini.Sum(c => c.ImponibileIrpef);
+        decimal ritenuteIrpef = cedolini.Sum(c => c.IrpefNetta);
+        decimal quotaTfrAnno = cedolini.Sum(c => c.QuotaTfr);
+        decimal conguaglio = cedolini.Sum(c => c.ConguaglioIrpef);
+
+        // Totali annui coerenti con il conguaglio di fine anno (scaglioni versionati dell'anno).
+        var parametri = await new ParametriNormativiService(_db).CaricaParametriAsync(anno, ct);
+        decimal detrazioniSpettanti = rapporto.DetrazioniLavoroDipendente
+            ? CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(imponibileIrpef, rapporto.GiorniDetrazioneAnno)
+            : 0m;
+        var annuale = ConguaglioFiscale.Calcola(
+            imponibileIrpef, ritenuteIrpef, detrazioniSpettanti, parametri.ScaglioniIrpef);
+
+        var dip = rapporto.Dipendente;
+        var dalCf = AnagraficaCodiceFiscale.Decodifica(dip?.CodiceFiscale, anno);
+        var comuneNascita = ComuniCatastali.Trova(dalCf?.CodiceCatastaleNascita);
+        var domicilio = ComuniCatastali.Trova(rapporto.CodiceCatastaleComune);
+
+        string tipoContratto = rapporto.TipoContratto ?? "";
+        bool determinato = tipoContratto.Contains("determinato", StringComparison.OrdinalIgnoreCase)
+            && !tipoContratto.Contains("indeterminato", StringComparison.OrdinalIgnoreCase);
+
+        var annotazioni = new List<string>();
+        if (quotaTfrAnno > 0m)
+            annotazioni.Add($"Quota TFR maturata nell'anno: euro {quotaTfrAnno.ToString("N2", It)}.");
+        if (conguaglio != 0m)
+            annotazioni.Add("Conguaglio IRPEF di fine anno applicato in busta: euro "
+                + $"{Math.Abs(conguaglio).ToString("N2", It)} {(conguaglio > 0m ? "a debito" : "a credito")}.");
+        annotazioni.Add("Addizionali regionale e comunale trattenute nell'anno con metodo mensile semplificato.");
+        annotazioni.Add("Certificazione generata da PaghePro sui cedolini archiviati - "
+            + "BOZZA DA VALIDARE con il Consulente del Lavoro prima della consegna.");
+
+        return new CertificazioneUnica
+        {
+            AnnoRedditi = anno,
+            Sostituto = new SostitutoCu
+            {
+                CodiceFiscale = azienda?.CodiceFiscale ?? azienda?.PartitaIva ?? "",
+                Denominazione = azienda?.RagioneSociale ?? "",
+                Comune = azienda?.Comune,
+                Provincia = azienda?.Provincia,
+                Cap = azienda?.Cap,
+                Indirizzo = azienda?.Indirizzo,
+                Telefono = azienda?.Telefono,
+                Email = azienda?.Email ?? azienda?.Pec,
+                CodiceAttivita = azienda?.CodiceAteco,
+            },
+            Percipiente = new PercipienteCu
+            {
+                CodiceFiscale = dip?.CodiceFiscale ?? "",
+                Cognome = dip?.Cognome ?? "",
+                Nome = dip?.Nome,
+                Sesso = dalCf?.Sesso,
+                DataNascita = dalCf?.DataNascita,
+                ComuneNascita = comuneNascita?.Nome,
+                ProvinciaNascita = comuneNascita?.Provincia,
+                DomicilioComune = domicilio?.Nome,
+                DomicilioProvincia = domicilio?.Provincia,
+                DomicilioCodiceComune = string.IsNullOrWhiteSpace(rapporto.CodiceCatastaleComune)
+                    ? null : rapporto.CodiceCatastaleComune,
+            },
+            DatiFiscali = new DatiFiscaliCu
+            {
+                RedditoTempoIndeterminato = determinato ? 0m : imponibileIrpef,
+                RedditoTempoDeterminato = determinato ? imponibileIrpef : 0m,
+                GiorniDetrazione = rapporto.DetrazioniLavoroDipendente ? rapporto.GiorniDetrazioneAnno : 0,
+                DataInizioRapporto = rapporto.DataAssunzione == default ? null : rapporto.DataAssunzione,
+                DataCessazione = rapporto.DataCessazione,
+                InForzaAl31Dicembre = rapporto.DataCessazione is null
+                    || rapporto.DataCessazione >= new DateOnly(anno, 12, 31),
+                RitenuteIrpef = ritenuteIrpef,
+                AddizionaleRegionale = cedolini.Sum(c => c.AddizionaleRegionale),
+                AddizionaleComunale = cedolini.Sum(c => c.AddizionaleComunale),
+                ImpostaLorda = annuale.IrpefLordaAnnua,
+                DetrazioniLavoroDipendente = annuale.DetrazioniSpettanti,
+                TotaleDetrazioni = annuale.DetrazioniSpettanti,
+                ImpostaNetta = annuale.IrpefNettaAnnua,
+            },
+            Previdenza = new PrevidenzaCu
+            {
+                MatricolaAzienda = azienda?.MatricolaInps,
+                ImponibilePrevidenziale = cedolini.Sum(c => c.ImponibileInps),
+                ContributiLavoratore = cedolini.Sum(c => c.ContributiDipendente),
+                MesiRetribuiti = cedolini.Select(c => c.Mese).Distinct().Order().ToList(),
+            },
+            Annotazioni = annotazioni,
+        };
+    }
+
+    private static readonly CultureInfo It = CultureInfo.GetCultureInfo("it-IT");
 
     /// <summary>
     /// Costruisce le bozze CU di tutti i dipendenti di un'azienda per l'anno: una CU per ciascun

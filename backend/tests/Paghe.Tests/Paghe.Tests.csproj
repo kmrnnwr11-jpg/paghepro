@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\Paghe.Persistence\Paghe.Persistence.csproj" />
     <ProjectReference Include="..\..\src\Paghe.Documenti\Paghe.Documenti.csproj" />
     <ProjectReference Include="..\..\src\Paghe.Firma\Paghe.Firma.csproj" />
+    <ProjectReference Include="..\..\src\Paghe.Api\Paghe.Api.csproj" />
   </ItemGroup>
 
 </Project>

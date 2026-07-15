@@ -1,31 +1,76 @@
-import { useEffect, useState } from "react";
-import { api, type Azienda, type PresenzeMese } from "../api";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { Calculator, CheckCircle2, Download, Pencil, Users, X } from "lucide-react";
+import { api, scaricaBlob, type Azienda, type Cartellino, type PresenzeMese } from "../api";
+import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
 
+const oggi = new Date();
 const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const mesi = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
+type DatiCartellino = Omit<Cartellino, "anno" | "mese"> & {
+  oreStraordinarioNotturno: number; oreStraordinarioFestivo: number;
+  giorniFerie: number; orePermessi: number; oreExFestivita: number;
+  giorniMalattia: number; numeroEventoMalattiaAnno: number; giorniInfortunio: number;
+  oreAssenzaNonRetribuita: number;
+};
+
+const vuoto: DatiCartellino = {
+  oreStraordinario: 0, oreStraordinarioNotturno: 0, oreStraordinarioFestivo: 0,
+  giorniFerie: 0, orePermessi: 0, oreExFestivita: 0,
+  giorniMalattia: 0, numeroEventoMalattiaAnno: 1, giorniInfortunio: 0,
+  oreAssenzaNonRetribuita: 0,
+};
+
+function dalRiepilogo(r: PresenzeMese["righe"][number]): DatiCartellino {
+  return {
+    oreStraordinario: r.oreStraordinario,
+    oreStraordinarioNotturno: r.oreStraordinarioNotturno,
+    oreStraordinarioFestivo: r.oreStraordinarioFestivo,
+    giorniFerie: r.giorniFerie,
+    orePermessi: r.orePermessi,
+    oreExFestivita: r.oreExFestivita,
+    giorniMalattia: r.giorniMalattia,
+    numeroEventoMalattiaAnno: r.numeroEventoMalattiaAnno,
+    giorniInfortunio: r.giorniInfortunio,
+    oreAssenzaNonRetribuita: r.oreAssenzaNonRetribuita,
+  };
+}
+
+function descrizione(d: DatiCartellino) {
+  const parti = [
+    d.giorniFerie > 0 && `${d.giorniFerie} gg ferie`,
+    d.giorniMalattia > 0 && `${d.giorniMalattia} gg malattia`,
+    d.giorniInfortunio > 0 && `${d.giorniInfortunio} gg infortunio`,
+    d.orePermessi > 0 && `${d.orePermessi} h ROL`,
+    d.oreExFestivita > 0 && `${d.oreExFestivita} h ex festivita`,
+    d.oreAssenzaNonRetribuita > 0 && `${d.oreAssenzaNonRetribuita} h assenza n/r`,
+    d.oreStraordinario + d.oreStraordinarioNotturno + d.oreStraordinarioFestivo > 0
+      && `${d.oreStraordinario + d.oreStraordinarioNotturno + d.oreStraordinarioFestivo} h straord.`,
+  ].filter(Boolean);
+  return parti.length > 0 ? parti.join(" · ") : "Mese ordinario, nessuna variazione";
+}
+
 export function Presenze() {
   const [azienda, setAzienda] = useState<Azienda | null>(null);
-  const [anno, setAnno] = useState(2026);
-  const [mese, setMese] = useState(1);
+  const [anno, setAnno] = useState(oggi.getFullYear());
+  const [mese, setMese] = useState(oggi.getMonth() + 1);
   const [board, setBoard] = useState<PresenzeMese | null>(null);
-  const [ore, setOre] = useState<Record<string, number>>({});
+  const [dati, setDati] = useState<Record<string, DatiCartellino>>({});
+  const [aperto, setAperto] = useState<string | null>(null);
+  const [confermato, setConfermato] = useState<Record<string, boolean>>({});
   const [caricamento, setCaricamento] = useState(true);
   const [elaborando, setElaborando] = useState<string | null>(null);
+  const [scaricando, setScaricando] = useState<string | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
+  const [avviso, setAvviso] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        let aziende = await api.aziende();
-        if (aziende.length === 0) {
-          await api.creaAzienda({
-            ragioneSociale: "Rossi S.r.l.", partitaIva: "01567890123",
-            indirizzo: "Via Roma 10", cap: "20121", comune: "Milano", provincia: "MI",
-          });
-          aziende = await api.aziende();
-        }
-        setAzienda(aziende[0] ?? null);
+        const aziende = await api.aziende();
+        const scelta = scegliAziendaPreferita(aziende);
+        setAzienda(scelta);
+        if (scelta) salvaAziendaCorrenteId(scelta.id);
       } catch (e) {
         setErrore(e instanceof Error ? e.message : "Errore di caricamento");
       } finally {
@@ -34,24 +79,58 @@ export function Presenze() {
     })();
   }, []);
 
-  async function carica() {
+  const carica = useCallback(async () => {
     if (!azienda) return;
     const b = await api.presenzeMese(azienda.id, anno, mese);
     setBoard(b);
-    setOre(Object.fromEntries(b.righe.map((r) => [r.rapportoId, r.oreStraordinario])));
-  }
-
-  useEffect(() => {
-    if (!azienda) { setBoard(null); return; }
-    carica().catch((e) => setErrore(e instanceof Error ? e.message : "Errore"));
+    setDati(Object.fromEntries(b.righe.map((r) => [r.rapportoId, dalRiepilogo(r)])));
+    setConfermato(Object.fromEntries(b.righe.map((r) => [r.rapportoId, r.elaborato])));
   }, [azienda, anno, mese]);
 
+  useEffect(() => {
+    setAperto(null);
+    setErrore(null);
+    if (!azienda) { setBoard(null); return; }
+    carica().catch((e) => setErrore(e instanceof Error ? e.message : "Errore"));
+  }, [azienda, carica]);
+
+  function aggiorna(rapportoId: string, chiave: keyof DatiCartellino, valore: number) {
+    setDati((correnti) => ({
+      ...correnti,
+      [rapportoId]: { ...(correnti[rapportoId] ?? vuoto), [chiave]: valore },
+    }));
+    setConfermato((correnti) => ({ ...correnti, [rapportoId]: false }));
+  }
+
   async function elabora(rapportoId: string) {
+    if (!confermato[rapportoId]) {
+      setErrore("Controlla tutti i dati del mese e conferma il cartellino prima di elaborare.");
+      return;
+    }
     setElaborando(rapportoId);
     setErrore(null);
+    setAvviso(null);
     try {
-      await api.archiviaCedolino(rapportoId, { anno, mese, oreStraordinario: ore[rapportoId] ?? 0 });
+      let cedolino;
+      try {
+        cedolino = await api.archiviaCedolino(rapportoId, { anno, mese, ...(dati[rapportoId] ?? vuoto) });
+      } catch (e) {
+        // Mese con F24 già inviato: il commercialista può correggere un errore
+        // ricalcolando comunque, ma solo dopo conferma esplicita.
+        const msg = e instanceof Error ? e.message : "";
+        if (!msg.includes("ricalcolo forzato")) throw e;
+        if (!confirm(`${msg}\n\nVuoi ricalcolare comunque questa busta paga?`)) return;
+        cedolino = await api.archiviaCedolino(rapportoId, { anno, mese, ...(dati[rapportoId] ?? vuoto) }, true);
+        setAvviso("Busta paga ricalcolata su un mese con F24 già inviato: ricordati di rigenerare l'F24 del mese.");
+      }
+      // Avviso (non blocco): saldi ferie/permessi sotto zero dopo questo cedolino.
+      const sottoZero = [
+        (cedolino.ferieResidue ?? 0) < 0 && `ferie residue ${cedolino.ferieResidue} gg`,
+        (cedolino.permessiResidui ?? 0) < 0 && `permessi residui ${cedolino.permessiResidui} h`,
+      ].filter(Boolean).join(" e ");
+      if (sottoZero) setAvviso(`Attenzione: ${sottoZero} sotto zero. La busta è valida, ma verifica le assenze inserite.`);
       await carica();
+      setAperto(null);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Errore nel calcolo");
     } finally {
@@ -59,102 +138,191 @@ export function Presenze() {
     }
   }
 
+  async function scaricaPdf(rapportoId: string) {
+    setScaricando(rapportoId);
+    setErrore(null);
+    try {
+      const cedolini = await api.cedoliniArchiviati(rapportoId);
+      const cedolino = cedolini.find((c) => c.anno === anno && c.mese === mese);
+      if (!cedolino) throw new Error("Cedolino del periodo non trovato nell'archivio.");
+      const { blob, filename } = await api.cedolinoPdf(cedolino.id);
+      scaricaBlob(blob, filename);
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Impossibile scaricare il PDF.");
+    } finally {
+      setScaricando(null);
+    }
+  }
+
+  function campo(rapportoId: string, etichetta: string, chiave: keyof DatiCartellino, unita: string) {
+    return (
+      <label>
+        <span>{etichetta}</span>
+        <div className="presence-number">
+          <input
+            type="number"
+            min={chiave === "numeroEventoMalattiaAnno" ? 1 : 0}
+            step={chiave === "numeroEventoMalattiaAnno" ? 1 : 0.5}
+            value={(dati[rapportoId] ?? vuoto)[chiave]}
+            onChange={(e) => aggiorna(rapportoId, chiave, Number(e.target.value))}
+            onFocus={(e) => e.currentTarget.select()}
+            onBlur={(e) => {
+              const minimo = chiave === "numeroEventoMalattiaAnno" ? 1 : 0;
+              const letto = Number(e.currentTarget.value);
+              const normalizzato = Number.isFinite(letto) ? Math.max(minimo, letto) : minimo;
+              e.currentTarget.value = String(normalizzato);
+              if ((dati[rapportoId] ?? vuoto)[chiave] !== normalizzato) {
+                aggiorna(rapportoId, chiave, normalizzato);
+              }
+            }}
+          />
+          <span>{unita}</span>
+        </div>
+      </label>
+    );
+  }
+
   return (
     <div>
       <div className="page-heading">
         <div>
           <h1>Cartellino mensile</h1>
-          <p>Presenze reali{azienda ? ` · ${azienda.ragioneSociale}` : ""} · {mesi[mese]} {anno}</p>
+          <p>Presenze e causali{azienda ? ` · ${azienda.ragioneSociale}` : ""} · {mesi[mese]} {anno}</p>
         </div>
+        <span className="status-pill amber">Bozza da validare</span>
       </div>
 
       {caricamento ? (
-        <section className="glass-card page-card"><div className="empty-state">Caricamento…</div></section>
+        <section className="glass-card page-card"><div className="empty-state">Caricamento...</div></section>
+      ) : !azienda ? (
+        <section className="glass-card page-card"><div className="empty-state">Aggiungi prima un'azienda, poi i dipendenti da elaborare.</div></section>
       ) : (
         <div className="timesheet-layout">
           <div className="timesheet-main">
             <div className="ts-kpi-grid">
               <article className="glass-card ts-kpi">
-                <span className="ts-kpi-icon tone-icon blue">👥</span>
+                <span className="ts-kpi-icon tone-icon blue"><Users size={20} /></span>
                 <div><span>Dipendenti</span><b className="num">{board?.totale ?? 0}</b><small>Totale azienda</small></div>
               </article>
               <article className="glass-card ts-kpi">
-                <span className="ts-kpi-icon tone-icon green">✓</span>
+                <span className="ts-kpi-icon tone-icon green"><CheckCircle2 size={20} /></span>
                 <div><span>Cedolini elaborati</span><b className="num">{board?.elaborati ?? 0}/{board?.totale ?? 0}</b><small>Questo mese</small></div>
               </article>
             </div>
 
             <div className="glass-card page-card">
-              <div className="form-grid" style={{ marginBottom: 8 }}>
+              <div className="form-grid presence-period">
                 <label>
                   <span>Anno</span>
-                  <input type="number" min={2000} max={2100} value={anno} onChange={(e) => setAnno(Number(e.target.value))} />
+                  {/* Regola: le buste paga si elaborano al massimo per il mese corrente. */}
+                  <input type="number" min={2000} max={oggi.getFullYear()} value={anno} onChange={(e) => setAnno(Number(e.target.value))} />
                 </label>
                 <label>
                   <span>Mese</span>
                   <select value={mese} onChange={(e) => setMese(Number(e.target.value))}>
-                    {mesi.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                    {mesi.slice(1).map((m, i) => (
+                      <option key={i + 1} value={i + 1}
+                        disabled={anno >= oggi.getFullYear() && i + 1 > oggi.getMonth() + 1}>
+                        {m}{anno >= oggi.getFullYear() && i + 1 > oggi.getMonth() + 1 ? " (futuro)" : ""}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>
 
               {!board || board.righe.length === 0 ? (
-                <div className="empty-state">Nessun dipendente. Aggiungine in “Dipendenti”.</div>
+                <div className="empty-state">Nessun dipendente. Aggiungine uno in Dipendenti.</div>
               ) : (
                 <div className="table-wrap">
-                  <table className="data-table spacious">
-                    <thead>
-                      <tr>
-                        <th>Dipendente</th>
-                        <th className="right">Ore straordinario</th>
-                        <th>Stato</th>
-                        <th className="right">Netto</th>
-                        <th className="right">Azioni</th>
-                      </tr>
-                    </thead>
+                  <table className="data-table spacious presence-table">
+                    <thead><tr><th>Dipendente</th><th>Riepilogo mese</th><th>Stato</th><th className="right">Netto</th><th className="right">Azioni</th></tr></thead>
                     <tbody>
-                      {board.righe.map((r) => (
-                        <tr key={r.rapportoId}>
-                          <td><strong>{r.nominativo || "—"}</strong></td>
-                          <td className="right">
-                            <input
-                              className="num ts-input"
-                              type="number"
-                              min={0}
-                              value={ore[r.rapportoId] ?? 0}
-                              onChange={(e) => setOre((o) => ({ ...o, [r.rapportoId]: Number(e.target.value) }))}
-                            />
-                          </td>
-                          <td>
-                            <span className={`status-pill ${r.elaborato ? "green" : "amber"}`}>
-                              {r.elaborato ? "✓ Elaborato" : "Da elaborare"}
-                            </span>
-                          </td>
-                          <td className="right num">{r.elaborato ? `${euro(r.netto)} €` : "—"}</td>
-                          <td className="right">
-                            <button className="mini-action" type="button" disabled={elaborando === r.rapportoId} onClick={() => elabora(r.rapportoId)}>
-                              {elaborando === r.rapportoId ? "…" : r.elaborato ? "Ricalcola" : "Elabora"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {board.righe.map((r) => {
+                        const cartellino = dati[r.rapportoId] ?? vuoto;
+                        const espanso = aperto === r.rapportoId;
+                        return (
+                          <Fragment key={r.rapportoId}>
+                            <tr>
+                              <td><strong>{r.nominativo || "-"}</strong></td>
+                              <td className="presence-summary">{descrizione(cartellino)}</td>
+                              <td><span className={`status-pill ${r.elaborato ? "green" : confermato[r.rapportoId] ? "blue" : "amber"}`}>
+                                {r.elaborato ? "Elaborato" : confermato[r.rapportoId] ? "Pronto" : "Da controllare"}
+                              </span></td>
+                              <td className="right num">{r.elaborato ? `${euro(r.netto)} EUR` : "-"}</td>
+                              <td className="right">
+                                <div className="actions-row" style={{ justifyContent: "flex-end" }}>
+                                  {r.elaborato && (
+                                    <button
+                                      className="mini-action icon-command"
+                                      type="button"
+                                      title="Scarica la busta paga in PDF"
+                                      disabled={scaricando === r.rapportoId}
+                                      onClick={() => { void scaricaPdf(r.rapportoId); }}
+                                    >
+                                      <Download size={14} />
+                                      <span>{scaricando === r.rapportoId ? "Download..." : "PDF"}</span>
+                                    </button>
+                                  )}
+                                  <button className="mini-action icon-command" type="button" title="Compila cartellino" onClick={() => setAperto(espanso ? null : r.rapportoId)}>
+                                    {espanso ? <X size={14} /> : <Pencil size={14} />}<span>{espanso ? "Chiudi" : "Compila"}</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                            {espanso && (
+                              <tr className="presence-editor-row"><td colSpan={5}>
+                                <div className="presence-editor">
+                                  <div className="presence-section"><h3>Ferie e permessi retribuiti</h3><div className="presence-fields">
+                                    {campo(r.rapportoId, "Ferie godute", "giorniFerie", "giorni")}
+                                    {campo(r.rapportoId, "Permessi ROL", "orePermessi", "ore")}
+                                    {campo(r.rapportoId, "Ex festivita", "oreExFestivita", "ore")}
+                                  </div></div>
+                                  <div className="presence-section"><h3>Malattia e infortunio</h3><div className="presence-fields">
+                                    {campo(r.rapportoId, "Malattia", "giorniMalattia", "giorni")}
+                                    {campo(r.rapportoId, "Evento nell'anno", "numeroEventoMalattiaAnno", "numero")}
+                                    {campo(r.rapportoId, "Infortunio INAIL", "giorniInfortunio", "giorni")}
+                                  </div></div>
+                                  <div className="presence-section"><h3>Assenze e lavoro aggiuntivo</h3><div className="presence-fields">
+                                    {campo(r.rapportoId, "Assenza non retribuita", "oreAssenzaNonRetribuita", "ore")}
+                                    {campo(r.rapportoId, "Straordinario", "oreStraordinario", "ore")}
+                                    {campo(r.rapportoId, "Straordinario notturno", "oreStraordinarioNotturno", "ore")}
+                                    {campo(r.rapportoId, "Straordinario festivo", "oreStraordinarioFestivo", "ore")}
+                                  </div></div>
+                                  <div className="presence-confirm">
+                                    <label><input type="checkbox" checked={Boolean(confermato[r.rapportoId])} onChange={(e) => setConfermato((c) => ({ ...c, [r.rapportoId]: e.target.checked }))} />
+                                      <span>Ho controllato presenze, ferie, permessi, malattia, infortunio e assenze del mese.</span>
+                                    </label>
+                                    <button className="btn primary" type="button" disabled={!confermato[r.rapportoId] || elaborando === r.rapportoId} onClick={() => elabora(r.rapportoId)}>
+                                      <Calculator size={16} /> {elaborando === r.rapportoId ? "Elaborazione..." : r.elaborato ? "Ricalcola cedolino" : "Genera cedolino"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </td></tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               )}
               {errore && <p className="errore">{errore}</p>}
+              {avviso && (
+                <p style={{ marginTop: 10, padding: "10px 14px", borderRadius: 10, fontSize: 13,
+                  background: "rgba(243,156,18,0.14)", border: "1.5px solid #f39c12", color: "#b9770e" }}>
+                  ⚠️ {avviso}
+                </p>
+              )}
             </div>
           </div>
 
           <aside className="timesheet-rail">
             <section className="glass-card side-card">
-              <div className="rail-head"><strong>Come funziona</strong></div>
-              <div className="empty-state" style={{ marginBottom: 10 }}>
-                Inserisci le ore di <b>straordinario</b> e premi <b>Elabora</b>: il cedolino del mese viene calcolato e archiviato (e alimenta CU/770).
-              </div>
-              <p className="muto" style={{ fontSize: 12, fontWeight: 600 }}>
-                Nota: ferie, permessi e malattia richiederanno un'estensione del motore di calcolo (oggi incide lo straordinario).
-              </p>
+              <div className="rail-head"><strong>Controllo prima del calcolo</strong></div>
+              <div className="check-row"><CheckCircle2 size={17} /><strong>Seleziona il periodo corretto</strong></div>
+              <div className="check-row"><CheckCircle2 size={17} /><strong>Compila tutte le causali del dipendente</strong></div>
+              <div className="check-row"><CheckCircle2 size={17} /><strong>Conferma e genera il cedolino</strong></div>
+              <p className="muto presence-note">Il PDF riporta le causali inserite. I calcoli restano da validare con un consulente del lavoro.</p>
             </section>
           </aside>
         </div>

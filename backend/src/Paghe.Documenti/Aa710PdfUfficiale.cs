@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Text;
 using Paghe.Core.AdeTelematico;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
@@ -34,12 +33,12 @@ public static class Aa710PdfUfficiale
         var doc = PdfReader.Open(copia, PdfDocumentOpenMode.Modify);
 
         // La pagina 2 (indice 1) contiene testata + quadri A, B e C.
-        AggiungiTesto(doc, 1, CostruisciPagina2(m));
+        OverlayModuloUfficiale.Applica(doc, 1, CostruisciPagina2(m));
 
         // Testata codice fiscale sulle pagine successive del modello.
         if (!string.IsNullOrWhiteSpace(m.CodiceFiscale))
             for (int pagina = 2; pagina <= 4; pagina++)
-                AggiungiTesto(doc, pagina, new Overlay()
+                OverlayModuloUfficiale.Applica(doc, pagina, new OverlayModuloUfficiale(AltezzaPagina)
                     .Comb(224.4, PassoQuadri, 16, 64.0, m.CodiceFiscale));
 
         using var uscita = new MemoryStream();
@@ -47,9 +46,9 @@ public static class Aa710PdfUfficiale
         return uscita.ToArray();
     }
 
-    private static Overlay CostruisciPagina2(ModuloAa710 m)
+    private static OverlayModuloUfficiale CostruisciPagina2(ModuloAa710 m)
     {
-        var o = new Overlay();
+        var o = new OverlayModuloUfficiale(AltezzaPagina);
         string data = m.Data.ToString("ddMMyyyy");
 
         o.Comb(224.4, PassoQuadri, 16, 142.0, m.CodiceFiscale);
@@ -108,7 +107,7 @@ public static class Aa710PdfUfficiale
     }
 
     /// <summary>Blocco sede del quadro B: indirizzo, casella scritture contabili, CAP/comune/provincia.</summary>
-    private static void Sede(Overlay o, SedeAa710 s, double yIndirizzo, double yScritture, double yRiga2)
+    private static void Sede(OverlayModuloUfficiale o, SedeAa710 s, double yIndirizzo, double yScritture, double yRiga2)
     {
         o.Libero(118, yIndirizzo, s.Indirizzo, maxLarghezza: 410);
         if (s.ScrittureContabili) o.Centrato(546.0, yScritture, "X");
@@ -119,101 +118,4 @@ public static class Aa710PdfUfficiale
 
     private static string? SoloCifre(string? testo) =>
         testo is null ? null : new string(testo.Where(char.IsDigit).ToArray());
-
-    private static void AggiungiTesto(PdfDocument doc, int indicePagina, Overlay overlay)
-    {
-        if (overlay.Vuoto) return;
-        var pagina = doc.Pages[indicePagina];
-
-        var font = new PdfDictionary(doc);
-        font.Elements.SetName("/Type", "/Font");
-        font.Elements.SetName("/Subtype", "/Type1");
-        font.Elements.SetName("/BaseFont", "/Courier");
-        font.Elements.SetName("/Encoding", "/WinAnsiEncoding");
-        doc.Internals.AddObject(font);
-
-        var risorse = pagina.Elements.GetDictionary("/Resources")
-            ?? throw new InvalidOperationException("Pagina del modello senza /Resources.");
-        var fonts = risorse.Elements.GetDictionary("/Font");
-        if (fonts is null)
-        {
-            fonts = new PdfDictionary(doc);
-            risorse.Elements["/Font"] = fonts;
-        }
-        fonts.Elements["/FCourPaghe"] = font.Reference;
-
-        var contenuto = pagina.Contents.AppendContent();
-        contenuto.CreateStream(overlay.ContenutoStream());
-    }
-
-    /// <summary>
-    /// Costruisce il contenuto PDF del livello di testo. Le coordinate d'ingresso hanno origine
-    /// in alto a sinistra (come la calibrazione); la conversione a spazio PDF avviene qui.
-    /// Courier è a passo fisso: larghezza carattere = 0,6 × corpo.
-    /// </summary>
-    private sealed class Overlay
-    {
-        private readonly StringBuilder _ops = new();
-        public bool Vuoto => _ops.Length == 0;
-
-        /// <summary>Un carattere centrato in ogni cella della casella a pettine.</summary>
-        public Overlay Comb(double x0, double passo, int celle, double y, string? testo, int dimensione = 9)
-        {
-            if (string.IsNullOrWhiteSpace(testo)) return this;
-            string t = Normalizza(testo);
-            double largheza = 0.6 * dimensione;
-            for (int i = 0; i < t.Length && i < celle; i++)
-                Scrivi(x0 + passo * i + (passo - largheza) / 2, y, t[i].ToString(), dimensione);
-            return this;
-        }
-
-        /// <summary>Come Comb ma allineato a destra (importi e codici numerici).</summary>
-        public Overlay CombDestra(double x0, double passo, int celle, double y, string? testo, int dimensione = 9)
-        {
-            if (string.IsNullOrWhiteSpace(testo)) return this;
-            string t = Normalizza(testo);
-            if (t.Length > celle) t = t[^celle..];
-            return Comb(x0 + passo * (celle - t.Length), passo, t.Length, y, t, dimensione);
-        }
-
-        /// <summary>Testo libero da sinistra, troncato alla larghezza della casella.</summary>
-        public Overlay Libero(double x, double y, string? testo, int dimensione = 9, double maxLarghezza = 0)
-        {
-            if (string.IsNullOrWhiteSpace(testo)) return this;
-            string t = Normalizza(testo);
-            if (maxLarghezza > 0)
-            {
-                int maxCaratteri = (int)(maxLarghezza / (0.6 * dimensione));
-                if (t.Length > maxCaratteri) t = t[..maxCaratteri];
-            }
-            Scrivi(x, y, t, dimensione);
-            return this;
-        }
-
-        /// <summary>Testo centrato su un punto (caselle singole tipo codice carica, X di barratura).</summary>
-        public Overlay Centrato(double xCentro, double y, string? testo, int dimensione = 9)
-        {
-            if (string.IsNullOrWhiteSpace(testo)) return this;
-            string t = Normalizza(testo);
-            Scrivi(xCentro - t.Length * 0.6 * dimensione / 2, y, t, dimensione);
-            return this;
-        }
-
-        private void Scrivi(double x, double yAlto, string testo, int dimensione)
-        {
-            double y = AltezzaPagina - yAlto;
-            _ops.Append(System.Globalization.CultureInfo.InvariantCulture,
-                $"BT /FCourPaghe {dimensione} Tf 0 g 1 0 0 1 {x:0.##} {y:0.##} Tm (");
-            foreach (char c in testo)
-            {
-                if (c is '(' or ')' or '\\') _ops.Append('\\');
-                _ops.Append(c <= 'ÿ' ? c : '?');
-            }
-            _ops.Append(") Tj ET\n");
-        }
-
-        private static string Normalizza(string testo) => testo.Trim().ToUpperInvariant();
-
-        public byte[] ContenutoStream() => Encoding.Latin1.GetBytes(_ops.ToString());
-    }
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "PaghePro Agent Squad"
+  short_description: "Squadra 14 agenti con 3 decisori ricerca/roadmap"
+  default_prompt: "Use $paghepro-agent-squad to coordinate PaghePro work with official-source research, review, tests, final verdict, and 3 empowered post-work agents that browse the web, reason logically, decide delivery status, select the next task, and identify competitor/product gaps."

@@ -132,6 +132,16 @@ public sealed class AziendeService
     public Task<List<AziendaEntity>> ElencoAsync(Guid tenantId, CancellationToken ct = default) =>
         _db.Aziende.Where(a => a.TenantId == tenantId).OrderBy(a => a.RagioneSociale).ToListAsync(ct);
 
+    /// <summary>Salva (o sostituisce) il logo dell'azienda. False se l'azienda non esiste per il tenant.</summary>
+    public async Task<bool> SalvaLogoAsync(Guid tenantId, Guid id, byte[]? logo, CancellationToken ct = default)
+    {
+        var a = await GetAsync(tenantId, id, ct);
+        if (a is null) return false;
+        a.Logo = logo;
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
     public async Task<List<AziendaSintesi>> ElencoSintesiAsync(Guid tenantId, CancellationToken ct = default)
     {
         var aziende = await ElencoAsync(tenantId, ct);

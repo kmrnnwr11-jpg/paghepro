@@ -88,12 +88,22 @@ public sealed class MotoreCalcoloCedolino
         // Malattia INPS + Integrazione Datore
         if (cartellino.GiorniMalattia > 0m)
         {
+            // La paga mensile e gia interamente esposta sopra: senza questo storno le indennita
+            // di malattia verrebbero sommate a giornate ordinarie gia pagate due volte.
+            decimal stornoMalattia = Arrotondamento.Euro(cartellino.GiorniMalattia * pagaGiornaliera);
+            AggiungiRiga(cedolino, "MAL_STORNO", "Storno retribuzione per malattia", TipoVoce.Competenza,
+                quantita: cartellino.GiorniMalattia, @base: pagaGiornaliera, importo: -stornoMalattia);
             CalcolaMalattia(cedolino, cartellino.GiorniMalattia, cartellino.NumeroEventoMalattiaAnno, pagaGiornaliera, rmgInps);
         }
 
         // Infortunio INAIL + Integrazione Datore
         if (cartellino.GiorniInfortunio > 0m)
         {
+            // Come per la malattia, si sostituisce la quota ordinaria con le specifiche
+            // componenti INAIL/datore invece di aggiungerle alla mensilita piena.
+            decimal stornoInfortunio = Arrotondamento.Euro(cartellino.GiorniInfortunio * pagaGiornaliera);
+            AggiungiRiga(cedolino, "INF_STORNO", "Storno retribuzione per infortunio", TipoVoce.Competenza,
+                quantita: cartellino.GiorniInfortunio, @base: pagaGiornaliera, importo: -stornoInfortunio);
             CalcolaInfortunio(cedolino, cartellino.GiorniInfortunio, pagaGiornaliera);
         }
 
@@ -180,19 +190,21 @@ public sealed class MotoreCalcoloCedolino
         cedolino.QuotaTfr = quotaTfr;
         cedolino.CostoAzienda = Arrotondamento.Euro(totaleCompetenze + contributiDatore + quotaTfr);
 
-        // Saldi Ferie (es. 2.1667 gg/mese per CCNL Commercio full-time)
+        // Saldi Ferie (es. 2.1667 gg/mese per CCNL Commercio full-time).
+        // Il residuo può andare sotto zero (ferie anticipate): è un'informazione vera,
+        // usata anche dall'avviso in pagina Presenze.
         decimal ferieMaturate = Arrotondamento.Euro(2.1667m * cartellino.Mese * coeffPt);
         decimal ferieGodute = cartellino.GiorniFerie;
         cedolino.FerieMaturate = ferieMaturate;
         cedolino.FerieGodute = ferieGodute;
-        cedolino.FerieResidue = Math.Max(0m, ferieMaturate - ferieGodute);
+        cedolino.FerieResidue = ferieMaturate - ferieGodute;
 
         // Saldi Permessi ROL/Ex-Festività (es. 6 ore/mese per CCNL Commercio full-time)
         decimal permessiMaturati = Arrotondamento.Euro(6.00m * cartellino.Mese * coeffPt);
         decimal permessiGoduti = orePermessiTot;
         cedolino.PermessiMaturati = permessiMaturati;
         cedolino.PermessiGoduti = permessiGoduti;
-        cedolino.PermessiResidui = Math.Max(0m, permessiMaturati - permessiGoduti);
+        cedolino.PermessiResidui = permessiMaturati - permessiGoduti;
 
         return cedolino;
     }

@@ -4,6 +4,13 @@
 > Leggere SEMPRE insieme a: [`PIANO.md`](PIANO.md) (cosa fare e in che ordine) e
 > [`CLAUDE.md`](CLAUDE.md) (convenzioni di dominio e stato "Fatto").
 
+> **Eccezione vincolante per l'AI applicativa personale:** leggere anche
+> [`docs/PIANO-AI-LIBERA-LIMITI-USO.md`](docs/PIANO-AI-LIBERA-LIMITI-USO.md), che prevale per
+> perimetro, grant e limiti d'uso. Le checklist P-1–P6 del piano privacy-first sono storiche e non
+> eseguibili. Non implementare i vecchi limiti globali di una azienda, 10 dipendenti, un CCNL, solo
+> UNILAV, nessun indice o nessun Copilot interno. Per nuovo codice AI la prima attività è G0, dopo
+> una richiesta separata dell'utente; le normali attività non-AI continuano a seguire `PIANO.md`.
+
 ---
 
 ## 1. Contesto in una riga

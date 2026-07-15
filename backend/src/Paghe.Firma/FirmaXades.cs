@@ -14,6 +14,7 @@ namespace Paghe.Firma;
 /// </summary>
 public static class FirmaXades
 {
+    private const long CaratteriMassimiXml = 12 * 1024 * 1024;
     private const string NsXades = "http://uri.etsi.org/01903/v1.3.2#";
     private static readonly string NsDs = SignedXml.XmlDsigNamespaceUrl;
 
@@ -22,9 +23,7 @@ public static class FirmaXades
         ArgumentNullException.ThrowIfNull(xml);
         ArgumentNullException.ThrowIfNull(certificato);
 
-        var doc = new XmlDocument { PreserveWhitespace = true };
-        using (var ms = new MemoryStream(xml))
-            doc.Load(ms);
+        var doc = CaricaXmlSicuro(xml);
 
         var rsa = (chiavePrivata as RSA) ?? certificato.GetRSAPrivateKey()
             ?? throw new InvalidOperationException("Chiave privata RSA non disponibile per la firma XAdES.");
@@ -79,9 +78,7 @@ public static class FirmaXades
     {
         try
         {
-            var doc = new XmlDocument { PreserveWhitespace = true };
-            using (var ms = new MemoryStream(xmlFirmato))
-                doc.Load(ms);
+            var doc = CaricaXmlSicuro(xmlFirmato);
 
             var nsm = new XmlNamespaceManager(doc.NameTable);
             nsm.AddNamespace("ds", NsDs);
@@ -104,6 +101,22 @@ public static class FirmaXades
         {
             return new RisultatoVerifica(false, "XAdES");
         }
+    }
+
+    private static XmlDocument CaricaXmlSicuro(byte[] xml)
+    {
+        var impostazioni = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersInDocument = CaratteriMassimiXml,
+            MaxCharactersFromEntities = 0,
+        };
+        var doc = new XmlDocument { PreserveWhitespace = true, XmlResolver = null };
+        using var ms = new MemoryStream(xml, writable: false);
+        using var reader = XmlReader.Create(ms, impostazioni);
+        doc.Load(reader);
+        return doc;
     }
 
     private static XmlElement CostruisciQualifyingProperties(

@@ -2,17 +2,25 @@
 
 > Versione: 15 luglio 2026
 > Stato: **solo piano; nessuna implementazione autorizzata**
-> Scopo: una sola persona usa PaghePro sul proprio Mac. L'AI lavora
-> esclusivamente dentro PaghePro e sui documenti di lavoro scelti esplicitamente dall'utente.
+> Scopo attuale: baseline di sicurezza locale e definizione della modalità **Stretta**. La policy
+> operativa generale è ora
+> [`PIANO-AI-LIBERA-LIMITI-USO.md`](PIANO-AI-LIBERA-LIMITI-USO.md): l'AI può lavorare su tutti i
+> dati professionali dentro PaghePro, con limiti di scopo, durata, quantità e azioni.
 
 `Personale` significa **un solo operatore e nessun accesso alle sue app private**. Non significa
 uso domestico: quando contiene dati di dipendenti o clienti, restano applicabili privacy, sicurezza
 e responsabilità professionali previste per quel trattamento.
 
-Questo documento restringe il master plan
-[`PIANO-MASTER-AI-AUTONOMO.md`](PIANO-MASTER-AI-AUTONOMO.md). Per la prima versione personale,
-in caso di conflitto prevale questo piano. Il master resta un catalogo di possibilità future, non
-un'autorizzazione a costruirle.
+Questo documento non è più il limite funzionale generale del prodotto. Conserva l'architettura
+privacy-first, i divieti verso Mac/app personali/rete/cloud e il preset più prudente. In caso di
+conflitto sul tipo di documento, sui moduli o sull'ampiezza professionale prevale il nuovo piano
+dei limiti d'uso; il master
+[`PIANO-MASTER-AI-AUTONOMO.md`](PIANO-MASTER-AI-AUTONOMO.md) resta il catalogo delle capacità e dei
+gate di dominio.
+
+> **Nota di lettura:** nei capitoli seguenti, `solo UNILAV`, `nessun indice semantico`, `nessuna
+> chat interna`, `un solo CCNL` e gli altri limiti funzionali descrivono esclusivamente il vecchio
+> pilot ristretto/modalità Stretta. Non prevalgono sulla policy generale attuale.
 
 ---
 
@@ -44,7 +52,11 @@ manuale. Nel profilo personale non usa alcun servizio AI cloud.
 
 ---
 
-## 1. Dieci limiti non negoziabili
+## 1. Preset storico della modalità Stretta — non è la policy globale
+
+I punti 7 e 8 e ogni altro limite di tipo documento/modulo qui sotto valgono soltanto per il pilot
+storico Stretto. I confini verso Mac, app personali, rete e cloud restano invarianti; l'ampiezza
+professionale segue invece il piano AI con limiti d'uso.
 
 1. **Una sola cassaforte di lavoro:** un proprietario, un accesso locale e nessun portale esterno
    nella prima versione.
@@ -102,7 +114,7 @@ nel prompt.
 | Internet e ricerca web | vietata all'AI | firewall in uscita `default deny` |
 | Modelli AI cloud | vietata | nessuna chiave provider installata nel profilo personale |
 
-### 2.3 Un solo tipo documentale iniziale
+### 2.3 Pilot storico: un solo tipo documentale iniziale
 
 Il primo e unico tipo letto dall'AI nell'MVP è **UNILAV relativo al rapporto da registrare**. Le
 presenze vengono inserite nel modulo PaghePro o importate da un unico CSV con parser deterministico;
@@ -171,7 +183,7 @@ Per evitare una promessa multipiattaforma non verificabile, il primo rilascio pi
 Apple Silicon**, coerente con la postazione attuale: sistema ancora supportato e aggiornato,
 FileVault attivo, account quotidiano non amministratore, almeno 16 GB di RAM e inizialmente almeno
 50 GB liberi, poi sostituiti dal preflight dimensionale P0. Se il
-computer di destinazione è diverso, P-1 deve riaprire la scelta e nessuna garanzia di sandbox viene
+computer di destinazione è diverso, G0/G1 devono riaprire la scelta e nessuna garanzia di sandbox viene
 riutilizzata automaticamente.
 
 Il pacchetto è una app firmata e notarizzata con App Sandbox, composta nello stesso repository da:
@@ -189,7 +201,7 @@ Il pacchetto è una app firmata e notarizzata con App Sandbox, composta nello st
   alla cassaforte.
 
 Non si crea un fork del prodotto: i motori deterministici restano condivisi, mentre host,
-dipendenze e pacchetto personale sono separati per costruzione. P-1 include un prototipo firmato
+dipendenze e pacchetto personale sono separati per costruzione. G0/G1 includono un prototipo firmato
 dei permessi macOS; se App Sandbox, helper e WebView non rispettano i confini, il gate fallisce.
 
 ### 3.2 Dati e isolamento
@@ -257,7 +269,7 @@ Se l'hardware non raggiunge tempi e accuratezza minimi:
 
 ---
 
-## 4. Niente chatbot generale: UX a compiti
+## 4. Pilot storico Stretto: niente chatbot generale, UX a compiti
 
 ### 4.1 Schermate minime
 
@@ -434,7 +446,8 @@ mensilmente, attivo per tutto il mese, senza eventi o variabili. Sono bloccati: 
 nel mese, part-time, tempo determinato, apprendistato, dirigenti, lavoro intermittente, straordinari,
 premi, trasferte, fringe benefit, malattia, infortunio, maternità, ferie/permessi, aspettative,
 trattenute sindacali, pignoramenti, più rapporti, arretrati, conguagli e mese di dicembre/fine anno.
-P-1 trasforma questo elenco in matrice positiva/negativa firmata; un caso non classificato è fuori,
+G0 trasforma questo elenco storico in una matrice positiva/negativa aggiornata; un caso non
+classificato è fuori,
 non viene interpretato liberamente dall'AI.
 
 - accesso locale del proprietario;
@@ -567,10 +580,17 @@ all'esercizio di un diritto applicabile, il motore valuta obbligo e legal hold, 
 distrugge le chiavi e registra motivazione per ciò che deve restare.
 
 Un `retention ledger` append-only, firmato e con sequenza monotona conserva tombstone e legal hold
-senza contenuto documentale. La versione più recente viene aggiornata separatamente su ogni
-destinazione backup. Dopo un restore, PaghePro applica il ledger e le scadenze **prima** di rendere
-visibili i dati; un ledger assente, più vecchio o non verificabile lascia il restore in quarantena.
-Così un vecchio backup non può riattivare silenziosamente un dato già cancellato.
+senza contenuto documentale. Il suo ultimo numero di sequenza/hash viene scritto anche in un
+`recovery ledger anchor` firmato, conservato su un secondo supporto offline indipendente dai backup
+dati; due copie fisiche cifrate sono raccomandate. Ogni tombstone/legal hold resta
+`in attesa di consolidamento` e non viene dichiarato completato finché l'anchor corrente non è
+aggiornato. Un supporto scollegato non viene considerato magicamente aggiornato.
+
+Dopo un restore, PaghePro richiede l'anchor corrente e applica ledger/scadenze **prima** di rendere
+visibili i dati. Un ledger interno al backup può essere valido ma stale: viene respinto se non
+raggiunge la sequenza/hash dell'anchor. Anchor assente, più vecchio o non verificabile lascia il
+restore fail-closed in quarantena. La perdita dell'anchor sacrifica la disponibilità del restore,
+non riattiva silenziosamente un dato cancellato.
 
 ### 8.4 Trasparenza verso la persona
 
@@ -617,6 +637,13 @@ firma, digest pinning, limite dimensione e rollback; nessun componente si aggior
 
 ## 9. Roadmap personale a gate
 
+> **ROADMAP STORICA — NON ESEGUIBILE.** Le checklist P-1–P6 qui sotto documentano il precedente
+> pilot ristretto. È vietato usarle per reintrodurre come limiti globali una azienda, 10
+> dipendenti, un CCNL, solo UNILAV, assenza dell'indice o assenza del Copilot interno. Prima di
+> qualsiasi codice AI si segue G0 del piano
+> [`PIANO-AI-LIBERA-LIMITI-USO.md`](PIANO-AI-LIBERA-LIMITI-USO.md). Restano riutilizzabili solo le
+> invarianti di sicurezza locale richiamate esplicitamente dalle fasi G1/G4 del nuovo piano.
+
 Le stime sono indicative per adattare e verificare il codice esistente, non promesse. P50 assume un
 flusso di sviluppo focalizzato e hardware compatibile; P80 è circa 1,5-2 volte P50. Nessuna fase
 parte senza autorizzazione separata.
@@ -626,7 +653,7 @@ P-1 → P0 → P1A → P1B → P1C → P2 → P3 → P4 → P5 → P5B → P6
                       └──────────────────→ test privacy continui
 ```
 
-### Gate P-1 — Confermare il prodotto personale
+### Gate P-1 — STORICO, NON ESEGUIRE
 
 **Obiettivo:** congelare la riduzione di scope prima del codice.
 
@@ -649,7 +676,7 @@ P-1 → P0 → P1A → P1B → P1C → P2 → P3 → P4 → P5 → P5B → P6
 **Gate:** decisioni scritte, scope escluso accettato e baseline pulita senza perdere lavori
 concorrenti. Target OS/hardware e fonte operativa non possono restare da decidere dopo P-1.
 
-### Fase P0 — Threat model e prova dei confini
+### Fase P0 — STORICA, NON ESEGUIRE
 
 **P50:** 1-2 settimane di ADR, prototipi di rischio e governance.
 
@@ -694,7 +721,7 @@ Valori minimi iniziali del contratto di accettazione:
 Il gate fallisce se una capability dati non ha un `purposeId`, base, retention, soglia o test
 completo, oppure se uno dei quattro ADR non supera il prototipo sul target reale.
 
-### Fase P1A — Personal Host e sessione locale
+### Fase P1A — STORICA, NON ESEGUIRE
 
 **P50:** 2-4 settimane dopo i prototipi P0.
 
@@ -718,7 +745,7 @@ socket Internet e nessuna porta TCP/UDP; inventari route/comandi contengono solo
 azienda, undicesimo dipendente, secondo CCNL/tipo documento e chat command sono respinti
 server-side. Client non firmato, audit token/nonce errati e provisioning ripetuto sono respinti.
 
-### Fase P1B — Storage, chiavi, migrazioni e recovery
+### Fase P1B — STORICA, NON ESEGUIRE
 
 **P50:** 2-5 settimane.
 
@@ -727,17 +754,18 @@ server-side. Client non firmato, audit token/nonce errati e provisioning ripetut
 - [ ] DEK casuale avvolta da Keychain e recovery passphrase/key.
 - [ ] Temp in memoria o directory cifrata dell'app; core dump disabilitati.
 - [ ] Backup pre-upgrade e backup utente soltanto su destinazioni locali approvate.
-- [ ] Chiavi-oggetto, grafo derivati e retention ledger monotono per cancellazione/restore.
+- [ ] Chiavi-oggetto, grafo derivati, retention ledger e anchor offline indipendente per restore.
 - [ ] Export cifrato predefinito e confine di custodia esplicito.
 - [ ] Restore su profilo macOS nuovo, rotazione chiave e recovery mode.
 - [ ] Matrice app/schema, spazio preflight, forward-fix e rollback provati.
 
 **Gate P1B:** fresh install, upgrade da copia realistica, rollback/forward-fix e restore su profilo
 pulito riescono; cancellazione ammessa rimuove tutti i derivati e non viene resuscitata da un backup
-precedente; legal hold è motivato/auditato; nessun dato personale in DB/WAL/temp/log in chiaro;
-recovery key realmente usabile.
+precedente quando l'anchor nuovo è presente; ledger valido ma stale e anchor assente bloccano il
+restore. Legal hold è motivato/auditato; nessun dato personale in DB/WAL/temp/log in chiaro;
+recovery key e recovery ledger anchor sono realmente usabili.
 
-### Fase P1C — Sandbox ed egress dell'intero data path
+### Fase P1C — STORICA, NON ESEGUIRE
 
 **P50:** 2-4 settimane.
 
@@ -752,7 +780,7 @@ recovery key realmente usabile.
 **Gate P1C:** file-esca fuori vault irraggiungibili; 0 socket/byte esterni dai processi dati;
 nessun dato in cache/history/sync del viewer; ogni configurazione più permissiva fallisce l'avvio.
 
-### Fase P2 — Inbox documentale stretta
+### Fase P2 — STORICA, NON ESEGUIRE
 
 **P50:** 2-4 settimane.
 
@@ -774,7 +802,7 @@ rifiutati nel DB, storage, cache e backup; qualunque falso positivo non intercet
 gate, indipendentemente dalla metrica aggregata. Nessuna lettura di file non selezionati. Anche
 UNILAV con allegati/note estranee deve minimizzare o astenersi secondo `privacy_acceptance.yaml`.
 
-### Fase P3 — Assistenti AI locali specializzati
+### Fase P3 — STORICA, NON ESEGUIRE
 
 **P50:** 2-5 settimane, subordinata al benchmark hardware.
 
@@ -793,7 +821,7 @@ UNILAV con allegati/note estranee deve minimizzare o astenersi secondo `privacy_
 **Gate P3:** tutte le soglie statistiche, privacy e prestazioni di `privacy_acceptance.yaml` sono
 raggiunte sul corpus preregistrato e sull'hardware P-1; altrimenti il flusso resta parser/manuale.
 
-### Fase P4 — Nucleo paghe deterministico ristretto
+### Fase P4 — STORICA, NON ESEGUIRE
 
 **P50:** 3-6 settimane più validazione professionale.
 
@@ -810,7 +838,7 @@ raggiunte sul corpus preregistrato e sull'hardware P-1; altrimenti il flusso res
 **Gate P4:** casi in-scope riconciliati e firmati dal professionista; ogni esclusione e un caso
 sconosciuto sono bloccati prima del calcolo, non stimati dall'AI.
 
-### Fase P5 — Console guidata personale
+### Fase P5 — STORICA, NON ESEGUIRE
 
 **P50:** 2-4 settimane.
 
@@ -829,7 +857,7 @@ assistenza, la prossima azione viene trovata in <10 secondi e il ricorso a chat/
 Ogni azione mostra input, risultato, stato e modo di annullare/correggere; i dettagli tecnici non
 sono nella vista normale.
 
-### Fase P5B — Installer e aggiornamenti offline definitivi
+### Fase P5B — STORICA, NON ESEGUIRE
 
 **P50:** 2-4 settimane dopo il vertical slice funzionante.
 
@@ -855,7 +883,7 @@ State machine obbligatoria dell'upgrade:
 sono provati offline in ogni transizione; pacchetto alterato/scaduto/non compatibile viene rifiutato
 prima dei dati e l'Updater resta incapace di aprire backup o cassaforte.
 
-### Fase P6 — Shadow personale
+### Fase P6 — STORICA, NON ESEGUIRE
 
 **Durata minima:** tre cicli mensili consecutivi.
 
@@ -942,8 +970,9 @@ Per ogni file si controllano database, blob, cache, quarantena, audit e backup. 
 - eseguire scadenza o diritto applicabile e verificare grafo, chiavi-oggetto e tombstone;
 - distinguere dati cancellabili da record soggetti a obbligo/legal hold, con motivo e audit;
 - ripristinare un backup creato prima della cancellazione;
-- applicare il retention ledger più recente prima di aprire la cassaforte;
-- verificare che dati cancellati non tornino visibili e che ledger assente/vecchio blocchi il restore;
+- provare backup pre-cancellazione + anchor nuovo: il dato viene eliminato prima della visibilità;
+- provare ledger del backup firmato ma stale: viene respinto rispetto all'anchor corrente;
+- provare anchor assente/vecchio/non verificabile: il restore resta in quarantena fail-closed;
 - lasciare scadere la finestra backup e verificare distruzione delle copie/chiavi previste.
 
 ---
@@ -1017,7 +1046,7 @@ eventuale implementazione verrà chiesta una sola conferma per volta:
 1. confermare che il Mac reale soddisfa OS supportato, Apple Silicon, 16 GB, spazio e FileVault;
 2. scegliere l'unico CCNL/caso standard;
 3. nominare il professionista che valida i golden case;
-4. approvare retention, legal hold e recovery/backup locale;
+4. approvare retention, legal hold, backup locale e supporto separato del recovery ledger anchor;
 5. decidere se serve un unico import manuale dal software precedente.
 
 L'uso di un provider AI cloud non è una decisione dell'MVP. Se verrà mai proposto, richiederà un
@@ -1048,11 +1077,34 @@ ufficiali disponibili e validazione professionale prima dell'uso reale.
 
 ---
 
-## 15. Verdetto provvisorio
+## 15. Verdetto del piano ristretto
 
-**DA RICONTROLLARE DAL PANEL dopo le correzioni richieste.**
+**VERDETTO STORICO SUPERATO.** Questo piano era stato approvato come pilot ristretto dal panel
+architettura/fattibilità, sicurezza/GDPR e scope/UX; non è più la policy funzionale corrente.
+
+Le revisioni hanno richiesto e verificato: host personale separato, trasporto XPC senza rete,
+cifratura/recovery/migrazioni, backup locale, minimizzazione intra-documento, cancellazione e
+restore, neutralizzazione injection, un solo vertical slice, allowlist UI/server e gate statistici.
+Nell'ultima revisione non restano finding alti o medi aperti.
 
 Il risultato desiderato è più piccolo del master, ma più coerente con la richiesta: un programma
 personale, offline-first e senza chat generale. Non cerca autonomamente alcun file; per il singolo
 file scelto legge in quarantena solo quanto serve a classificarlo e distrugge i dati rifiutati.
-L'approvazione del piano non certifica calcoli, documenti o uso reale.
+L'approvazione del piano non certifica calcoli, documenti o uso reale e non autorizza codice. La
+prima eventuale attività AI è G0 del nuovo piano, dopo una richiesta separata dell'utente.
+
+---
+
+## 16. Decisione storica dei tre ruoli — superata
+
+| Ruolo | Decisione | Motivo | Prossima azione |
+|---|---|---|---|
+| Controllore Consegna | **VERDETTO STORICO** | Valutava il precedente pilot ristretto, non la policy corrente. | Fare riferimento al §18 del nuovo piano. |
+| Direttore Prossimo Incarico | In futuro: **G0, poi G1/G2**. | Prima del codice AI servono inventario, threat model, fondazioni locali e Usage Governor. | Partire solo dopo una richiesta separata dell'utente. |
+| Ricercatore Mercato/GAP | **Nessuna funzione concorrente entra ora.** | Cloud, portali e integrazioni contraddicono il vantaggio locale/privacy-first finché manca il Governor. | Validare l'UX Guidata durante G3/G9; nessuna integrazione esterna prima di G2 e dei relativi gate. |
+
+Il confronto di controllo ha considerato le pagine prodotto di
+[Sistemi JOB](https://www.sistemi.com/software-gestionali/job/job-paghe/per-le-aziende/),
+[Zucchetti Paghe](https://www.zucchetti.it/website/cms/cms/prodotto/2626-software-paghe-consulenti-del-lavoro.html) e
+[TeamSystem Paghe](https://www.teamsystem.com/hr/teamsystem-hr/funzionalita/paghe/), consultate il
+15 luglio 2026. Le loro funzioni più ampie non modificano lo scope ristretto.

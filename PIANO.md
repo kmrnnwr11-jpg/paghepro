@@ -4,6 +4,14 @@
 > per seguirlo.** Ogni fase dice *cosa fai tu* e *cosa fa l'agente AI (il codice)*.
 > Aggiornato al: 2026-06-27.
 
+> **Governance AI personale aggiornata il 15 luglio 2026:** per qualunque lavoro sull'AI dentro
+> PaghePro prevale
+> [`docs/PIANO-AI-LIBERA-LIMITI-USO.md`](docs/PIANO-AI-LIBERA-LIMITI-USO.md). L'AI può coprire tutti
+> i dati e moduli professionali interni, ma ogni esecuzione usa un mandato limitato. Prima di
+> implementare nuove capability AI si eseguono G0, G1 e G2 del nuovo piano. Le checklist P-1–P6 di
+> `docs/PIANO-PERSONALE-PRIVACY-FIRST.md` sono storiche e non eseguibili. Questa precedenza non
+> autorizza codice e non cambia l'ordine delle attività non-AI già presenti qui.
+
 ---
 
 ## 0. Come si legge questo piano

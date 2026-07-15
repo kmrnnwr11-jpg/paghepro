@@ -66,4 +66,14 @@ public class FirmaXadesTests
         Assert.Contains("Mario Rossi", verifica.Firmatario);
         Assert.NotNull(verifica.DataFirmaUtc);
     }
+
+    [Fact]
+    public void FirmaXades_RifiutaDtdEdEntita()
+    {
+        using var firmatore = FirmatoreDiProva();
+        const string xmlConDtd = "<!DOCTYPE x [<!ENTITY dato 'espanso'>]><x>&dato;</x>";
+
+        Assert.ThrowsAny<Exception>(() =>
+            firmatore.Firma(Encoding.UTF8.GetBytes(xmlConDtd), "rischioso.xml", TipoFirma.Xades));
+    }
 }

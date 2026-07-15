@@ -2,6 +2,11 @@
 
 Contesto per rifinire questo progetto con Claude/Codex.
 
+> Per lavoro sull'AI applicativa personale leggere prima
+> [`docs/PIANO-AI-LIBERA-LIMITI-USO.md`](docs/PIANO-AI-LIBERA-LIMITI-USO.md). È la fonte corrente
+> per scope, grant e limiti d'uso. Le fasi P-1–P6 del precedente piano ristretto sono storiche e non
+> vanno implementate. Nessun codice AI parte prima di G0/G1/G2 e di una richiesta separata.
+
 ## Progetto
 
 SaaS italiano per buste paga, fatturazione e contabilita per micro-imprese.
@@ -162,6 +167,13 @@ dotnet run --project src/Paghe.Demo -c Release
   + data). UI: pagina **Firma digitale** nella SPA (anteprima documento, scelta formato/dispositivo,
   risultato firmato verificato e scaricabile). Config sezione `Firma`. La firma CNS richiede il
   middleware PKCS#11 + carta sulla macchina che firma (desktop/agente locale, non backend cloud).
+  **Hardening endpoint firma**: tutti e tre gli endpoint richiedono autenticazione e rate limit;
+  gli upload hanno limiti espliciti (documento 10 MB, PFX 1 MB, verifica 15 MB), riconoscimento
+  minimo dal contenuto, scelta esclusiva PFX/CNS e whitelist `cades|xades`. Gli errori crittografici
+  restano nei log con TraceId e il client riceve un messaggio neutro; il PFX temporaneo viene
+  azzerato dalla memoria e il parser XAdES vieta DTD/entità e limita la dimensione XML. Test
+  unitari + HTTP (incluso `401`, limite upload e `429`) in
+  `SicurezzaUploadFirmaTests` e `SicurezzaFirmaApiTests`.
 - **Primo blocco cedolino professionale (ancora bozza)**: la pagina **Presenze** della SPA e
   l'unico editor delle variabili mensili (straordinari normale/notturno/festivo, ferie,
   permessi ROL/ex-festività, malattia con n° evento nell'anno, infortunio INAIL, assenze non

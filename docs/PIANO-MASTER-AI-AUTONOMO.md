@@ -7,10 +7,13 @@
 > lasciando alle persone soltanto approvazioni, deleghe, firme, validazioni professionali e
 > attività che la legge o un ente non permettono di automatizzare.
 
-> **Profilo scelto per la prima versione:** il piano ristretto
-> [`PIANO-PERSONALE-PRIVACY-FIRST.md`](PIANO-PERSONALE-PRIVACY-FIRST.md) prevale su questo master.
-> Disabilita chat generale, AI cloud, connettori esterni e lettura non esplicita dei file. Questo
-> master resta una mappa di possibilità future, da non eseguire fuori dal profilo personale.
+> **Profilo scelto per la prima versione:**
+> [`PIANO-AI-LIBERA-LIMITI-USO.md`](PIANO-AI-LIBERA-LIMITI-USO.md) prevale per perimetro e accessi.
+> L'AI locale può lavorare su tutti i dati professionali dentro PaghePro, ma ogni attività usa un
+> mandato temporaneo per scopo, durata, quantità e azioni. Il piano
+> [`PIANO-PERSONALE-PRIVACY-FIRST.md`](PIANO-PERSONALE-PRIVACY-FIRST.md) resta la baseline di
+> sicurezza e la modalità Stretta. Questo master resta la fonte delle capacità e dei gate di
+> dominio; nessun documento autorizza automaticamente l'implementazione.
 
 ---
 

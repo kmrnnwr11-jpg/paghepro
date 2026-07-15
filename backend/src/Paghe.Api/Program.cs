@@ -248,8 +248,10 @@ app.Use(async (context, next) =>
 });
 
 app.UseCors();
-app.UseRateLimiter();
 app.UseAuthentication();
+// Il limiter delle operazioni sensibili usa il claim "sub" quando autenticato; deve quindi
+// essere eseguito dopo l'autenticazione (con fallback sull'IP per le richieste anonime).
+app.UseRateLimiter();
 app.UseAuthorization();
 
 // RBAC: applica la policy per ruolo (sola_lettura → solo lettura; anonimizzazione GDPR → solo admin).
@@ -797,69 +799,129 @@ secured.MapPost("/api/fatture/valida", (Fattura fattura) =>
 // Firma digitale CAdES-BES (busta .p7m) di un documento qualsiasi (es. XML FatturaPA).
 // multipart/form-data: campo "file" (obbligatorio); per firmare con un certificato software
 // allegare "pfx" + "password"; per firmare con smart card/CNS configurata passare "pin".
-app.MapPost("/api/firma/cades", async (HttpRequest http, FirmaOptions firma) =>
+app.MapPost("/api/firma/cades", async (
+    HttpRequest http, FirmaOptions firma, ILoggerFactory loggerFactory) =>
 {
     if (!http.HasFormContentType)
         return Results.BadRequest(new { errore = "Inviare multipart/form-data con il campo 'file'." });
 
     var form = await http.ReadFormAsync();
     var file = form.Files["file"];
-    if (file is null || file.Length == 0)
-        return Results.BadRequest(new { errore = "File da firmare mancante (campo 'file')." });
+    if (SicurezzaUploadFirma.ValidaDimensione(
+            file, SicurezzaUploadFirma.DimensioneMassimaDocumento, "File da firmare") is { } erroreFile)
+        return Results.BadRequest(new { errore = erroreFile });
 
-    byte[] contenuto = await LeggiFile(file);
+    byte[] contenuto = await LeggiFile(file!);
     var pfxFile = form.Files["pfx"];
+    if (pfxFile is not null && SicurezzaUploadFirma.ValidaDimensione(
+            pfxFile, SicurezzaUploadFirma.DimensioneMassimaPfx, "Certificato PFX") is { } errorePfx)
+        return Results.BadRequest(new { errore = errorePfx });
     string? password = form["password"];
     string? pin = form["pin"];
-    // Formato: "xades" (XML enveloped) oppure "cades" (.p7m, default).
-    var tipo = string.Equals(form["formato"], "xades", StringComparison.OrdinalIgnoreCase)
+    string formatoRichiesto = string.IsNullOrWhiteSpace(form["formato"])
+        ? "cades" : form["formato"].ToString();
+    if (!string.Equals(formatoRichiesto, "cades", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(formatoRichiesto, "xades", StringComparison.OrdinalIgnoreCase))
+        return Results.BadRequest(new { errore = "Formato firma non supportato: usare 'cades' o 'xades'." });
+    if (pfxFile is not null && !string.IsNullOrWhiteSpace(pin))
+        return Results.BadRequest(new { errore = "Scegliere un solo dispositivo di firma: PFX oppure CNS/PIN." });
+
+    var tipo = string.Equals(formatoRichiesto, "xades", StringComparison.OrdinalIgnoreCase)
         ? TipoFirma.Xades : TipoFirma.Cades;
 
     IFirmatoreDigitale? firmatore = null;
     try
     {
-        if (pfxFile is not null && pfxFile.Length > 0)
-            firmatore = FirmatorePfx.DaBytes(await LeggiFile(pfxFile), password ?? "");
+        if (pfxFile is not null)
+        {
+            byte[] pfx = await LeggiFile(pfxFile!);
+            try
+            {
+                if (!SicurezzaUploadFirma.SembraPkcs12(pfx))
+                    return Results.BadRequest(new { errore = "Il certificato caricato non è un PFX/P12 valido." });
+                firmatore = FirmatorePfx.DaBytes(pfx, password ?? "");
+            }
+            finally
+            {
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(pfx);
+            }
+        }
         else
             firmatore = FirmaCadesLocale.CreaFirmatore(firma, pin);
 
-        var risultato = firmatore.Firma(contenuto, file.FileName, tipo);
+        var risultato = firmatore!.Firma(contenuto, file!.FileName, tipo);
         return Results.File(risultato.ContenutoFirmato, risultato.Mime, risultato.NomeFile);
     }
-    catch (NotSupportedException ex) { return Results.BadRequest(new { errore = ex.Message }); }
-    catch (Exception ex) { return Results.BadRequest(new { errore = $"Firma non riuscita: {ex.Message}" }); }
+    catch (Exception ex)
+    {
+        loggerFactory.CreateLogger("FirmaDigitale").LogWarning(
+            ex, "Firma documento non riuscita. TraceId: {TraceId}", http.HttpContext.TraceIdentifier);
+        return Results.BadRequest(new
+        {
+            errore = "Firma non riuscita. Verificare certificato, password/PIN e configurazione.",
+            riferimento = http.HttpContext.TraceIdentifier,
+        });
+    }
     finally { (firmatore as IDisposable)?.Dispose(); }
-}).RequireAuthorization().RequireRateLimiting("sensibili").DisableAntiforgery();
+}).RequireAuthorization().RequireRateLimiting("sensibili").DisableAntiforgery()
+  .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(
+      SicurezzaUploadFirma.DimensioneMassimaRichiesta));
 
 // Verifica un documento firmato (.p7m CAdES o XML XAdES): riconosce il formato, controlla la
 // validità della firma e restituisce firmatario e data. multipart/form-data con campo "file".
-app.MapPost("/api/firma/verifica", async (HttpRequest http) =>
+app.MapPost("/api/firma/verifica", async (HttpRequest http, ILoggerFactory loggerFactory) =>
 {
     if (!http.HasFormContentType)
         return Results.BadRequest(new { errore = "Inviare multipart/form-data con il campo 'file'." });
 
     var form = await http.ReadFormAsync();
     var file = form.Files["file"];
-    if (file is null || file.Length == 0)
-        return Results.BadRequest(new { errore = "File firmato mancante (campo 'file')." });
+    if (SicurezzaUploadFirma.ValidaDimensione(
+            file, SicurezzaUploadFirma.DimensioneMassimaDocumentoFirmato, "File firmato") is { } erroreFile)
+        return Results.BadRequest(new { errore = erroreFile });
 
-    var r = MotoreFirma.Verifica(await LeggiFile(file));
-    return Results.Ok(new
+    byte[] documento = await LeggiFile(file!);
+    if (!SicurezzaUploadFirma.SembraDocumentoFirmato(documento))
+        return Results.BadRequest(new { errore = "Il file non è una firma CAdES o XAdES riconoscibile." });
+
+    try
     {
-        valido = r.Valido,
-        formato = r.Formato,
-        firmatario = r.Firmatario,
-        dataFirmaUtc = r.DataFirmaUtc,
-        algoritmoDigest = r.AlgoritmoDigest,
-    });
-}).RequireAuthorization().RequireRateLimiting("sensibili").DisableAntiforgery();
+        var r = MotoreFirma.Verifica(documento);
+        return Results.Ok(new
+        {
+            valido = r.Valido,
+            formato = r.Formato,
+            firmatario = r.Firmatario,
+            dataFirmaUtc = r.DataFirmaUtc,
+            algoritmoDigest = r.AlgoritmoDigest,
+        });
+    }
+    catch (Exception ex)
+    {
+        loggerFactory.CreateLogger("FirmaDigitale").LogWarning(
+            ex, "Verifica firma non riuscita. TraceId: {TraceId}", http.HttpContext.TraceIdentifier);
+        return Results.BadRequest(new
+        {
+            errore = "Verifica non riuscita: il file firmato non è valido o supportato.",
+            riferimento = http.HttpContext.TraceIdentifier,
+        });
+    }
+}).RequireAuthorization().RequireRateLimiting("sensibili").DisableAntiforgery()
+  .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(
+      SicurezzaUploadFirma.DimensioneMassimaDocumentoFirmato + 64 * 1024));
 
 // Genera l'XML FatturaPA, lo valida e lo firma in CAdES (.xml.p7m) con il certificato configurato
 // nella sezione "Firma". Per la CNS il PIN può essere passato nell'header "X-Firma-Pin".
-app.MapPost("/api/fatture/firma", async (Fattura fattura, HttpRequest http, FirmaOptions firma, string? formato) =>
+app.MapPost("/api/fatture/firma", async (
+    Fattura fattura, HttpRequest http, FirmaOptions firma, string? formato,
+    ILoggerFactory loggerFactory) =>
 {
     if (fattura.Righe.Count == 0)
         return Results.BadRequest(new { errore = "La fattura non ha righe." });
+    if (!string.IsNullOrWhiteSpace(formato)
+        && !string.Equals(formato, "cades", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(formato, "xades", StringComparison.OrdinalIgnoreCase))
+        return Results.BadRequest(new { errore = "Formato firma non supportato: usare 'cades' o 'xades'." });
 
     string xml = FatturaPaXml.Genera(fattura);
     var erroriXsd = FatturaPaValidator.Valida(xml);
@@ -881,10 +943,18 @@ app.MapPost("/api/fatture/firma", async (Fattura fattura, HttpRequest http, Firm
         var risultato = firmatore.Firma(Encoding.UTF8.GetBytes(xml), nomeXml, tipo);
         return Results.File(risultato.ContenutoFirmato, risultato.Mime, risultato.NomeFile);
     }
-    catch (NotSupportedException ex) { return Results.BadRequest(new { errore = ex.Message }); }
-    catch (Exception ex) { return Results.BadRequest(new { errore = $"Firma non riuscita: {ex.Message}" }); }
+    catch (Exception ex)
+    {
+        loggerFactory.CreateLogger("FirmaDigitale").LogWarning(
+            ex, "Firma fattura non riuscita. TraceId: {TraceId}", http.HttpContext.TraceIdentifier);
+        return Results.BadRequest(new
+        {
+            errore = "Firma non riuscita. Verificare certificato/PIN e configurazione.",
+            riferimento = http.HttpContext.TraceIdentifier,
+        });
+    }
     finally { (firmatore as IDisposable)?.Dispose(); }
-});
+}).RequireAuthorization().RequireRateLimiting("sensibili");
 
 // Riclassificazione del bilancio (Stato Patrimoniale + Conto Economico, schema CEE).
 app.MapPost("/api/bilancio/riclassifica", (RiclassificaRequest req) =>
@@ -2115,6 +2185,12 @@ secured.MapPost("/api/documenti-scadenze",
         await file.CopyToAsync(ms);
         bytes = ms.ToArray();
     }
+
+    // Sicurezza (§10): il tipo dichiarato dal client non è una prova. Verifica dai byte reali
+    // che sia davvero un PDF ("%PDF-") prima di darlo in pasto al parser.
+    if (bytes.Length < 5 || bytes[0] != 0x25 || bytes[1] != 0x50
+        || bytes[2] != 0x44 || bytes[3] != 0x46 || bytes[4] != 0x2D)
+        return Results.BadRequest(new { errore = "Il file non è un PDF valido (contenuto non riconosciuto)." });
 
     string testo;
     try

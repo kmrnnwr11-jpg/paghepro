@@ -1,139 +1,222 @@
 # Cose che NON ho fatto (e non farò) per motivi di sicurezza
 
-Documento richiesto dal fondatore il 15/07/2026. Elenca le azioni che, durante questi lavori,
-**mi sono rifiutato di fare** o ho fatto in modo diverso da come chiesto, per proteggere te, i
-tuoi futuri clienti e i loro dipendenti. Per ognuna: perché è pericolosa, e la via corretta.
+Documento richiesto dal fondatore e riesaminato sul codice il **15/07/2026**.
 
-Non è un elenco di limiti tecnici: è un elenco di **scelte di sicurezza**. La via corretta esiste
-sempre — di solito richiede una credenziale, un canale ufficiale o un professionista.
+Questo elenco distingue ciò che è già protetto, ciò che è solo parziale e ciò che deve essere
+completato prima di usare PaghePro con clienti e dipendenti reali. Non è una promessa generica:
+ogni affermazione indica il limite reale e la via corretta.
+
+## Stato in breve
+
+| Stato | Significato |
+|---|---|
+| ✅ Protetto | La protezione è presente nel codice ed è coperta da verifiche. |
+| 🟠 Parziale | Esiste una protezione, ma non copre ancora tutto il flusso. |
+| 🔴 Da completare | Non usare la funzione con dati reali finché il lavoro indicato non è concluso. |
+
+## 1. Invio automatico tramite bot sui portali pubblici — ✅ scelta sicura
+
+**Cosa non ho fatto:** automatizzare login, compilazione e clic su “Invia” nei siti di Agenzia
+delle Entrate, INPS, INAIL o Camera di Commercio usando le credenziali dell’utente.
+
+**Perché:** un bot del browser non è un’integrazione ufficiale, è fragile rispetto ai cambiamenti
+del portale e può violarne le condizioni d’uso. Un invio sbagliato produce effetti reali e la sua
+correzione può richiedere una procedura formale.
+
+**Via corretta:** PaghePro prepara file o bozze e applica i controlli interni disponibili. L’output
+deve poi superare il controllo ufficiale dell’ente e essere caricato consapevolmente dal
+professionista, oppure trasmesso tramite un provider/canale ufficiale autorizzato.
+
+**Limite reale oggi:** il controllo ufficiale F24 è stato provato solo per i casi documentati; il
+controllo INPS di UniEmens e i controlli AdE di CU, LIPE e 770 non sono ancora completati. Quegli
+output non sono pronti per l’invio reale.
+
+## 2. Segreti, chiavi API e certificati nel repository — ✅ protetto, 🟠 migrazione da completare
+
+**Cosa non ho fatto:** scrivere chiavi JWT, chiavi AI, chiavi SdI, PIN o certificati di firma nel
+codice o nei file versionati.
+
+**Perché:** la cronologia del repository conserva i segreti e può renderli leggibili a chi ottiene
+accesso al progetto. Una chiave trapelata può esporre dati, firme o costi API.
+
+**Via corretta:** usare secret/variabili d’ambiente. In produzione PaghePro rifiuta chiavi JWT e
+chiavi di cifratura deboli o di sviluppo. I campi coperti (tra cui IBAN, segreto TOTP e ApiKey SdI)
+usano cifratura AES-256-GCM a riposo.
+
+**Da completare prima dei clienti reali:** impostare e custodire `PAGHE_DATA_KEY`, definirne backup
+e rotazione e ricifrare in modo controllato eventuali righe storiche nate in chiaro. La lettura
+compatibile dei valori storici non equivale a una migrazione già eseguita.
+
+## 3. Super-admin ottenibile registrando un’email — ✅ corretto
+
+**Cosa ho cambiato:** la registrazione crea sempre un account normale. Conoscere o registrare
+l’email del fondatore non concede privilegi di piattaforma.
+
+**Perché era pericoloso:** un estraneo avrebbe potuto prendere il controllo degli studi clienti.
+
+**Via corretta:** il primo super-admin si crea una sola volta, da utente autenticato, con un token
+segreto `SuperAdmin:BootstrapToken` di almeno 32 caratteri. Dopo il bootstrap il token va rimosso.
+Il confronto è protetto e l’operazione è limitata contro i tentativi ripetuti.
+
+## 4. Firma digitale e caricamento di PFX/PIN — ✅ endpoint protetti, 🟠 collaudo reale mancante
+
+**Cosa non ho fatto:** persistere deliberatamente PFX e PIN o registrarli nei log. Il certificato
+caricato viene usato in memoria per il tempo necessario alla firma.
+
+**Cosa è protetto:** `/api/firma/cades`, `/api/firma/verifica` e `/api/fatture/firma` richiedono
+autenticazione e hanno un limite di frequenza. Gli upload applicano limiti separati a documento,
+PFX e file firmato, riconoscono il formato minimo dal contenuto e accettano solo `cades` o `xades`.
+PFX e CNS/PIN non possono essere forniti insieme. Gli errori tecnici sono registrati lato server
+con un riferimento, mentre il client riceve un messaggio neutro. Test HTTP verificano che senza
+token tutti e tre gli endpoint rispondano `401` e che il superamento della quota produca `429`.
+Il PFX temporaneo viene azzerato dalla memoria dopo il caricamento; il parser XAdES vieta DTD ed
+entità e limita i caratteri elaborabili.
+
+**Limite reale:** manca ancora il collaudo con certificato qualificato/CNS reale e la verifica
+completa di catena e revoca del certificato. La CNS deve rimanere sulla macchina fidata che firma;
+non va trasformata in una chiave privata nel backend cloud.
+
+## 5. Dati sanitari non necessari — ✅ minimizzazione applicata
+
+**Cosa non faccio:** salvare diagnosi o motivazioni mediche di malattia e infortunio.
+
+**Perché:** sono dati particolari. Al calcolo servono le assenze e gli elementi amministrativi,
+non la diagnosi.
+
+**Via corretta:** PaghePro conserva giorni di assenza e numero progressivo dell’evento, non la
+diagnosi. Se in futuro fosse indispensabile un nuovo dato sanitario, dovrà prima avere finalità,
+base giuridica, accessi e retention approvati.
+
+## 6. Far decidere paghe o imposte all’AI — ✅ scelta sicura, 🟠 regole da completare
+
+**Cosa non faccio:** permettere a un modello AI di scegliere autonomamente importi, aliquote,
+codici tributo o azioni con effetti legali.
+
+**Perché:** un modello può produrre un dato plausibile ma errato.
+
+**Via corretta:** l’AI è spenta per impostazione predefinita e, quando abilitata, legge e propone
+campi con una confidenza. Il parser e il calcolo deterministico prevalgono; la conferma resta
+umana.
+
+**Limite reale oggi:** l’obiettivo è avere tutte le regole normative nel database versionato, ma
+alcune regole di malattia/infortunio e maturazione sono ancora nel codice e devono essere migrate,
+versionate e validate da un Consulente del Lavoro.
+
+## 7. Inviare documenti personali a un provider AI senza governance — 🔴 non autorizzato
+
+**Cosa non faccio:** considerare sicuro l’invio di cedolini, visure o altri documenti reali a un
+provider AI solo perché è stata inserita una chiave API.
+
+**Perché:** quando un provider esterno è attivo, testo o immagini possono uscire dal sistema. Oggi
+non esiste una redazione automatica completa dei dati personali prima dell’invio.
+
+**Via corretta:** prima servono scelta documentata del provider, DPA, verifica di luogo del
+trattamento/trasferimenti, retention, informativa e base giuridica. Per documenti sensibili va
+preferito un modello locale quando adeguato. Senza queste decisioni, lasciare l’AI spenta.
+
+## 8. Mescolare i dati di studi diversi — 🟠 difesa applicativa presente, RLS mancante
+
+**Cosa non faccio:** progettare servizi che leggano o modifichino dati senza lo studio
+(`tenantId`) ricavato dal token autenticato.
+
+**Perché:** la fuga di dati fra studi è uno degli incidenti più gravi e può richiedere una
+valutazione di data breach e, in base al rischio, le notifiche previste dal GDPR.
+
+**Via corretta oggi:** i servizi tenant-scoped principali filtrano per `tenantId` e sono presenti
+test di isolamento. Non è però corretto promettere che ogni query futura sia automaticamente
+sicura.
+
+**Da completare:** introdurre difesa strutturale nel database (RLS/policy equivalenti), mantenere
+test obbligatori per ogni nuovo modulo ed eseguire un audit completo prima dei clienti reali.
+
+## 9. Dichiarare “GDPR completato” — 🟠 non ancora consentito
+
+**Cosa non faccio:** presentare cifratura e una tabella audit come conformità GDPR completa.
+
+**Stato reale:** la cifratura di campi sensibili e l’audit delle modifiche persistite esistono.
+L’audit registra creazione/modifica/cancellazione senza copiare i valori sensibili, ma non è ancora
+un log completo di tutte le letture e gli accessi.
+
+**Via corretta:** completare retention/cancellazione, log degli accessi rilevanti, gestione delle
+richieste dell’interessato, data breach, registro dei trattamenti, DPA, informative, ruoli e DPIA
+quando necessaria. Le scelte legali devono essere approvate da un professionista.
+
+## 10. Fidarsi di estensione o Content-Type degli upload — 🔴 da completare
+
+**Cosa non faccio:** considerare innocuo un PDF/XML/PFX soltanto perché il browser ne dichiara il
+tipo corretto.
+
+**Perché:** nome, estensione e Content-Type possono essere falsificati; file enormi o malevoli
+possono consumare risorse o colpire i parser.
+
+**Via corretta:** gli upload di firma hanno ora limiti e riconoscimento minimo dal contenuto. Sugli
+altri upload occorre mantenere o aggiungere limiti, usare parser confinati e introdurre scansione
+malware/quarantena per documenti reali.
+
+## 11. Consegnare come definitivo un output non certificato — 🟠 etichette presenti, audit globale mancante
+
+**Cosa non faccio:** dichiarare pronto un cedolino, F24, CU, UniEmens, LIPE, 770 o altro file
+telematico senza le verifiche richieste per quello specifico output.
+
+**Perché:** un file formalmente plausibile può essere scartato o contenere calcoli non validati.
+
+**Via corretta:** mantenere la dicitura **BOZZA DA VALIDARE**, eseguire il controllo ufficiale
+disponibile e ottenere la validazione professionale dove necessaria. Alcuni output hanno già
+l’etichetta; serve ancora un controllo globale per garantire che nessuna schermata o esportazione
+la ometta.
+
+## 12. Ricalcoli e cedolini palesemente incoerenti — ✅ barriere presenti, non validazione professionale
+
+**Cosa ho fatto diversamente dalla via più comoda:** il sistema blocca mesi futuri, periodi prima
+dell’assunzione e mesi interamente successivi alla cessazione. Evita il doppione del dipendente e
+protegge il ricalcolo di un mese con F24 già inviato; la forzatura richiede conferma esplicita.
+
+**Perché:** un ricalcolo silenzioso può disallineare cedolino, F24 e archivi.
+
+**Limite reale:** queste barriere riducono errori evidenti ma non certificano il calcolo paghe. Il
+motore e i PDF restano da validare con casi reali da un Consulente del Lavoro.
+
+## 13. Invii automatici di notifiche senza configurazione consapevole — ✅ default manuale
+
+**Cosa non faccio:** attivare automaticamente email, SMS o WhatsApp e contattare clienti/dipendenti
+senza configurazione e responsabilità chiare.
+
+**Via corretta:** il canale predefinito prepara il testo senza inviarlo. Gli invii reali richiedono
+credenziali del canale, destinatario corretto, base/preferenza applicabile e test. Per WhatsApp
+servono anche i template e le regole del provider quando richiesti.
+
+## 14. Portare in produzione uno schema database “da sviluppo” — 🔴 da completare
+
+**Cosa non faccio:** considerare `EnsureCreated` e l’allineamento automatico delle colonne una
+strategia definitiva di migrazione per clienti reali.
+
+**Perché:** modifiche automatiche senza migrazioni versionate e rollback possono causare perdita o
+incoerenza dei dati.
+
+**Via corretta:** generare e revisionare migrazioni EF Core, provarle su copia del database,
+verificare backup e ripristino, quindi usarle nel deploy stabile.
 
 ---
 
-## 1. Invio automatico ai portali pubblici (Agenzia Entrate, INPS, INAIL, Camera)
+## Cosa serve dal fondatore per sbloccare la via corretta
 
-**Cosa non ho fatto:** automatizzare il login e il "clicca invia" sui siti degli enti usando le
-tue credenziali (browser automation / bot che compila i portali).
-
-**Perché:** è contro le regole d'uso dei portali, si rompe a ogni cambio pagina, e mette le tue
-credenziali dentro un automatismo che, se sbaglia, invia dichiarazioni sbagliate a tuo nome senza
-possibilità di annullare. Un errore qui ha effetti legali reali.
-
-**La via corretta (già nel software):** genero il file ufficiale, lo faccio passare dal controllo
-ufficiale dell'ente, e te lo consegno pronto per il caricamento manuale nel Desktop Telematico o
-via provider accreditato. L'invio finale resta un gesto umano consapevole.
-
-## 2. Chiavi API e certificati dentro il programma o nel codice
-
-**Cosa non ho fatto:** scrivere la chiave DeepSeek/GLM, la chiave JWT, la chiave di cifratura o
-un certificato di firma dentro un file del progetto.
-
-**Perché:** tutto ciò che sta nel codice finisce nella cronologia del codice per sempre, ed è
-leggibile da chiunque abbia accesso al repository. Una chiave trapelata = accesso ai dati o
-consumo dell'API a tuo carico.
-
-**La via corretta:** le chiavi vanno come **variabili d'ambiente** (sul server o nel pannello di
-Render), mai nel repository. Il software è già fatto per leggerle da lì.
-
-## 3. Super-admin ottenibile registrandosi con un'email
-
-**Cosa ho cambiato (era una falla vera):** prima chiunque si registrasse con l'email configurata
-diventava super-admin della piattaforma. Quell'email è pubblica/indovinabile: era una porta aperta.
-
-**Perché era pericoloso:** un estraneo poteva creare un account con quell'email e prendere il
-controllo di tutti gli studi clienti.
-
-**Cosa ho messo al suo posto:** la registrazione dà sempre un account normale. Il super-admin si
-ottiene **una sola volta** con un token segreto (`SuperAdmin:BootstrapToken`) che metti tu come
-variabile d'ambiente e poi rimuovi. Dopo il primo, la porta si chiude da sola.
-
-## 4. Firma digitale e upload di certificato/PIN su pagine aperte
-
-**Cosa non ho fatto:** lasciare che chiunque, senza login, potesse caricare un certificato di
-firma (PFX) o un PIN e far firmare documenti dal server.
-
-**Perché:** un certificato di firma è come una firma autografa. Un endpoint aperto = chiunque
-firma, o intasa il server. E il PIN/certificato non va mai scritto nei log.
-
-**Cosa ho fatto:** gli endpoint di firma ora **richiedono l'accesso** e hanno un limite di
-frequenza; il certificato resta in memoria per il tempo della firma e non viene mai registrato.
-
-## 5. Dati sanitari dei dipendenti (diagnosi di malattia)
-
-**Cosa non faccio:** salvare la **diagnosi** o il motivo medico di una malattia/infortunio.
-
-**Perché:** sono "dati particolari" (art. 9 GDPR): la loro raccolta ha regole severe e sanzioni
-alte. Al software servono i **giorni** di assenza per calcolare la busta, non il perché.
-
-**Cosa faccio:** memorizzo solo il numero di giorni (che compare comunque sul cedolino) e il
-numero progressivo dell'evento nell'anno. Nessuna diagnosi entra nel sistema. Questa è
-minimizzazione dei dati, ed è già così.
-
-## 6. Far calcolare o "decidere" imposte e paghe all'AI
-
-**Cosa non faccio:** lasciare che un modello di intelligenza artificiale calcoli importi, scelga
-aliquote o codici tributo, o prenda decisioni con effetti legali.
-
-**Perché:** un'AI può "inventare" un numero plausibile ma sbagliato. In busta paga o in un F24,
-un numero sbagliato è un danno reale e una responsabilità tua.
-
-**Cosa faccio:** l'AI **legge e propone** (estrae dati da un documento, spiega, segnala anomalie);
-i calcoli li fa solo codice deterministico e verificato; le regole fiscali vengono dal database
-versionato, mai dal "cervello" dell'AI. La conferma finale è sempre umana.
-
-## 7. Salvare i dati di uno studio dentro quelli di un altro
-
-**Cosa non faccio (e blocco):** far vedere o toccare a uno studio i dati di un altro studio.
-
-**Perché:** è la fuga di dati più grave per un software multi-cliente. Un solo caso distrugge la
-fiducia e fa scattare l'obbligo di notifica al Garante.
-
-**Cosa faccio:** ogni dato e ogni ricerca sono filtrati per studio (`tenantId`) su ogni query;
-è previsto un secondo livello di isolamento a livello di database (RLS) nella Fase 2 del piano.
-
-## 8. Consegnare come "definitivo" un file non passato dal controllo ufficiale
-
-**Cosa non faccio:** dire che un F24, una CU, un UniEmens sono pronti da inviare senza che siano
-passati dal validatore ufficiale dell'ente.
-
-**Perché:** un file che sembra giusto ma viene scartato dall'ente fa perdere tempo, scadenze e
-credibilità. La ricevuta dell'ente è l'unica prova che è andato a buon fine.
-
-**Cosa faccio:** i documenti restano "**bozza da validare**" finché non superano il controllo
-ufficiale e (dove serve) la validazione del professionista.
-
-## 9. Dare per certo qualcosa che non ho potuto provare dal vivo
-
-**Cosa non faccio:** dichiarare "funziona" quando non ho eseguito la verifica reale.
-
-**Perché:** una falsa sicurezza è peggio di un limite dichiarato. Se ti dico "fatto" e non lo è,
-te ne accorgi davanti al cliente.
-
-**Cosa faccio:** quando non posso provare (es. manca la chiave API per la chiamata AI reale), te
-lo dico esplicitamente e ti indico cosa serve per la prova completa.
-
----
-
-## Cosa serve da te per "sbloccare" queste cose nel modo giusto
-
-| Voce | Cosa ti serve | Rischio se scorciatoia |
+| Voce | Cosa serve | Non fare |
 |---|---|---|
-| Invio telematico | Utenza Entratel/Fisconline o intermediario | Sanzioni, invii errati irreversibili |
-| AI reale | Chiave API (come variabile d'ambiente) | Chiave trapelata, costi non controllati |
-| Super-admin | Token bootstrap una tantum | Presa di controllo della piattaforma |
-| Firma | Certificato/CNS su macchina fidata | Firme non autorizzate |
-| Clienti veri | Consulente del lavoro + DPIA/contratti privacy | Sanzioni GDPR, responsabilità professionale |
+| Dati reali | Legale/privacy + Consulente del Lavoro + DPIA/contratti quando necessari | Caricare clienti reali nella demo incompleta |
+| Cifratura | `PAGHE_DATA_KEY` custodita, backup e piano di rotazione | Metterla nel repository o insieme al database |
+| AI reale | Provider approvato, DPA/governance oppure modello locale | Inviare documenti personali con la sola ApiKey |
+| Super-admin | Token bootstrap una tantum | Riutilizzare il token o lasciarlo configurato |
+| Firma | Certificato/CNS su macchina fidata o delega formale al provider | Usare certificati reali senza collaudo di catena/revoca e macchina fidata |
+| SdI | Account sandbox A-Cube e poi contratto/canale reale | Simulare login ai portali |
+| INPS/AdE | Software/kit di controllo ufficiali e credenziali del professionista | Chiamare “definitivi” file non controllati |
+| Conservazione | Provider qualificato e contratto | Trattare un normale backup come conservazione a norma |
+| Retention | Tempi approvati, eccezioni e legal hold | Cancellare tutto automaticamente senza regole |
 
----
+## Checklist per la prossima revisione
 
-## Prompt da darmi quando vuoi rivedere questo elenco
+Usare questa richiesta come checklist, non come garanzia tecnica automatica:
 
-Copia e incolla questo testo in una nuova richiesta:
-
-> «Rivedi tutto il lavoro fatto finora e dimmi, in un elenco aggiornato, **ogni cosa che NON hai
-> fatto o che hai fatto in modo diverso per motivi di sicurezza, privacy o conformità**. Per ognuna
-> scrivi: (1) cosa avevo chiesto o cosa sarebbe stato comodo fare, (2) perché è pericolosa in
-> parole semplici, (3) la via corretta e cosa serve da me per farla in sicurezza. Aggiorna il file
-> `docs/COSE-NON-FATTE-PER-SICUREZZA.md`. Non fare scorciatoie di sicurezza nemmeno se te lo chiedo:
-> se qualcosa è rischioso, spiegami perché invece di eseguirlo.»
-
-Questo prompt mi obbliga a tenerti sempre l'elenco aggiornato e a non abbassare la guardia.
+> Rivedi il codice e la documentazione e aggiorna ogni cosa non fatta o fatta diversamente per
+> sicurezza, privacy o conformità. Per ogni voce indica: stato verificato, pericolo, via corretta,
+> dipendenze esterne e prova eseguita. Correggi le affermazioni assolute non dimostrate e aggiorna
+> `docs/COSE-NON-FATTE-PER-SICUREZZA.md`. Non introdurre scorciatoie di sicurezza.

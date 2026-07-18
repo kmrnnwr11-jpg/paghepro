@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import {
   api,
+  scaricaBlob,
   type Azienda,
   type DipendenteRapporto,
   type ConguaglioAnnuale,
   type TfrRivalutazione,
   type InailAutoliquidazione,
+  type PraticaInail,
 } from "../api";
 
 const eur = (n: number) =>
@@ -32,6 +34,8 @@ export function FineAnno() {
   const [tasso, setTasso] = useState("");
   const [rataVersata, setRataVersata] = useState("");
   const [inail, setInail] = useState<InailAutoliquidazione | null>(null);
+  const [praticaInail, setPraticaInail] = useState<PraticaInail | null>(null);
+  const [salvandoPratica, setSalvandoPratica] = useState(false);
 
   useEffect(() => {
     api.aziende()
@@ -103,10 +107,35 @@ export function FineAnno() {
   async function calcolaInail() {
     setErrore(null);
     setInail(null);
+    setPraticaInail(null);
     try {
       await salvaPosizione();
       const rata = Number(rataVersata.trim().replace(",", ".") || "0");
       setInail(await api.inailAutoliquidazione(aziendaId, anno, Number.isNaN(rata) ? 0 : rata));
+    } catch (e) {
+      setErrore((e as Error).message);
+    }
+  }
+
+  async function salvaPraticaInail() {
+    setErrore(null);
+    setSalvandoPratica(true);
+    try {
+      const rata = Number(rataVersata.trim().replace(",", ".") || "0");
+      setPraticaInail(await api.salvaAutoliquidazioneInail(aziendaId, anno, Number.isNaN(rata) ? 0 : rata));
+    } catch (e) {
+      setErrore((e as Error).message);
+    } finally {
+      setSalvandoPratica(false);
+    }
+  }
+
+  async function scaricaBozzaInail() {
+    if (!praticaInail) return;
+    setErrore(null);
+    try {
+      const { blob, filename } = await api.scaricaBozzaInail(praticaInail.id);
+      scaricaBlob(blob, filename);
     } catch (e) {
       setErrore((e as Error).message);
     }
@@ -255,6 +284,19 @@ export function FineAnno() {
               </tbody>
             </table>
             <p style={{ fontSize: 12, color: "var(--muted, #94a3b8)", marginTop: 8 }}>{inail.nota}</p>
+            <div className="actions-row" style={{ marginTop: 8, alignItems: "center" }}>
+              <button className="btn secondary" type="button" onClick={() => void salvaPraticaInail()} disabled={salvandoPratica}>
+                {salvandoPratica ? "Salvo…" : "Salva pratica"}
+              </button>
+              {praticaInail && (
+                <>
+                  <span className="status-pill blue">{praticaInail.stato}</span>
+                  <button className="btn secondary" type="button" onClick={() => void scaricaBozzaInail()}>
+                    Scarica bozza
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
       </section>

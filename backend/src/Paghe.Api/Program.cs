@@ -60,6 +60,7 @@ builder.Services.AddScoped<ParametriNormativiService>();
 builder.Services.AddScoped<AnagraficheLavoroService>();
 builder.Services.AddScoped<CedoliniService>();
 builder.Services.AddScoped<PraticheF24Service>();
+builder.Services.AddScoped<PraticheInailService>();
 builder.Services.AddScoped<PraticheAperturaPartitaIvaService>();
 builder.Services.AddScoped<ContabilitaIvaService>();
 builder.Services.AddScoped<BilancioService>();
@@ -325,6 +326,31 @@ using (var scope = app.Services.CreateScope())
                 ON "PosizioniInail" ("TenantId", "AziendaId", "Anno");
             CREATE INDEX IF NOT EXISTS "IX_PosizioniInail_AziendaId"
                 ON "PosizioniInail" ("AziendaId");
+            """);
+
+            // Pratiche di autoliquidazione INAIL archiviate (calcolo + bozza), con stato.
+            db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "PraticheInail" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_PraticheInail" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "AziendaId" uuid NOT NULL,
+                "Anno" integer NOT NULL,
+                "Pat" text NOT NULL,
+                "VoceTariffa" text NOT NULL,
+                "NumeroCedolini" integer NOT NULL,
+                "RetribuzioniAnno" numeric(15,2) NOT NULL,
+                "TassoPerMille" numeric(8,3) NOT NULL,
+                "Regolazione" numeric(15,2) NOT NULL,
+                "RataAnticipata" numeric(15,2) NOT NULL,
+                "RataGiaVersata" numeric(15,2) NOT NULL,
+                "TotaleDaVersare" numeric(15,2) NOT NULL,
+                "Stato" text NOT NULL,
+                "Bozza" text NOT NULL,
+                "CreataIl" timestamptz NOT NULL,
+                "UltimoAggiornamento" timestamptz NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_PraticheInail_TenantId_AziendaId_Anno"
+                ON "PraticheInail" ("TenantId", "AziendaId", "Anno");
             """);
 
         // Archivio persone fisiche per la compilazione automatica dei moduli ufficiali (AA7/10).

@@ -236,7 +236,13 @@ scelto e validato dal professionista.
   versione — `Paghe.Core/AdeTelematico/UniEmens` + `UniEmensService` + endpoint
   `POST /api/aziende/{id}/uniemens/mese`; bozza da validare, Qualifica/Giorni da affinare)*
 - [ ] 🔧 Far passare il file dal **software di controllo ufficiale INPS** (validazione).
-- [ ] 🔧 Autoliquidazione **INAIL** (calcolo e file).
+- [x] 🔧 Autoliquidazione **INAIL** (calcolo e file). *(fatto: calcolo già esisteva
+  (`AutoliquidazioneInail` + `InailService`, pagina Fine anno); aggiunta la pratica archiviata
+  con stato — `PraticaInailEntity`/`PraticheInailService`, endpoint salva/elenco/get/stato/bozza
+  — e il pulsante "Salva pratica"/"Scarica bozza" in Fine anno. Bozza leggibile, non un tracciato
+  telematico ufficiale: l'invio resta sui servizi online INAIL, nessuna specifica tecnica del
+  file di autoliquidazione trovata nel kit ufficiale locale. Base imponibile = imponibile INPS
+  (semplificazione preesistente); niente multi-PAT)*
 - [ ] 🧑 L'invio avviene dal cassetto previdenziale INPS / canale del consulente.
 
 ⏱️ 1,5–2,5 mesi · 💶 0 € (strumenti INPS gratuiti) · ✅ **Fatto quando:** il file UniEmens di

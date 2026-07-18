@@ -9,6 +9,7 @@ public enum TipoModelloTelematico
     AA7_10,
     AA9_12,
     ComUnica,
+    Inail,
 }
 
 /// <summary>

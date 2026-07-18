@@ -48,6 +48,7 @@ public class PagheDbContext : DbContext
     public DbSet<RicevutaSdiEntity> RicevuteSdi => Set<RicevutaSdiEntity>();
     public DbSet<DelegaEntity> Deleghe => Set<DelegaEntity>();
     public DbSet<PraticaF24Entity> PraticheF24 => Set<PraticaF24Entity>();
+    public DbSet<PraticaInailEntity> PraticheInail => Set<PraticaInailEntity>();
     public DbSet<AvvisoPagamentoEntity> AvvisiPagamento => Set<AvvisoPagamentoEntity>();
     public DbSet<DurcEntity> Durc => Set<DurcEntity>();
     public DbSet<PromemoriaEntity> Promemoria => Set<PromemoriaEntity>();
@@ -397,6 +398,30 @@ public class PagheDbContext : DbContext
             );
             CREATE INDEX IF NOT EXISTS "IX_PraticheF24_TenantId_AziendaId_Anno_Mese"
                 ON "PraticheF24" ("TenantId", "AziendaId", "Anno", "Mese");
+            """);
+
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "PraticheInail" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_PraticheInail" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "AziendaId" TEXT NOT NULL,
+                "Anno" INTEGER NOT NULL,
+                "Pat" TEXT NOT NULL,
+                "VoceTariffa" TEXT NOT NULL,
+                "NumeroCedolini" INTEGER NOT NULL,
+                "RetribuzioniAnno" TEXT NOT NULL,
+                "TassoPerMille" TEXT NOT NULL,
+                "Regolazione" TEXT NOT NULL,
+                "RataAnticipata" TEXT NOT NULL,
+                "RataGiaVersata" TEXT NOT NULL,
+                "TotaleDaVersare" TEXT NOT NULL,
+                "Stato" TEXT NOT NULL,
+                "Bozza" TEXT NOT NULL,
+                "CreataIl" TEXT NOT NULL,
+                "UltimoAggiornamento" TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_PraticheInail_TenantId_AziendaId_Anno"
+                ON "PraticheInail" ("TenantId", "AziendaId", "Anno");
             """);
 
         Database.ExecuteSqlRaw("""
@@ -900,6 +925,19 @@ public class PagheDbContext : DbContext
             e.Property(x => x.TotaleDebiti).HasPrecision(15, 2);
             e.Property(x => x.TotaleCrediti).HasPrecision(15, 2);
             e.Property(x => x.SaldoFinale).HasPrecision(15, 2);
+        });
+
+        // --- Pratiche INAIL (autoliquidazione) ---
+        mb.Entity<PraticaInailEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.AziendaId, x.Anno });
+            e.Property(x => x.RetribuzioniAnno).HasPrecision(15, 2);
+            e.Property(x => x.TassoPerMille).HasPrecision(8, 3);
+            e.Property(x => x.Regolazione).HasPrecision(15, 2);
+            e.Property(x => x.RataAnticipata).HasPrecision(15, 2);
+            e.Property(x => x.RataGiaVersata).HasPrecision(15, 2);
+            e.Property(x => x.TotaleDaVersare).HasPrecision(15, 2);
         });
 
         // --- Bilancio d'esercizio (CEE) ---

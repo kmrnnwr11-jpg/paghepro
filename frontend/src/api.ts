@@ -155,6 +155,12 @@ export interface InailAutoliquidazione {
   retribuzioniAnno: number; tassoPerMille: number; regolazione: number;
   rataAnticipata: number; rataGiaVersata: number; totaleDaVersare: number; nota: string;
 }
+export interface PraticaInail {
+  id: string; aziendaId: string; anno: number; pat: string; voceTariffa: string;
+  numeroCedolini: number; retribuzioniAnno: number; tassoPerMille: number;
+  regolazione: number; rataAnticipata: number; rataGiaVersata: number;
+  totaleDaVersare: number; stato: string; creataIl: string;
+}
 export interface PresenzaRiga {
   rapportoId: string; nominativo: string;
   oreStraordinario: number; oreStraordinarioNotturno: number; oreStraordinarioFestivo: number;
@@ -512,6 +518,25 @@ export const api = {
     req<InailAutoliquidazione>(
       `/api/aziende/${aziendaId}/inail/autoliquidazione?anno=${anno}`
       + (rataVersata ? `&rataVersata=${rataVersata}` : "")),
+  // Calcola e archivia l'autoliquidazione come pratica (stato Generata), riusabile da storico/export.
+  salvaAutoliquidazioneInail: (aziendaId: string, anno: number, rataGiaVersata?: number) =>
+    req<PraticaInail>(`/api/aziende/${aziendaId}/inail/autoliquidazione/salva`, {
+      method: "POST",
+      body: JSON.stringify({ anno, rataGiaVersata: rataGiaVersata ?? 0 }),
+    }),
+  autoliquidazioniInail: (aziendaId: string) =>
+    req<PraticaInail[]>(`/api/aziende/${aziendaId}/inail/autoliquidazioni`),
+  cambiaStatoInail: (id: string, stato: string) =>
+    req<PraticaInail>(`/api/inail/${id}/stato`, { method: "POST", body: JSON.stringify({ stato }) }),
+  scaricaBozzaInail: async (id: string): Promise<{ blob: Blob; filename: string }> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/inail/${id}/bozza`, { headers });
+    if (!res.ok) throw new Error(`Errore ${res.status}`);
+    const match = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") ?? "");
+    return { blob: await res.blob(), filename: match?.[1] ?? "autoliquidazione-inail.txt" };
+  },
 
   // --- Dichiarazioni: Fase 4 Redditi PF / 730 (bozza) ---
   redditiPf: (rapportoId: string, anno: number) =>

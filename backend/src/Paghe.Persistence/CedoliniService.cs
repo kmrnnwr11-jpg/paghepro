@@ -144,7 +144,8 @@ public sealed class CedoliniService
             CalcolatoIl = DateTime.UtcNow,
             Voci = cedolino.Righe.Select(r => new CedolinoVoceEntity
             {
-                Id = Guid.NewGuid(), Codice = r.Codice, Descrizione = r.Descrizione,
+                Id = Guid.NewGuid(), TenantId = tenantId,
+                Codice = r.Codice, Descrizione = r.Descrizione,
                 Tipo = r.Tipo.ToString(), Quantita = r.Quantita, Base = r.Base, Importo = r.Importo,
             }).ToList(),
         };
@@ -166,6 +167,7 @@ public sealed class CedoliniService
         var azienda = await _db.Aziende
             .FirstOrDefaultAsync(a => a.Id == aziendaId && a.TenantId == tenantId, ct)
             ?? throw new ArgumentException("Azienda non trovata per il tenant indicato.");
+        AziendeService.VerificaProntaPerAdempimentiContributivi(azienda);
 
         var cedolini = await _db.Cedolini
             .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno && c.Mese == mese)
@@ -189,7 +191,7 @@ public sealed class CedoliniService
 
         var sostituto = new DatiSostitutoImposta(
             azienda.CodiceFiscale ?? azienda.PartitaIva ?? "",
-            azienda.RagioneSociale, matricolaInps, codiceSedeInps);
+            azienda.RagioneSociale, azienda.MatricolaInps!, azienda.CodiceSedeInps!);
 
         return F24DaCedolini.Costruisci(sostituto, righe, anno, mese);
     }

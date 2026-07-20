@@ -68,10 +68,23 @@ più avanti nel piano. Sono il collo di bottiglia. Vedi la sezione "Da avviare o
 - ✅ Motore di firma CAdES/XAdES (manca solo il certificato vero).
 - ✅ Infrastruttura per spedire allo SdI, incluso il connettore **A-Cube** (manca l'account).
 - ✅ Frontend (SPA) per usare tutto senza comandi tecnici.
-- ✅ Dataset di prova isolato per browser: 5 aziende di settori diversi e 5 dipendenti,
-  creati automaticamente negli account demo vuoti e visibili insieme nell'archivio lavoratori;
-  link diretti alle sezioni della SPA.
-- ✅ Autenticazione, multi-azienda (multi-tenant), 158 test automatici verdi.
+- ✅ **Home studio azienda-prima**: il professionista crea, cerca o sceglie esplicitamente il
+  cliente prima di aprire gli strumenti; panoramica, moduli e “Riprendi il lavoro” mantengono
+  il relativo contesto. Nessun cliente fittizio viene creato automaticamente dalle pagine.
+- ✅ **Inserimento azienda da testo/PDF più robusto**: riconosce CF/P.IVA combinati, sede senza
+  la parola “CAP”, PEC, ATECO, settore agricolo e rappresentante; l'IBAN resta facoltativo. Una
+  modalità prova consente di salvare l'anagrafica con dati INPS/INAIL/CCNL ancora vuoti e da
+  completare, senza trasformare codici `000000` in posizioni ufficiali.
+- ✅ Dataset di prova tenant-isolato disponibile tramite endpoint demo esplicito, senza
+  sostituire la scelta consapevole dell'azienda nell'interfaccia.
+- ✅ Pacchetto Railway per **prove con dati fittizi**: SPA e API nello stesso container, porta
+  dinamica, healthcheck, volume SQLite `/data` e persistenza dopo riavvio verificati. La messa
+  online richiede ancora account, commit/push e configurazione del servizio da parte dell'utente.
+- ✅ Base mobile iOS/Android compilabile: progetti Xcode/Android Studio, condivisione nativa dei
+  documenti, hardening e gate build HTTPS/app ID. Piano e schede store in
+  `docs/PIANO-MOBILE-STORE.md`; invio agli store ancora bloccato dai gate indicati sotto.
+- ✅ Autenticazione, multi-azienda (multi-tenant), registro attività, 615 test backend e 12 test
+  frontend automatici verdi.
 
 **Manca per essere un prodotto vero da vendere:**
 - ❌ Invio reale allo SdI (serve account provider).
@@ -79,8 +92,12 @@ più avanti nel piano. Sono il collo di bottiglia. Vedi la sezione "Da avviare o
 - ❌ **UniEmens INPS** e **INAIL** (grosso buco lato paghe).
 - ❌ Controlli ufficiali AdE eseguiti (Entratel + moduli JAR) su F24/CU/LIPE/770.
 - ❌ Conservazione a norma.
-- ❌ GDPR (cifratura dati sensibili, log degli accessi, retention).
+- ⚠️ GDPR parziale: cifratura dati sensibili e registro di accessi/modifiche fatti; restano
+  retention e adempimenti organizzativi/documentali.
 - ❌ Fondamenta di produzione (migrazioni database, segreti, backup, deploy stabile).
+- ❌ Pubblicazione mobile: sessioni brevi/revocabili e custodia Keychain/Keystore sono completate;
+  servono ancora dominio HTTPS stabile, cancellazione account, informative/assistenza pubbliche
+  e account Apple/Google dell'organizzazione.
 - ❌ Validazione dei calcoli da un commercialista + contratto + assicurazione.
 
 ---
@@ -151,8 +168,13 @@ con backup, e si aggiorna senza cancellare i dati.
 **Obiettivo:** proteggere i dati personali come impone la legge.
 **Perché:** gestisci dati di dipendenti (IBAN, malattia): senza questo non puoi vendere.
 
-- [ ] 🔧 Cifratura dei dati sensibili nel database (IBAN, dati sanitari/malattia).
-- [ ] 🔧 **Log degli accessi e delle modifiche** (chi ha visto/cambiato cosa).
+- [x] 🔧 Cifratura dei dati sensibili nel database (IBAN, dati sanitari/malattia). Codice e
+  cutover verificati su SQLite e PostgreSQL; l'attivazione reale richiede secret manager,
+  finestra senza traffico e restore di un backup cifrato provato.
+- [x] 🔧 **Log degli accessi e delle modifiche**: richieste autenticate, accessi, errori e
+  modifiche persistite sono registrati senza valori sensibili, isolati per tenant e consultabili
+  solo da admin/super-admin. Verificati append-only applicativo, UTC, RBAC e 559 test; limiti e
+  gestione operativa in `docs/GDPR-REGISTRO-ATTIVITA.md`.
 - [ ] 🔧 Cancellazione/retention dei dati (quanto si tengono, poi si rimuovono).
 - [ ] 🧑 Privacy policy + **DPA** (contratto privacy verso lo studio cliente). 💶 ~0–500 €.
 - [ ] 🧑 Registro dei trattamenti (lo prepara l'agente, tu lo firmi).

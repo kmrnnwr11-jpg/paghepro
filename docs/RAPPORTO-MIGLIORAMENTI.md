@@ -122,8 +122,9 @@ Dettagli tecnici completi in `docs/AUDIT-SICUREZZA.md`. In sintesi:
    decidere se azzerarlo periodicamente o toglierlo.
 4. **Prima di dati reali di dipendenti**: attivare il disco persistente su Render
    (istruzioni già in `render.yaml`), pianificare i backup
-   (`scripts/backup-db.sh`) e completare la parte GDPR (cifratura campi sensibili,
-   retention) — è nel piano, non ancora completa.
+   cifrati (`scripts/backup-db.sh`), configurare la chiave reale, monitorare il registro attività e
+   completare la retention GDPR. Cifratura e audit applicativi sono fatti; la fase complessiva non
+   è ancora completa.
 5. **Validazione professionale**: i valori normativi sono verificati sulle fonti
    pubbliche e su buste reali, ma prima dell'uso commerciale serve la revisione di
    un Consulente del Lavoro (elenco preciso in `docs/TODO-DA-VERIFICARE.md`).

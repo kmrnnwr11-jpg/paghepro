@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
+import { buildMobile } from "../mobile/piattaforma";
 
 type Modo = "accedi" | "registra";
 
@@ -30,7 +31,7 @@ export function Accesso() {
 
   // Carica Google Identity Services e prepara il callback (solo se è configurato il client ID).
   useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return;
+    if (buildMobile || !GOOGLE_CLIENT_ID) return;
     const avvia = () => {
       const g = (window as WindowGoogle).google;
       if (!g) return;
@@ -201,9 +202,9 @@ export function Accesso() {
           </button>
         </form>
 
-        <div className="accesso-sep"><span>oppure</span></div>
+        {!buildMobile && <div className="accesso-sep"><span>oppure</span></div>}
 
-        <button
+        {!buildMobile && <button
           className="accesso-google"
           type="button"
           onClick={() => {
@@ -225,12 +226,12 @@ export function Accesso() {
             <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
           </svg>
           Continua con Google
-        </button>
-        {infoGoogle && <p className="accesso-info">{infoGoogle}</p>}
+        </button>}
+        {!buildMobile && infoGoogle && <p className="accesso-info">{infoGoogle}</p>}
 
-        <button className="btn secondary accesso-demo" type="button" onClick={demo} disabled={attesa}>
+        {!buildMobile && <button className="btn secondary accesso-demo" type="button" onClick={demo} disabled={attesa}>
           👀 Prova la demo (senza registrarti)
-        </button>
+        </button>}
 
         <p className="accesso-nota muto">
           Strumento professionale: i valori sono d'esempio e vanno validati con un Consulente del

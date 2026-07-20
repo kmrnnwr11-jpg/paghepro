@@ -3,6 +3,7 @@ import {
   api, scaricaBlob,
   type Azienda, type Persona, type PersonaReq, type TabelleAa710,
 } from "../api";
+import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
 
 const TIPI = [
   { valore: 1, nome: "1 — Inizio attività con attribuzione di codice fiscale e partita IVA" },
@@ -54,7 +55,8 @@ export function Moduli() {
         setAziende(az);
         setPersone(pe);
         setTabelle(tb);
-        if (az.length > 0) setAziendaId(az[0].id);
+        const scelta = scegliAziendaPreferita(az);
+        if (scelta) setAziendaId(scelta.id);
         if (pe.length > 0) setPersonaId(pe[0].id);
       } catch (e) {
         setErrore(e instanceof Error ? e.message : "Errore di caricamento");
@@ -124,7 +126,7 @@ export function Moduli() {
           serie: estremi.serie || undefined,
         } : undefined,
       });
-      scaricaBlob(blob, filename);
+      await scaricaBlob(blob, filename);
       setEsito("Modello AA7/10 ufficiale compilato e scaricato: controllalo, firmalo e presentalo tramite i canali dell'Agenzia delle Entrate (o il tuo intermediario).");
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Errore nella compilazione");
@@ -218,7 +220,7 @@ export function Moduli() {
           <form className="form-grid" onSubmit={scaricaModulo}>
             <label>
               <span>Azienda (dati già in archivio)</span>
-              <select value={aziendaId} onChange={(e) => setAziendaId(e.target.value)} required>
+              <select value={aziendaId} onChange={(e) => { setAziendaId(e.target.value); salvaAziendaCorrenteId(e.target.value); }} required>
                 <option value="" disabled>Scegli l'azienda…</option>
                 {aziende.map((a) => <option key={a.id} value={a.id}>{a.ragioneSociale}</option>)}
               </select>

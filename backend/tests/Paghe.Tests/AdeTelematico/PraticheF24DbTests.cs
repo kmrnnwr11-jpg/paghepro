@@ -113,6 +113,9 @@ public sealed class PraticheF24DbTests : IDisposable
             Id = _aziendaId, TenantId = _tenant, RagioneSociale = "Acme Srl",
             PartitaIva = "01234560017", CodiceFiscale = "01234560017",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
+            Settore = "COMMERCIO_SERVIZI", CodiceAteco = "47.91.10",
+            MatricolaInps = "1234567890", CodiceSedeInps = "7100", CscInps = "10101",
+            PatInail = "12345678/90", CcnlDefault = "COMMERCIO_TERZIARIO", LivelloDefault = "3",
         });
         db.Dipendenti.AddRange(
             new DipendenteEntity { Id = dip1, TenantId = _tenant, CodiceFiscale = "RSSMRA85T10A562S", Nome = "Mario", Cognome = "Rossi" },

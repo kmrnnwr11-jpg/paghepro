@@ -107,10 +107,10 @@ Fatturhello · SumUp · Forfè Manager.
 | Funzione | I colossi | Noi |
 |---|---|---|
 | Auth + multi-tenant | ✅ | 🟢 fatto (JWT + tenant da claim) |
-| Cifratura dati sensibili (IBAN/malattia) | ✅ | 🔴 da fare |
-| Audit log | ✅ | 🔴 da fare (tabella nello schema, non usata) |
-| Retention / diritto all'oblio | ✅ | 🔴 da fare |
-| 2FA/MFA | ✅ | 🔴 da fare |
+| Cifratura dati sensibili (IBAN/malattia) | ✅ | 🟢 fatta (AES-GCM + cutover verificato) |
+| Audit log | ✅ | 🟢 fatto: letture, operazioni, autenticazione e modifiche tenant-safe |
+| Retention / diritto all'oblio | ✅ | 🟡 anonimizzazione fatta; policy/job completi da fare |
+| 2FA/MFA | ✅ | 🟢 fatto (TOTP) |
 
 ### Gestione studio & extra
 | Funzione | I colossi | Noi |
@@ -136,7 +136,7 @@ Fatturhello · SumUp · Forfè Manager.
 1. 🔴 **Multi-CCNL + paghe avanzate** (TFR, conguaglio, LUL, malattia) — il cuore mancante
 2. 🔴 **Dichiarativi** (Redditi/730/770/IVA annuale/ISA-CPB)
 3. 🔴 **Integrazioni canali ufficiali** (cassetto, Fatture e Corrispettivi, Open Banking)
-4. 🔴 **GDPR** (cifratura IBAN/sanitari, audit log) — bloccante per dati reali
+4. 🔴 **GDPR residuo** (retention, documenti, audit infrastrutturale e chiavi/backup di produzione)
 
 **Dove NON inseguire i colossi (è una trappola):**
 - ⚪ Coprire **tutti i 400+ CCNL** e **tutti** gli adempimenti = lavoro di anni → resta su una **nicchia verticale**

@@ -1,0 +1,18 @@
+{
+  "name": "@paghepro/secure-session",
+  "version": "1.0.0",
+  "description": "Archivio nativo interno per il refresh token PaghePro",
+  "type": "module",
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "files": ["android/src/main", "android/build.gradle", "dist", "ios/Sources", "Package.swift"],
+  "license": "UNLICENSED",
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  },
+  "capacitor": {
+    "ios": { "src": "ios" },
+    "android": { "src": "android" }
+  }
+}

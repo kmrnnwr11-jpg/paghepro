@@ -2,7 +2,16 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from "react";
-import { api, getToken, setToken } from "./api";
+import { api } from "./api";
+import { dimenticaAziendaCorrente } from "./aziendaCorrente";
+import { buildMobile } from "./mobile/piattaforma";
+import {
+  applicaSessione,
+  getAccessToken,
+  rinnovaSessione,
+  terminaSessione,
+  type SessioneAccesso,
+} from "./sessione";
 
 // Password fissa dell'account demo. L'email invece è UNA PER BROWSER (vedi
 // emailDemoDiQuestoBrowser): così chi prova la demo ha uno spazio isolato e non
@@ -37,30 +46,26 @@ interface AuthState {
   /** Entra in un account demo isolato (uno per browser), solo per provare. */
   provaDemo: () => Promise<void>;
   /** Esce: cancella il token e torna alla schermata di accesso. */
-  esci: () => void;
+  esci: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTok] = useState<string | null>(getToken());
-  // All'avvio, se non c'è già un token e l'utente non è uscito di proposito, entriamo
-  // in automatico nello spazio personale: l'app si apre subito, senza muro di login.
-  const [ingressoInCorso, setIngressoInCorso] = useState<boolean>(
-    () => !getToken() && localStorage.getItem(USCITA_ESPLICITA) !== "1",
-  );
+  const [token, setTok] = useState<string | null>(null);
+  const [ingressoInCorso, setIngressoInCorso] = useState(true);
 
-  const applica = useCallback((nuovoToken: string) => {
+  const applica = useCallback(async (sessione: SessioneAccesso) => {
     localStorage.removeItem(USCITA_ESPLICITA); // sei dentro: al prossimo avvio non chiedere di nuovo
-    setToken(nuovoToken);
-    setTok(nuovoToken);
+    await applicaSessione(sessione);
+    setTok(sessione.token);
     setIngressoInCorso(false);
   }, []);
 
   const accedi = useCallback(
     async (email: string, password: string, codice2fa?: string) => {
       const r = await api.login(email, password, codice2fa);
-      applica(r.token);
+      await applica(r);
     },
     [applica],
   );
@@ -68,12 +73,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const registrati = useCallback(
     async (ragioneSociale: string, email: string, password: string) => {
       const r = await api.registra(ragioneSociale, email, password);
-      applica(r.token);
+      await applica(r);
     },
     [applica],
   );
 
   const provaDemo = useCallback(async () => {
+    if (buildMobile)
+      throw new Error("La demo automatica non crea account nella versione mobile. Accedi o registrati.");
     // Demo isolata per browser: entra nel proprio account demo, o lo crea al volo la prima volta.
     const email = emailDemoDiQuestoBrowser();
     let r;
@@ -82,31 +89,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       r = await api.registra("Prova demo", email, DEMO_PASSWORD);
     }
-    applica(r.token);
+    await applica(r);
   }, [applica]);
 
-  const esci = useCallback(() => {
+  const esci = useCallback(async () => {
     // Uscita voluta: ricordala, così al prossimo avvio mostriamo il login invece di rientrare.
     localStorage.setItem(USCITA_ESPLICITA, "1");
-    setToken(null);
-    setTok(null);
-    setIngressoInCorso(false);
+    dimenticaAziendaCorrente();
+    try {
+      await terminaSessione();
+    } finally {
+      setTok(null);
+      setIngressoInCorso(false);
+    }
   }, []);
 
-  // Ingresso automatico all'avvio (una volta sola): apre subito lo spazio personale.
+  // All'avvio prova prima la sessione protetta. Solo nel web, se non esiste e l'utente non
+  // aveva premuto Esci, può ancora creare lo spazio demo isolato.
   const avviato = useRef(false);
   useEffect(() => {
-    if (avviato.current || !ingressoInCorso) return;
+    if (avviato.current) return;
     avviato.current = true;
     void (async () => {
       try {
-        await provaDemo();
+        const sessione = await rinnovaSessione();
+        setTok(sessione.token);
       } catch {
-        // Motore non raggiungibile: mostra comunque la schermata di accesso.
+        if (!buildMobile && localStorage.getItem(USCITA_ESPLICITA) !== "1") {
+          try {
+            await provaDemo();
+            return;
+          } catch {
+            // Motore non raggiungibile: mostra comunque la schermata di accesso.
+          }
+        }
+      } finally {
         setIngressoInCorso(false);
       }
     })();
-  }, [ingressoInCorso, provaDemo]);
+  }, [provaDemo]);
+
+  useEffect(() => {
+    const sincronizza = () => setTok(getAccessToken());
+    window.addEventListener("paghepro:sessione", sincronizza);
+    return () => window.removeEventListener("paghepro:sessione", sincronizza);
+  }, []);
 
   const value = useMemo<AuthState>(
     () => ({ token, ingressoInCorso, accedi, registrati, provaDemo, esci }),

@@ -10,12 +10,19 @@ namespace Paghe.Api;
 public sealed class TokenService
 {
     private readonly IConfiguration _config;
+    private readonly TimeProvider _tempo;
 
-    public TokenService(IConfiguration config) => _config = config;
+    public TokenService(IConfiguration config, TimeProvider? tempo = null)
+    {
+        _config = config;
+        _tempo = tempo ?? TimeProvider.System;
+    }
 
-    public string Crea(UtenteEntity utente)
+    public TokenAccesso Crea(UtenteEntity utente, Guid famigliaSessione)
     {
         var chiave = Encoding.UTF8.GetBytes(ChiaveJwt(_config));
+        var ora = _tempo.GetUtcNow().UtcDateTime;
+        var scadeUtc = ora.Add(DurataAccesso);
 
         var descriptor = new SecurityTokenDescriptor
         {
@@ -25,16 +32,38 @@ public sealed class TokenService
                 new Claim("tenant_id", utente.TenantId.ToString()),
                 new Claim(ClaimTypes.Role, utente.Ruolo),
                 new Claim(JwtRegisteredClaimNames.Email, utente.Email),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+                new Claim("sid", famigliaSessione.ToString()),
+                new Claim("ver", VersioneProtocollo),
             }),
-            // Sessione a lunga durata (uso personale): resti dentro finché non fai logout,
-            // senza dover rifare l'accesso ogni giorno. Rinnovata a ogni nuovo login.
-            Expires = DateTime.UtcNow.AddDays(365),
+            Issuer = Emittente(_config),
+            Audience = Destinatario(_config),
+            IssuedAt = ora,
+            NotBefore = ora,
+            Expires = scadeUtc,
             SigningCredentials = new SigningCredentials(
                 new SymmetricSecurityKey(chiave), SecurityAlgorithms.HmacSha256),
         };
 
-        return new JsonWebTokenHandler().CreateToken(descriptor);
+        return new TokenAccesso(
+            new JsonWebTokenHandler().CreateToken(descriptor),
+            new DateTimeOffset(scadeUtc, TimeSpan.Zero));
     }
+
+    public static readonly TimeSpan DurataAccesso = TimeSpan.FromMinutes(15);
+    public const string VersioneProtocollo = "2";
+    public const string EmittentePredefinito = "PaghePro";
+    public const string DestinatarioPredefinito = "PaghePro.Client";
+
+    public static string Emittente(IConfiguration config) =>
+        config["Jwt:Issuer"]?.Trim() is { Length: > 0 } valore
+            ? valore
+            : EmittentePredefinito;
+
+    public static string Destinatario(IConfiguration config) =>
+        config["Jwt:Audience"]?.Trim() is { Length: > 0 } valore
+            ? valore
+            : DestinatarioPredefinito;
 
     /// <summary>Default di sviluppo: usato SOLO fuori produzione, mai in ambiente Production.</summary>
     internal const string ChiaveSviluppo = "dev-secret-da-cambiare-in-produzione-almeno-32-byte!!";
@@ -82,3 +111,5 @@ public sealed class TokenService
             || string.Equals(ambiente, "Production", StringComparison.OrdinalIgnoreCase);
     }
 }
+
+public sealed record TokenAccesso(string Token, DateTimeOffset ScadeUtc);

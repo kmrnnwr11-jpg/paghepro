@@ -56,11 +56,14 @@ git push -u origin main
 1. Su Render: **New ▸ Blueprint**.
 2. Seleziona il repository `paghe-saas` appena caricato.
 3. Render legge `render.yaml` e propone due servizi: **paghe-api** e **paghe-frontend**.
-4. Premi **Apply**. Render:
+4. Prima di confermare, genera sul tuo computer `openssl rand -base64 32` e incolla l'output nel
+   campo segreto **`PAGHE_DATA_KEY`** richiesto dal Blueprint. Conservalo anche in un gestore di
+   password/recovery separato dai backup: se lo perdi, i dati non sono recuperabili.
+5. Premi **Apply**. Render:
    - costruisce il backend dal `Dockerfile`, crea il disco da 1 GB su `/data`,
      e genera da solo la chiave segreta `Jwt__Key`;
    - costruisce il frontend (`npm run build`).
-5. Aspetta che **paghe-api** diventi *Live*. Copia il suo indirizzo, sarà tipo:
+6. Aspetta che **paghe-api** diventi *Live*. Copia il suo indirizzo, sarà tipo:
    `https://paghe-api.onrender.com`
 
 ---
@@ -88,9 +91,10 @@ Dovresti vedere la Dashboard, esattamente come in locale. L'accesso demo è auto
 ## Note utili
 
 - **Costi**: backend `starter` ~7 $/mese (per il disco). Il frontend statico è gratis.
-- **Sicurezza**: la chiave JWT in produzione è generata da Render (non è più quella di sviluppo).
-  Il database resta sul disco privato del backend. Nessun segreto è nel codice.
-- **Dati al sicuro**: restano sul disco `/data`. Se un giorno cambi piano o regione, fai prima un backup del file `paghe.db`.
+- **Sicurezza**: la chiave JWT è generata da Render; `PAGHE_DATA_KEY` è fornita come secret e
+  cifra i campi sensibili. Nessun segreto è nel codice.
+- **Dati al sicuro**: restano sul disco `/data`. Se cambi piano o regione, crea prima un backup
+  cifrato con `scripts/backup-db.sh`; non copiare il file SQLite live con un semplice `cp`.
 - **Aggiornamenti**: ogni `git push` ricostruisce e ripubblica in automatico.
 
 ### Variante gratis (solo per provare)
@@ -99,9 +103,10 @@ Nel file `render.yaml`, nel servizio `paghe-api`, cambia `plan: starter` in `pla
 (primo accesso lento) e **i dati si azzerano ad ogni riavvio**. Va bene per una demo, non per uso reale.
 
 ### Alternativa: Railway
-[Railway](https://railway.app) è un'altra opzione semplice (volumi inclusi, niente "sleep").
-Stesso schema: backend da `backend/Dockerfile` + volume su `/data`, variabili `ConnectionStrings__Default`,
-`Jwt__Key`, e frontend con `VITE_API_URL`.
+[Railway](https://railway.com) è un'altra opzione semplice (volumi inclusi, niente "sleep").
+Per le prove è disponibile una configurazione più semplice a servizio unico: compila frontend e
+backend con `Dockerfile.railway`, usa il volume `/data` e non richiede CORS o `VITE_API_URL`.
+La procedura completa è in [`docs/DEPLOY-RAILWAY.md`](docs/DEPLOY-RAILWAY.md).
 
 ### Domani: database PostgreSQL
 Quando il software crescerà, conviene passare da SQLite a **PostgreSQL** (gestito, più robusto):

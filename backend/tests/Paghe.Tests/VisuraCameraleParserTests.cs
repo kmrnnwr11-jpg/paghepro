@@ -62,4 +62,28 @@ public sealed class VisuraCameraleParserTests
         Assert.Equal("MI", d.Provincia);
         Assert.Equal("BIANCHI MARCO", d.LegaleRappresentante);
     }
+
+    [Fact]
+    public void Estrai_FormatoRiepilogoConCodiciCombinatiESedeSenzaParolaCap()
+    {
+        const string visura = """
+            Denominazione: SOCIETA' AGRICOLA ESEMPIO S.R.L.
+            Codice Fiscale / Partita IVA: 12345678901
+            Sede Legale: VIA DEL CAMPO 26, 52100 AREZZO (AR)
+            Attività Prevalente: Allevamento (Codice ATECO: 01.46.00)
+            Amministratore Delegato: BIANCHI LUCA (C.F. BNCLCU91L11D150X)
+            """;
+
+        var d = VisuraCameraleParser.Estrai(visura);
+
+        Assert.Equal("SOCIETA' AGRICOLA ESEMPIO S.R.L.", d.RagioneSociale);
+        Assert.Equal("12345678901", d.PartitaIva);
+        Assert.Equal("12345678901", d.CodiceFiscale);
+        Assert.Equal("VIA DEL CAMPO 26", d.Indirizzo);
+        Assert.Equal("52100", d.Cap);
+        Assert.Equal("AREZZO", d.Comune);
+        Assert.Equal("AR", d.Provincia);
+        Assert.Equal("01.46.00", d.CodiceAteco);
+        Assert.StartsWith("BIANCHI LUCA", d.LegaleRappresentante);
+    }
 }

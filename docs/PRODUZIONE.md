@@ -14,6 +14,12 @@ In produzione i segreti vanno passati come **variabili d'ambiente**, mai scritti
   export ASPNETCORE_ENVIRONMENT=Production
   export Jwt__Key="$(openssl rand -base64 48)"   # >= 32 byte
   ```
+- 🔧 **Chiave dati GDPR**: Production, Staging, QA e ogni ambiente non esplicitamente locale/test
+  rifiutano la chiave demo. Il secret deve essere Base64 di esattamente 32 byte.
+- 🧑 Genera e salva `PAGHE_DATA_KEY` nel secret manager, separato dai backup:
+  ```bash
+  export PAGHE_DATA_KEY="$(openssl rand -base64 32)"
+  ```
 - 🧑 **Stringa di connessione** del database via variabile d'ambiente:
   ```bash
   export ConnectionStrings__Default="Data Source=/dati/paghe.db"   # SQLite
@@ -49,14 +55,45 @@ Poi sostituire in `Program.cs`, in ambiente Production, `EnsureCreated()` con `d
 > sviluppo in parallelo). Generare lo snapshot ora produrrebbe migrazioni subito superate e
 > conflitti. Va fatto **una volta** quando l'insieme delle entità è stabile: è un solo comando.
 
-## 3. Backup
+## 3. Backup cifrati
 
-- 🔧 Script `scripts/backup-db.sh` (SQLite e PostgreSQL), con rotazione (ultimi 14).
+- 🔧 Script `scripts/backup-db.sh` (SQLite e PostgreSQL), cifratura `age`, permessi `0600`,
+  output atomico e rotazione degli ultimi 14 file. Se chiave pubblica o `age` mancano, non crea
+  alcuna copia in chiaro.
+- 🧑 Una sola volta, su una macchina amministrativa protetta, genera la coppia backup:
+  ```bash
+  age-keygen -o /percorso-sicuro/paghe-backup-identity.txt
+  export PAGHE_BACKUP_AGE_RECIPIENT="$(age-keygen -y /percorso-sicuro/paghe-backup-identity.txt)"
+  ```
+  La identity privata va custodita separatamente dal server e provata; sul server si configura
+  soltanto il recipient pubblico.
 - 🧑 Pianifica un backup notturno (cron):
   ```bash
-  0 2 * * * /percorso/scripts/backup-db.sh sqlite /dati/paghe.db /backup
+  0 2 * * * PAGHE_BACKUP_AGE_RECIPIENT=age1... /percorso/scripts/backup-db.sh sqlite /dati/paghe.db /backup
   ```
-- 🧑 Conserva i backup **fuori** dal server (storage esterno) e prova ogni tanto un ripristino.
+- 🧑 Conserva i backup **fuori** dal server. Prova il ripristino SQLite su una cartella isolata:
+  ```bash
+  set -euo pipefail
+  umask 077
+  RESTORE_DIR="$(mktemp -d /tmp/paghe-restore-test.XXXXXX)"
+  trap 'rm -rf "$RESTORE_DIR"' EXIT
+  age --decrypt -i /percorso-sicuro/paghe-backup-identity.txt \
+    /backup/paghe-DATA.db.gz.age | gzip -dc > "$RESTORE_DIR/paghe.db"
+  chmod 600 "$RESTORE_DIR/paghe.db"
+  test -s "$RESTORE_DIR/paghe.db"
+  test "$(sqlite3 "$RESTORE_DIR/paghe.db" 'PRAGMA integrity_check;')" = "ok"
+  test "$(sqlite3 "$RESTORE_DIR/paghe.db" \
+    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='MetadatiProtezioneDati';')" = "1"
+  cd /percorso/backend
+  ConnectionStrings__Default="Data Source=$RESTORE_DIR/paghe.db" \
+    Database__Provider=Sqlite \
+    dotnet run --project src/Paghe.Api -c Release -- --verifica-dati-sensibili
+  ```
+  Il comando finale è il gate applicativo read-only: usa `PAGHE_DATA_KEY` recuperata dal secret
+  manager e deve terminare con codice `0`. Un file SQLite vuoto può rispondere `ok` al solo
+  `PRAGMA integrity_check`, quindi i tre controlli non vanno separati o ignorati.
+  Per PostgreSQL: `age --decrypt ... | pg_restore --exit-on-error --dbname DB_DI_PROVA`;
+  il relativo `PGPASSFILE` deve avere permessi `0600`.
 
 ## 4. Deploy
 
@@ -74,8 +111,9 @@ Poi sostituire in `Program.cs`, in ambiente Production, `EnsureCreated()` con `d
 
 - [ ] `ASPNETCORE_ENVIRONMENT=Production`
 - [ ] `Jwt__Key` robusta impostata (l'avvio fallisce se manca: è voluto)
+- [ ] `PAGHE_DATA_KEY` casuale impostata e copia di recovery custodita separatamente
 - [ ] `ConnectionStrings__Default` impostata
 - [ ] Migrazioni generate e applicate (a schema stabile)
-- [ ] Backup notturno pianificato e ripristino testato
+- [ ] Recipient `age` configurato; backup cifrato notturno e ripristino testato
 - [ ] HTTPS attivo e CORS ristretto
 - [ ] Documenti `docs/commerciale/` (disclaimer, ToS) pubblicati

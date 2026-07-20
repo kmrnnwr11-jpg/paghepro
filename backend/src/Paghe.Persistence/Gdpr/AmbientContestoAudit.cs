@@ -1,7 +1,7 @@
 namespace Paghe.Persistence.Gdpr;
 
 /// <summary>Chi sta operando nella richiesta corrente (per l'audit log).</summary>
-public readonly record struct ContestoAudit(Guid? TenantId, Guid? UtenteId);
+public readonly record struct ContestoAudit(Guid? TenantId, Guid? UtenteId, string? CorrelationId);
 
 /// <summary>
 /// Contesto "ambientale" dell'utente corrente, propagato via <see cref="AsyncLocal{T}"/> per la
@@ -16,10 +16,10 @@ public static class AmbientContestoAudit
     public static ContestoAudit Corrente => _corrente.Value;
 
     /// <summary>Imposta il contesto per lo scope corrente; il <c>Dispose</c> ripristina il precedente.</summary>
-    public static IDisposable Imposta(Guid? tenantId, Guid? utenteId)
+    public static IDisposable Imposta(Guid? tenantId, Guid? utenteId, string? correlationId = null)
     {
         var precedente = _corrente.Value;
-        _corrente.Value = new ContestoAudit(tenantId, utenteId);
+        _corrente.Value = new ContestoAudit(tenantId, utenteId, correlationId);
         return new Ripristino(precedente);
     }
 

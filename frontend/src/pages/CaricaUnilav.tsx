@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { api, getToken, type Cedolino, type EsitoImportUnilav } from "../api";
-
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:5171";
+import { AlertTriangle, Banknote, BriefcaseBusiness, Building2, Check, FileText, LoaderCircle, UploadCloud, UserRound } from "lucide-react";
+import { api, fetchAutenticata, type Cedolino, type EsitoImportUnilav } from "../api";
 const MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
   "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
@@ -10,10 +9,7 @@ async function inviaUnilav(file: File, aziendaId: string): Promise<EsitoImportUn
   const form = new FormData();
   form.append("file", file);
   if (aziendaId) form.append("aziendaId", aziendaId);
-  const token = getToken();
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${BASE}/api/unilav/pdf`, { method: "POST", body: form, headers });
+  const res = await fetchAutenticata("/api/unilav/pdf", { method: "POST", body: form });
   if (!res.ok) {
     let messaggio = `Errore ${res.status}`;
     try {
@@ -29,10 +25,7 @@ async function inviaUnilav(file: File, aziendaId: string): Promise<EsitoImportUn
 
 // Elenco dei CCNL configurati nel motore (per il menu della busta paga).
 async function listaCcnl(): Promise<{ codice: string; descrizione: string }[]> {
-  const token = getToken();
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${BASE}/api/ccnl`, { headers });
+  const res = await fetchAutenticata("/api/ccnl");
   if (!res.ok) return [];
   return (await res.json()) as { codice: string; descrizione: string }[];
 }
@@ -75,25 +68,22 @@ export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: st
   }
 
   return (
-    <section className="glass-card page-card" style={{ marginBottom: 16 }}>
-      <div className="card-title-row">
+    <section className="glass-card page-card unilav-workspace">
+      <div className="card-title-row unilav-heading">
         <div>
-          <h1>📄 Aggiungi da UNILAV</h1>
-          <p>Trascina il PDF della Comunicazione Obbligatoria: registro azienda, lavoratore e rapporto — poi fai subito la busta paga.</p>
+          <h2><FileText size={18} /> Importa comunicazione UNILAV</h2>
+          <p>Il documento compila azienda, lavoratore e rapporto di lavoro.</p>
         </div>
       </div>
 
-      <label style={{ display: "block", marginBottom: 12 }}>
-        <span style={{ display: "block", fontSize: 13, marginBottom: 4, color: "var(--muted, #64748b)" }}>
-          Dove salvo i dati
-        </span>
+      <label className="unilav-company-select">
+        <span>Dove salvo i dati</span>
         <select
           value={aziendaScelta}
           onChange={(e) => setAziendaScelta(e.target.value)}
-          style={{ width: "100%", maxWidth: 460, padding: "9px 11px", borderRadius: 10 }}
         >
-          <option value="">🤖 Automatico — usa o crea l'azienda dal PDF</option>
-          {aziende.map((a) => <option key={a.id} value={a.id}>🏢 {a.ragioneSociale}</option>)}
+          <option value="">Automatico: usa o crea l'azienda indicata nel documento</option>
+          {aziende.map((a) => <option key={a.id} value={a.id}>{a.ragioneSociale}</option>)}
         </select>
       </label>
 
@@ -106,23 +96,16 @@ export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: st
         onDragOver={(e) => { e.preventDefault(); setTrascina(true); }}
         onDragLeave={() => setTrascina(false)}
         onDrop={(e) => { e.preventDefault(); setTrascina(false); gestisci(e.dataTransfer.files?.[0]); }}
-        style={{
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          gap: 8, textAlign: "center", cursor: "pointer", userSelect: "none",
-          padding: "36px 20px", borderRadius: 16,
-          border: `2px dashed ${trascina ? "#3b82f6" : "rgba(139,115,85,.5)"}`,
-          background: trascina ? "rgba(59,130,246,.08)" : "rgba(139,115,85,.06)",
-          transition: "all .15s ease",
-        }}
+        className={`unilav-dropzone ${trascina ? "dragging" : ""}`}
       >
         <input ref={inputRef} type="file" accept="application/pdf,.pdf,image/*" hidden onChange={(e) => gestisci(e.target.files?.[0])} />
         {caricamento ? (
-          <strong>⏳ Sto leggendo il documento e registrando i dati…</strong>
+          <><LoaderCircle className="spin" size={30} aria-hidden="true" /><strong>Lettura e registrazione in corso…</strong></>
         ) : (
           <>
-            <div style={{ fontSize: 42, lineHeight: 1 }}>⬆️</div>
-            <strong style={{ fontSize: 17 }}>Trascina qui il PDF dell'UNILAV (o una sua foto)</strong>
-            <span style={{ color: "var(--muted, #64748b)" }}>oppure clicca per scegliere il file</span>
+            <UploadCloud size={34} aria-hidden="true" />
+            <strong>Trascina qui il PDF UNILAV o una scansione</strong>
+            <span>PDF, JPG o PNG. Puoi anche fare clic per scegliere il file.</span>
           </>
         )}
       </div>
@@ -138,13 +121,13 @@ function Risultato({ esito }: { esito: EsitoImportUnilav }) {
   const d = esito.rapporto.dipendente;
   return (
     <div style={{ marginTop: 16 }}>
-      <p style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, color: "#16a34a" }}>
-        <span className="status-pill green">OK</span> Registrato dal PDF UNILAV
+      <p className="unilav-success">
+        <span className="status-pill green"><Check size={12} /> Completato</span> Registrazione dal documento riuscita
       </p>
 
       <div className="ledger-grid" style={{ marginTop: 8 }}>
         <article className="ledger-card">
-          <span>Datore di lavoro</span>
+          <span><Building2 size={13} /> Datore di lavoro</span>
           <strong>{esito.azienda.ragioneSociale}</strong>
           <em className={`status-pill ${esito.azienda.creata ? "blue" : "slate"}`}>
             {esito.azienda.creata ? "Creato ora" : "Già presente"}
@@ -152,14 +135,14 @@ function Risultato({ esito }: { esito: EsitoImportUnilav }) {
           </em>
         </article>
         <article className="ledger-card">
-          <span>Lavoratore</span>
+          <span><UserRound size={13} /> Lavoratore</span>
           <strong>{`${d.nome} ${d.cognome}`.trim() || "—"}</strong>
           <em className={`status-pill ${esito.rapporto.lavoratoreGiaPresente ? "slate" : "green"}`}>
             {d.codiceFiscale}{esito.rapporto.lavoratoreGiaPresente ? " · nuovo rapporto" : ""}
           </em>
         </article>
         <article className="ledger-card">
-          <span>Rapporto</span>
+          <span><BriefcaseBusiness size={13} /> Rapporto</span>
           <strong>{esito.rapporto.qualifica} · liv. {esito.rapporto.livello || "—"}</strong>
           <em className="status-pill blue">
             Dal {formattaData(esito.rapporto.dataAssunzione)}
@@ -170,7 +153,7 @@ function Risultato({ esito }: { esito: EsitoImportUnilav }) {
 
       {esito.avvertenze.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <strong style={{ fontSize: 13 }}>⚠️ Da completare:</strong>
+          <strong className="unilav-warning-title"><AlertTriangle size={15} /> Dati da completare</strong>
           <ul style={{ margin: "6px 0 0", paddingLeft: 20, color: "var(--muted, #64748b)", fontSize: 13 }}>
             {esito.avvertenze.map((a, i) => <li key={i}>{a}</li>)}
           </ul>
@@ -223,7 +206,7 @@ function BustaPaga({ esito }: { esito: EsitoImportUnilav }) {
   return (
     <div style={{ marginTop: 16, borderTop: "1px solid rgba(148,163,184,.25)", paddingTop: 16 }}>
       {!aperto ? (
-        <button className="btn primary" type="button" onClick={() => setAperto(true)}>💶 Fai la busta paga</button>
+        <button className="btn primary" type="button" onClick={() => setAperto(true)}><Banknote size={16} /> Prepara busta paga</button>
       ) : (
         <>
           <div className="form-grid">

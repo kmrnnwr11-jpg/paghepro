@@ -30,6 +30,8 @@ services:
         value: Data Source=/tmp/paghe.db   # PER USO REALE: metti  Data Source=/data/paghe.db
       - key: Jwt__Key
         generateValue: true  # Render genera una chiave segreta forte e la tiene riservata
+      - key: PAGHE_DATA_KEY
+        sync: false          # obbligatoria: incolla l'output di `openssl rand -base64 32`
       - key: Cors__Origini__0
         sync: false          # da impostare a mano = URL pubblico del frontend (es. https://paghe-frontend.onrender.com)
 

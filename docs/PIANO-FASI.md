@@ -38,10 +38,11 @@ inizio fase 3 → **3-5 mesi** con un team piccolo e un Consulente del Lavoro a 
 nessun account esterno.
 
 ### Passi
-1. 🔨 **Cifratura dati sensibili** — value converter EF Core (AES-GCM) su IBAN, dati malattia.
-   - Dove: `Paghe.Persistence/Entities` + `PagheDbContext`
-   - Chiave da secret/variabile d'ambiente (mai nel codice)
-2. 🔨 **Audit log** — interceptor EF + middleware API → tabella audit (già nello schema, non usata).
+1. 🔨 **Cifratura dati sensibili** — envelope AES-GCM versionati su tutti gli IBAN, payload salute
+   e voci cedolino, con AAD tenant/record e cutover one-shot delle colonne legacy.
+   - Dove: `Paghe.Persistence/Gdpr` + entità/interceptor + `PagheDbContext`
+   - Chiave casuale Base64 da 32 byte in secret manager (mai nel codice o coi backup)
+2. ✅ **Audit log** — interceptor EF + middleware API, consultazione admin e minimizzazione dati.
    - Dove: `Paghe.Persistence` (interceptor) + `Paghe.Api`
    - Registra: chi, cosa, quando, su quale tenant
 3. 🔨 **2FA/MFA** — TOTP sopra al JWT esistente.
@@ -52,11 +53,15 @@ nessun account esterno.
 - 👤 Decidere dove sta la **chiave di cifratura** in produzione (variabile d'ambiente / KMS).
 
 ### Fatto quando
-- [x] **IBAN salvato cifrato** (AES-256-GCM, `ProtettoreDati`, verificato in DB con test) · [x] **ogni azione sensibile lascia traccia in audit** (`AuditSaveChangesInterceptor` + middleware API)
-- [x] **login con secondo fattore** (TOTP RFC 6238, `Totp` + endpoint `/api/auth/2fa/*`, segreto cifrato) · [x] build + test verdi (202)
+- [x] **IBAN e salute salvati solo in payload cifrati** (AES-256-GCM, AAD tenant-bound,
+  migrazione/strict gate verificati su SQLite e PostgreSQL).
+- [x] **Audit applicativo completato**: letture, operazioni, autenticazione ed esiti HTTP, più
+  modifiche EF nella stessa transazione; consultazione tenant-safe e senza valori sensibili.
+- [x] **login con secondo fattore** (TOTP RFC 6238, `Totp` + endpoint `/api/auth/2fa/*`, segreto cifrato) · [x] build + **559 test verdi**
 - [x] **diritto all'oblio** (anonimizzazione dipendente, cedolini conservati, `POST /api/dipendenti/{id}/anonimizza`)
 
-> ✅ **Fase 1 GDPR completata** (cifratura + audit + 2FA + diritto all'oblio).
+> ✅ **Cifratura e registro attività applicativo completati.** ⚠️ La fase GDPR complessiva non è
+> completa: restano retention e documenti/azioni organizzative del piano principale.
 
 ---
 

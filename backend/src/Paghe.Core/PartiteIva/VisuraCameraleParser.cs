@@ -48,6 +48,7 @@ public static partial class VisuraCameraleParser
         var legale = ValoreRiga(righe, "rappresentante legale")
             ?? ValoreRiga(righe, "legale rappresentante")
             ?? ValoreRiga(righe, "amministratore unico")
+            ?? ValoreRiga(righe, "amministratore delegato")
             ?? ValoreRiga(righe, "titolare");
 
         return new DatiAziendaDaVisura(

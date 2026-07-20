@@ -15,7 +15,9 @@ public static class RuoloPolicy
         new(StringComparer.OrdinalIgnoreCase) { "GET", "HEAD", "OPTIONS" };
 
     /// <summary>Frammenti di path la cui <b>scrittura</b> è riservata all'admin (azioni sensibili/distruttive).</summary>
-    private static readonly string[] RiservatiAdmin = { "/anonimizza" };
+    private static readonly string[] RiservatiAdmin = { "/anonimizza", "/posta/caselle" };
+
+    private static readonly string[] RiservatiSempreAdmin = { "/api/audit", "/api/retention" };
 
     /// <summary>
     /// True se un utente con questo ruolo può eseguire la richiesta. Regole:
@@ -29,12 +31,22 @@ public static class RuoloPolicy
     {
         var sicuro = MetodiSicuri.Contains(metodoHttp);
 
+        if (RiservatiSempreAdmin.Any(r =>
+                path.Equals(r, StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith(r + "/", StringComparison.OrdinalIgnoreCase)))
+            return string.Equals(ruolo, Admin, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(ruolo, AuthServiceRuoloSuperAdmin, StringComparison.OrdinalIgnoreCase);
+
         if (string.Equals(ruolo, SolaLettura, StringComparison.OrdinalIgnoreCase))
             return sicuro;
 
         if (!sicuro && RiservatiAdmin.Any(r => path.Contains(r, StringComparison.OrdinalIgnoreCase)))
             return string.Equals(ruolo, Admin, StringComparison.OrdinalIgnoreCase);
 
-        return true;
+        return string.Equals(ruolo, Admin, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ruolo, Operatore, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ruolo, AuthServiceRuoloSuperAdmin, StringComparison.OrdinalIgnoreCase);
     }
+
+    private const string AuthServiceRuoloSuperAdmin = "superadmin";
 }

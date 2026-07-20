@@ -1,7 +1,13 @@
-# Piano di completamento — Paghe SaaS
+# Piano di completamento — archivio storico del 26 giugno 2026
 
 Gap analysis tra ciò che è **già fatto** e ciò che **manca** per arrivare a un prodotto
 vendibile. Aggiornato al 2026-06-26.
+
+> **Documento storico, non usare per determinare lo stato corrente o il prossimo lavoro.**
+> Fotografa il progetto al 26 giugno 2026 e conserva quindi caselle e descrizioni ormai superate
+> (per esempio frontend, autenticazione, cifratura e audit allora assenti). La fonte operativa
+> aggiornata è [`../PIANO.md`](../PIANO.md); lo stato tecnico completato è in
+> [`../CLAUDE.md`](../CLAUDE.md).
 
 Legenda effort (con un team piccolo): **S** = giorni · **M** = settimane · **L** = mesi.
 Priorità: 🔴 alta · 🟠 media · ⚪ bassa/dopo.

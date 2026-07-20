@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Calculator } from "lucide-react";
 import { api, scaricaBlob, type Azienda, type CedolinoArchiviato, type DipendenteRapporto } from "../api";
-import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
+import { scegliAziendaPreferita } from "../aziendaCorrente";
 
 const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const mesi = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
@@ -20,17 +20,9 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
   useEffect(() => {
     (async () => {
       try {
-        let aziende = await api.aziende();
-        if (aziende.length === 0) {
-          await api.creaAzienda({
-            ragioneSociale: "Rossi S.r.l.", partitaIva: "01567890123",
-            indirizzo: "Via Roma 10", cap: "20121", comune: "Milano", provincia: "MI",
-          });
-          aziende = await api.aziende();
-        }
+        const aziende = await api.aziende();
         const a = scegliAziendaPreferita(aziende);
         setAzienda(a);
-        if (a) salvaAziendaCorrenteId(a.id);
         if (a) {
           const d = await api.dipendenti(a.id);
           setDipendenti(d);
@@ -56,7 +48,7 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
     setScaricandoId(id);
     try {
       const { blob, filename } = await api.cedolinoPdf(id);
-      scaricaBlob(blob, filename);
+      await scaricaBlob(blob, filename);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Impossibile scaricare il PDF.");
     } finally {
@@ -74,7 +66,7 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
     setScaricandoCu(true);
     try {
       const { blob, filename } = await api.certificazioneUnicaPdf(rapportoId, annoCuScelto);
-      scaricaBlob(blob, filename);
+      await scaricaBlob(blob, filename);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Impossibile scaricare la CU.");
     } finally {

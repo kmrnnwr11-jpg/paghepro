@@ -51,7 +51,8 @@ Oggi diverse schermate mostrano **dati demo di esempio**, non quelli reali dal b
 - ⚠️ **Database**: SQLite OK per ora; per più utenti passare a **PostgreSQL** (`UseSqlite`→`UseNpgsql`, una riga in `Program.cs`). Vedi `DEPLOY.md`.
 - ✅ **JWT key da secret**: `TokenService` in ambiente Production **rifiuta** il default di sviluppo e le chiavi < 32 byte (avvio bloccato). Resta da **fornire** il secret reale in produzione (`Jwt__Key`).
 - ⚠️ **CORS**: oggi `AllowAnyOrigin`; in produzione restringere agli origin reali.
-- ❌ **GDPR**: cifratura dati sensibili (IBAN, malattia), **audit log**, **retention/cancellazione**.
+- ⚠️ **GDPR**: cifratura dati sensibili e registro accessi/modifiche completati e verificati;
+  restano **retention/cancellazione** e i documenti/azioni legali previsti nel piano.
 - ✅ **Multi-utente reale**: login ripristinato — senza token si apre la schermata di accesso (Crea account / Accedi / 2FA / Google), ogni account è un tenant isolato. La **demo** ora è **isolata per browser** (un account demo per dispositivo), non più condivisa.
 
 ## 7) Dato normativo (sempre)
@@ -64,5 +65,6 @@ Oggi diverse schermate mostrano **dati demo di esempio**, non quelli reali dal b
 1. 🔑 Account provider SdI + API key → invio fatture reale (resto già pronto).
 2. Collegare le 4 schermate demo ai dati veri (codice nostro).
 3. Migrazioni EF + JWT secret + CORS + (eventuale) PostgreSQL prima del go-live.
-4. GDPR (cifratura/audit/retention) prima di trattare dati reali di persone.
+4. Completare la retention GDPR; configurare chiavi, monitoraggio audit e backup reali prima di
+   trattare dati di persone (cifratura e registro attività applicativi sono fatti).
 5. Validazione dei parametri normativi con un consulente.

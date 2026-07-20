@@ -3,6 +3,8 @@ namespace Paghe.Persistence.Entities;
 /// <summary>Azienda (datore di lavoro / soggetto emittente) persistita su database.</summary>
 public class AziendaEntity
 {
+    private string? _iban;
+
     public Guid Id { get; set; }
 
     /// <summary>Tenant proprietario del dato (isolamento multi-tenant).</summary>
@@ -32,7 +34,33 @@ public class AziendaEntity
     public string? PatInail { get; set; }
     public string? CcnlDefault { get; set; }
     public string? LivelloDefault { get; set; }
-    public string? Iban { get; set; }
+    /// <summary>IBAN disponibile al dominio; la proprietà non è mappata direttamente nel DB.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? Iban
+    {
+        get => _iban;
+        set
+        {
+            if (string.Equals(_iban, value, StringComparison.Ordinal)) return;
+            _iban = value;
+            IbanModificato = true;
+        }
+    }
+
+    /// <summary>Envelope AES-GCM tenant-bound persistito al posto dell'IBAN in chiaro.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? IbanProtetto { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool IbanModificato { get; private set; }
+
+    internal void CaricaIbanDecifrato(string? valore)
+    {
+        _iban = valore;
+        IbanModificato = false;
+    }
+
+    internal void ConfermaProtezioneIban() => IbanModificato = false;
     public string? LegaleRappresentanteNome { get; set; }
     public string? LegaleRappresentanteCognome { get; set; }
     public string? LegaleRappresentanteCodiceFiscale { get; set; }

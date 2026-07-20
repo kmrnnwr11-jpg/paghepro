@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Azienda, type EsitoCaricamentoScadenza, type Promemoria } from "../api";
+import { leggiAziendaCorrenteId } from "../aziendaCorrente";
+import { apriLinkEsterno } from "../mobile/piattaforma";
 
 // Servizio ufficiale "Durc On Line" (INPS/INAIL): la richiesta si fa SOLO lì, con
 // SPID/CIE/CNS — non esiste un'API pubblica per inviarla da software esterni.
@@ -120,7 +122,9 @@ export function Scadenzario() {
       setPromemoria(lista);
       setAziendaDurc((corrente) => {
         if (az.length === 0) return "";
-        return az.some((a) => a.id === corrente) ? corrente : az[0].id;
+        if (az.some((a) => a.id === corrente)) return corrente;
+        const scelta = leggiAziendaCorrenteId();
+        return scelta && az.some((a) => a.id === scelta) ? scelta : "";
       });
     } catch (e) {
       if (richiesta !== richiestaCaricaRef.current) return;
@@ -299,7 +303,10 @@ export function Scadenzario() {
                 <button className="btn secondary compact" type="button" onClick={rigenera} disabled={caricando}>
                   Aggiorna scadenzario
                 </button>
-                <a className="btn primary compact" href={DURC_ONLINE_URL} target="_blank" rel="noreferrer">
+                <a className="btn primary compact" href={DURC_ONLINE_URL} onClick={(e) => {
+                  e.preventDefault();
+                  void apriLinkEsterno(DURC_ONLINE_URL);
+                }}>
                   Apri portale DURC
                 </a>
               </div>
@@ -439,7 +446,10 @@ export function Scadenzario() {
           La richiesta si fa gratis sul portale ufficiale INPS/INAIL, entrando con SPID, CIE o CNS.
           Il nuovo DURC vale 120 giorni.
         </p>
-        <a className="btn primary" href={DURC_ONLINE_URL} target="_blank" rel="noreferrer">
+        <a className="btn primary" href={DURC_ONLINE_URL} onClick={(e) => {
+          e.preventDefault();
+          void apriLinkEsterno(DURC_ONLINE_URL);
+        }}>
           🌐 Apri portale DURC
         </a>
         <div className="empty-state" style={{ marginTop: 12 }}>
@@ -453,6 +463,7 @@ export function Scadenzario() {
           <span>Azienda</span>
           <select value={aziendaDurc} onChange={(e) => setAziendaDurc(e.target.value)} disabled={aziende.length === 0}>
             {aziende.length === 0 && <option value="">Nessuna azienda registrata</option>}
+            {aziende.length > 0 && <option value="">Scegli azienda</option>}
             {aziende.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.ragioneSociale}
@@ -558,7 +569,7 @@ export function Scadenzario() {
             border: `2px dashed ${dragOver ? "var(--accent, #6c63ff)" : "var(--border, #444)"}`,
             borderRadius: 10, padding: "18px 12px", textAlign: "center",
             cursor: uploadInCorso ? "wait" : "pointer",
-            background: dragOver ? "rgba(108,99,255,0.08)" : "transparent",
+            background: dragOver ? "rgba(14,114,104,0.08)" : "transparent",
             transition: "all 0.2s",
           }}
         >

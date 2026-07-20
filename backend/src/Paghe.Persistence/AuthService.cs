@@ -16,8 +16,18 @@ public enum EsitoAccesso
     Ok,
 }
 
-/// <summary>Risultato di un accesso: esito + utente (presente solo se <see cref="EsitoAccesso.Ok"/>).</summary>
-public sealed record RisultatoAccesso(EsitoAccesso Esito, UtenteEntity? Utente);
+/// <summary>Identità minima usata soltanto per attribuire un tentativo di login nel registro.</summary>
+public sealed record IdentitaAccessoAudit(Guid TenantId, Guid UtenteId);
+
+/// <summary>
+/// Risultato di un accesso. <see cref="Utente"/> è presente esclusivamente con
+/// <see cref="EsitoAccesso.Ok"/>; un account riconosciuto ma non autenticato espone soltanto
+/// l'identità minima, non riutilizzabile come sessione, in <see cref="IdentitaAudit"/>.
+/// </summary>
+public sealed record RisultatoAccesso(
+    EsitoAccesso Esito,
+    UtenteEntity? Utente,
+    IdentitaAccessoAudit? IdentitaAudit = null);
 
 /// <summary>Dati per configurare il 2FA: segreto da salvare nell'app e URI per il QR code.</summary>
 public sealed record ConfigurazioneDueFattori(string Segreto, string UriOtpauth);
@@ -148,28 +158,34 @@ public sealed class AuthService
     public async Task<RisultatoAccesso> AccediAsync(
         string email, string password, string? codice2fa = null, CancellationToken ct = default)
     {
-        var utente = await AutenticaAsync(email, password, ct);
+        email = Normalizza(email);
+        var utente = await _db.Utenti.FirstOrDefaultAsync(u => u.Email == email, ct);
         if (utente is null)
             return new RisultatoAccesso(EsitoAccesso.CredenzialiErrate, null);
+        if (!utente.Attivo || !PasswordHasher.Verifica(password, utente.PasswordHash))
+            return Negato(EsitoAccesso.CredenzialiErrate, utente);
 
         // Studio sospeso dal super-admin: l'accesso è bloccato (il super-admin non sospende sé stesso).
         if (utente.Ruolo != RuoloSuperAdmin)
         {
             var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == utente.TenantId, ct);
             if (tenant is { Sospeso: true })
-                return new RisultatoAccesso(EsitoAccesso.AccountSospeso, null);
+                return Negato(EsitoAccesso.AccountSospeso, utente);
         }
 
         if (utente.DueFattoriAttivo)
         {
             if (string.IsNullOrWhiteSpace(codice2fa))
-                return new RisultatoAccesso(EsitoAccesso.ServeCodice2fa, null);
+                return Negato(EsitoAccesso.ServeCodice2fa, utente);
             if (string.IsNullOrEmpty(utente.SegretoTotp) || !Totp.Verifica(utente.SegretoTotp, codice2fa))
-                return new RisultatoAccesso(EsitoAccesso.Codice2faErrato, null);
+                return Negato(EsitoAccesso.Codice2faErrato, utente);
         }
 
         return new RisultatoAccesso(EsitoAccesso.Ok, utente);
     }
+
+    private static RisultatoAccesso Negato(EsitoAccesso esito, UtenteEntity utente) =>
+        new(esito, null, new IdentitaAccessoAudit(utente.TenantId, utente.Id));
 
     /// <summary>
     /// Avvia la configurazione del 2FA: genera un segreto (non ancora attivo) e lo salva, restituendo

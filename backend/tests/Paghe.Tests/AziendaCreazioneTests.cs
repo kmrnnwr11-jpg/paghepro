@@ -165,5 +165,51 @@ public sealed class AziendaCreazioneTests : IDisposable
         Assert.Contains("ccnlDefault", sintesi.DatiMancanti);
     }
 
+    [Fact]
+    public async Task Crea_CodiciContributiviDiSoliZeri_LiMantieneMancantiComeBozza()
+    {
+        await using var db = NuovoContesto();
+        var svc = new AziendeService(db);
+
+        var azienda = await svc.CreaAsync(_tenantA, new AziendaEntity
+        {
+            RagioneSociale = "Azienda Agricola Prova Srl",
+            PartitaIva = "44444444444",
+            Indirizzo = "Via Campo 4", Cap = "52100", Comune = "Arezzo", Provincia = "AR",
+            Settore = "AGRICOLTURA", CodiceAteco = "01.46.00", HaDipendenti = true,
+            MatricolaInps = "000000", CodiceSedeInps = "000000", CscInps = "00000",
+            PatInail = "000000/00",
+        });
+
+        Assert.Null(azienda.MatricolaInps);
+        Assert.Null(azienda.CodiceSedeInps);
+        Assert.Null(azienda.CscInps);
+        Assert.Null(azienda.PatInail);
+
+        var sintesi = await svc.GetSintesiAsync(_tenantA, azienda.Id);
+        Assert.NotNull(sintesi);
+        Assert.False(sintesi.DatiContributiviCompleti);
+        Assert.Contains("matricolaInps", sintesi.DatiMancanti);
+        Assert.Contains("patInail", sintesi.DatiMancanti);
+    }
+
+    [Fact]
+    public void AziendaProvvisoria_BloccaGliAdempimentiContributivi()
+    {
+        var azienda = new AziendaEntity
+        {
+            RagioneSociale = "Azienda Agricola Prova Srl",
+            Settore = "AGRICOLTURA",
+            CodiceAteco = "01.46.00",
+        };
+
+        var errore = Assert.Throws<ArgumentException>(() =>
+            AziendeService.VerificaProntaPerAdempimentiContributivi(azienda));
+
+        Assert.Contains("matricola INPS", errore.Message);
+        Assert.Contains("P.A.T. INAIL", errore.Message);
+        Assert.Contains("CCNL", errore.Message);
+    }
+
     public void Dispose() => _connection.Dispose();
 }

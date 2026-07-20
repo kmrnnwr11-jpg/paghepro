@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 using Paghe.Persistence;
 using Paghe.Persistence.Gdpr;
 using Paghe.Persistence.Sicurezza;
@@ -39,10 +40,18 @@ public sealed class GdprHardeningTests : IDisposable
     [Fact]
     public void Cifratura_InProduzione_ConChiaveReale_Funziona()
     {
-        var p = new ProtettoreDati("chiave-di-produzione-robusta-da-secret", produzione: true);
+        var chiave = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var p = new ProtettoreDati(chiave, produzione: true);
         var cifrato = p.Proteggi("IT60X0542811101000000123456");
-        Assert.StartsWith("enc:v1:", cifrato);
+        Assert.StartsWith(p.PrefissoChiaveCorrente, cifrato);
         Assert.Equal("IT60X0542811101000000123456", p.Svela(cifrato));
+    }
+
+    [Fact]
+    public void Cifratura_InProduzione_ConChiaveTroppoCorta_Lancia()
+    {
+        Assert.Throws<InvalidOperationException>(
+            () => new ProtettoreDati("troppo-corta", produzione: true));
     }
 
     [Fact]
@@ -50,6 +59,23 @@ public sealed class GdprHardeningTests : IDisposable
     {
         var p = new ProtettoreDati(ProtettoreDati.PassphraseSviluppo, produzione: false);
         Assert.Equal("ciao", p.Svela(p.Proteggi("ciao")));
+    }
+
+    [Theory]
+    [InlineData("Production", true)]
+    [InlineData("Staging", true)]
+    [InlineData("QA", true)]
+    [InlineData(null, true)]
+    [InlineData("Development", false)]
+    [InlineData("Test", false)]
+    [InlineData("Testing", false)]
+    public void AmbienteHost_SoloLocaleETestPossonoUsareLaChiaveDemo(
+        string? ambiente,
+        bool richiedeChiaveReale)
+    {
+        Assert.Equal(
+            richiedeChiaveReale,
+            ProtettoreDati.RichiedeChiaveReale(ambiente));
     }
 
     // --- Fix #3: re-enrollment 2FA non disattiva un 2FA già attivo ---

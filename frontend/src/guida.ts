@@ -11,21 +11,44 @@ export interface SchedaAiuto {
 
 // La chiave coincide con la SectionKey della Dashboard.
 export const aiutoPerSezione: Record<string, SchedaAiuto> = {
-  dashboard: {
-    titolo: "Pagina iniziale (Dashboard)",
+  audit: {
+    titolo: "Registro attività",
     aCosaServe:
-      "È la tua scrivania: vedi a colpo d'occhio quanto lavoro c'è, le scadenze vicine e gli errori da sistemare.",
+      "Mostra chi ha consultato o modificato i dati dello studio e se l'operazione è riuscita.",
     passi: [
-      "Guarda i 4 riquadri in alto: dipendenti, cedolini, fatture e IVA da pagare.",
-      "Nel riquadro 'Scadenze' a destra vedi cosa scade nei prossimi giorni.",
-      "Se c'è scritto 'Errori da correggere', cliccaci sopra per andare subito a sistemarli.",
-      "Per preparare le buste paga premi il pulsante blu 'Elabora cedolini'.",
+      "Usa Tipo attività per separare consultazioni e modifiche ai dati.",
+      "Scegli un intervallo di date se devi controllare un periodo preciso.",
+      "Leggi Utente, Risorsa ed Esito: il registro non mostra i contenuti o i valori cambiati.",
+      "Se trovi un accesso negato o un errore inatteso, annota data e ora e fallo verificare all'amministratore tecnico.",
+    ],
+    faq: [
+      {
+        domanda: "Posso cambiare o cancellare una riga?",
+        risposta: "No. Il registro è in sola lettura per preservare la tracciabilità.",
+      },
+    ],
+  },
+
+  dashboard: {
+    titolo: "Home studio",
+    aCosaServe:
+      "È il punto di partenza: prima scegli l'azienda cliente, poi apri gli strumenti e controlli il suo lavoro.",
+    passi: [
+      "Se non hai ancora clienti, premi 'Crea azienda'.",
+      "Se hai già clienti, cerca per nome, partita IVA, codice fiscale o comune e premi 'Scegli'.",
+      "Apri uno dei Prossimi passi: Dipendenti, Presenze, Elabora cedolini o Scadenze.",
+      "Nella colonna 'Riprendi il lavoro' ritrovi gli ultimi strumenti aperti insieme al cliente corretto.",
     ],
     faq: [
       {
         domanda: "I numeri sono veri?",
         risposta:
-          "Sì, sono presi dai dati reali che hai inserito. Se non hai ancora inserito nulla, vedi numeri di esempio.",
+          "Sì. Compaiono soltanto dopo la scelta dell'azienda e arrivano dai suoi dati. Se il caricamento fallisce, la Home mostra un errore invece di numeri finti.",
+      },
+      {
+        domanda: "Che cosa significa 'Riprendi il lavoro'?",
+        risposta:
+          "Sono scorciatoie agli ultimi strumenti che hai aperto. Ogni riga ricorda anche l'azienda, così riapri il cliente giusto.",
       },
     ],
   },

@@ -7,6 +7,13 @@
 *.db
 *.db-shm
 *.db-wal
+*.age
+backup/
+.pgpass
+*.pgpass
+*.agekey
+*.age-key
+paghe-backup-identity*
 
 # ───── Node / frontend ─────
 node_modules/
@@ -17,6 +24,15 @@ frontend/dist/
 .vs/
 .idea/
 *.log
+
+# ───── Credenziali e firma applicazioni mobile ─────
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+AuthKey_*.p8
+android/key.properties
+frontend/android/key.properties
 
 # ───── File di prototipo UI (non necessari al deploy) ─────
 .playwright-mcp/

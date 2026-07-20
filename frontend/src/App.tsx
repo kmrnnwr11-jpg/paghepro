@@ -17,7 +17,7 @@ export default function App() {
             position: "sticky",
             top: 0,
             zIndex: 50,
-            background: "linear-gradient(135deg, #2563eb, #6d28d9)",
+            background: "linear-gradient(135deg, #0e7268, #10a08f)",
             color: "#fff",
             padding: "9px 14px",
             fontSize: 12.5,

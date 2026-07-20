@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   api,
+  scaricaBlob,
   type DatiPraticaEstratti,
   type NuovaPraticaComUnica,
   type PianoComUnica,
@@ -320,15 +321,14 @@ export function Pratiche() {
     }
   };
 
-  const scaricaDistinta = () => {
+  const scaricaDistinta = async () => {
     if (!distinta || !selezionata) return;
-    const blob = new Blob([distinta], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `distinta-comunica-${selezionata.id}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([distinta], { type: "text/plain;charset=utf-8" });
+      await scaricaBlob(blob, `distinta-comunica-${selezionata.id}.txt`);
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Impossibile condividere la distinta.");
+    }
   };
 
   return (

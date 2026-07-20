@@ -1,4 +1,15 @@
 -- =============================================================================
+--  ARCHIVIO STORICO / CONCETTUALE — NON ESEGUIRE
+--
+--  Questo file descrive il modello iniziale e contiene ancora colonne personali in chiaro.
+--  Non rappresenta lo schema runtime corrente e viene bloccato intenzionalmente. La fonte
+--  autorevole è il modello EF Core in PagheDbContext + il runner GDPR documentato in
+--  docs/GDPR-CIFRATURA.md. Non usare questo file per creare o aggiornare database.
+-- =============================================================================
+\echo 'ERRORE: db/schema.sql e un archivio storico non eseguibile. Usare il modello EF Core.'
+\quit 1
+
+-- =============================================================================
 --  Paghe SaaS — Schema PostgreSQL (Fase 1 / MVP)
 --  Software buste paga & contabilità per micro-imprese italiane
 --

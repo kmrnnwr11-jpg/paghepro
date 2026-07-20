@@ -13,7 +13,8 @@ e contabilità del personale, pensato per **micro e piccole imprese** italiane.
 
 - **Fase 1 — Modello dati e architettura** ✅
   - Architettura applicativa (`docs/ARCHITETTURA.md`)
-  - Modello dati PostgreSQL (`db/schema.sql`, descritto in `docs/MODELLO-DATI.md`)
+  - Modello runtime autorevole: EF Core in `PagheDbContext`. `db/schema.sql` è soltanto un
+    archivio concettuale storico, intenzionalmente non eseguibile.
 - **Fase 2 — Motore di calcolo cedolino (lordo → netto)** ✅
   - Implementazione .NET 10 / C# in `backend/` (vedi `backend/README.md`)
   - CCNL Commercio, contributi INPS, IRPEF + detrazioni, addizionali, TFR
@@ -82,7 +83,7 @@ complessi, somministrazione, 770, cassa integrazione, agricoli (DMAG).
 │   ├── PARTITA_IVA_CONTABILITA.md
 │   └── MODELLO-DATI.md      # Descrizione delle entità e relazioni
 ├── db/
-│   └── schema.sql           # Schema PostgreSQL (DDL)
+│   └── schema.sql           # Archivio concettuale storico — NON eseguire
 └── backend/                 # Motore di calcolo cedolino (.NET 10 / C#)
     ├── src/Paghe.Core/      # Dominio + motore di calcolo
     ├── src/Paghe.Documenti/ # Generazione PDF cedolini/fatture

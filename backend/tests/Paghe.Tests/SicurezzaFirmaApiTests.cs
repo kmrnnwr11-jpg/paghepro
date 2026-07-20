@@ -43,7 +43,7 @@ public sealed class SicurezzaFirmaApiTests : IClassFixture<WebApplicationFactory
     [Fact]
     public async Task UploadFirma_ConDocumentoOltreLimite_VieneRifiutato()
     {
-        using var client = ClientAutenticato();
+        using var client = await ClientAutenticatoAsync();
         using var multipart = new MultipartFormDataContent();
         multipart.Add(
             new ByteArrayContent(new byte[SicurezzaUploadFirma.DimensioneMassimaDocumento + 1]),
@@ -58,7 +58,7 @@ public sealed class SicurezzaFirmaApiTests : IClassFixture<WebApplicationFactory
     [Fact]
     public async Task UploadFirma_ConPfxInvalido_NonEsponeEccezioneInterna()
     {
-        using var client = ClientAutenticato();
+        using var client = await ClientAutenticatoAsync();
         using var multipart = new MultipartFormDataContent();
         multipart.Add(new ByteArrayContent("documento"u8.ToArray()), "file", "documento.txt");
         multipart.Add(new ByteArrayContent(new byte[] { 0x30, 0x02, 0x01, 0x00 }), "pfx", "falso.pfx");
@@ -77,7 +77,7 @@ public sealed class SicurezzaFirmaApiTests : IClassFixture<WebApplicationFactory
     [Fact]
     public async Task VerificaFirma_ConXmlNonFirmato_RestituisceErroreNeutro()
     {
-        using var client = ClientAutenticato();
+        using var client = await ClientAutenticatoAsync();
         using var multipart = new MultipartFormDataContent();
         multipart.Add(new ByteArrayContent("<fattura/>"u8.ToArray()), "file", "non-firmato.xml");
 
@@ -93,7 +93,7 @@ public sealed class SicurezzaFirmaApiTests : IClassFixture<WebApplicationFactory
     [Fact]
     public async Task FirmaFattura_SuperataQuota_RispondeTooManyRequests()
     {
-        using var client = ClientAutenticato();
+        using var client = await ClientAutenticatoAsync();
         var fatturaSenzaRighe = new
         {
             numero = "TEST-1",
@@ -113,23 +113,23 @@ public sealed class SicurezzaFirmaApiTests : IClassFixture<WebApplicationFactory
         Assert.Equal(HttpStatusCode.TooManyRequests, limitata.StatusCode);
     }
 
-    private HttpClient ClientAutenticato()
+    private async Task<HttpClient> ClientAutenticatoAsync()
     {
         var client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false,
         });
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["Jwt:Key"] = ChiaveJwt })
-            .Build();
-        var token = new TokenService(config).Crea(new UtenteEntity
+        client.DefaultRequestHeaders.Add("X-PaghePro-Client", "web");
+        using var risposta = await client.PostAsJsonAsync("/api/auth/registra", new
         {
-            Id = Guid.NewGuid(),
-            TenantId = Guid.NewGuid(),
-            Email = "firma-test@paghe.local",
-            Ruolo = "admin",
+            ragioneSociale = $"Firma test {Guid.NewGuid():N}",
+            email = $"firma-{Guid.NewGuid():N}@paghe.local",
+            password = "Password-firma-test-2026!",
         });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        risposta.EnsureSuccessStatusCode();
+        var accesso = await risposta.Content.ReadFromJsonAsync<AccessoResponse>();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", accesso!.Token);
         return client;
     }
 }

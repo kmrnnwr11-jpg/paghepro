@@ -100,6 +100,7 @@ Ogni punto dice: **com'era**, **cosa è stato fatto**, oppure **cosa resta da de
 5. **Database**: in modalità "prova gratis" su Render i dati si azzerano ai riavvii
    (già documentato in `render.yaml`/`DEPLOY.md`); per dati veri servono disco
    persistente e backup (`scripts/backup-db.sh`).
-6. **GDPR**: cifratura dei campi sensibili e retention sono nel piano
-   (`docs/PIANO-COMPLETAMENTO.md`), non ancora complete: da pianificare prima di
-   trattare dati reali di dipendenti.
+6. **GDPR**: cifratura dei campi sensibili e registro di letture/modifiche sono implementati e
+   verificati. Restano retention, adempimenti organizzativi e configurazione operativa di
+   chiavi/backup prima di trattare dati reali di dipendenti. Dettagli e limiti in
+   [`GDPR-REGISTRO-ATTIVITA.md`](GDPR-REGISTRO-ATTIVITA.md).

@@ -40,6 +40,9 @@ public sealed class IsolamentoTenantTests : IDisposable
         {
             RagioneSociale = "Alfa Srl", PartitaIva = "01234567890",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
+            Settore = "COMMERCIO_SERVIZI", CodiceAteco = "47.91.10",
+            MatricolaInps = "1234567890", CodiceSedeInps = "7100", CscInps = "10101",
+            PatInail = "12345678/90", CcnlDefault = "COMMERCIO_TERZIARIO", LivelloDefault = "3",
         });
         return az.Id;
     }

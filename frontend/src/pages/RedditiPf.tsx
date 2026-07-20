@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Azienda, type DipendenteRapporto, type RedditiPfBozza } from "../api";
+import { scegliAziendaPreferita } from "../aziendaCorrente";
 
 const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -21,15 +22,8 @@ export function RedditiPf() {
   useEffect(() => {
     (async () => {
       try {
-        let aziende = await api.aziende();
-        if (aziende.length === 0) {
-          await api.creaAzienda({
-            ragioneSociale: "Rossi S.r.l.", partitaIva: "01567890123",
-            indirizzo: "Via Roma 10", cap: "20121", comune: "Milano", provincia: "MI",
-          });
-          aziende = await api.aziende();
-        }
-        const a = aziende[0] ?? null;
+        const aziende = await api.aziende();
+        const a = scegliAziendaPreferita(aziende);
         setAzienda(a);
         if (a) {
           const d = await api.dipendenti(a.id);

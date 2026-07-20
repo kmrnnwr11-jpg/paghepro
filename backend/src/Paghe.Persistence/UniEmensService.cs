@@ -25,6 +25,7 @@ public sealed class UniEmensService
         var azienda = await _db.Aziende
             .FirstOrDefaultAsync(a => a.Id == aziendaId && a.TenantId == tenantId, ct)
             ?? throw new ArgumentException("Azienda non trovata per il tenant indicato.");
+        AziendeService.VerificaProntaPerAdempimentiContributivi(azienda);
 
         var cedolini = await _db.Cedolini
             .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno && c.Mese == mese)
@@ -58,7 +59,7 @@ public sealed class UniEmensService
         var mittente = new DatiMittenteUniEmens(
             azienda.CodiceFiscale ?? azienda.PartitaIva ?? "", azienda.RagioneSociale);
         var denunciaAziendale = new DenunciaAziendaleUniEmens(
-            matricolaInps, azienda.CodiceFiscale ?? azienda.PartitaIva ?? "", anno, mese);
+            azienda.MatricolaInps!, azienda.CodiceFiscale ?? azienda.PartitaIva ?? "", anno, mese);
 
         return UniEmensDaCedolini.Costruisci(mittente, denunciaAziendale, righe);
     }

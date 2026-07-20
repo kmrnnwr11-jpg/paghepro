@@ -16,7 +16,7 @@ reale del software e definisce le fasi per chiudere i buchi.
 | «Validazione: campi, duplicati e confidenza» | ✅ Confidenza per campo con soglia configurabile; duplicati P.IVA/CF per tenant già bloccati | Punteggio di confidenza anche per l'euristica |
 | «Conferma umana obbligatoria» | ✅ Regola architetturale: l'AI propone, l'utente conferma; calcoli solo in codice deterministico | — |
 | «AI senza decisioni fiscali» | ✅ Motore cedolino/F24/CU è 100% deterministico e versionato per anno | — |
-| «Audit log, tenant isolation, GDPR» | ✅ AuditLog, isolamento tenant su ogni query, cifratura IBAN, diritto all'oblio | Log immutabili/estesi (fase 2 GDPR) |
+| «Audit log, tenant isolation, GDPR» | ✅ Registro applicativo esteso, isolamento tenant, cifratura IBAN, diritto all'oblio | Retention e immutabilità/audit infrastrutturali |
 | «Test su 500 documenti reali e precisione misurata» (gate mese 5) | ❌ | Costruire il banco di misura (vedi Fase C) |
 | «Interfaccia side-by-side documento/dati» | Parziale (form precompilato + nota provenienza) | UI con documento affiancato ai campi estratti |
 

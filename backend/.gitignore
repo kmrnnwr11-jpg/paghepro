@@ -3,5 +3,6 @@ obj/
 *.user
 .vs/
 *.db
+*.age
 *.db-shm
 *.db-wal

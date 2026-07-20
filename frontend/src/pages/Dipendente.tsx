@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { ArrowLeft, BriefcaseBusiness, Check, CircleUserRound, FileText, Pencil, ReceiptText, Save, X } from "lucide-react";
 import { api, type CedolinoArchiviato, type RapportoDettaglio } from "../api";
 
 type Tab = "anagrafica" | "rapporto" | "storico";
 
-const tabs: { key: Tab; label: string }[] = [
-  { key: "anagrafica", label: "Anagrafica" },
-  { key: "rapporto", label: "Rapporto di lavoro" },
-  { key: "storico", label: "Storico cedolini" },
+const tabs: { key: Tab; label: string; Icona: typeof CircleUserRound }[] = [
+  { key: "anagrafica", label: "Anagrafica", Icona: CircleUserRound },
+  { key: "rapporto", label: "Rapporto di lavoro", Icona: BriefcaseBusiness },
+  { key: "storico", label: "Storico cedolini", Icona: ReceiptText },
 ];
 
 const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -16,7 +17,7 @@ function iniziali(nome: string, cognome: string): string {
   return `${(cognome[0] ?? "").toUpperCase()}${(nome[0] ?? "").toUpperCase()}` || "—";
 }
 
-export function Dipendente({ rapportoId, onPayslip }: { rapportoId: string | null; onPayslip: () => void }) {
+export function Dipendente({ rapportoId, onPayslip, onBack }: { rapportoId: string | null; onPayslip: () => void; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>("anagrafica");
   const [d, setD] = useState<RapportoDettaglio | null>(null);
   const [cedolini, setCedolini] = useState<CedolinoArchiviato[]>([]);
@@ -68,27 +69,27 @@ export function Dipendente({ rapportoId, onPayslip }: { rapportoId: string | nul
   ];
 
   return (
-    <div className="detail-layout">
+    <div className="detail-layout employee-detail-layout">
       <header className="glass-card emp-header">
+        <button className="emp-back" type="button" onClick={onBack} title="Torna ai dipendenti"><ArrowLeft size={18} /></button>
         <div className="emp-avatar">{iniziali(d.nome, d.cognome)}</div>
         <div className="emp-id">
           <div className="emp-id-top">
             <h1>{d.cognome} {d.nome}</h1>
             <span className={`status-pill ${d.anonimizzato ? "slate" : "green"}`}>
-              {d.anonimizzato ? "Anonimizzato" : "● Attivo"}
+              {!d.anonimizzato && <Check size={12} aria-hidden="true" />}{d.anonimizzato ? "Anonimizzato" : "In forza"}
             </span>
           </div>
           <div className="emp-id-meta">
-            {d.qualifica} · liv. {d.livello} {d.codiceCcnl === "COMMERCIO_TERZIARIO" ? "CCNL Commercio" : d.codiceCcnl}
-            {" · CF "}<span className="num">{d.codiceFiscale || "—"}</span>
+            <span>{d.qualifica}</span><span>Livello {d.livello}</span><span>{d.codiceCcnl === "COMMERCIO_TERZIARIO" ? "CCNL Commercio" : d.codiceCcnl}</span><span className="num">CF {d.codiceFiscale || "non indicato"}</span>
           </div>
         </div>
-        {!d.anonimizzato && !inModifica && (
-          <button className="btn secondary" type="button" onClick={() => setInModifica(true)}>
-            ✏️ Correggi dati
-          </button>
-        )}
-        <button className="btn secondary" type="button" onClick={onPayslip}>Cedolini</button>
+        <div className="emp-header-actions">
+          {!d.anonimizzato && !inModifica && (
+            <button className="btn secondary" type="button" onClick={() => setInModifica(true)}><Pencil size={15} /> Correggi</button>
+          )}
+          <button className="btn primary" type="button" onClick={onPayslip}><ReceiptText size={15} /> Cedolini</button>
+        </div>
       </header>
 
       {inModifica && (
@@ -100,39 +101,39 @@ export function Dipendente({ rapportoId, onPayslip }: { rapportoId: string | nul
 
       <section className="glass-card emp-card">
         <div className="emp-tabs">
-          {tabs.map((t) => (
-            <button key={t.key} type="button" className={`emp-tab ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>
-              {t.label}
+          {tabs.map(({ key, label, Icona }) => (
+            <button key={key} type="button" className={`emp-tab ${tab === key ? "active" : ""}`} onClick={() => setTab(key)}>
+              <Icona size={15} aria-hidden="true" /> {label}
             </button>
           ))}
         </div>
 
         <div className="emp-body">
           {tab === "anagrafica" && (
-            <div className="emp-grid">
+            <div><div className="emp-section-heading"><CircleUserRound size={18} /><div><h2>Dati personali</h2><p>Identificazione e coordinate di pagamento del lavoratore</p></div></div><div className="emp-grid">
               {anagrafica.map(([label, value]) => (
                 <div key={label}>
                   <div className="emp-field-label">{label}</div>
                   <div className={`emp-field-value ${/\d/.test(value) ? "num" : ""}`}>{value}</div>
                 </div>
               ))}
-            </div>
+            </div></div>
           )}
 
           {tab === "rapporto" && (
-            <div className="emp-grid">
+            <div><div className="emp-section-heading"><BriefcaseBusiness size={18} /><div><h2>Rapporto di lavoro</h2><p>Inquadramento contrattuale e condizioni correnti</p></div></div><div className="emp-grid">
               {rapporto.map(([label, value]) => (
                 <div key={label}>
                   <div className="emp-field-label">{label}</div>
                   <div className={`emp-field-value ${/\d/.test(value) ? "num" : ""}`}>{value}</div>
                 </div>
               ))}
-            </div>
+            </div></div>
           )}
 
           {tab === "storico" && (
             cedolini.length === 0 ? (
-              <div className="empty-state">Nessun cedolino archiviato. Generane in “Cedolini”.</div>
+              <div className="employee-empty"><FileText size={28} /><strong>Nessun cedolino archiviato</strong><p>Il primo documento comparirà dopo l’elaborazione mensile.</p><button className="btn primary" type="button" onClick={onPayslip}>Apri Cedolini</button></div>
             ) : (
               <div className="table-wrap">
                 <table className="data-table spacious">
@@ -221,18 +222,22 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
   }
 
   return (
-    <form className="glass-card form-card" style={{ marginBottom: 14 }} onSubmit={salva}>
-      <div className="card-title-row">
+    <form className="glass-card form-card employee-correction" onSubmit={salva}>
+      <div className="card-title-row employee-correction-head">
         <div>
-          <h2>Correggi i dati della scheda</h2>
-          <p>Se l'import automatico (UNILAV o lettura della visura) ha sbagliato, sistemalo qui e salva.</p>
+          <h2><Pencil size={17} /> Correggi scheda</h2>
+          <p>Aggiorna anagrafica e rapporto di lavoro.</p>
         </div>
+        <button className="icon-btn" type="button" title="Chiudi modifica" onClick={() => onFatto(null)}><X size={17} /></button>
       </div>
+      <div className="employee-correction-section"><h3><CircleUserRound size={15} /> Anagrafica</h3>
       <div className="form-grid">
         <label><span>Nome</span><input value={f.nome} onChange={set("nome")} /></label>
         <label><span>Cognome</span><input value={f.cognome} onChange={set("cognome")} /></label>
         <label><span>Codice fiscale</span><input value={f.codiceFiscale} onChange={set("codiceFiscale")} maxLength={16} /></label>
         <label><span>IBAN <small>(vuoto = rimuovi)</small></span><input value={f.iban} onChange={set("iban")} /></label>
+      </div></div>
+      <div className="employee-correction-section"><h3><BriefcaseBusiness size={15} /> Rapporto di lavoro</h3><div className="form-grid">
         <label>
           <span>Qualifica</span>
           <select value={f.qualifica} onChange={set("qualifica")}>
@@ -254,12 +259,13 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
           <input type="date" value={f.dataCessazione} onChange={set("dataCessazione")} /></label>
       </div>
       {errore && <span className="errore">{errore}</span>}
-      <div className="actions-row">
+      </div>
+      <div className="actions-row employee-correction-actions">
         <button className="btn primary" type="submit" disabled={attesa}>
-          {attesa ? "Salvataggio…" : "Salva correzioni"}
+          <Save size={15} /> {attesa ? "Salvataggio…" : "Salva correzioni"}
         </button>
         <button className="btn secondary" type="button" disabled={attesa} onClick={() => onFatto(null)}>
-          Annulla
+          <X size={15} /> Annulla
         </button>
       </div>
     </form>

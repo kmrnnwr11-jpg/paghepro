@@ -55,7 +55,8 @@ public sealed class RedditiPfService
         e.Acconti = input.Acconti;
         e.AggiornataIl = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return await CostruisciBozzaAsync(tenantId, rapportoId, anno, ct);
+        return await CostruisciBozzaAsync(tenantId, rapportoId, anno, ct)
+            ?? throw new InvalidOperationException("Impossibile ricostruire la bozza Redditi PF appena salvata.");
     }
 
     /// <summary>Costruisce la bozza: aggrega i cedolini dell'anno e applica il calcolo IRPEF dichiarativo.</summary>

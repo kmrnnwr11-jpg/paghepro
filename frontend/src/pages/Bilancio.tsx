@@ -7,6 +7,7 @@ import {
   type BilancioDettaglio,
   type VoceBilancio,
 } from "../api";
+import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
 
 const statoTone: Record<string, string> = {
   Bozza: "amber",
@@ -47,7 +48,8 @@ export function Bilancio() {
     api.aziende()
       .then((a) => {
         setAziende(a);
-        if (a.length > 0) setAziendaId(a[0].id);
+        const scelta = scegliAziendaPreferita(a);
+        if (scelta) setAziendaId(scelta.id);
       })
       .catch((e) => setErrore((e as Error).message));
   }, []);
@@ -126,7 +128,7 @@ export function Bilancio() {
     setErrore(null);
     try {
       const { blob, filename } = await api.bilancioPdf(id);
-      scaricaBlob(blob, filename);
+      await scaricaBlob(blob, filename);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Impossibile scaricare il PDF.");
     }
@@ -158,7 +160,12 @@ export function Bilancio() {
             <span>🏢</span>
             <select
               value={aziendaId}
-              onChange={(e) => { setAziendaId(e.target.value); setDettaglio(null); setPrecompilate(null); }}
+              onChange={(e) => {
+                setAziendaId(e.target.value);
+                salvaAziendaCorrenteId(e.target.value);
+                setDettaglio(null);
+                setPrecompilate(null);
+              }}
               style={{ border: "none", background: "transparent", font: "inherit" }}
             >
               {aziende.length === 0 && <option value="">Nessuna azienda — creane una in “Aziende”</option>}

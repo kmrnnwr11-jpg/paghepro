@@ -128,6 +128,7 @@ public sealed class AuthServiceTests : IDisposable
         var r = await new AuthService(db).AccediAsync("nessuno@alfa.it", "password1");
         Assert.Equal(EsitoAccesso.CredenzialiErrate, r.Esito);
         Assert.Null(r.Utente);
+        Assert.Null(r.IdentitaAudit);
     }
 
     public void Dispose() => _connection.Dispose();

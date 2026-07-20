@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Persistence;
+using Paghe.Persistence.Gdpr;
 using Paghe.Persistence.Sicurezza;
 using Xunit;
 
@@ -92,18 +93,26 @@ public sealed class DueFattoriTests : IDisposable
             var auth = new AuthService(db);
 
             // Ora la sola password non basta.
-            Assert.Equal(EsitoAccesso.ServeCodice2fa,
-                (await auth.AccediAsync("due@alfa.it", "password1")).Esito);
-            Assert.Equal(EsitoAccesso.Codice2faErrato,
-                (await auth.AccediAsync("due@alfa.it", "password1", "000000")).Esito);
+            var serveSecondoFattore = await auth.AccediAsync("due@alfa.it", "password1");
+            Assert.Equal(EsitoAccesso.ServeCodice2fa, serveSecondoFattore.Esito);
+            Assert.Null(serveSecondoFattore.Utente);
+            Assert.NotNull(serveSecondoFattore.IdentitaAudit);
+
+            var secondoFattoreErrato = await auth.AccediAsync("due@alfa.it", "password1", "000000");
+            Assert.Equal(EsitoAccesso.Codice2faErrato, secondoFattoreErrato.Esito);
+            Assert.Null(secondoFattoreErrato.Utente);
+            Assert.NotNull(secondoFattoreErrato.IdentitaAudit);
 
             var ok = await auth.AccediAsync("due@alfa.it", "password1", Totp.GeneraCodice(segreto));
             Assert.Equal(EsitoAccesso.Ok, ok.Esito);
             Assert.NotNull(ok.Utente);
 
             // Password sbagliata resta credenziali errate anche col codice giusto.
-            Assert.Equal(EsitoAccesso.CredenzialiErrate,
-                (await auth.AccediAsync("due@alfa.it", "sbagliata", Totp.GeneraCodice(segreto))).Esito);
+            var passwordErrata = await auth.AccediAsync(
+                "due@alfa.it", "sbagliata", Totp.GeneraCodice(segreto));
+            Assert.Equal(EsitoAccesso.CredenzialiErrate, passwordErrata.Esito);
+            Assert.Null(passwordErrata.Utente);
+            Assert.NotNull(passwordErrata.IdentitaAudit);
         }
     }
 
@@ -123,7 +132,7 @@ public sealed class DueFattoriTests : IDisposable
         cmd.Parameters.AddWithValue("$e", "cifra@beta.it");
         var grezzo = (string?)await cmd.ExecuteScalarAsync();
         Assert.NotNull(grezzo);
-        Assert.StartsWith("enc:v1:", grezzo);     // cifrato a riposo
+        Assert.StartsWith(ProtettoreDati.Corrente.PrefissoChiaveCorrente, grezzo); // cifrato a riposo
         Assert.DoesNotContain(segreto, grezzo);   // il segreto in chiaro non compare
     }
 

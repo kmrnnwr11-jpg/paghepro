@@ -1,7 +1,10 @@
 # Modello dati — Paghe SaaS
 
-Descrizione delle entità definite in [`db/schema.sql`](../db/schema.sql). Tutte le tabelle
-di dominio portano `tenant_id` per l'isolamento multi-tenant.
+Descrizione concettuale del dominio originario. Il vecchio [`db/schema.sql`](../db/schema.sql)
+è conservato soltanto come archivio storico ed è intenzionalmente non eseguibile perché mostra
+ancora colonne pre-GDPR. Lo schema runtime autorevole è il modello EF Core in
+`backend/src/Paghe.Persistence/PagheDbContext.cs`; tutte le entità persistite applicative devono
+mantenere `TenantId` per l'isolamento multi-tenant.
 
 ## Mappa delle relazioni
 

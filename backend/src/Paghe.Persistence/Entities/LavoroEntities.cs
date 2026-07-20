@@ -3,12 +3,38 @@ namespace Paghe.Persistence.Entities;
 /// <summary>Lavoratore (persona fisica), persistito.</summary>
 public class DipendenteEntity
 {
+    private string? _iban;
+
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public string CodiceFiscale { get; set; } = "";
     public string Nome { get; set; } = "";
     public string Cognome { get; set; } = "";
-    public string? Iban { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? Iban
+    {
+        get => _iban;
+        set
+        {
+            if (string.Equals(_iban, value, StringComparison.Ordinal)) return;
+            _iban = value;
+            IbanModificato = true;
+        }
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? IbanProtetto { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool IbanModificato { get; private set; }
+
+    internal void CaricaIbanDecifrato(string? valore)
+    {
+        _iban = valore;
+        IbanModificato = false;
+    }
+
+    internal void ConfermaProtezioneIban() => IbanModificato = false;
 
     /// <summary>GDPR (diritto all'oblio): true se i dati personali sono stati anonimizzati.</summary>
     public bool Anonimizzato { get; set; }
@@ -52,6 +78,10 @@ public class RapportoLavoroEntity
 /// <summary>Cartellino presenze mensile persistito.</summary>
 public class CartellinoEntity
 {
+    private decimal _giorniMalattia;
+    private int _numeroEventoMalattiaAnno = 1;
+    private decimal _giorniInfortunio;
+
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid RapportoLavoroId { get; set; }
@@ -63,9 +93,59 @@ public class CartellinoEntity
     public decimal GiorniFerie { get; set; }
     public decimal OrePermessi { get; set; }
     public decimal OreExFestivita { get; set; }
-    public decimal GiorniMalattia { get; set; }
-    public int NumeroEventoMalattiaAnno { get; set; } = 1;
-    public decimal GiorniInfortunio { get; set; }
+    /// <summary>Dato salute disponibile al dominio, escluso dalla mappatura diretta.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public decimal GiorniMalattia
+    {
+        get => _giorniMalattia;
+        set
+        {
+            if (_giorniMalattia == value) return;
+            _giorniMalattia = value;
+            DatiSaluteModificati = true;
+        }
+    }
+
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int NumeroEventoMalattiaAnno
+    {
+        get => _numeroEventoMalattiaAnno;
+        set
+        {
+            if (_numeroEventoMalattiaAnno == value) return;
+            _numeroEventoMalattiaAnno = value;
+            DatiSaluteModificati = true;
+        }
+    }
+
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public decimal GiorniInfortunio
+    {
+        get => _giorniInfortunio;
+        set
+        {
+            if (_giorniInfortunio == value) return;
+            _giorniInfortunio = value;
+            DatiSaluteModificati = true;
+        }
+    }
+
+    /// <summary>Payload fisso con la terna salute, cifrato e tenant-bound.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DatiSaluteProtetti { get; set; } = "";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool DatiSaluteModificati { get; private set; }
+
+    internal void CaricaDatiSalute(decimal malattia, int evento, decimal infortunio)
+    {
+        _giorniMalattia = malattia;
+        _numeroEventoMalattiaAnno = evento;
+        _giorniInfortunio = infortunio;
+        DatiSaluteModificati = false;
+    }
+
+    internal void ConfermaProtezioneDatiSalute() => DatiSaluteModificati = false;
     public decimal OreAssenzaNonRetribuita { get; set; }
 }
 
@@ -110,12 +190,52 @@ public class CedolinoEntity
 /// <summary>Riga (voce) di un cedolino archiviato.</summary>
 public class CedolinoVoceEntity
 {
+    private string _codice = "";
+    private string _descrizione = "";
+    private string _tipo = "";
+    private decimal? _quantita;
+    private decimal? _base;
+    private decimal _importo;
+
     public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
     public Guid CedolinoId { get; set; }
-    public string Codice { get; set; } = "";
-    public string Descrizione { get; set; } = "";
-    public string Tipo { get; set; } = ""; // nome enum TipoVoce
-    public decimal? Quantita { get; set; }
-    public decimal? Base { get; set; }
-    public decimal Importo { get; set; }
+
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string Codice { get => _codice; set { _codice = value; DatiVoceModificati = true; } }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string Descrizione { get => _descrizione; set { _descrizione = value; DatiVoceModificati = true; } }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string Tipo { get => _tipo; set { _tipo = value; DatiVoceModificati = true; } }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public decimal? Quantita { get => _quantita; set { _quantita = value; DatiVoceModificati = true; } }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public decimal? Base { get => _base; set { _base = value; DatiVoceModificati = true; } }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public decimal Importo { get => _importo; set { _importo = value; DatiVoceModificati = true; } }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DatiVoceProtetti { get; set; } = "";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool DatiVoceModificati { get; private set; }
+
+    internal void CaricaDatiVoce(
+        string codice,
+        string descrizione,
+        string tipo,
+        decimal? quantita,
+        decimal? @base,
+        decimal importo)
+    {
+        _codice = codice;
+        _descrizione = descrizione;
+        _tipo = tipo;
+        _quantita = quantita;
+        _base = @base;
+        _importo = importo;
+        DatiVoceModificati = false;
+    }
+
+    internal void ConfermaProtezioneDatiVoce() => DatiVoceModificati = false;
 }

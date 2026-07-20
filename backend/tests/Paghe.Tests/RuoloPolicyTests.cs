@@ -19,6 +19,18 @@ public sealed class RuoloPolicyTests
     [InlineData("admin", "POST", "/api/dipendenti/abc/anonimizza", true)]
     [InlineData("operatore", "POST", "/api/dipendenti/abc/anonimizza", false)]
     [InlineData("sola_lettura", "GET", "/api/dipendenti/abc/anonimizza", true)]
+    // Posta: la credenziale della casella email/PEC si collega/rimuove solo da admin.
+    [InlineData("admin", "POST", "/api/posta/caselle", true)]
+    [InlineData("operatore", "POST", "/api/posta/caselle", false)]
+    [InlineData("operatore", "DELETE", "/api/posta/caselle/abc", false)]
+    [InlineData("operatore", "GET", "/api/posta/caselle", true)]
+    [InlineData("operatore", "POST", "/api/posta/messaggi/abc/conferma", true)]
+    // Il registro attività contiene informazioni di sicurezza: anche in lettura è solo admin.
+    [InlineData("admin", "GET", "/api/audit", true)]
+    [InlineData("superadmin", "GET", "/api/audit", true)]
+    [InlineData("operatore", "GET", "/api/audit", false)]
+    [InlineData("sola_lettura", "GET", "/api/audit", false)]
+    [InlineData("ruolo_inventato", "GET", "/api/aziende", false)]
     public void PuoEseguire_RispettaIlRuolo(string ruolo, string metodo, string path, bool atteso) =>
         Assert.Equal(atteso, RuoloPolicy.PuoEseguire(ruolo, metodo, path));
 }

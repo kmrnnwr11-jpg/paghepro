@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, scaricaBlob, type Azienda, type Fattura, type Trasmissione } from "../api";
+import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
 
 // Mappa lo stato di trasmissione SdI a un "tone" del design system (status-pill).
 const statoTone: Record<string, string> = {
@@ -48,7 +49,8 @@ export function Fatture() {
     api.aziende()
       .then((a) => {
         setAziende(a);
-        if (a.length > 0) setAziendaId(a[0].id);
+        const scelta = scegliAziendaPreferita(a);
+        if (scelta) setAziendaId(scelta.id);
       })
       .catch((e) => setErrore(e.message));
   }, []);
@@ -138,7 +140,7 @@ export function Fatture() {
   async function scaricaXml(fatturaId: string, numero: string) {
     try {
       const xml = await api.fatturaXml(fatturaId);
-      scaricaBlob(new Blob([xml], { type: "application/xml" }), `fattura-${numero.replace("/", "-")}.xml`);
+      await scaricaBlob(new Blob([xml], { type: "application/xml" }), `fattura-${numero.replace("/", "-")}.xml`);
     } catch (e) {
       setErrore((e as Error).message);
     }
@@ -156,7 +158,7 @@ export function Fatture() {
             <span>🏢</span>
             <select
               value={aziendaId}
-              onChange={(e) => setAziendaId(e.target.value)}
+              onChange={(e) => { setAziendaId(e.target.value); salvaAziendaCorrenteId(e.target.value); }}
               style={{ border: "none", background: "transparent", font: "inherit" }}
             >
               {aziende.length === 0 && <option value="">Nessuna azienda — creane una in “Aziende”</option>}

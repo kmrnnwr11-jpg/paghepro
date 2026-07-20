@@ -31,7 +31,7 @@ professionista, oppure trasmesso tramite un provider/canale ufficiale autorizzat
 controllo INPS di UniEmens e i controlli AdE di CU, LIPE e 770 non sono ancora completati. Quegli
 output non sono pronti per l’invio reale.
 
-## 2. Segreti, chiavi API e certificati nel repository — ✅ protetto, 🟠 migrazione da completare
+## 2. Segreti, chiavi API e certificati nel repository — ✅ protetto, 🟠 custodia operativa richiesta
 
 **Cosa non ho fatto:** scrivere chiavi JWT, chiavi AI, chiavi SdI, PIN o certificati di firma nel
 codice o nei file versionati.
@@ -39,13 +39,20 @@ codice o nei file versionati.
 **Perché:** la cronologia del repository conserva i segreti e può renderli leggibili a chi ottiene
 accesso al progetto. Una chiave trapelata può esporre dati, firme o costi API.
 
-**Via corretta:** usare secret/variabili d’ambiente. In produzione PaghePro rifiuta chiavi JWT e
-chiavi di cifratura deboli o di sviluppo. I campi coperti (tra cui IBAN, segreto TOTP e ApiKey SdI)
-usano cifratura AES-256-GCM a riposo.
+**Via corretta:** usare secret/variabili d'ambiente. In produzione PaghePro richiede una chiave
+casuale Base64 da 32 byte e rifiuta la chiave di sviluppo. Tutti i tre IBAN persistiti, la terna
+malattia/infortunio e le copie nelle voci cedolino sono envelope AES-256-GCM versionati, legati con
+AAD a tenant, tabella, record e campo. Il runner one-shot migra plaintext/v1/vecchie chiavi in
+batch dentro una transazione atomica con fencing degli scrittori, verifica tenant/orfani, controlla
+gli envelope e rimuove le colonne legacy; la sentinella viene ruotata per ultima. Lo startup strict
+e `--verifica` fanno controlli read-only prima di servire traffico. TOTP e ApiKey SdI restano
+cifrati e ruotabili.
 
-**Da completare prima dei clienti reali:** impostare e custodire `PAGHE_DATA_KEY`, definirne backup
-e rotazione e ricifrare in modo controllato eventuali righe storiche nate in chiaro. La lettura
-compatibile dei valori storici non equivale a una migrazione già eseguita.
+**Da completare prima dei clienti reali:** custodire `PAGHE_DATA_KEY` nel secret manager, separata
+dal database e dai backup; configurare il recipient pubblico `age`, provare il ripristino in
+produzione e approvare il runbook di rotazione. Lo script backup ora fallisce chiuso e produce solo
+file cifrati `0600`. I backup creati prima del cutover possono contenere colonne storiche e vanno
+protetti fino a scadenza o distrutti secondo retention. Vedi `docs/GDPR-CIFRATURA.md`.
 
 ## 3. Super-admin ottenibile registrando un’email — ✅ corretto
 
@@ -133,13 +140,13 @@ test obbligatori per ogni nuovo modulo ed eseguire un audit completo prima dei c
 
 **Cosa non faccio:** presentare cifratura e una tabella audit come conformità GDPR completa.
 
-**Stato reale:** la cifratura di campi sensibili e l’audit delle modifiche persistite esistono.
-L’audit registra creazione/modifica/cancellazione senza copiare i valori sensibili, ma non è ancora
-un log completo di tutte le letture e gli accessi.
+**Stato reale:** la cifratura dei campi sensibili e il registro applicativo esistono. Il registro
+copre richieste autenticate, accessi, esiti e creazione/modifica/cancellazione senza copiare valori
+sensibili; resta distinto dall'audit infrastrutturale degli accessi diretti a database, host e WAF.
 
-**Via corretta:** completare retention/cancellazione, log degli accessi rilevanti, gestione delle
-richieste dell’interessato, data breach, registro dei trattamenti, DPA, informative, ruoli e DPIA
-quando necessaria. Le scelte legali devono essere approvate da un professionista.
+**Via corretta:** completare retention/cancellazione, audit infrastrutturale, gestione delle richieste
+dell’interessato, data breach, registro dei trattamenti, DPA, informative, ruoli e DPIA quando
+necessaria. Le scelte legali devono essere approvate da un professionista.
 
 ## 10. Fidarsi di estensione o Content-Type degli upload — 🔴 da completare
 
@@ -153,7 +160,7 @@ possono consumare risorse o colpire i parser.
 altri upload occorre mantenere o aggiungere limiti, usare parser confinati e introdurre scansione
 malware/quarantena per documenti reali.
 
-## 11. Consegnare come definitivo un output non certificato — 🟠 etichette presenti, audit globale mancante
+## 11. Consegnare come definitivo un output non certificato — 🟠 etichette presenti, controllo globale mancante
 
 **Cosa non faccio:** dichiarare pronto un cedolino, F24, CU, UniEmens, LIPE, 770 o altro file
 telematico senza le verifiche richieste per quello specifico output.

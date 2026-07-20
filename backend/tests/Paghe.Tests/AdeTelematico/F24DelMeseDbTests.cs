@@ -43,6 +43,9 @@ public sealed class F24DelMeseDbTests : IDisposable
                 Id = aziendaId, TenantId = tenant, RagioneSociale = "Acme Srl",
                 PartitaIva = "01234560017", CodiceFiscale = "01234560017",
                 Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
+                Settore = "COMMERCIO_SERVIZI", CodiceAteco = "47.91.10",
+                MatricolaInps = "1234567890", CodiceSedeInps = "7100", CscInps = "10101",
+                PatInail = "12345678/90", CcnlDefault = "COMMERCIO_TERZIARIO", LivelloDefault = "3",
             });
             db.Dipendenti.AddRange(
                 new DipendenteEntity { Id = dipendente1, TenantId = tenant, CodiceFiscale = "RSSMRA85T10A562S", Nome = "Mario", Cognome = "Rossi" },
@@ -81,6 +84,9 @@ public sealed class F24DelMeseDbTests : IDisposable
             {
                 Id = aziendaId, TenantId = tenant, RagioneSociale = "Acme Srl", PartitaIva = "01234560017",
                 Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
+                Settore = "COMMERCIO_SERVIZI", CodiceAteco = "47.91.10",
+                MatricolaInps = "1234567890", CodiceSedeInps = "7100", CscInps = "10101",
+                PatInail = "12345678/90", CcnlDefault = "COMMERCIO_TERZIARIO", LivelloDefault = "3",
             });
             await db.SaveChangesAsync();
         }
@@ -90,6 +96,56 @@ public sealed class F24DelMeseDbTests : IDisposable
             var svc = new CedoliniService(db, new ParametriNormativiService(db));
             await Assert.ThrowsAsync<ArgumentException>(() =>
                 svc.GeneraF24DelMeseAsync(tenant, aziendaId, 2026, 6, "1234567890"));
+        }
+    }
+
+    [Fact]
+    public async Task AziendaProvvisoria_NonGeneraF24AncheSeLaRequestInviaUnaMatricola()
+    {
+        var tenant = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        await using (var db = NuovoContesto())
+        {
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId, TenantId = tenant, RagioneSociale = "Azienda Prova Srl",
+                PartitaIva = "01987654321", Indirizzo = "Via Test 1", Cap = "20100",
+                Comune = "Milano", Provincia = "MI", Settore = "AGRICOLTURA", CodiceAteco = "01.46.00",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NuovoContesto())
+        {
+            var svc = new CedoliniService(db, new ParametriNormativiService(db));
+            var errore = await Assert.ThrowsAsync<ArgumentException>(() =>
+                svc.GeneraF24DelMeseAsync(tenant, aziendaId, 2026, 6, "000000"));
+            Assert.Contains("dati contributivi provvisori", errore.Message);
+        }
+    }
+
+    [Fact]
+    public async Task AziendaProvvisoria_NonGeneraUniEmensAncheSeLaRequestInviaUnaMatricola()
+    {
+        var tenant = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        await using (var db = NuovoContesto())
+        {
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId, TenantId = tenant, RagioneSociale = "Azienda Prova Srl",
+                PartitaIva = "01876543210", Indirizzo = "Via Test 2", Cap = "20100",
+                Comune = "Milano", Provincia = "MI", Settore = "AGRICOLTURA", CodiceAteco = "01.46.00",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NuovoContesto())
+        {
+            var svc = new UniEmensService(db);
+            var errore = await Assert.ThrowsAsync<ArgumentException>(() =>
+                svc.GeneraDelMeseAsync(tenant, aziendaId, 2026, 6, "000000"));
+            Assert.Contains("dati contributivi provvisori", errore.Message);
         }
     }
 

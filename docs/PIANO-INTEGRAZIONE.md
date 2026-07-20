@@ -128,11 +128,11 @@ provider esterni. È il lavoro più grosso ma è "nostro" e differenziante.
 
 | Funzione | Come integrarla | Dove nel codice | Serve da fuori | Sforzo |
 |---|---|---|---|---|
-| 🔴 **Cifratura dati sensibili** (IBAN, malattia) | EF Core value converter / cifratura colonna (AES-GCM) con chiave da KMS/secret | `Paghe.Persistence/Entities` + `PagheDbContext` | gestore segreti (KMS/Vault) | S |
-| 🔴 **Audit log** | Interceptor EF + middleware API → tabella audit (già nello schema) | `Paghe.Persistence` (interceptor) + `Paghe.Api` | nessuno | M |
+| 🟢 **Cifratura dati sensibili** (IBAN, malattia) | AES-256-GCM, payload AAD tenant-bound, runner atomico e gate read-only | `Paghe.Persistence/Gdpr` + entità/interceptor | configurare chiave reale in KMS/Vault | Fatto (codice) |
+| 🟢 **Audit log** | Interceptor EF + middleware API + consultazione admin tenant-safe | `Paghe.Persistence/Gdpr` + `Paghe.Api` + SPA | monitoraggio/archivio immutabile opzionale | Fatto (codice) |
 | 🟠 **Retention / diritto all'oblio** | Job periodici di cancellazione/anonimizzazione | `Paghe.Persistence` + scheduler | nessuno | M |
 | 🔴 **Conservazione a norma AgID** | Servizio del provider (A-Cube/InfoCert/Aruba): invii il documento + hash, ricevi il pacchetto | `Paghe.Persistence/Trasmissione` (estendi provider) | account conservazione | M |
-| 🟠 **Backup automatici + DR** | Infra: backup DB + storage + restore testato | DevOps (non codice app) | hosting/DB gestito | S |
+| 🟠 **Backup automatici + DR** | Script `age` fatto; restano schedulazione, storage esterno e restore drill del deploy | `scripts/backup-db.sh` + DevOps | hosting/DB gestito | S |
 | ⚪ **Accessibilità WCAG** | Frontend conforme (PA) | SPA `frontend/` | audit accessibilità | M |
 
 ---

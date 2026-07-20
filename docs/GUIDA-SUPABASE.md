@@ -37,15 +37,22 @@ Le credenziali **non vanno nel codice**: si passano come **variabili d'ambiente*
 cd backend
 
 export ConnectionStrings__Default="Host=...;Port=5432;Database=postgres;Username=postgres.xxx;Password=...;SSL Mode=Require;Trust Server Certificate=true"
-export PAGHE_DATA_KEY="una-frase-lunga-e-segreta-per-cifrare-gli-iban"
+export PAGHE_DATA_KEY="$(openssl rand -base64 32)"
 export Jwt__Key="almeno-32-caratteri-di-chiave-segreta-jwt"
 
+# Solo per un database esistente/legacy: backup prima, poi cutover one-shot.
+dotnet run --project src/Paghe.Api -c Release --no-launch-profile -- --migra-dati-sensibili
+# Verifica strict (nessuna colonna in chiaro, chiave/sentinella valide).
+dotnet run --project src/Paghe.Api -c Release --no-launch-profile -- --verifica-dati-sensibili
+# Avvio normale.
 dotnet run --project src/Paghe.Api -c Release --no-launch-profile
 ```
 
 Al primo avvio il software **crea automaticamente tutte le tabelle** su Supabase.
 
 > Se per qualche motivo non rileva Postgres, forzalo: `export Database__Provider=Postgres`.
+> Conserva `PAGHE_DATA_KEY` nel secret manager e separata dai backup. Per rotazione e ripristino
+> segui `docs/GDPR-CIFRATURA.md`; perderla rende i dati protetti non recuperabili.
 
 ### Metodo pulito consigliato in locale: `dotnet user-secrets`
 Tiene la stringa (con la password) in un file **fuori dal progetto** (`~/.microsoft/usersecrets/…`),
@@ -83,7 +90,10 @@ dotnet run --project src/Paghe.Api -c Release
 ## Note importanti (oneste)
 - **Piano gratuito Supabase**: il progetto va in **pausa** dopo un periodo di inattività e ha limiti
   di spazio/connessioni. Per uso reale valuta un piano a pagamento.
-- **Backup**: Supabase fa backup automatici (secondo il piano), ma tieni comunque una copia tua.
+- **Backup**: Supabase fa backup automatici (secondo il piano), ma tieni comunque una copia tua
+  cifrata con `scripts/backup-db.sh postgres env ...`. Configura la connessione tramite
+  `PGSERVICE`/`PGPASSFILE` (non mettere password nella riga di comando) e il recipient pubblico
+  `PAGHE_BACKUP_AGE_RECIPIENT`; prova periodicamente decrypt + `pg_restore` su un DB isolato.
 - **GDPR**: scegli regione UE; gli IBAN sono già **cifrati a riposo** dal software (vedi
   `PAGHE_DATA_KEY`), e ogni modifica è tracciata nell'**audit log**.
 - **Alternativa**: se preferisci la massima semplicità senza account, il software funziona già con

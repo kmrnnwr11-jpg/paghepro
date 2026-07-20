@@ -2,7 +2,8 @@
 
 Documento di riferimento per disegnare i mockup di ogni schermata.
 Per ciascuna schermata trovi: **scopo**, **layout**, **elementi/campi**, **azioni** e **stati**.
-Le schermate mappano sul modello dati in [`db/schema.sql`](../db/schema.sql).
+Le schermate mappano sul modello concettuale descritto in `docs/MODELLO-DATI.md`; il vecchio
+`db/schema.sql` è storico e non va eseguito. Lo schema runtime è il modello EF Core.
 
 ---
 

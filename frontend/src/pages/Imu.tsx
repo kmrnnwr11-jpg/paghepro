@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Azienda, type ImuBozza } from "../api";
+import { scegliAziendaPreferita } from "../aziendaCorrente";
 
 const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const categorie = ["A/2", "A/3", "A/10", "B/1", "C/1", "C/2", "C/3", "C/6", "D/1", "D/5"];
@@ -18,15 +19,8 @@ export function Imu() {
   useEffect(() => {
     (async () => {
       try {
-        let aziende = await api.aziende();
-        if (aziende.length === 0) {
-          await api.creaAzienda({
-            ragioneSociale: "Rossi S.r.l.", partitaIva: "01567890123",
-            indirizzo: "Via Roma 10", cap: "20121", comune: "Milano", provincia: "MI",
-          });
-          aziende = await api.aziende();
-        }
-        setAzienda(aziende[0] ?? null);
+        const aziende = await api.aziende();
+        setAzienda(scegliAziendaPreferita(aziende));
       } catch (e) {
         setErrore(e instanceof Error ? e.message : "Errore di caricamento");
       } finally {

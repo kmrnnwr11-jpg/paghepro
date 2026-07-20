@@ -12,7 +12,20 @@ namespace Paghe.Persistence;
 /// </summary>
 public class PagheDbContext : DbContext
 {
-    public PagheDbContext(DbContextOptions<PagheDbContext> options) : base(options) { }
+    private static readonly ProtezioneDatiInterceptor InterceptorProtezione = new();
+    private static readonly AuditSaveChangesInterceptor InterceptorAudit = new();
+
+    private readonly ProtettoreDati _protettore;
+
+    /// <summary>Protettore associato a questa istanza, usato dall'interceptor condiviso.</summary>
+    internal ProtettoreDati Protettore => _protettore;
+
+    public PagheDbContext(
+        DbContextOptions<PagheDbContext> options,
+        ProtettoreDati? protettore = null) : base(options)
+    {
+        _protettore = protettore ?? ProtettoreDati.Corrente;
+    }
 
     public DbSet<AziendaEntity> Aziende => Set<AziendaEntity>();
     public DbSet<FatturaEntity> Fatture => Set<FatturaEntity>();
@@ -29,6 +42,7 @@ public class PagheDbContext : DbContext
     // Autenticazione
     public DbSet<TenantEntity> Tenants => Set<TenantEntity>();
     public DbSet<UtenteEntity> Utenti => Set<UtenteEntity>();
+    public DbSet<SessioneRefreshEntity> SessioniRefresh => Set<SessioneRefreshEntity>();
 
     // Anagrafiche e cedolini del lavoro
     public DbSet<DipendenteEntity> Dipendenti => Set<DipendenteEntity>();
@@ -68,14 +82,31 @@ public class PagheDbContext : DbContext
     // Audit log (GDPR / tracciabilità): chi/cosa/quando, scritto dall'interceptor
     public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
 
+    // Retention GDPR: policy versionate, blocchi, anteprime vincolanti e ricevute append-only.
+    public DbSet<PolicyRetentionEntity> PolicyRetention => Set<PolicyRetentionEntity>();
+    public DbSet<BloccoConservazioneEntity> BlocchiConservazione => Set<BloccoConservazioneEntity>();
+    public DbSet<AnteprimaRetentionEntity> AnteprimeRetention => Set<AnteprimaRetentionEntity>();
+    public DbSet<EsecuzioneRetentionEntity> EsecuzioniRetention => Set<EsecuzioneRetentionEntity>();
+
+    // Governor AI (G2): mandati d'uso e audit concatenato — control plane, mai risorse AI.
+    public DbSet<AiScopeGrantEntity> AiScopeGrants => Set<AiScopeGrantEntity>();
+    public DbSet<AiAuditEntity> AiAudit => Set<AiAuditEntity>();
+
     // Archivio persone fisiche (rappresentanti, soci): riusate per compilare i moduli ufficiali
     public DbSet<PersonaEntity> Persone => Set<PersonaEntity>();
     public DbSet<ConsumoAiEntity> ConsumiAi => Set<ConsumoAiEntity>();
 
+    // Posta: caselle email/PEC collegate self-service e messaggi importati (triage in proposta)
+    public DbSet<CasellaEmailEntity> CaselleEmail => Set<CasellaEmailEntity>();
+    public DbSet<MessaggioEmailEntity> MessaggiEmail => Set<MessaggioEmailEntity>();
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        // Audit automatico di ogni inserimento/modifica/cancellazione tenant-scoped.
-        optionsBuilder.AddInterceptors(new Gdpr.AuditSaveChangesInterceptor());
+        // La protezione deve precedere l'audit: i valori sono cifrati prima che EF generi SQL e
+        // i nomi tecnici dei payload protetti vengono esclusi dal dettaglio di audit.
+        // Le istanze degli interceptor sono stabili: il protettore viene letto dal singolo
+        // PagheDbContext, evitando la proliferazione degli internal service provider EF.
+        optionsBuilder.AddInterceptors(InterceptorProtezione, InterceptorAudit);
         base.OnConfiguring(optionsBuilder);
     }
 
@@ -265,6 +296,50 @@ public class PagheDbContext : DbContext
             );
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_ConfigurazioniSdi_TenantId"
                 ON "ConfigurazioniSdi" ("TenantId");
+            """);
+
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "CaselleEmail" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_CaselleEmail" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "Etichetta" TEXT NOT NULL,
+                "Tipo" TEXT NOT NULL,
+                "Host" TEXT NOT NULL,
+                "Porta" INTEGER NOT NULL,
+                "Utente" TEXT NOT NULL,
+                "Password" TEXT NULL,
+                "Ssl" INTEGER NOT NULL,
+                "Attiva" INTEGER NOT NULL,
+                "UltimoUidSincronizzato" INTEGER NULL,
+                "CreataIl" TEXT NOT NULL,
+                "UltimaSincronizzazioneIl" TEXT NULL
+            );
+            CREATE TABLE IF NOT EXISTS "MessaggiEmail" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_MessaggiEmail" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "CasellaId" TEXT NOT NULL,
+                "UidImap" INTEGER NOT NULL,
+                "Mittente" TEXT NOT NULL,
+                "Oggetto" TEXT NOT NULL,
+                "DataRicezione" TEXT NOT NULL,
+                "Anteprima" TEXT NOT NULL,
+                "Letto" INTEGER NOT NULL,
+                "Urgente" INTEGER NULL,
+                "Pubblicita" INTEGER NULL,
+                "UrgenteProposto" INTEGER NULL,
+                "PubblicitaProposto" INTEGER NULL,
+                "ConfidenzaUrgente" TEXT NULL,
+                "ConfidenzaPubblicita" TEXT NULL,
+                "FonteProposta" TEXT NULL,
+                "Corpo" TEXT NULL,
+                CONSTRAINT "FK_MessaggiEmail_CaselleEmail_CasellaId"
+                    FOREIGN KEY ("CasellaId") REFERENCES "CaselleEmail" ("Id") ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS "IX_CaselleEmail_TenantId_Attiva" ON "CaselleEmail" ("TenantId", "Attiva");
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_MessaggiEmail_CasellaId_UidImap"
+                ON "MessaggiEmail" ("CasellaId", "UidImap");
+            CREATE INDEX IF NOT EXISTS "IX_MessaggiEmail_TenantId_CasellaId_DataRicezione"
+                ON "MessaggiEmail" ("TenantId", "CasellaId", "DataRicezione");
             """);
 
         Database.ExecuteSqlRaw("""
@@ -468,16 +543,103 @@ public class PagheDbContext : DbContext
                 "Id" TEXT NOT NULL CONSTRAINT "PK_AuditLog" PRIMARY KEY,
                 "TenantId" TEXT NOT NULL,
                 "UtenteId" TEXT NULL,
+                "Categoria" TEXT NOT NULL DEFAULT 'ModificaDati',
                 "Azione" TEXT NOT NULL,
                 "Entita" TEXT NOT NULL,
                 "ChiaveEntita" TEXT NOT NULL,
                 "CampiModificati" TEXT NULL,
+                "MetodoHttp" TEXT NULL,
+                "PercorsoTemplate" TEXT NULL,
+                "Esito" TEXT NULL,
+                "StatusCode" INTEGER NULL,
+                "CorrelationId" TEXT NULL,
                 "QuandoUtc" TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS "IX_AuditLog_TenantId_QuandoUtc"
                 ON "AuditLog" ("TenantId", "QuandoUtc");
             CREATE INDEX IF NOT EXISTS "IX_AuditLog_TenantId_Entita"
                 ON "AuditLog" ("TenantId", "Entita");
+            """);
+
+        Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "PolicyRetention" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_PolicyRetention" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "Categoria" TEXT NOT NULL,
+                "Versione" INTEGER NOT NULL,
+                "GiorniConservazione" INTEGER NULL,
+                "Attiva" INTEGER NOT NULL,
+                "Approvata" INTEGER NOT NULL,
+                "BaseGiuridica" TEXT NULL,
+                "RiferimentoDecisione" TEXT NULL,
+                "IstruzioniBackup" TEXT NULL,
+                "Finalita" TEXT NOT NULL,
+                "Decorrenza" TEXT NOT NULL,
+                "Azione" TEXT NOT NULL,
+                "CreataUtc" TEXT NOT NULL,
+                "CreataDaUtenteId" TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PolicyRetention_TenantId_Categoria_Versione"
+                ON "PolicyRetention" ("TenantId", "Categoria", "Versione");
+
+            CREATE TABLE IF NOT EXISTS "BlocchiConservazione" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_BlocchiConservazione" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "Categoria" TEXT NOT NULL,
+                "MotivoCodice" TEXT NOT NULL,
+                "CreatoUtc" TEXT NOT NULL,
+                "CreatoDaUtenteId" TEXT NOT NULL,
+                "RevocatoUtc" TEXT NULL,
+                "RevocatoDaUtenteId" TEXT NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_BlocchiConservazione_TenantId_Categoria_RevocatoUtc"
+                ON "BlocchiConservazione" ("TenantId", "Categoria", "RevocatoUtc");
+
+            CREATE TABLE IF NOT EXISTS "AnteprimeRetention" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_AnteprimeRetention" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "Categoria" TEXT NOT NULL,
+                "VersionePolicy" INTEGER NOT NULL,
+                "SogliaUtc" TEXT NOT NULL,
+                "Candidati" INTEGER NOT NULL,
+                "Bloccati" INTEGER NOT NULL,
+                "Elaborabili" INTEGER NOT NULL,
+                "ImprontaCandidati" TEXT NOT NULL,
+                "ImprontaBlocchi" TEXT NOT NULL,
+                "CreataUtc" TEXT NOT NULL,
+                "ScadeUtc" TEXT NOT NULL,
+                "CreataDaUtenteId" TEXT NOT NULL,
+                "ConsumataUtc" TEXT NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_AnteprimeRetention_TenantId_Categoria_ScadeUtc"
+                ON "AnteprimeRetention" ("TenantId", "Categoria", "ScadeUtc");
+
+            CREATE TABLE IF NOT EXISTS "EsecuzioniRetention" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_EsecuzioniRetention" PRIMARY KEY,
+                "TenantId" TEXT NOT NULL,
+                "AnteprimaId" TEXT NOT NULL,
+                "ChiaveIdempotenza" TEXT NOT NULL,
+                "Categoria" TEXT NOT NULL,
+                "VersionePolicy" INTEGER NOT NULL,
+                "SogliaUtc" TEXT NOT NULL,
+                "CandidatiAnteprima" INTEGER NOT NULL,
+                "Bloccati" INTEGER NOT NULL,
+                "Elaborati" INTEGER NOT NULL,
+                "RestantiStimati" INTEGER NOT NULL,
+                "Esito" TEXT NOT NULL,
+                "IniziataUtc" TEXT NOT NULL,
+                "CompletataUtc" TEXT NOT NULL,
+                "EseguitaDaUtenteId" TEXT NOT NULL,
+                "CorrelationId" TEXT NULL,
+                "DigestPrecedente" TEXT NULL,
+                "Digest" TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_EsecuzioniRetention_TenantId_ChiaveIdempotenza"
+                ON "EsecuzioniRetention" ("TenantId", "ChiaveIdempotenza");
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_EsecuzioniRetention_TenantId_AnteprimaId"
+                ON "EsecuzioniRetention" ("TenantId", "AnteprimaId");
+            CREATE INDEX IF NOT EXISTS "IX_EsecuzioniRetention_TenantId_Categoria_CompletataUtc"
+                ON "EsecuzioniRetention" ("TenantId", "Categoria", "CompletataUtc");
             """);
 
         // Colonne 2FA aggiunte a una tabella Utenti preesistente (EnsureCreated non altera le tabelle).
@@ -629,9 +791,18 @@ public class PagheDbContext : DbContext
                 string sql = $"ALTER TABLE \"{tabella}\" ADD COLUMN \"{colonna}\" {tipo}";
                 if (!prop.IsColumnNullable(idTabella))
                     sql += $" NOT NULL DEFAULT {DefaultNeutro(prop.ClrType, postgres)}";
-                Database.ExecuteSqlRaw(sql + ";");
+                // Tabella/colonna/tipo provengono esclusivamente dai metadata EF, non da input.
+                // Il comando diretto evita che l'analizzatore interpreti gli identificatori
+                // generati dal modello come concatenazione SQL di dati utente.
+                using var aggiungiColonna = conn.CreateCommand();
+                aggiungiColonna.CommandText = sql + ";";
+                aggiungiColonna.ExecuteNonQuery();
             }
         }
+
+        // Le righe create prima dell'introduzione delle categorie sono tutte modifiche dati.
+        Database.ExecuteSqlRaw(
+            "UPDATE \"AuditLog\" SET \"Categoria\" = 'ModificaDati' WHERE \"Categoria\" = '';");
     }
 
     /// <summary>Letterale SQL di riempimento per le colonne NOT NULL aggiunte a posteriori.</summary>
@@ -671,14 +842,31 @@ public class PagheDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
-        // GDPR: cifratura applicativa a riposo dei dati personali sensibili (IBAN).
-        var protettore = ProtettoreDati.Corrente;
+        // GDPR: cifratura applicativa a riposo di IBAN, segreti e quantità sanitarie.
+        var protettore = _protettore;
+
+        // --- Governor AI (G2): contatori atomici e catena audit unica per tenant ---
+        mb.Entity<AiScopeGrantEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.Stato });
+            // La quota non si aggira in parallelo: aggiornamento con token di concorrenza.
+            e.Property(x => x.Versione).IsConcurrencyToken();
+        });
+
+        mb.Entity<AiAuditEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.Sequenza }).IsUnique();
+        });
 
         mb.Entity<AziendaEntity>(e =>
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.CodiceFiscale });
             e.Property(x => x.RagioneSociale).IsRequired();
+            e.Ignore(x => x.Iban);
+            e.Property(x => x.IbanProtetto);
             e.HasMany(x => x.Fatture)
                 .WithOne(f => f.Azienda!)
                 .HasForeignKey(f => f.AziendaId);
@@ -764,17 +952,48 @@ public class PagheDbContext : DbContext
             e.HasIndex(x => x.Email).IsUnique();
             e.Property(x => x.SegretoTotp).HasConversion(protettore.ConverterStringa()); // GDPR: cifrato a riposo
         });
+        mb.Entity<SessioneRefreshEntity>(e =>
+        {
+            e.ToTable("SessioniRefresh");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.Id }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.FamigliaId });
+            e.HasIndex(x => new { x.TenantId, x.UtenteId, x.RevocataUtc });
+            e.Property(x => x.Versione).IsConcurrencyToken();
+            e.HasOne<UtenteEntity>().WithMany().HasForeignKey(x => x.UtenteId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<TenantEntity>().WithMany().HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<SessioneRefreshEntity>().WithMany().HasForeignKey(x => x.SostituitaDaId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
 
         // Segreto del provider SdI: cifrato a riposo (non deve stare in chiaro nel DB).
         mb.Entity<ConfigurazioneSdiEntity>(e =>
             e.Property(x => x.ApiKey).HasConversion(protettore.ConverterStringa()));
+
+        // Posta: credenziale casella e corpo messaggio cifrati a riposo (stesso converter di ApiKey/SegretoTotp).
+        mb.Entity<CasellaEmailEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.Attiva });
+            e.Property(x => x.Password).HasConversion(protettore.ConverterStringa());
+        });
+        mb.Entity<MessaggioEmailEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.CasellaId, x.UidImap }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.CasellaId, x.DataRicezione });
+            e.Property(x => x.Corpo).HasConversion(protettore.ConverterStringa());
+        });
 
         // --- Anagrafiche e cedolini del lavoro ---
         mb.Entity<DipendenteEntity>(e =>
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.CodiceFiscale }).IsUnique();
-            e.Property(x => x.Iban).HasConversion(protettore.ConverterStringa()); // GDPR: cifrato a riposo
+            e.Ignore(x => x.Iban);
+            e.Property(x => x.IbanProtetto);
             e.HasMany(x => x.Rapporti).WithOne(r => r.Dipendente!).HasForeignKey(r => r.DipendenteId);
         });
         mb.Entity<RapportoLavoroEntity>(e =>
@@ -793,8 +1012,15 @@ public class PagheDbContext : DbContext
                 nameof(CartellinoEntity.OreStraordinarioNotturno),
                 nameof(CartellinoEntity.OreStraordinarioFestivo),
                 nameof(CartellinoEntity.GiorniFerie), nameof(CartellinoEntity.OrePermessi),
-                nameof(CartellinoEntity.GiorniMalattia), nameof(CartellinoEntity.OreAssenzaNonRetribuita) })
+                nameof(CartellinoEntity.OreAssenzaNonRetribuita) })
                 e.Property(p).HasPrecision(8, 2);
+
+            // L'assenza per malattia/infortunio rivela salute anche senza diagnosi: la terna resta
+            // decimal/int nel dominio, ma nel DB esiste soltanto il payload AEAD tenant-bound.
+            e.Ignore(x => x.GiorniMalattia);
+            e.Ignore(x => x.NumeroEventoMalattiaAnno);
+            e.Ignore(x => x.GiorniInfortunio);
+            e.Property(x => x.DatiSaluteProtetti).IsRequired();
         });
         mb.Entity<CedolinoEntity>(e =>
         {
@@ -813,9 +1039,14 @@ public class PagheDbContext : DbContext
         mb.Entity<CedolinoVoceEntity>(e =>
         {
             e.HasKey(x => x.Id);
-            e.Property(x => x.Quantita).HasPrecision(12, 4);
-            e.Property(x => x.Base).HasPrecision(15, 4);
-            e.Property(x => x.Importo).HasPrecision(15, 2);
+            e.HasIndex(x => new { x.TenantId, x.CedolinoId });
+            e.Ignore(x => x.Codice);
+            e.Ignore(x => x.Descrizione);
+            e.Ignore(x => x.Tipo);
+            e.Ignore(x => x.Quantita);
+            e.Ignore(x => x.Base);
+            e.Ignore(x => x.Importo);
+            e.Property(x => x.DatiVoceProtetti).IsRequired();
         });
 
         // --- Pratiche apertura partita IVA / ComUnica ---
@@ -890,7 +1121,8 @@ public class PagheDbContext : DbContext
             e.HasIndex(x => new { x.TenantId, x.AziendaId, x.Anno, x.Mese }).IsUnique();
             e.HasIndex(x => new { x.TenantId, x.Stato, x.DataScadenza });
             e.Property(x => x.Importo).HasPrecision(15, 2);
-            e.Property(x => x.Iban).HasConversion(protettore.ConverterStringa()); // GDPR: cifrato a riposo
+            e.Ignore(x => x.Iban);
+            e.Property(x => x.IbanProtetto);
             e.HasOne(x => x.Azienda).WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -966,6 +1198,55 @@ public class PagheDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.QuandoUtc });
             e.HasIndex(x => new { x.TenantId, x.Entita });
+            e.Property(x => x.Categoria).HasMaxLength(40).HasDefaultValue("ModificaDati");
+            e.Property(x => x.Azione).HasMaxLength(40);
+            e.Property(x => x.Entita).HasMaxLength(100);
+            e.Property(x => x.ChiaveEntita).HasMaxLength(500);
+            e.Property(x => x.MetodoHttp).HasMaxLength(12);
+            e.Property(x => x.PercorsoTemplate).HasMaxLength(300);
+            e.Property(x => x.Esito).HasMaxLength(40);
+            e.Property(x => x.CorrelationId).HasMaxLength(100);
+        });
+
+        // --- Retention GDPR ---
+        mb.Entity<PolicyRetentionEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.Categoria, x.Versione }).IsUnique();
+            e.Property(x => x.Categoria).HasMaxLength(60);
+            e.Property(x => x.BaseGiuridica).HasMaxLength(200);
+            e.Property(x => x.RiferimentoDecisione).HasMaxLength(200);
+            e.Property(x => x.IstruzioniBackup).HasMaxLength(300);
+            e.Property(x => x.Finalita).HasMaxLength(250);
+            e.Property(x => x.Decorrenza).HasMaxLength(200);
+            e.Property(x => x.Azione).HasMaxLength(200);
+        });
+        mb.Entity<BloccoConservazioneEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.Categoria, x.RevocatoUtc });
+            e.Property(x => x.Categoria).HasMaxLength(60);
+            e.Property(x => x.MotivoCodice).HasMaxLength(60);
+        });
+        mb.Entity<AnteprimaRetentionEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.Categoria, x.ScadeUtc });
+            e.Property(x => x.Categoria).HasMaxLength(60);
+            e.Property(x => x.ImprontaCandidati).HasMaxLength(64);
+            e.Property(x => x.ImprontaBlocchi).HasMaxLength(64);
+        });
+        mb.Entity<EsecuzioneRetentionEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.ChiaveIdempotenza }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.AnteprimaId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.Categoria, x.CompletataUtc });
+            e.Property(x => x.Categoria).HasMaxLength(60);
+            e.Property(x => x.Esito).HasMaxLength(40);
+            e.Property(x => x.CorrelationId).HasMaxLength(100);
+            e.Property(x => x.DigestPrecedente).HasMaxLength(64);
+            e.Property(x => x.Digest).HasMaxLength(64);
         });
 
         // --- Archivio persone fisiche ---

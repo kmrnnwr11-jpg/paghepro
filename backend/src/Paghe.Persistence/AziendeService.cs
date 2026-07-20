@@ -16,7 +16,21 @@ public sealed class AziendeService
         IReadOnlyList<string> DatiMancanti)
     {
         public bool DatiContributiviCompleti => !DatiMancanti.Any(d =>
-            d is "settore" or "codiceAteco" or "matricolaInps" or "ccnlDefault" or "livelloDefault");
+            d is "settore" or "codiceAteco" or "matricolaInps" or "codiceSedeInps"
+                or "cscInps" or "patInail" or "ccnlDefault" or "livelloDefault");
+    }
+
+    /// <summary>
+    /// Blocca gli adempimenti contributivi finché l'anagrafica non contiene identificativi
+    /// ufficiali completi. La modalità prova può salvare la bozza, ma non trasformarla in un
+    /// F24 o UniEmens apparentemente utilizzabile.
+    /// </summary>
+    public static void VerificaProntaPerAdempimentiContributivi(AziendaEntity azienda)
+    {
+        var mancanti = DatiContributiviMancanti(azienda);
+        if (mancanti.Count > 0)
+            throw new ArgumentException(
+                $"Azienda con dati contributivi provvisori: completa {string.Join(", ", mancanti.Select(DescriviCampoContributivo))} prima di generare F24 o UniEmens.");
     }
 
     public async Task<AziendaEntity> CreaAsync(Guid tenantId, AziendaEntity azienda, CancellationToken ct = default)
@@ -185,14 +199,36 @@ public sealed class AziendeService
     {
         var mancanti = new List<string>();
         if (string.IsNullOrWhiteSpace(a.PartitaIva) && string.IsNullOrWhiteSpace(a.CodiceFiscale)) mancanti.Add("partitaIvaOCodiceFiscale");
-        if (string.IsNullOrWhiteSpace(a.Settore)) mancanti.Add("settore");
-        if (string.IsNullOrWhiteSpace(a.CodiceAteco)) mancanti.Add("codiceAteco");
-        if (string.IsNullOrWhiteSpace(a.MatricolaInps)) mancanti.Add("matricolaInps");
-        if (string.IsNullOrWhiteSpace(a.CcnlDefault)) mancanti.Add("ccnlDefault");
-        if (string.IsNullOrWhiteSpace(a.LivelloDefault)) mancanti.Add("livelloDefault");
+        mancanti.AddRange(DatiContributiviMancanti(a));
         if (string.IsNullOrWhiteSpace(a.Indirizzo) || string.IsNullOrWhiteSpace(a.Cap) || string.IsNullOrWhiteSpace(a.Comune)) mancanti.Add("sedeLegale");
         return mancanti;
     }
+
+    private static List<string> DatiContributiviMancanti(AziendaEntity a)
+    {
+        var mancanti = new List<string>();
+        if (string.IsNullOrWhiteSpace(a.Settore)) mancanti.Add("settore");
+        if (string.IsNullOrWhiteSpace(a.CodiceAteco)) mancanti.Add("codiceAteco");
+        if (string.IsNullOrWhiteSpace(a.MatricolaInps)) mancanti.Add("matricolaInps");
+        if (string.IsNullOrWhiteSpace(a.CodiceSedeInps)) mancanti.Add("codiceSedeInps");
+        if (string.IsNullOrWhiteSpace(a.CscInps)) mancanti.Add("cscInps");
+        if (string.IsNullOrWhiteSpace(a.PatInail)) mancanti.Add("patInail");
+        if (string.IsNullOrWhiteSpace(a.CcnlDefault)) mancanti.Add("ccnlDefault");
+        if (string.IsNullOrWhiteSpace(a.LivelloDefault)) mancanti.Add("livelloDefault");
+        return mancanti;
+    }
+
+    private static string DescriviCampoContributivo(string campo) => campo switch
+    {
+        "codiceAteco" => "codice ATECO",
+        "matricolaInps" => "matricola INPS",
+        "codiceSedeInps" => "codice sede INPS",
+        "cscInps" => "CSC INPS",
+        "patInail" => "P.A.T. INAIL",
+        "ccnlDefault" => "CCNL",
+        "livelloDefault" => "livello CCNL",
+        _ => campo,
+    };
 
     private static void Normalizza(AziendaEntity a)
     {
@@ -210,10 +246,10 @@ public sealed class AziendeService
         a.CodiceCatastale = VuotoNull(a.CodiceCatastale)?.ToUpperInvariant();
         a.Settore = VuotoNull(a.Settore);
         a.CodiceAteco = VuotoNull(a.CodiceAteco);
-        a.MatricolaInps = VuotoNull(a.MatricolaInps);
-        a.CodiceSedeInps = VuotoNull(a.CodiceSedeInps);
-        a.CscInps = VuotoNull(a.CscInps);
-        a.PatInail = VuotoNull(a.PatInail);
+        a.MatricolaInps = CodiceContributivoOVuoto(a.MatricolaInps);
+        a.CodiceSedeInps = CodiceContributivoOVuoto(a.CodiceSedeInps);
+        a.CscInps = CodiceContributivoOVuoto(a.CscInps);
+        a.PatInail = CodiceContributivoOVuoto(a.PatInail);
         a.CcnlDefault = VuotoNull(a.CcnlDefault);
         a.LivelloDefault = VuotoNull(a.LivelloDefault);
         a.Iban = VuotoNull(a.Iban)?.Replace(" ", "").ToUpperInvariant();
@@ -226,4 +262,11 @@ public sealed class AziendeService
 
     private static string? VuotoNull(string? s) =>
         string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private static string? CodiceContributivoOVuoto(string? valore)
+    {
+        var normalizzato = VuotoNull(valore);
+        if (normalizzato is null) return null;
+        return normalizzato.All(c => c is '0' or '/' or ' ' or '.' or '-') ? null : normalizzato;
+    }
 }

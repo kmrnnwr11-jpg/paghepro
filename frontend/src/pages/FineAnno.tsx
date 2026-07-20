@@ -9,6 +9,7 @@ import {
   type InailAutoliquidazione,
   type PraticaInail,
 } from "../api";
+import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
 
 const eur = (n: number) =>
   n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
@@ -41,7 +42,8 @@ export function FineAnno() {
     api.aziende()
       .then((a) => {
         setAziende(a);
-        if (a.length > 0) setAziendaId(a[0].id);
+        const scelta = scegliAziendaPreferita(a);
+        if (scelta) setAziendaId(scelta.id);
       })
       .catch((e) => setErrore((e as Error).message));
   }, []);
@@ -153,7 +155,7 @@ export function FineAnno() {
             <span>🏢</span>
             <select
               value={aziendaId}
-              onChange={(e) => setAziendaId(e.target.value)}
+              onChange={(e) => { setAziendaId(e.target.value); salvaAziendaCorrenteId(e.target.value); }}
               style={{ border: "none", background: "transparent", font: "inherit" }}
             >
               {aziende.length === 0 && <option value="">Nessuna azienda</option>}

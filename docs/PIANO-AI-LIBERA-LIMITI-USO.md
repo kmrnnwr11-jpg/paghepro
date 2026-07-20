@@ -758,6 +758,7 @@ ancora soltanto `draft`.
 | Cancellazione definitiva | Mai eseguita dal modello; procedura manuale con impatto/retention. |
 | Firma | Solo futuro `GX`, documento e certificato esatti, conferma forte. |
 | Email/PEC/invio telematico | Bozza di default; futuro `GX` solo dopo gate del canale. |
+| Posta (email/PEC) del prodotto: lettura e triage | Modulo di prodotto (non l'agente autonomo): la casella si collega via IMAP self-service, l'AI propone soltanto urgente/pubblicità e la proposta diventa definitiva solo con conferma esplicita dell'utente. Nessun invio: restare qui non richiede un gate `GX` dedicato, che serve solo per l'invio autonomo. |
 | Pagamento | Futuro `GX`, importo/beneficiario esatti e doppio controllo. |
 | Decisione sul lavoratore | Proibita; l'AI può fornire dati e spiegazioni alla persona competente. |
 
@@ -843,18 +844,24 @@ Nessuna fase successiva parte prima che il gate precedente sia provato.
 
 ### Fase G0 — Inventario e threat model
 
-- [ ] censire moduli, tabelle, documenti, cache, indici, export e tool;
-- [ ] classificare ogni risorsa `D0-D2`, `D3A`, `D3B`, `D4` o `DX`;
-- [ ] censire effetti read/draft/write/schedule/external;
-- [ ] definire purpose code ammessi;
-- [ ] modellare grant troppo ampi, purpose laundering, replay, race e privilege escalation;
-- [ ] censire processi, entitlement, IPC, file access e supply chain;
-- [ ] produrre una matrice capability × modalità × gate.
-- [ ] creare un `GDPR/AI Governance Pack` bloccante per ogni `purposeCode`;
-- [ ] registrare titolare/responsabile, base art. 6, eventuale condizione art. 9 o disciplina art.
+> **Gate chiuso il 16 luglio 2026** con approvazione del fondatore. Deliverable in
+> [`ai-governance/`](ai-governance/README.md): catalogo risorse, purpose + Governance Pack,
+> threat model. Le basi giuridiche/DPIA restano **bozze da validare con DPO/legale e CdL prima
+> del pilota con dati reali** (non bloccano G1/G2 tecnici).
+
+- [x] censire moduli, tabelle, documenti, cache, indici, export e tool;
+- [x] classificare ogni risorsa `D0-D2`, `D3A`, `D3B`, `D4` o `DX`;
+- [x] censire effetti read/draft/write/schedule/external;
+- [x] definire purpose code ammessi;
+- [x] modellare grant troppo ampi, purpose laundering, replay, race e privilege escalation;
+- [x] censire processi, entitlement, IPC, file access e supply chain;
+- [x] produrre una matrice capability × modalità × gate.
+- [x] creare un `GDPR/AI Governance Pack` bloccante per ogni `purposeCode`;
+- [x] registrare titolare/responsabile, base art. 6, eventuale condizione art. 9 o disciplina art.
   10, categorie/interessati, necessità/proporzionalità, destinatari, retention/legal hold, diritti,
   informativa, ROPA, screening DPIA/AI Act e responsabile dell'approvazione;
-- [ ] approvare separatamente le policy `D3A`, `D3B` e i relativi `legalBasisRef`.
+- [x] approvare separatamente le policy `D3A`, `D3B` e i relativi `legalBasisRef` (bozza approvata
+  dal fondatore; validazione professionale richiesta prima del pilota).
 
 **Gate G0:** 100% delle risorse e azioni note sono nel catalogo; ogni elemento sconosciuto è
 negato. Il 100% dei purpose ha un governance record approvato; un purpose mancante blocca
@@ -877,6 +884,12 @@ architettura e responsabile competente.
 processo AI con credenziali o accesso generico.
 
 ### Fase G2 — Usage Governor
+
+> **Emendamento del 16 luglio 2026 (decisione del fondatore, opzione B del
+> [rapporto G1](ai-governance/G1-RAPPORTO-FONDAMENTA.md))**: G2 è anticipato rispetto alla
+> chiusura completa di G1 e viene costruito nell'app attuale con capability solo
+> deterministiche/mock. Resta vincolante: **nessun modello AI viene acceso prima che
+> l'isolamento G1 sia provato** per il profilo in cui il modello girerebbe.
 
 - [ ] `ProfessionalResourceCatalog` e `AiCapabilityRegistry`;
 - [ ] `AiUsagePolicyStore` versionato;

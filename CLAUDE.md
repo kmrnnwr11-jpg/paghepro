@@ -44,6 +44,68 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Base applicazioni mobili iOS/Android**: aggiunti Capacitor 8, progetti Xcode e Android
+  Studio, build mobile separata con gate obbligatori per URL API HTTPS e app ID definitivo,
+  safe area, esclusione del service worker e del login Google/demo nel contenitore nativo,
+  condivisione documenti tramite share sheet e hardening Android (niente cleartext/backup,
+  FileProvider ristretto). Icone, manifesto privacy iOS e protezione delle chiavi di firma inclusi.
+  Il piano di pubblicazione, i gate ancora aperti e le bozze store/privacy sono in
+  `docs/PIANO-MOBILE-STORE.md` e `docs/mobile-store/`. La pubblicazione non è ancora autorizzata:
+  mancano dominio reale, cancellazione account e account Organization.
+- **Sessioni web/mobile revocabili**: JWT v2 di 15 minuti con issuer/audience/jti/versione e `sid`
+  validato a ogni richiesta contro utente, tenant e famiglia server; refresh opaco selector+secret
+  monouso, rotazione atomica, rilevamento replay e hash-only nel DB. Il web usa cookie `HttpOnly`
+  SameSite e coordinamento multi-scheda; il mobile usa un plugin interno con Keychain
+  `ThisDeviceOnly` e Android Keystore AES-GCM. Logout revoca la famiglia, lo studio sospeso è
+  bloccato immediatamente e i vecchi JWT annuali non sono accettati. Build iOS/Android verificate.
+- **Inserimento azienda da testo/PDF e modalità prova contributiva**: il parser deterministico
+  riconosce anche CF/P.IVA combinati, sede senza etichetta `CAP`, PEC, ATECO, settore agricolo e
+  amministratore delegato; il caricamento PDF non perde più codice fiscale, ATECO e rappresentante.
+  L'IBAN resta facoltativo. Per le prove si può salvare l'anagrafica con INPS/INAIL/CCNL mancanti,
+  lasciandoli vuoti e visibilmente da completare; i codici contributivi composti solo da zeri sono
+  rifiutati dalla UI e normalizzati a `null` dal backend. CCNL e livello non vengono inventati
+  dall'ATECO; F24 e UniEmens sono bloccati lato server finché l'anagrafica contributiva resta
+  provvisoria. Verificati 12 test frontend, build SPA, build backend e suite **615/615** verde.
+- **Ridisegno completo ricerca e inserimento aziende**: la pagina Aziende usa una barra comandi con
+  modalità Archivio/Anagrafica, ricerca immediata per denominazione, P.IVA, codice fiscale, comune,
+  ATECO e settore, tabella responsive con sede/dipendenti/azioni e scheda completa con indice
+  laterale attivo delle sezioni, import visura e azioni di salvataggio persistenti. I 28 controlli
+  della nuova azienda sono stati provati in browser desktop/mobile: testata non coperta, navigazione
+  alle sezioni corretta, nessun overflow e salvataggio sopra la barra mobile. Rimossi il pannello
+  laterale duplicato e la doppia lista, senza modificare API o regole di validazione.
+- **Ridisegno completo area Dipendenti**: archivio, inserimento manuale e importazione UNILAV sono
+  riuniti in una postazione con azienda esplicita, ricerca, riepiloghi e stati vuoti operativi. La
+  scheda del lavoratore offre navigazione Anagrafica/Rapporto/Storico, ritorno all'archivio, accesso
+  ai cedolini e correzione strutturata dei dati. Verificati in browser desktop/mobile tutti i flussi
+  e assenza di overflow; build frontend, build backend e suite **579/579** verdi.
+- **Railway — pacchetto demo full-stack verificato**: `Dockerfile.railway` compila React/Vite e
+  .NET 10 in un solo container, con SPA e API sulla stessa origine, ascolto su `$PORT`, healthcheck
+  `/health`, fallback SPA e 404 JSON per API inesistenti. `railway.json` configura build e restart;
+  la guida richiede volume SQLite `/data`, una sola replica, `Jwt__Key` e `PAGHE_DATA_KEY` stabili,
+  AI spenta e SdI simulato. Immagine Docker costruita e avviata realmente in Production: Home,
+  API, healthcheck e persistenza di 5 aziende dopo riavvio verificati. È approvata solo per dati
+  fittizi; dati reali restano bloccati da migrazioni, backup/restore, auth hardening e GDPR.
+- **Fase 3 — cifratura dati sensibili completata (perimetro tecnico)**: IBAN azienda/dipendente/
+  avvisi, terna malattia-infortunio, voci cedolino, TOTP e ApiKey sono protetti con AES-256-GCM
+  versionato e rotazione chiavi; i payload principali sono legati tramite AAD a tenant, tabella,
+  record e campo. Il runner one-shot usa transazione atomica, fencing writer SQLite / `ACCESS
+  EXCLUSIVE` PostgreSQL, controlli tenant/orfani, rimozione delle colonne legacy e sentinella
+  ruotata per ultima; `--verifica-dati-sensibili` è read-only. Backup SQLite/PostgreSQL cifrati
+  con `age`, fail-closed e `0600`. Cutover e gate provati realmente su SQLite e PostgreSQL.
+- **Fase 3 — registro accessi e modifiche completato (perimetro tecnico)**: middleware API per
+  letture/operazioni/esiti, audit esplicito dell'autenticazione e interceptor EF transazionale per
+  inserimenti/modifiche/cancellazioni. Non conserva body, query, email o valori sensibili; usa nomi
+  semantici dei campi protetti, UTC, correlation ID, RBAC admin/super-admin e filtro obbligatorio
+  sul tenant del token. Append-only a livello applicativo, retry e mismatch tenant sono testati;
+  schermata SPA **Registro attività** inclusa. Suite completa **579/579 verde** e build frontend
+  verde. Dettagli e limiti in `docs/GDPR-REGISTRO-ATTIVITA.md`; restano retention e documenti GDPR.
+- **Home studio azienda-prima**: all'accesso nessuna azienda viene scelta o creata in silenzio.
+  Il professionista cerca, crea o seleziona il cliente; solo dopo si aprono i moduli operativi,
+  sempre con il relativo `aziendaId`. Un tentativo di navigazione anticipato viene ripreso dopo
+  la scelta. La panoramica usa dati reali della sola azienda corrente e non trasforma errori API
+  in zeri finti. “Riprendi il lavoro” conserva al massimo quattro coppie strumento-cliente,
+  isolate per tenant; la scelta corrente vale per la sessione e l'ultima azienda è solo
+  evidenziata. Verificati build SPA e 4 test frontend su gate, storage e recenti.
 - **Logica Completa Onboarding Azienda & Anagrafica Contributiva/Fiscale (Multi-Tenant)**: Estesa e completata la logica di aggiunta e correzione anagrafica aziendale sia nel backend (`AziendaEntity.cs`, `Dtos.cs`, `Program.cs`, `AziendeService`) sia nel frontend (`api.ts`, `Aziende.tsx`). Supporta ora tutti i dati normativi, fiscali, bancari e contributivi previsti dagli standard nazionali e internazionali (P.IVA, Codice Fiscale, PEC, Codice Destinatario SdI, Codice Catastale Comune per addizionali IRPEF, CSC INPS 5 cifre, P.A.T. INAIL 8 cifre/cc, Matricola INPS, Codice Sede INPS, CCNL e Livello di default, IBAN aziendale per SEPA/F24, dati del Legale Rappresentante). Verifica duplicati P.IVA/CF isolata per tenant. Test unitari e di integrazione aggiornati in `AziendaCreazioneTests.cs` (416 test verdi).
 - **Redesign UI ibrido skeuomorfismo + glass**: il frontend usa superfici in vetro satinato ad alto contrasto con fallback opaco, su un piano neutro freddo/caldo; bottoni in rilievo, campi incassati, tab fisiche e risposta alla pressione mantengono la componente skeuomorfica. Navigazione, barra mobile, comandi rapidi e KPI usano icone Lucide coerenti al posto delle emoji. Il sistema resta responsive e accessibile (`prefers-reduced-motion`, focus visibile).
 - Swagger/OpenAPI attivo: UI su `/swagger`, spec su `/swagger/v1/swagger.json`.
@@ -55,13 +117,15 @@ dotnet run --project src/Paghe.Demo -c Release
   per anno**, caricati da `ParametriNormativiService`. `Seed.cs` serve solo a inizializzare il DB.
 - Persistenza del lavoro: **dipendenti, rapporti, cartellini e cedolini archiviati** su DB
   (`AnagraficheLavoroService`, `CedoliniService`). Il calcolo di un cedolino lo archivia e si rilegge.
-- **Dataset demo ripetibile e tenant-isolato**: gli account `@paghe.local` vuoti possono creare
-  automaticamente 5 aziende di settori/CCNL diversi e un dipendente per azienda tramite
-  `POST /api/demo/dataset` (`DemoDatasetService`). Le pagine Aziende e Dipendenti lo richiamano
-  quando l'archivio demo è vuoto; Dipendenti apre su “Tutte le aziende” e mostra i 5 lavoratori
-  con il relativo datore. La navigazione SPA rispetta l'hash (es. `#dipendenti`) e i pulsanti
-  avanti/indietro, quindi i link aprono davvero la sezione richiesta.
-- **Autenticazione JWT**: `POST /api/auth/registra` e `/api/auth/login` emettono un token; gli
+- **Dataset demo ripetibile e tenant-isolato**: gli account `@paghe.local` possono generare
+  5 aziende di settori/CCNL diversi e un dipendente per azienda tramite l'endpoint esplicito
+  `POST /api/demo/dataset` (`DemoDatasetService`). Le pagine non lo richiamano automaticamente:
+  un archivio vuoto resta vuoto finché l'utente crea o importa un cliente reale. La navigazione
+  SPA rispetta l'hash (es. `#dipendenti`) e, se manca il contesto azienda, porta prima alla scelta
+  e poi apre la sezione richiesta.
+- **Autenticazione JWT v2**: `POST /api/auth/registra` e `/api/auth/login` emettono un access token
+  breve e un refresh soltanto nel cookie web protetto; gli endpoint `/api/auth/mobile/*` restituiscono
+  il refresh al solo contenitore nativo, che lo salva nel portachiavi del sistema. Gli
   endpoint dati sono nel gruppo `secured` (`RequireAuthorization`). Il tenant deriva dal claim
   `tenant_id` del token (helper `TenantCorrente(ClaimsPrincipal)`), non più da un header.
   Password con PBKDF2 (`PasswordHasher`). Chiave JWT in `Jwt:Key`: **in ambiente Production**
@@ -291,14 +355,16 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Prossimi lavori utili
 
-Piano di completamento dettagliato (gap analysis, priorità, effort, sequenza): vedi
-`docs/PIANO-COMPLETAMENTO.md`. In sintesi, prossimi passi 🔴:
+Piano operativo corrente (priorità, dipendenze e caselle): vedi `PIANO.md`.
+`docs/PIANO-COMPLETAMENTO.md` resta soltanto una fotografia storica del 26 giugno 2026.
+In sintesi, prossimi passi 🔴:
 
-1. Frontend minimo (SPA) per usare il sistema senza curl.
-2. Migrazioni EF Core (oggi `EnsureCreated`) + chiave JWT da secret in produzione.
-3. GDPR: cifratura dati sensibili (IBAN, malattia), audit log, retention.
-4. Generazione file ufficiali AA9/12, AA7/10, ComUnica e LIPE da specifiche pubbliche.
-5. Fattura SdI: infrastruttura di trasmissione **fatta** (gateway/ricevute/deleghe) e **firma
+1. GDPR: completare retention/cancellazione (cifratura e registro accessi/modifiche fatti), poi
+   documenti e decisioni organizzative con il professionista privacy.
+2. Introdurre migrazioni EF versionate quando lo schema è stabilizzato; completare deploy,
+   secret reali, backup/restore e monitoraggio prima del go-live.
+3. Generazione file ufficiali AA9/12, AA7/10, ComUnica e LIPE da specifiche pubbliche.
+4. Fattura SdI: infrastruttura di trasmissione **fatta** (gateway/ricevute/deleghe) e **firma
    CAdES locale reale fatta** (`Paghe.Firma`, PFX + CNS/smart card); restano account provider
    accreditato + ApiKey, marche temporali (CAdES-T), webhook ricevute e conservazione a norma.
 

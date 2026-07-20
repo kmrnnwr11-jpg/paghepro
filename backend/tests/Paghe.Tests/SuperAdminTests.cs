@@ -127,8 +127,12 @@ public sealed class SuperAdminTests : IDisposable
             Assert.True(await new PiattaformaAdminService(db).ImpostaSospensioneAsync(tenantId, true));
 
         await using (var db = NuovoContesto())
-            Assert.Equal(EsitoAccesso.AccountSospeso,
-                (await new AuthService(db).AccediAsync("y@y.it", "password1")).Esito);
+        {
+            var bloccato = await new AuthService(db).AccediAsync("y@y.it", "password1");
+            Assert.Equal(EsitoAccesso.AccountSospeso, bloccato.Esito);
+            Assert.Null(bloccato.Utente);
+            Assert.NotNull(bloccato.IdentitaAudit);
+        }
 
         await using (var db = NuovoContesto())
             await new PiattaformaAdminService(db).ImpostaSospensioneAsync(tenantId, false);

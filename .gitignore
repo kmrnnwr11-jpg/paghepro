@@ -39,3 +39,8 @@ frontend/android/key.properties
 
 # ───── File temporanei di lavorazione (Gate F-1: non fanno parte della baseline) ─────
 tmp/
+
+# Artefatti di build e dati utente dei plugin mobile
+frontend/mobile-plugins/**/android/.gradle/
+frontend/mobile-plugins/**/android/build/
+frontend/mobile-plugins/**/.swiftpm/

@@ -36,6 +36,45 @@ function dalRiepilogo(r: PresenzeMese["righe"][number]): DatiCartellino {
   };
 }
 
+// Diritto residuo del dipendente dall'ultimo cedolino elaborato: guida chi inserisce
+// ferie e permessi senza bloccare (le ferie anticipate restano possibili e segnalate).
+function DirittiFeriePermessi({ riga, cartellino }: {
+  riga: PresenzeMese["righe"][number];
+  cartellino: DatiCartellino;
+}) {
+  if (riga.ferieResidue == null || riga.permessiResidui == null
+    || riga.saldiAnno == null || riga.saldiMese == null) {
+    return (
+      <p className="muto">
+        Residui ferie/permessi non ancora disponibili: si calcolano col primo cedolino elaborato.
+      </p>
+    );
+  }
+  const permessiChiesti = cartellino.orePermessi + cartellino.oreExFestivita;
+  const ferieOltre = cartellino.giorniFerie > riga.ferieResidue;
+  const permessiOltre = permessiChiesti > riga.permessiResidui;
+  return (
+    <div aria-live="polite">
+      <p className="muto">
+        Diritto residuo al cedolino di {mesi[riga.saldiMese]} {riga.saldiAnno}:{" "}
+        <strong>{riga.ferieResidue.toLocaleString("it-IT")} gg ferie</strong> ·{" "}
+        <strong>{riga.permessiResidui.toLocaleString("it-IT")} h permessi ROL/ex festività</strong>
+        {" "}— saldi da validare col Consulente del Lavoro.
+      </p>
+      {ferieOltre && (
+        <p><span className="status-pill amber">
+          Ferie oltre il residuo: {cartellino.giorniFerie} gg su {riga.ferieResidue.toLocaleString("it-IT")} disponibili (anticipate)
+        </span></p>
+      )}
+      {permessiOltre && (
+        <p><span className="status-pill amber">
+          Permessi oltre il residuo: {permessiChiesti} h su {riga.permessiResidui.toLocaleString("it-IT")} disponibili
+        </span></p>
+      )}
+    </div>
+  );
+}
+
 function descrizione(d: DatiCartellino) {
   const parti = [
     d.giorniFerie > 0 && `${d.giorniFerie} gg ferie`,
@@ -146,7 +185,7 @@ export function Presenze() {
       const cedolino = cedolini.find((c) => c.anno === anno && c.mese === mese);
       if (!cedolino) throw new Error("Cedolino del periodo non trovato nell'archivio.");
       const { blob, filename } = await api.cedolinoPdf(cedolino.id);
-      scaricaBlob(blob, filename);
+      await scaricaBlob(blob, filename);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Impossibile scaricare il PDF.");
     } finally {
@@ -276,7 +315,7 @@ export function Presenze() {
                                     {campo(r.rapportoId, "Ferie godute", "giorniFerie", "giorni")}
                                     {campo(r.rapportoId, "Permessi ROL", "orePermessi", "ore")}
                                     {campo(r.rapportoId, "Ex festivita", "oreExFestivita", "ore")}
-                                  </div></div>
+                                  </div><DirittiFeriePermessi riga={r} cartellino={cartellino} /></div>
                                   <div className="presence-section"><h3>Malattia e infortunio</h3><div className="presence-fields">
                                     {campo(r.rapportoId, "Malattia", "giorniMalattia", "giorni")}
                                     {campo(r.rapportoId, "Evento nell'anno", "numeroEventoMalattiaAnno", "numero")}

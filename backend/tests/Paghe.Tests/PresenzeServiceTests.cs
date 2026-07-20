@@ -81,5 +81,67 @@ public sealed class PresenzeServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Costruisci_EsponeIResiduiDallUltimoCedolinoPrecedenteAlMese()
+    {
+        var tenant = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        var dipendenteId = Guid.NewGuid();
+        var rapportoId = Guid.NewGuid();
+
+        await using (var db = NuovoContesto())
+        {
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId, TenantId = tenant, RagioneSociale = "Alfa Srl",
+                Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
+            });
+            db.Dipendenti.Add(new DipendenteEntity
+            {
+                Id = dipendenteId, TenantId = tenant, Cognome = "Rossi", Nome = "Mario",
+                CodiceFiscale = "RSSMRA80A01F205X",
+            });
+            db.Rapporti.Add(new RapportoLavoroEntity
+            {
+                Id = rapportoId, TenantId = tenant, AziendaId = aziendaId,
+                DipendenteId = dipendenteId, CodiceCcnl = "COMMERCIO_TERZIARIO",
+                Livello = "3", Qualifica = "Impiegato",
+            });
+            db.Cedolini.AddRange(
+                new CedolinoEntity
+                {
+                    Id = Guid.NewGuid(), TenantId = tenant, AziendaId = aziendaId,
+                    RapportoLavoroId = rapportoId, Anno = 2026, Mese = 4,
+                    FerieResidue = 8.67m, PermessiResidui = 24m,
+                },
+                new CedolinoEntity
+                {
+                    Id = Guid.NewGuid(), TenantId = tenant, AziendaId = aziendaId,
+                    RapportoLavoroId = rapportoId, Anno = 2026, Mese = 5,
+                    FerieResidue = 10.83m, PermessiResidui = 30m,
+                });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NuovoContesto())
+        {
+            var servizio = new PresenzeService(db);
+
+            // Giugno vede i saldi del cedolino più recente (maggio), non quello di aprile.
+            var giugno = Assert.Single((await servizio.CostruisciAsync(tenant, aziendaId, 2026, 6)).Righe);
+            Assert.Equal(10.83m, giugno.FerieResidue);
+            Assert.Equal(30m, giugno.PermessiResidui);
+            Assert.Equal(2026, giugno.SaldiAnno);
+            Assert.Equal(5, giugno.SaldiMese);
+
+            // Aprile non ha cedolini precedenti: nessun numero inventato.
+            var aprile = Assert.Single((await servizio.CostruisciAsync(tenant, aziendaId, 2026, 4)).Righe);
+            Assert.Null(aprile.FerieResidue);
+            Assert.Null(aprile.PermessiResidui);
+            Assert.Null(aprile.SaldiAnno);
+            Assert.Null(aprile.SaldiMese);
+        }
+    }
+
     public void Dispose() => _connection.Dispose();
 }

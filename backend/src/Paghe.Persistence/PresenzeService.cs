@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Paghe.Persistence;
 
-/// <summary>Riga del cruscotto presenze del mese: stato cedolino e ore di un dipendente.</summary>
+/// <summary>Riga del cruscotto presenze del mese: stato cedolino e ore di un dipendente.
+/// I saldi (ferie/permessi residui) vengono dall'ultimo cedolino elaborato prima del mese
+/// e guidano l'inserimento; sono null quando non esiste ancora uno storico.</summary>
 public sealed record PresenzaRiga(
     string RapportoId,
     string Nominativo,
@@ -17,7 +19,11 @@ public sealed record PresenzaRiga(
     decimal GiorniInfortunio,
     decimal OreAssenzaNonRetribuita,
     bool Elaborato,
-    decimal Netto);
+    decimal Netto,
+    decimal? FerieResidue,
+    decimal? PermessiResidui,
+    int? SaldiAnno,
+    int? SaldiMese);
 
 /// <summary>Cruscotto presenze/elaborazione di un mese per un'azienda.</summary>
 public sealed record PresenzeMese(
@@ -52,6 +58,11 @@ public sealed class PresenzeService
         var cartellini = await _db.Cartellini
             .Where(c => c.TenantId == tenantId && c.Anno == anno && c.Mese == mese && rapportoIds.Contains(c.RapportoLavoroId))
             .ToListAsync(ct);
+        var cedoliniPrecedenti = await _db.Cedolini
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId
+                && rapportoIds.Contains(c.RapportoLavoroId)
+                && (c.Anno < anno || (c.Anno == anno && c.Mese < mese)))
+            .ToListAsync(ct);
 
         var righe = rapporti
             .OrderBy(r => r.Dipendente?.Cognome)
@@ -59,6 +70,10 @@ public sealed class PresenzeService
             {
                 var ced = cedolini.FirstOrDefault(c => c.RapportoLavoroId == r.Id);
                 var cart = cartellini.FirstOrDefault(c => c.RapportoLavoroId == r.Id);
+                var precedente = cedoliniPrecedenti
+                    .Where(c => c.RapportoLavoroId == r.Id)
+                    .OrderByDescending(c => c.Anno).ThenByDescending(c => c.Mese)
+                    .FirstOrDefault();
                 return new PresenzaRiga(
                     RapportoId: r.Id.ToString(),
                     Nominativo: $"{r.Dipendente?.Cognome} {r.Dipendente?.Nome}".Trim(),
@@ -73,7 +88,11 @@ public sealed class PresenzeService
                     GiorniInfortunio: cart?.GiorniInfortunio ?? 0m,
                     OreAssenzaNonRetribuita: cart?.OreAssenzaNonRetribuita ?? 0m,
                     Elaborato: ced is not null,
-                    Netto: ced?.NettoInBusta ?? 0m);
+                    Netto: ced?.NettoInBusta ?? 0m,
+                    FerieResidue: precedente?.FerieResidue,
+                    PermessiResidui: precedente?.PermessiResidui,
+                    SaldiAnno: precedente?.Anno,
+                    SaldiMese: precedente?.Mese);
             })
             .ToList();
 

@@ -246,6 +246,9 @@ export interface PresenzaRiga {
   giorniFerie: number; orePermessi: number; oreExFestivita: number;
   giorniMalattia: number; numeroEventoMalattiaAnno: number; giorniInfortunio: number;
   oreAssenzaNonRetribuita: number; elaborato: boolean; netto: number;
+  // Saldi dall'ultimo cedolino elaborato prima del mese (null senza storico).
+  ferieResidue?: number | null; permessiResidui?: number | null;
+  saldiAnno?: number | null; saldiMese?: number | null;
 }
 export interface PresenzeMese {
   anno: number; mese: number; totale: number; elaborati: number; righe: PresenzaRiga[];

@@ -1,6 +1,7 @@
 export type SectionKey =
   | "dashboard"
   | "aziende"
+  | "azienda"
   | "pratiche"
   | "moduli"
   | "dipendenti"
@@ -45,6 +46,7 @@ export interface StrumentoRecente {
 // Queste schermate lavorano sui dati di un cliente preciso. La shell non le
 // monta finché il professionista non ha scelto esplicitamente l'azienda.
 const SEZIONI_CON_AZIENDA_OBBLIGATORIA = new Set<SectionKey>([
+  "azienda",
   "moduli", "dipendenti", "presenze", "cedolini", "fatture", "lipe", "iva-annuale", "bilancio",
   "fine-anno", "cu", "mod770", "redditi-pf", "irap", "ires", "imu",
   "intrastat",

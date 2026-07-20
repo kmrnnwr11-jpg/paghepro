@@ -1,42 +1,17 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { AlertTriangle, Building2, Check, ClipboardPaste, Edit3, FileText, Landmark, MapPin, Plus, Search, Trash2, UserRound, Users, WalletCards, X } from "lucide-react";
 import { api, type Azienda, type DipendenteRapporto, type NuovaAzienda } from "../api";
+import { applicaDatiVisura, parsaTestoAzienda, validaAzienda, type ErroriAzienda } from "../aziendaForm";
 import { ComuneAutocomplete } from "../ComuneAutocomplete";
-import { AZIENDA_CORRENTE_CAMBIATA, leggiAziendaCorrenteId, salvaAziendaCorrenteId } from "../aziendaCorrente";
-
-// ---------- parser testo visura ----------
-function parsaTestoLibero(testo: string): Partial<NuovaAzienda> {
-  const r: Partial<NuovaAzienda> = {};
-  const nome = testo.match(/(?:Denominazione|Ragione Sociale|Intestazione)\s*:\s*(.+)/i);
-  if (nome) r.ragioneSociale = nome[1].trim();
-  const piva = testo.match(/Partita\s*IVA\s*[:/]?\s*(\d{11})/i);
-  if (piva) r.partitaIva = piva[1];
-  // Formati supportati:
-  //  "Sede Legale: Via Roma 1, CAP 20121, Milano (MI)"  ← formato con etichetta
-  //  "Corso Garibaldi 20, CAP 29017, Fiorenzuola d'Arda (PC)"  ← indirizzo in corpo testo
-  const sedeFull = testo.match(/Sede Legale\s*[:/]?\s*([^\n]+)/i);
-  const sedeStr = sedeFull ? sedeFull[1].trim() : testo;
-  const mSede = sedeStr.match(/^(.+?),\s*CAP\s+(\d{5}),\s*([^(]+?)\s*\(([A-Z]{2})\)/i);
-  if (mSede) {
-    r.indirizzo = mSede[1].trim();
-    r.cap = mSede[2];
-    r.comune = mSede[3].trim();
-    r.provincia = mSede[4].toUpperCase();
-  } else if (sedeFull) {
-    const s = sedeFull[1].trim();
-    const capM = s.match(/\b(\d{5})\b/); if (capM) r.cap = capM[1];
-    const provM = s.match(/\(([A-Z]{2})\)/i); if (provM) r.provincia = provM[1].toUpperCase();
-    // indirizzo = tutto prima del primo numero CAP
-    const beforeCap = s.split(/,\s*CAP/i)[0]; if (beforeCap) r.indirizzo = beforeCap.trim();
-  }
-  const emailM = testo.match(/(?:PEC|Email|E-mail)\s*[:/]?\s*([\w.+-]+@[\w.-]+\.[a-z]{2,})/i);
-  if (emailM) r.email = emailM[1].toLowerCase();
-  const telM = testo.match(/(?:Tel(?:efono)?|Cell(?:ulare)?|Mobile)\s*[:/]?\s*(\+?[\d\s\-()]{8,})/i);
-  if (telM) r.telefono = telM[1].replace(/\s+/g, "").trim();
-  return r;
-}
+import {
+  AZIENDA_CORRENTE_CAMBIATA,
+  dimenticaAziendaCorrente,
+  leggiAziendaCorrenteId,
+  salvaAziendaCorrenteId,
+} from "../aziendaCorrente";
 
 // ---------- tipi locali ----------
-type Errori = Partial<Record<keyof NuovaAzienda, string>>;
+type Errori = ErroriAzienda;
 
 const vuota: NuovaAzienda = {
   ragioneSociale: "", partitaIva: "", codiceFiscale: "", indirizzo: "", cap: "", comune: "", provincia: "", codiceCatastale: "",
@@ -76,51 +51,6 @@ function labelSettore(codice?: string | null): string {
   return SETTORI_AZIENDA.find(s => s.codice === codice)?.label ?? codice;
 }
 
-// ---------- validazione ----------
-function valida(f: NuovaAzienda): Errori {
-  const e: Errori = {};
-  if (!f.ragioneSociale.trim()) e.ragioneSociale = "Il nome azienda è obbligatorio.";
-  else if (f.ragioneSociale.trim().length < 2) e.ragioneSociale = "Inserisci almeno 2 caratteri.";
-  if (!f.partitaIva?.trim() && !f.codiceFiscale?.trim()) {
-    e.partitaIva = "Inserisci Partita IVA o Codice Fiscale.";
-    e.codiceFiscale = "Serve almeno uno tra Partita IVA e Codice Fiscale.";
-  }
-  if (f.partitaIva && f.partitaIva.trim() && !/^\d{11}$/.test(f.partitaIva.trim()))
-    e.partitaIva = "La Partita IVA deve essere esattamente 11 cifre.";
-  if (f.codiceFiscale && f.codiceFiscale.trim() && !/^(\d{11}|[A-Za-z0-9]{16})$/.test(f.codiceFiscale.trim()))
-    e.codiceFiscale = "Il Codice Fiscale deve essere 11 cifre o 16 caratteri.";
-  if (f.codiceDestinatarioSdi && f.codiceDestinatarioSdi.trim() && !/^[A-Za-z0-9]{7}$/.test(f.codiceDestinatarioSdi.trim()))
-    e.codiceDestinatarioSdi = "Il codice SdI deve essere 7 caratteri.";
-  if (!f.settore?.trim()) e.settore = "Scegli il settore attività.";
-  if (!f.codiceAteco?.trim()) e.codiceAteco = "Il codice ATECO è obbligatorio.";
-  else if (!/^\d{2}(\.\d{2}){0,2}$/.test(f.codiceAteco.trim()))
-    e.codiceAteco = "Formato ATECO non valido. Esempio: 62.01.00.";
-  if (!f.indirizzo.trim()) e.indirizzo = "L'indirizzo è obbligatorio.";
-  else if (f.indirizzo.trim().length < 5) e.indirizzo = "Indirizzo troppo corto.";
-  if (!f.comune.trim()) e.comune = "Il comune è obbligatorio.";
-  if (!f.cap.trim()) e.cap = "Il CAP è obbligatorio.";
-  else if (!/^\d{5}$/.test(f.cap.trim())) e.cap = "Il CAP deve essere 5 cifre.";
-  if (!f.provincia.trim()) e.provincia = "La provincia è obbligatoria.";
-  else if (!/^[A-Za-z]{2}$/.test(f.provincia.trim())) e.provincia = "La provincia deve essere 2 lettere (es. MI).";
-  if (f.email && f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim()))
-    e.email = "Formato email non valido.";
-  if (f.pec && f.pec.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.pec.trim()))
-    e.pec = "Formato PEC non valido.";
-  if (!f.tipoContribuente?.trim()) e.tipoContribuente = "Scegli il tipo contribuente.";
-  if (f.iban && f.iban.trim() && !/^IT[0-9A-Z]{25}$/i.test(f.iban.replace(/\s+/g, "")))
-    e.iban = "IBAN italiano non valido o incompleto.";
-  if (f.haDipendenti) {
-    if (!f.matricolaInps?.trim()) e.matricolaInps = "La matricola INPS serve per F24, UniEmens e cedolini.";
-    if (!f.codiceSedeInps?.trim()) e.codiceSedeInps = "Il codice sede INPS è obbligatorio se ha dipendenti.";
-    if (!f.cscInps?.trim()) e.cscInps = "Il CSC INPS è obbligatorio se ha dipendenti.";
-    else if (!/^\d{5}$/.test(f.cscInps.trim())) e.cscInps = "Il CSC INPS deve essere di 5 cifre.";
-    if (!f.patInail?.trim()) e.patInail = "La P.A.T. INAIL è obbligatoria se ha dipendenti.";
-    if (!f.ccnlDefault?.trim()) e.ccnlDefault = "Scegli il CCNL predefinito per creare i dipendenti.";
-    if (!f.livelloDefault?.trim()) e.livelloDefault = "Indica il livello base del CCNL.";
-  }
-  return e;
-}
-
 const SEZIONI = [
   { id: "identita", titolo: "1. Dati identificativi & Fatturazione", campi: ["ragioneSociale", "partitaIva", "codiceFiscale", "codiceDestinatarioSdi", "settore", "codiceAteco"] as (keyof NuovaAzienda)[] },
   { id: "sede", titolo: "2. Sede legale & Territorio", campi: ["indirizzo", "comune", "cap", "provincia", "codiceCatastale"] as (keyof NuovaAzienda)[] },
@@ -150,9 +80,9 @@ function Campo({ label, errore, children, facoltativo }: {
 
 function inputStyle(errore?: string): React.CSSProperties {
   return {
-    border: errore ? "1.5px solid #e74c3c" : "1px solid rgba(139, 115, 85, 0.45)",
+    border: errore ? "1.5px solid #e74c3c" : "1px solid rgba(95, 125, 120, 0.45)",
     borderRadius: 8, padding: "8px 10px", fontSize: 14,
-    background: "#fffdf6", boxShadow: "var(--incavo)",
+    background: "#fbfdfc", boxShadow: "var(--incavo)",
     color: "var(--text)", width: "100%", boxSizing: "border-box",
   };
 }
@@ -187,6 +117,10 @@ export function Aziende({
   const [idAppenaAggiunta, setIdAppenaAggiunta] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoInCorso, setLogoInCorso] = useState(false);
+  const [datiContributiviProvvisori, setDatiContributiviProvvisori] = useState(false);
+  const [ricerca, setRicerca] = useState("");
+  const [vista, setVista] = useState<"archivio" | "scheda">("archivio");
+  const [sezioneAttiva, setSezioneAttiva] = useState("identita");
 
   const refSezioni = useRef<Record<string, HTMLDivElement | null>>({});
   const refForm = useRef<HTMLFormElement | null>(null);
@@ -194,16 +128,8 @@ export function Aziende({
 
   // ---------- carica ----------
   async function carica() {
-      try {
-      let elenco = await api.aziende();
-      if (elenco.length === 0) {
-        try {
-          await api.creaDatasetDemo();
-          elenco = await api.aziende();
-        } catch {
-          // Account non demo: lascia il normale archivio vuoto.
-        }
-      }
+    try {
+      const elenco = await api.aziende();
       const dipendenti = await Promise.all(elenco.map(async (azienda) => {
         try { return [azienda.id, await api.dipendenti(azienda.id)] as const; }
         catch { return [azienda.id, []] as const; }
@@ -214,12 +140,14 @@ export function Aziende({
       if (corrente && elenco.some((a) => a.id === corrente)) {
         setCorrenteId(corrente);
       } else {
-        const primoId = elenco[0]?.id ?? null;
-        setCorrenteId(primoId);
-        if (primoId) salvaAziendaCorrenteId(primoId);
+        // Non scegliere silenziosamente il primo cliente: il commercialista deve
+        // confermare l'azienda prima di aprire strumenti operativi.
+        setCorrenteId(null);
+        if (corrente) dimenticaAziendaCorrente();
       }
       setSelezionate(new Set());
       onAziendeCambiate?.();
+      window.dispatchEvent(new CustomEvent(AZIENDA_CORRENTE_CAMBIATA));
     }
     catch (e) { setErroreApi(e instanceof Error ? e.message : "Errore"); }
   }
@@ -239,15 +167,7 @@ export function Aziende({
     setErroreApi(null); setNotaVisura(null); setVisuraInCorso(true);
     try {
       const d = await api.aziendaDaVisura(file);
-      setForm(f => ({
-        ...f,
-        ragioneSociale: d.ragioneSociale ?? f.ragioneSociale,
-        partitaIva: d.partitaIva ?? f.partitaIva,
-        indirizzo: d.indirizzo ?? f.indirizzo,
-        cap: d.cap ?? f.cap,
-        comune: d.comune ?? f.comune,
-        provincia: d.provincia ?? f.provincia,
-      }));
+      setForm(f => applicaDatiVisura(f, d));
       setNotaVisura(d.nota ?? "Dati estratti dalla visura: controllali, poi premi «Aggiungi azienda».");
     } catch (err) {
       setErroreApi(err instanceof Error ? err.message : "Non sono riuscito a leggere la visura.");
@@ -305,7 +225,13 @@ export function Aziende({
     setSelezionate(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
   function toggleTutte() {
-    setSelezionate(selezionate.size === aziende.length ? new Set() : new Set(aziende.map(a => a.id)));
+    const idsVisibili = aziendeFiltrate.map((azienda) => azienda.id);
+    const tutteVisibiliSelezionate = idsVisibili.length > 0 && idsVisibili.every((id) => selezionate.has(id));
+    setSelezionate((precedenti) => {
+      const prossime = new Set(precedenti);
+      idsVisibili.forEach((id) => tutteVisibiliSelezionate ? prossime.delete(id) : prossime.add(id));
+      return prossime;
+    });
   }
   async function eliminaSelezionate() {
     if (!selezionate.size) return;
@@ -322,7 +248,7 @@ export function Aziende({
     return (e: { target: { value: string } }) => {
       const aggiornato = { ...form, [k]: e.target.value };
       setForm(aggiornato);
-      if (tentato) setErrori(valida(aggiornato));
+      if (tentato) setErrori(validaAzienda(aggiornato, { datiContributiviProvvisori }));
     };
   }
 
@@ -339,13 +265,14 @@ export function Aziende({
       }
       : { ...form, settore: codice };
     setForm(aggiornato);
-    if (tentato) setErrori(valida(aggiornato));
+    if (tentato) setErrori(validaAzienda(aggiornato, { datiContributiviProvvisori }));
   }
 
   function scrollAlPrimoErrore(e: Errori) {
     for (const sez of SEZIONI) {
       const haCampoErrato = sez.campi.some(c => !!e[c]);
       if (haCampoErrato) {
+        setSezioneAttiva(sez.id);
         refSezioni.current[sez.id]?.scrollIntoView({ behavior: "smooth", block: "start" });
         break;
       }
@@ -356,7 +283,7 @@ export function Aziende({
     e.preventDefault();
     setErroreApi(null);
     if (inModificaId) { void salvaCorrezione(); return; }
-    const e2 = valida(form);
+    const e2 = validaAzienda(form, { datiContributiviProvvisori });
     setErrori(e2);
     setTentato(true);
     if (Object.keys(e2).length > 0) { scrollAlPrimoErrore(e2); return; }
@@ -367,15 +294,22 @@ export function Aziende({
     setErroreApi(null);
     salvaAziendaCorrenteId(a.id);
     setCorrenteId(a.id);
-    mostraSuccesso(`Azienda «${a.ragioneSociale}» selezionata.`);
+    // La scelta apre la postazione completa del cliente (l'evento di cambio
+    // azienda è sincrono: la shell conosce già il nuovo cliente).
+    window.location.hash = "azienda";
   }
 
   function iniziaModifica(a: Azienda) {
     setErroreApi(null); setNotaVisura(null); setTentato(false); setErrori({});
     setInModificaId(a.id);
+    setVista("scheda");
+    setSezioneAttiva("identita");
     void caricaAnteprimaLogo(a.id);
     salvaAziendaCorrenteId(a.id);
     setCorrenteId(a.id);
+    setDatiContributiviProvvisori(Boolean(a.haDipendenti && [
+      a.matricolaInps, a.codiceSedeInps, a.cscInps, a.patInail, a.ccnlDefault, a.livelloDefault,
+    ].some(valore => !valore?.trim())));
     setForm({
       ragioneSociale: a.ragioneSociale, partitaIva: a.partitaIva ?? "",
       codiceFiscale: a.codiceFiscale ?? "",
@@ -400,12 +334,14 @@ export function Aziende({
 
   function annullaModifica() {
     setInModificaId(null); setForm(vuota); setErrori({}); setTentato(false);
+    setDaConfermare(null); setVista("archivio");
+    setDatiContributiviProvvisori(false);
     aggiornaAnteprimaLogo(null);
   }
 
   async function salvaCorrezione() {
     if (!inModificaId) return;
-    const e2 = valida(form); setErrori(e2); setTentato(true);
+    const e2 = validaAzienda(form, { datiContributiviProvvisori }); setErrori(e2); setTentato(true);
     if (Object.keys(e2).length > 0) { scrollAlPrimoErrore(e2); return; }
     try {
       await api.correggiAzienda(inModificaId, form);
@@ -429,6 +365,7 @@ export function Aziende({
     try {
       const nuova = await api.creaAzienda(daConfermare);
       setForm(vuota); setDaConfermare(null); setTentato(false); setErrori({});
+      setDatiContributiviProvvisori(false);
       await carica();
       mostraSuccesso(`Azienda «${daConfermare.ragioneSociale}» aggiunta con successo.`);
       if (nuova?.id) {
@@ -445,16 +382,47 @@ export function Aziende({
 
   // quante sezioni hanno errori
   const sezioniConErrori = SEZIONI.filter(s => s.campi.some(c => !!errori[c]));
+  const aziendeFiltrate = useMemo(() => {
+    const testo = ricerca.trim().toLocaleLowerCase("it");
+    if (!testo) return aziende;
+    return aziende.filter((azienda) => [
+      azienda.ragioneSociale,
+      azienda.partitaIva,
+      azienda.codiceFiscale,
+      azienda.comune,
+      azienda.provincia,
+      azienda.codiceAteco,
+      labelSettore(azienda.settore),
+    ].filter(Boolean).some((valore) => String(valore).toLocaleLowerCase("it").includes(testo)));
+  }, [aziende, ricerca]);
+
+  function vaiANuovaAzienda() {
+    annullaModifica();
+    setVista("scheda");
+    setSezioneAttiva("identita");
+    window.setTimeout(() => {
+      document.querySelector(".aziende-registro")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("ragione-sociale-azienda")?.focus({ preventScroll: true });
+    }, 0);
+  }
 
   return (
-    <section className="glass-card form-card">
-      {/* intestazione archivio */}
-      <div className="card-title-row">
+    <section className="glass-card form-card aziende-registro">
+      <div className="aziende-commandbar">
         <div>
-          <h2>Archivio aziende</h2>
-          <p>Anagrafiche clienti disponibili per elaborazione paghe e documenti fiscali</p>
+          <span className="aziende-commandbar-icon"><Building2 size={20} aria-hidden="true" /></span>
+          <span>
+            <h2>{vista === "archivio" ? "Archivio aziende" : inModificaId ? "Modifica azienda" : "Nuova azienda"}</h2>
+            <p>{vista === "archivio" ? "Ricerca e selezione clienti" : "Anagrafica fiscale, contributiva e operativa"}</p>
+          </span>
         </div>
-        <span className="count blue">{aziende.length} aziende · {Object.values(dipendentiPerAzienda).reduce((totale, elenco) => totale + elenco.length, 0)} dipendenti</span>
+        <div className="aziende-commandbar-actions">
+          <div className="aziende-view-tabs" role="tablist" aria-label="Vista aziende">
+            <button className={vista === "archivio" ? "active" : ""} type="button" role="tab" aria-selected={vista === "archivio"} onClick={() => setVista("archivio")}>Archivio</button>
+            <button className={vista === "scheda" ? "active" : ""} type="button" role="tab" aria-selected={vista === "scheda"} onClick={() => setVista("scheda")}>Anagrafica</button>
+          </div>
+          <span className="count blue">{aziende.length} aziende · {Object.values(dipendentiPerAzienda).reduce((totale, elenco) => totale + elenco.length, 0)} dipendenti</span>
+        </div>
       </div>
 
       {/* banner successo */}
@@ -462,9 +430,31 @@ export function Aziende({
         <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 10,
           background: "rgba(46,204,113,0.15)", border: "1.5px solid #2ecc71",
           color: "#2ecc71", fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
-          ✅ {successoBanner}
+          <Check size={17} aria-hidden="true" /> {successoBanner}
         </div>
       )}
+      {erroreApi && (
+        <div className="azienda-global-error" role="alert">
+          <AlertTriangle size={16} aria-hidden="true" /> {erroreApi}
+        </div>
+      )}
+
+      <div hidden={vista !== "archivio"}>
+      <div className="aziende-searchbar">
+        <label className="aziende-searchbox" htmlFor="cerca-azienda-archivio">
+          <Search size={17} aria-hidden="true" />
+          <input
+            id="cerca-azienda-archivio"
+            value={ricerca}
+            onChange={(e) => setRicerca(e.target.value)}
+            placeholder="Nome, Partita IVA, Codice Fiscale, comune o settore"
+          />
+        </label>
+        <button className="btn primary" type="button" onClick={vaiANuovaAzienda}>
+          <Plus size={17} aria-hidden="true" />
+          Nuova azienda
+        </button>
+      </div>
 
       {/* lista aziende */}
       <div ref={refLista}>
@@ -472,28 +462,34 @@ export function Aziende({
         <div className="empty-state">Nessuna azienda ancora registrata.</div>
       ) : (
         <>
-          <div className="company-list-toolbar">
+          <div className="company-list-toolbar aziende-results-toolbar">
             <label className="company-select-all">
               <input type="checkbox"
-                checked={selezionate.size === aziende.length && aziende.length > 0}
+              checked={aziendeFiltrate.length > 0 && aziendeFiltrate.every((azienda) => selezionate.has(azienda.id))}
                 onChange={toggleTutte} />
-              Seleziona tutte
+              Seleziona tutte ({aziendeFiltrate.length})
             </label>
             {selezionate.size > 0 && (
               <button className="btn danger compact" type="button" disabled={eliminazioneInCorso} onClick={eliminaSelezionate}>
+                <Trash2 size={15} aria-hidden="true" />
                 {eliminazioneInCorso ? "Eliminazione…" : `Elimina selezionate (${selezionate.size})`}
               </button>
             )}
           </div>
-          <div className="company-list">
-            {aziende.map((a) => {
+          {aziendeFiltrate.length === 0 ? (
+            <div className="empty-state">Nessuna azienda corrisponde alla ricerca.</div>
+          ) : <div className="company-list company-table">
+            <div className="company-table-head" aria-hidden="true">
+              <span />
+              <span>Azienda</span>
+              <span>Codici fiscali</span>
+              <span>Sede</span>
+              <span>Dipendenti</span>
+              <span>Azioni</span>
+            </div>
+            {aziendeFiltrate.map((a) => {
               const selezionata = correnteId === a.id;
               const dipendenti = dipendentiPerAzienda[a.id] ?? [];
-              const dettagli = [
-                a.partitaIva ? `P.IVA ${a.partitaIva}` : null,
-                a.settore ? labelSettore(a.settore) : null,
-                a.comune ? `${a.comune}${a.provincia ? ` (${a.provincia})` : ""}` : null,
-              ].filter(Boolean).join(" · ") || "Scheda anagrafica";
               return (
                 <article
                   className={`company-row ${selezionata ? "selected" : ""} ${selezionate.has(a.id) ? "marked" : ""} ${idAppenaAggiunta === a.id ? "just-added" : ""}`}
@@ -512,46 +508,80 @@ export function Aziende({
                     <span className="company-row-avatar">{a.ragioneSociale.slice(0, 2).toUpperCase()}</span>
                     <span className="company-row-copy">
                       <strong>{a.ragioneSociale}</strong>
-                      <small>{dettagli}</small>
-                      <small style={{ color: "var(--blue)", fontWeight: 700 }}>
-                        {dipendenti.length === 0
-                          ? "Nessun dipendente collegato"
-                          : `${dipendenti.length} dipendent${dipendenti.length === 1 ? "e" : "i"}: ${dipendenti.map(d => d.nominativo || "Senza nome").join(", ")}`}
-                      </small>
+                      <small>{a.settore ? labelSettore(a.settore) : "Settore non indicato"}</small>
                     </span>
                   </button>
 
+                  <span className="company-table-cell company-tax-cell">
+                    <strong>{a.partitaIva ? `P.IVA ${a.partitaIva}` : "P.IVA non indicata"}</strong>
+                    <small>{a.codiceFiscale ? `CF ${a.codiceFiscale}` : "CF non indicato"}</small>
+                  </span>
+                  <span className="company-table-cell">
+                    <strong>{a.comune || "Comune non indicato"}</strong>
+                    <small>{[a.provincia, a.cap].filter(Boolean).join(" · ") || "Sede da completare"}</small>
+                  </span>
+                  <span className="company-table-cell company-employees-cell" title={dipendenti.map(d => d.nominativo || "Senza nome").join(", ")}>
+                    <Users size={15} aria-hidden="true" />
+                    <strong>{dipendenti.length}</strong>
+                  </span>
+
                   <div className="company-row-buttons">
                     {selezionata ? (
-                      <span className="status-pill green">Scelta</span>
+                      <span className="status-pill green"><Check size={13} aria-hidden="true" /> Scelta</span>
                     ) : (
                       <button className="mini-action" type="button" onClick={() => scegliAzienda(a)}>
                         Scegli
                       </button>
                     )}
                     <button className="mini-action" type="button" onClick={() => iniziaModifica(a)}>
-                      Modifica
+                      <Edit3 size={14} aria-hidden="true" /> Modifica
                     </button>
-                    <span className="status-pill green">Attiva</span>
                   </div>
                 </article>
               );
             })}
-          </div>
+          </div>}
         </>
       )}
       </div>
 
-      <hr style={{ margin: "20px 0", border: "none", borderTop: "1px solid var(--border,#333)" }} />
+      </div>
+
+      <div className="azienda-editor-shell" hidden={vista !== "scheda"}>
+        <aside className="azienda-editor-nav" aria-label="Sezioni anagrafica azienda">
+          <p>Sezioni scheda</p>
+          {[
+            { id: "identita", label: "Identità e fatturazione", Icona: Building2 },
+            { id: "sede", label: "Sede e territorio", Icona: MapPin },
+            { id: "contatti", label: "Contatti e PEC", Icona: UserRound },
+            { id: "fiscale", label: "Profilo fiscale", Icona: WalletCards },
+            { id: "contributivo", label: "INPS, INAIL e CCNL", Icona: Landmark },
+          ].map(({ id, label, Icona }, indice) => (
+            <button
+              className={`${sezioneAttiva === id ? "active" : ""} ${sezioniConErrori.some((sezione) => sezione.id === id) ? "has-error" : ""}`}
+              key={id}
+              type="button"
+              onClick={() => { setSezioneAttiva(id); refSezioni.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+            >
+              <span>{indice + 1}</span><Icona size={15} aria-hidden="true" />{label}
+            </button>
+          ))}
+          <button className="azienda-editor-back" type="button" onClick={() => setVista("archivio")}>
+            <X size={15} aria-hidden="true" /> Torna all'archivio
+          </button>
+        </aside>
+
+        <div className="azienda-editor-main">
 
       {/* titolo form */}
-      <h3 id="nuova-azienda-form" style={{ margin: "0 0 4px", fontSize: 17 }}>
-        {inModificaId ? "✏️ Correggi azienda" : "Aggiungi nuova azienda"}
+      <h3 id="nuova-azienda-form" className="azienda-form-title">
+        {inModificaId ? <Edit3 size={19} aria-hidden="true" /> : <Building2 size={19} aria-hidden="true" />}
+        {inModificaId ? "Correggi azienda" : "Inserisci azienda"}
       </h3>
       <p style={{ margin: "0 0 16px", fontSize: 13, opacity: 0.7 }}>
         {inModificaId
-          ? "Modifica i campi e premi «Salva correzioni»."
-          : "Compila le sezioni qui sotto, scorri verso il basso e premi «Aggiungi azienda»."
+          ? "Dati identificativi, fiscali, territoriali e contributivi dell'azienda."
+          : "Dati fiscali, sede, contatti e posizioni contributive."
         }
       </p>
 
@@ -594,18 +624,18 @@ export function Aziende({
           <button className="btn secondary" type="button" onClick={apriSelettoreVisura}
             disabled={visuraInCorso}
             style={{ cursor: visuraInCorso ? "wait" : "pointer", display: "inline-flex", gap: 8, alignItems: "center" }}>
-            📄 {visuraInCorso ? "Lettura in corso…" : "Carica visura (PDF/foto)"}
+            <FileText size={16} aria-hidden="true" /> {visuraInCorso ? "Lettura in corso…" : "Carica visura"}
           </button>
           <button className="btn secondary" type="button"
             onClick={() => { setMostraIncolla(v => !v); setTestoIncollato(""); }}
             style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-            📋 {mostraIncolla ? "Nascondi incolla" : "Incolla testo visura"}
+            <ClipboardPaste size={16} aria-hidden="true" /> {mostraIncolla ? "Nascondi testo" : "Incolla testo visura"}
           </button>
         </div>
       )}
       {notaVisura && (
         <p style={{ fontSize: 12, marginBottom: 10, color: "#2ecc71", lineHeight: 1.5 }}>
-          ✅ {notaVisura}
+          <Check size={15} aria-hidden="true" /> {notaVisura}
         </p>
       )}
       {mostraIncolla && !daConfermare && (
@@ -614,14 +644,15 @@ export function Aziende({
             placeholder={"Incolla qui il testo della visura camerale…\n\nEsempio:\nDenominazione: Rossi Srl\nPartita IVA: 01234567890\nSede Legale: Via Roma 1, CAP 20121, Milano (MI)"}
             value={testoIncollato} onChange={e => setTestoIncollato(e.target.value)}
             rows={6} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13,
-              padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(139, 115, 85, 0.45)",
-              background: "#fffdf6", boxShadow: "var(--incavo)", color: "var(--text)", boxSizing: "border-box" }} />
+              padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(95, 125, 120, 0.45)",
+              background: "#fbfdfc", boxShadow: "var(--incavo)", color: "var(--text)", boxSizing: "border-box" }} />
           <button className="btn primary" type="button" style={{ marginTop: 8 }}
             disabled={!testoIncollato.trim()}
             onClick={() => {
-              const dati = parsaTestoLibero(testoIncollato);
-              setForm(f => ({ ...f, ...dati }));
-              if (tentato) setErrori(valida({ ...form, ...dati }));
+              const dati = parsaTestoAzienda(testoIncollato);
+              const aggiornato = { ...form, ...dati };
+              setForm(aggiornato);
+              if (tentato) setErrori(validaAzienda(aggiornato, { datiContributiviProvvisori }));
               setMostraIncolla(false); setTestoIncollato("");
               setNotaVisura("Dati estratti dal testo: controllali, poi premi «Aggiungi azienda».");
             }}>
@@ -635,7 +666,7 @@ export function Aziende({
         <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 10,
           background: "rgba(231,76,60,0.12)", border: "1.5px solid #e74c3c" }}>
           <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#e74c3c", fontSize: 14 }}>
-            ⚠ Correggi i seguenti campi prima di continuare:
+            <AlertTriangle size={16} aria-hidden="true" /> Correggi i seguenti campi prima di continuare:
           </p>
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
             {SEZIONI.flatMap(s => s.campi.filter(c => errori[c]).map(c => (
@@ -663,6 +694,12 @@ export function Aziende({
             Settore: <b>{labelSettore(daConfermare.settore)}</b>
             {daConfermare.ccnlDefault ? <> · CCNL {daConfermare.ccnlDefault} livello {daConfermare.livelloDefault}</> : null}
           </p>
+          {datiContributiviProvvisori && (
+            <p style={{ marginTop: 8, fontSize: 13, color: "#b45309", fontWeight: 700 }}>
+              Modalità prova: i dati INPS/INAIL mancanti restano vuoti e devono essere completati
+              prima di usare F24, UniEmens o altri adempimenti ufficiali.
+            </p>
+          )}
           <div className="actions-row">
             <button className="btn primary" type="button" onClick={conferma} disabled={confermaInCorso}
               style={{ minWidth: 110, opacity: confermaInCorso ? 0.7 : 1 }}>
@@ -678,14 +715,14 @@ export function Aziende({
         <form ref={refForm} onSubmit={inviaForm} noValidate>
 
           {/* SEZIONE 1 – Dati identificativi */}
-          <div ref={el => { refSezioni.current["identita"] = el; }}
+          <div data-sezione-azienda="identita" ref={el => { refSezioni.current["identita"] = el; }}
             style={sezioneStyle(sezioniConErrori.some(s => s.id === "identita"))}>
             <h4 style={titoloSezioneStyle(sezioniConErrori.some(s => s.id === "identita"))}>
               {SEZIONI[0].titolo}
             </h4>
             <div style={grigliaStyle}>
               <Campo label="Nome azienda" errore={errori.ragioneSociale}>
-                <input style={inputStyle(errori.ragioneSociale)}
+                <input id="ragione-sociale-azienda" style={inputStyle(errori.ragioneSociale)}
                   placeholder="Es. Rossi Srl" value={form.ragioneSociale}
                   onChange={set("ragioneSociale")} />
               </Campo>
@@ -723,7 +760,7 @@ export function Aziende({
           </div>
 
           {/* SEZIONE 2 – Sede legale */}
-          <div ref={el => { refSezioni.current["sede"] = el; }}
+          <div data-sezione-azienda="sede" ref={el => { refSezioni.current["sede"] = el; }}
             style={sezioneStyle(sezioniConErrori.some(s => s.id === "sede"))}>
             <h4 style={titoloSezioneStyle(sezioniConErrori.some(s => s.id === "sede"))}>
               {SEZIONI[1].titolo}
@@ -737,13 +774,13 @@ export function Aziende({
             </div>
             <div style={{ ...grigliaStyle, marginTop: 12 }}>
               <Campo label="Comune" errore={errori.comune}>
-                <div style={{ border: errori.comune ? "1.5px solid #e74c3c" : "1px solid rgba(200, 185, 165, 0.4)", borderRadius: 8 }}>
+                <div style={{ border: errori.comune ? "1.5px solid #e74c3c" : "1px solid rgba(160, 182, 178, 0.4)", borderRadius: 8 }}>
                   <ComuneAutocomplete
                     valore={form.comune}
                     onSelect={(c) => {
                       const ag = { ...form, comune: c.nome, provincia: c.prov, cap: c.cap, codiceCatastale: c.cat ?? form.codiceCatastale };
                       setForm(ag);
-                      if (tentato) setErrori(valida(ag));
+                      if (tentato) setErrori(validaAzienda(ag, { datiContributiviProvvisori }));
                     }}
                   />
                 </div>
@@ -764,7 +801,7 @@ export function Aziende({
           </div>
 
           {/* SEZIONE 3 – Contatti */}
-          <div ref={el => { refSezioni.current["contatti"] = el; }}
+          <div data-sezione-azienda="contatti" ref={el => { refSezioni.current["contatti"] = el; }}
             style={sezioneStyle(sezioniConErrori.some(s => s.id === "contatti"))}>
             <h4 style={titoloSezioneStyle(sezioniConErrori.some(s => s.id === "contatti"))}>
               {SEZIONI[2].titolo}
@@ -798,7 +835,7 @@ export function Aziende({
           </div>
 
           {/* SEZIONE 4 – Profilo fiscale & Tesoreria */}
-          <div ref={el => { refSezioni.current["fiscale"] = el; }}
+          <div data-sezione-azienda="fiscale" ref={el => { refSezioni.current["fiscale"] = el; }}
             style={sezioneStyle(sezioniConErrori.some(s => s.id === "fiscale"))}>
             <h4 style={titoloSezioneStyle(sezioniConErrori.some(s => s.id === "fiscale"))}>
               {SEZIONI[3].titolo}
@@ -825,8 +862,11 @@ export function Aziende({
                 <input type="checkbox" checked={form.haDipendenti ?? false}
                   onChange={e => {
                     const ag = { ...form, haDipendenti: e.target.checked };
+                    if (!e.target.checked) setDatiContributiviProvvisori(false);
                     setForm(ag);
-                    if (tentato) setErrori(valida(ag));
+                    if (tentato) setErrori(validaAzienda(ag, {
+                      datiContributiviProvvisori: e.target.checked && datiContributiviProvvisori,
+                    }));
                   }} />
                 <span>Ha dipendenti <small style={{ opacity: 0.7 }}>(abilita F24 IRPEF/INPS, CU, UniEmens, INAIL)</small></span>
               </label>
@@ -835,41 +875,58 @@ export function Aziende({
                   onChange={e => {
                     const ag = { ...form, assoggettataIva: e.target.checked };
                     setForm(ag);
-                    if (tentato) setErrori(valida(ag));
+                    if (tentato) setErrori(validaAzienda(ag, { datiContributiviProvvisori }));
                   }} />
                 <span>Soggetta IVA <small style={{ opacity: 0.7 }}>(liquidazioni, LIPE, dichiarazione IVA)</small></span>
               </label>
+              {form.haDipendenti && (
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 14,
+                  padding: 12, borderRadius: 8, border: "1px solid #d97706", background: "rgba(217,119,6,0.08)" }}>
+                  <input type="checkbox" checked={datiContributiviProvvisori}
+                    onChange={e => {
+                      const attiva = e.target.checked;
+                      setDatiContributiviProvvisori(attiva);
+                      if (tentato) setErrori(validaAzienda(form, { datiContributiviProvvisori: attiva }));
+                    }} />
+                  <span>
+                    <strong>Modalità prova: dati INPS/INAIL/CCNL da completare</strong><br />
+                    <small style={{ opacity: 0.8 }}>
+                      Salva l'anagrafica senza inventare codici 000000. Completa i dati ufficiali prima degli adempimenti.
+                    </small>
+                  </span>
+                </label>
+              )}
             </div>
           </div>
 
           {/* SEZIONE 5 – Dati INPS, INAIL, CCNL & Legale Rappresentante */}
-          <div ref={el => { refSezioni.current["contributivo"] = el; }}
+          <div data-sezione-azienda="contributivo" ref={el => { refSezioni.current["contributivo"] = el; }}
             style={sezioneStyle(sezioniConErrori.some(s => s.id === "contributivo"))}>
             <h4 style={titoloSezioneStyle(sezioniConErrori.some(s => s.id === "contributivo"))}>
               {SEZIONI[4].titolo}
             </h4>
             <div style={grigliaStyle}>
-              <Campo label="Matricola INPS" errore={errori.matricolaInps} facoltativo={!form.haDipendenti}>
+              <Campo label="Matricola INPS" errore={errori.matricolaInps} facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
                 <input style={inputStyle(errori.matricolaInps)}
                   placeholder="Es. 1234567890" value={form.matricolaInps ?? ""}
                   onChange={set("matricolaInps")} />
               </Campo>
-              <Campo label="Codice Sede INPS" errore={errori.codiceSedeInps} facoltativo={!form.haDipendenti}>
+              <Campo label="Codice Sede INPS" errore={errori.codiceSedeInps} facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
                 <input style={inputStyle(errori.codiceSedeInps)}
                   placeholder="Es. 4500 (Milano)" value={form.codiceSedeInps ?? ""}
                   onChange={set("codiceSedeInps")} />
               </Campo>
-              <Campo label="CSC INPS (5 cifre)" errore={errori.cscInps} facoltativo={!form.haDipendenti}>
+              <Campo label="CSC INPS (5 cifre)" errore={errori.cscInps} facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
                 <input style={inputStyle(errori.cscInps)}
                   placeholder="Es. 10101 (Terziario)" value={form.cscInps ?? ""}
                   onChange={set("cscInps")} maxLength={5} />
               </Campo>
-              <Campo label="P.A.T. INAIL" errore={errori.patInail} facoltativo={!form.haDipendenti}>
+              <Campo label="P.A.T. INAIL" errore={errori.patInail} facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
                 <input style={inputStyle(errori.patInail)}
                   placeholder="Es. 12345678/90" value={form.patInail ?? ""}
                   onChange={set("patInail")} />
               </Campo>
-              <Campo label="CCNL Predefinito" errore={errori.ccnlDefault} facoltativo={!form.haDipendenti}>
+              <Campo label="CCNL Predefinito" errore={errori.ccnlDefault} facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
                 <select style={selectStyle(errori.ccnlDefault)} value={form.ccnlDefault ?? ""}
                   onChange={set("ccnlDefault")}>
                   <option value="">Scegli CCNL...</option>
@@ -881,7 +938,7 @@ export function Aziende({
                   ))}
                 </select>
               </Campo>
-              <Campo label="Livello Predefinito" errore={errori.livelloDefault} facoltativo={!form.haDipendenti}>
+              <Campo label="Livello Predefinito" errore={errori.livelloDefault} facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
                 <input style={inputStyle(errori.livelloDefault)}
                   placeholder="Es. 3, 4, B1" value={form.livelloDefault ?? ""}
                   onChange={set("livelloDefault")} />
@@ -920,13 +977,8 @@ export function Aziende({
         </form>
       )}
 
-      {erroreApi && (
-        <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8,
-          background: "rgba(231,76,60,0.12)", border: "1px solid #e74c3c",
-          color: "#e74c3c", fontSize: 13 }}>
-          ⚠ {erroreApi}
         </div>
-      )}
+      </div>
     </section>
   );
 }
@@ -1059,7 +1111,7 @@ function sezioneStyle(haErrori: boolean): React.CSSProperties {
   return {
     marginBottom: 20,
     padding: 18,
-    borderRadius: 12,
+    borderRadius: 8,
     border: haErrori ? "1.5px solid #e74c3c" : "1px solid var(--line)",
     background: haErrori ? "rgba(231,76,60,0.05)" : "var(--panel-strong)",
     transition: "border-color 0.2s, background 0.2s",

@@ -166,6 +166,7 @@ const allNavItems = [...primaryNav, ...payrollNav, ...adminNav, { key: "studi" a
 const navActiveFor: Partial<Record<SectionKey, SectionKey>> = {
   dipendente: "dipendenti",
   calcolo: "cedolini",
+  azienda: "aziende",
 };
 
 // Breadcrumb per ogni schermata (allineato a PaghePro Studio).
@@ -182,6 +183,7 @@ const crumbsFor: Partial<Record<SectionKey, string[]>> = {
 const sectionTitle: Record<SectionKey, string> = {
   dashboard: "Home studio",
   aziende: "Aziende",
+  azienda: "Postazione azienda",
   pratiche: "Pratiche ComUnica",
   moduli: "Moduli ufficiali — AA7/10",
   dipendenti: "Dipendenti",
@@ -408,6 +410,12 @@ export function Dashboard() {
     salvaAziendaCorrenteId(azienda.id);
     setAziendaCorrente(azienda);
     setSceltaAziendaRichiesta(false);
+    // Senza una destinazione già richiesta, la scelta apre la postazione
+    // completa del cliente con tutti gli strumenti disponibili.
+    if (!sezioneDopoScelta) {
+      setActive("azienda");
+      if (window.location.hash !== "#azienda") window.location.hash = "azienda";
+    }
   };
 
   const vaiA = (key: SectionKey) => {
@@ -592,7 +600,7 @@ export function Dashboard() {
               onRiprendi={riprendiLavoro}
             />
           ) : (
-            <ModuleScreen active={active} onNavigate={vaiA} rapportoSel={rapportoSel} onApriDipendente={apriDipendente} />
+            <ModuleScreen active={active} onNavigate={vaiA} rapportoSel={rapportoSel} onApriDipendente={apriDipendente} azienda={aziendaCorrente} onCambiaAzienda={apriSelettoreAzienda} />
           )}
         </main>
       </div>
@@ -1028,6 +1036,104 @@ const tilesFisco: TileHome[] = [
   { key: "moduli", label: "Moduli AA7/10", colore: "#927e4a" },
   { key: "documenti", label: "Documenti", colore: "#7f8c8d" },
 ];
+
+// Sottoinsiemi per la postazione azienda: stesse mattonelle (etichette e colori)
+// della Home, raggruppate per il lavoro su un singolo cliente.
+const tilePostazione = (chiavi: SectionKey[]): TileHome[] => {
+  const tutte = [...tilesPaghe, ...tilesFisco];
+  return chiavi
+    .map((chiave) => tutte.find((tile) => tile.key === chiave))
+    .filter((tile): tile is TileHome => Boolean(tile));
+};
+
+const postazionePaghe = tilePostazione([
+  "dipendenti", "presenze", "cedolini", "elaborazioni", "f24", "fine-anno", "cu", "mod770", "redditi-pf",
+]);
+const postazioneFisco = tilePostazione([
+  "fatture", "lipe", "iva-annuale", "bilancio", "contabilita", "irap", "ires", "imu", "intrastat",
+]);
+const postazioneStrumenti = tilePostazione([
+  "pratiche", "moduli", "firma", "pagamenti", "scadenzario", "documenti",
+]);
+
+// Postazione completa del cliente: si apre alla scelta dell'azienda e raccoglie
+// tutti gli strumenti utilizzabili su quel cliente, con i numeri essenziali reali.
+function PostazioneAzienda({ azienda, onNavigate, onCambiaAzienda }: {
+  azienda: Azienda;
+  onNavigate: (key: SectionKey) => void;
+  onCambiaAzienda: () => void;
+}) {
+  const [numDipendenti, setNumDipendenti] = useState<number | null>(null);
+  const [numFatture, setNumFatture] = useState<number | null>(null);
+  const [scadenzeUrgenti, setScadenzeUrgenti] = useState<number | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    setNumDipendenti(null);
+    setNumFatture(null);
+    setScadenzeUrgenti(null);
+    api.dipendenti(azienda.id)
+      .then((elenco) => { if (vivo) setNumDipendenti(elenco.length); })
+      .catch(() => { /* numero non disponibile: resta il trattino, niente zeri finti */ });
+    api.fatture(azienda.id)
+      .then((elenco) => { if (vivo) setNumFatture(elenco.length); })
+      .catch(() => { /* come sopra */ });
+    api.scadenzario()
+      .then((voci) => {
+        if (!vivo) return;
+        setScadenzeUrgenti(voci.filter((v) => v.aziendaId === azienda.id
+          && (v.urgenza === "scaduto" || v.urgenza === "oggi" || v.urgenza === "in_scadenza")).length);
+      })
+      .catch(() => { /* come sopra */ });
+    return () => { vivo = false; };
+  }, [azienda.id]);
+
+  const numero = (valore: number | null) => (valore === null ? "—" : String(valore));
+  const sede = [azienda.comune, azienda.provincia].filter(Boolean).join(" ");
+
+  return (
+    <div className="module-layout wide">
+      <div>
+        <section className="glass-card page-card">
+          <div className="card-title-row">
+            <div>
+              <h1>{azienda.ragioneSociale}</h1>
+              <p>
+                {azienda.partitaIva ? `P.IVA ${azienda.partitaIva}` : "P.IVA non indicata"}
+                {azienda.codiceFiscale ? ` · CF ${azienda.codiceFiscale}` : ""}
+                {sede ? ` · ${sede}` : ""}
+                {azienda.ccnlDefault ? ` · CCNL ${azienda.ccnlDefault}` : ""}
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn secondary" type="button" onClick={() => onNavigate("aziende")}>
+                Anagrafica e archivio
+              </button>
+              <button className="btn secondary" type="button" onClick={onCambiaAzienda}>
+                Cambia azienda
+              </button>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBlockStart: 12 }}
+            role="group" aria-label="Numeri essenziali del cliente">
+            <button className="btn secondary" type="button" onClick={() => onNavigate("dipendenti")}>
+              <Users size={16} aria-hidden="true" /> Dipendenti: {numero(numDipendenti)}
+            </button>
+            <button className="btn secondary" type="button" onClick={() => onNavigate("fatture")}>
+              <FileText size={16} aria-hidden="true" /> Fatture emesse: {numero(numFatture)}
+            </button>
+            <button className="btn secondary" type="button" onClick={() => onNavigate("scadenzario")}>
+              <AlarmClock size={16} aria-hidden="true" /> Scadenze urgenti: {numero(scadenzeUrgenti)}
+            </button>
+          </div>
+        </section>
+        <TileGrid titolo="Paghe e personale" tiles={postazionePaghe} onNavigate={onNavigate} />
+        <TileGrid titolo="Fisco e contabilità" tiles={postazioneFisco} onNavigate={onNavigate} />
+        <TileGrid titolo="Pratiche e strumenti" tiles={postazioneStrumenti} onNavigate={onNavigate} />
+      </div>
+    </div>
+  );
+}
 
 function TileGrid({ titolo, tiles, onNavigate }: {
   titolo: string;
@@ -1591,12 +1697,23 @@ function ModuleScreen({
   onNavigate,
   rapportoSel,
   onApriDipendente,
+  azienda,
+  onCambiaAzienda,
 }: {
   active: SectionKey;
   onNavigate: (key: SectionKey) => void;
   rapportoSel: string | null;
   onApriDipendente: (rapportoId: string) => void;
+  azienda: Azienda | null;
+  onCambiaAzienda: () => void;
 }) {
+  if (active === "azienda") {
+    // La shell non monta questa sezione senza azienda scelta; la guardia è solo difensiva.
+    return azienda
+      ? <PostazioneAzienda azienda={azienda} onNavigate={onNavigate} onCambiaAzienda={onCambiaAzienda} />
+      : null;
+  }
+
   if (active === "aziende") {
     return (
       <div className="module-layout wide aziende-page-layout">

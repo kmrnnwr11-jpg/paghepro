@@ -1,13 +1,29 @@
 // Client API tipizzato verso il backend Paghe SaaS.
 
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:5171";
+import { dimenticaAziendaCorrente } from "./aziendaCorrente";
+import { buildMobile, condividiDocumento, piattaformaNativa } from "./mobile/piattaforma";
+import {
+  accessoInScadenza,
+  cancellaSessioneLocale,
+  getAccessToken,
+  rinnovaSessione,
+  type SessioneAccesso,
+} from "./sessione";
+
+// In sviluppo Vite e API usano porte diverse; nel pacchetto cloud Railway la SPA
+// viene servita dalla stessa API e quindi usa URL relativi (stessa origine).
+const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.trim()
+  || (import.meta.env.DEV ? "http://localhost:5171" : "");
+
+if (import.meta.env.VITE_MOBILE_APP === "1" && (!BASE || !BASE.startsWith("https://")))
+  throw new Error("Configurazione mobile non valida: VITE_API_URL deve essere un indirizzo HTTPS.");
 
 export function getToken(): string | null {
-  return localStorage.getItem("token");
+  return getAccessToken();
 }
-export function setToken(token: string | null): void {
-  if (token) localStorage.setItem("token", token);
-  else localStorage.removeItem("token");
+export async function pulisciAccesso(): Promise<void> {
+  dimenticaAziendaCorrente();
+  await cancellaSessioneLocale();
 }
 
 export function getRuolo(): string | null {
@@ -23,7 +39,11 @@ export function setRuolo(ruolo: string | null): void {
  * Gestisce l'ancora DOM nel document.body ed il rilascio differito dell'object URL
  * per piena compatibilità con Safari su Mac, iOS, Chrome e Firefox.
  */
-export function scaricaBlob(blob: Blob, filename: string): void {
+export async function scaricaBlob(blob: Blob, filename: string): Promise<void> {
+  if (piattaformaNativa) {
+    await condividiDocumento(blob, filename);
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -49,21 +69,42 @@ export class ApiError extends Error {
   }
 }
 
-async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
+export async function fetchAutenticata(path: string, options: RequestInit = {}): Promise<Response> {
+  const autenticazione = path.startsWith("/api/auth/");
+  if (!autenticazione && accessoInScadenza())
+    await rinnovaSessione();
+
+  let token = getToken();
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...((options.headers as Record<string, string>) ?? {}),
   };
+  if (!(options.body instanceof FormData) && !headers["Content-Type"])
+    headers["Content-Type"] = "application/json";
+  if (autenticazione && !buildMobile)
+    headers["X-PaghePro-Client"] = "web";
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+  let res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers,
+    credentials: buildMobile ? "omit" : "include",
+  });
 
-  // Sessione non valida/scaduta: pulisci il token e ricarica (riparte l'accesso automatico).
-  if (res.status === 401 && token && !path.startsWith("/api/auth/")) {
-    setToken(null);
-    location.reload();
+  if (res.status === 401 && token && !autenticazione) {
+    await rinnovaSessione();
+    token = getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: buildMobile ? "omit" : "include",
+    });
   }
+  return res;
+}
+
+async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetchAutenticata(path, options);
 
   if (!res.ok) {
     let messaggio = `Errore ${res.status}`;
@@ -82,9 +123,47 @@ async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 // --- Tipi ---
-export interface AuthResponse { token: string; tenantId: string; ruolo: string }
+export interface AuthResponse extends SessioneAccesso {}
 export interface StudioSintesi {
   id: string; ragioneSociale: string; sospeso: boolean; numeroUtenti: number; creatoIl: string;
+}
+export interface VoceRegistroAudit {
+  id: string; utenteId?: string | null; utente: string;
+  categoria: "Accesso" | "ModificaDati" | string;
+  azione: string; entita: string; chiaveEntita: string;
+  campiModificati?: string | null; metodoHttp?: string | null;
+  percorsoTemplate?: string | null; esito?: string | null;
+  statusCode?: number | null; correlationId?: string | null; quandoUtc: string;
+}
+export interface PaginaRegistroAudit {
+  voci: VoceRegistroAudit[]; pagina: number; dimensione: number; totale: number;
+}
+export interface FiltriRegistroAudit {
+  pagina?: number; dimensione?: number; categoria?: string; azione?: string;
+  entita?: string; daUtc?: string; aUtc?: string;
+}
+export interface PolicyRetention {
+  categoria: string; titolo: string; finalita: string; decorrenza: string; azione: string;
+  avvertenza: string; versione: number; giorniConservazione?: number | null;
+  attiva: boolean; approvata: boolean; baseGiuridica?: string | null;
+  riferimentoDecisione?: string | null; istruzioniBackup?: string | null; creataUtc?: string | null;
+}
+export interface SalvaPolicyRetention {
+  versioneAttesa: number; giorniConservazione?: number | null; attiva: boolean; approvata: boolean;
+  baseGiuridica?: string | null; riferimentoDecisione?: string | null; istruzioniBackup?: string | null;
+}
+export interface AnteprimaRetention {
+  id: string; categoria: string; versionePolicy: number; sogliaUtc: string;
+  candidati: number; bloccati: number; elaborabili: number; creataUtc: string; scadeUtc: string;
+  codiceConferma: string; azione: string; nota: string;
+}
+export interface BloccoConservazione {
+  id: string; categoria: string; motivoCodice: string; creatoUtc: string; revocatoUtc?: string | null;
+}
+export interface RicevutaRetention {
+  id: string; categoria: string; versionePolicy: number; sogliaUtc: string;
+  candidatiAnteprima: number; bloccati: number; elaborati: number; restantiStimati: number;
+  esito: string; iniziataUtc: string; completataUtc: string; correlationId?: string | null; digest: string;
 }
 export interface DatiVisura {
   ragioneSociale?: string | null; partitaIva?: string | null; codiceFiscale?: string | null;
@@ -354,7 +433,7 @@ function nomeFileFirmato(nome: string, formato: FormatoFirma): string {
 // --- Endpoint ---
 export const api = {
   registra: async (ragioneSociale: string, email: string, password: string) => {
-    const r = await req<AuthResponse>("/api/auth/registra", {
+    const r = await req<AuthResponse>(buildMobile ? "/api/auth/mobile/registra" : "/api/auth/registra", {
       method: "POST",
       body: JSON.stringify({ ragioneSociale, email, password }),
     });
@@ -362,7 +441,7 @@ export const api = {
     return r;
   },
   login: async (email: string, password: string, codice2fa?: string) => {
-    const r = await req<AuthResponse>("/api/auth/login", {
+    const r = await req<AuthResponse>(buildMobile ? "/api/auth/mobile/login" : "/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password, codice2fa }),
     });
@@ -376,7 +455,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ credential }),
     });
-    setToken(r.token);
     setRuolo(r.ruolo);
     return r;
   },
@@ -387,6 +465,32 @@ export const api = {
     req<{ id: string; sospeso: boolean }>(`/api/admin/studi/${id}/sospendi`, { method: "POST" }),
   riattivaStudio: (id: string) =>
     req<{ id: string; sospeso: boolean }>(`/api/admin/studi/${id}/riattiva`, { method: "POST" }),
+  registroAttivita: (filtri: FiltriRegistroAudit = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(filtri).forEach(([chiave, valore]) => {
+      if (valore !== undefined && valore !== "") query.set(chiave, String(valore));
+    });
+    return req<PaginaRegistroAudit>(`/api/audit${query.size > 0 ? `?${query}` : ""}`);
+  },
+
+  // --- Conservazione dati GDPR (solo admin dello studio): policy, blocchi, anteprime, esecuzioni ---
+  retentionPolicy: () => req<PolicyRetention[]>("/api/retention"),
+  salvaPolicyRetention: (categoria: string, dati: SalvaPolicyRetention) =>
+    req<PolicyRetention>(`/api/retention/${categoria}`, { method: "PUT", body: JSON.stringify(dati) }),
+  anteprimaRetention: (categoria: string) =>
+    req<AnteprimaRetention>(`/api/retention/${categoria}/anteprima`, { method: "POST" }),
+  blocchiConservazione: () => req<BloccoConservazione[]>("/api/retention/blocchi"),
+  creaBloccoConservazione: (categoria: string, motivoCodice: string) =>
+    req<BloccoConservazione>("/api/retention/blocchi", {
+      method: "POST",
+      body: JSON.stringify({ categoria, motivoCodice }),
+    }),
+  revocaBloccoConservazione: (id: string) =>
+    req<BloccoConservazione>(`/api/retention/blocchi/${id}/revoca`, { method: "POST" }),
+  esecuzioniRetention: () => req<RicevutaRetention[]>("/api/retention/esecuzioni"),
+  eseguiRetention: (dati: {
+    anteprimaId: string; chiaveIdempotenza: string; codiceConferma: string; dimensioneLotto?: number;
+  }) => req<RicevutaRetention>("/api/retention/esegui", { method: "POST", body: JSON.stringify(dati) }),
   aziende: () => req<Azienda[]>("/api/aziende"),
   creaDatasetDemo: () => req<{ aziende: number; dipendenti: number }>("/api/demo/dataset", { method: "POST" }),
   // Correzione anagrafica azienda (es. dopo una visura letta male): invia solo i campi da cambiare.
@@ -414,7 +518,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/aziende/${id}/logo`, { method: "POST", body: form, headers });
+    const res = await fetchAutenticata(`/api/aziende/${id}/logo`, { method: "POST", body: form, headers });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
       throw new Error((e as { errore?: string }).errore ?? `Errore ${res.status}`);
@@ -425,7 +529,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/aziende/${id}/logo`, { headers });
+    const res = await fetchAutenticata(`/api/aziende/${id}/logo`, { headers });
     if (!res.ok) return null;
     return URL.createObjectURL(await res.blob());
   },
@@ -435,7 +539,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/rapporti/${rapportoId}/cu/${anno}/pdf`, { headers });
+    const res = await fetchAutenticata(`/api/rapporti/${rapportoId}/cu/${anno}/pdf`, { headers });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
       throw new Error((e as { errore?: string }).errore ?? `Errore ${res.status}`);
@@ -467,7 +571,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/cedolini/${id}/pdf`, { headers });
+    const res = await fetchAutenticata(`/api/cedolini/${id}/pdf`, { headers });
     if (!res.ok) {
       let messaggio = `Errore ${res.status}`;
       try {
@@ -532,7 +636,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/inail/${id}/bozza`, { headers });
+    const res = await fetchAutenticata(`/api/inail/${id}/bozza`, { headers });
     if (!res.ok) throw new Error(`Errore ${res.status}`);
     const match = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") ?? "");
     return { blob: await res.blob(), filename: match?.[1] ?? "autoliquidazione-inail.txt" };
@@ -612,7 +716,7 @@ export const api = {
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(`${BASE}/api/firma/cades`, { method: "POST", body: form, headers });
+    const res = await fetchAutenticata("/api/firma/cades", { method: "POST", body: form, headers });
     if (!res.ok) {
       let messaggio = `Errore ${res.status}`;
       try {
@@ -633,7 +737,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/firma/verifica`, { method: "POST", body: form, headers });
+    const res = await fetchAutenticata("/api/firma/verifica", { method: "POST", body: form, headers });
     if (!res.ok) throw new Error(`Errore ${res.status}`);
     return (await res.json()) as EsitoVerifica;
   },
@@ -703,7 +807,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/bilanci/${id}/pdf`, { headers });
+    const res = await fetchAutenticata(`/api/bilanci/${id}/pdf`, { headers });
     if (!res.ok) {
       let messaggio = `Errore ${res.status}`;
       try {
@@ -780,7 +884,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/documenti-scadenze`, { method: "POST", body: form, headers });
+    const res = await fetchAutenticata("/api/documenti-scadenze", { method: "POST", body: form, headers });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as { errore?: string }).errore ?? `Errore ${res.status}`); }
     return (await res.json()) as EsitoCaricamentoScadenza;
   },
@@ -808,7 +912,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/aziende/da-visura`, { method: "POST", body: form, headers });
+    const res = await fetchAutenticata("/api/aziende/da-visura", { method: "POST", body: form, headers });
     if (!res.ok) {
       let messaggio = `Errore ${res.status}`;
       try {
@@ -829,7 +933,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/unilav/pdf`, { method: "POST", body: form, headers });
+    const res = await fetchAutenticata("/api/unilav/pdf", { method: "POST", body: form, headers });
     if (!res.ok) {
       let messaggio = `Errore ${res.status}`;
       try {
@@ -874,7 +978,7 @@ export const api = {
     const token = getToken();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/api/moduli/aa7-10/pdf`, {
+    const res = await fetchAutenticata("/api/moduli/aa7-10/pdf", {
       method: "POST",
       headers,
       body: JSON.stringify(richiesta),
@@ -893,7 +997,151 @@ export const api = {
     const match = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") ?? "");
     return { blob: await res.blob(), filename: match?.[1] ?? "AA7-10.pdf" };
   },
+
+  // --- Governor AI (G2): mandati, accessi governati, revoca, trasparenza ---
+
+  aiEmettiGrant: (richiesta: RichiestaGrantAi) =>
+    req<GrantAiEmesso>("/api/ai/governor/grants", { method: "POST", body: JSON.stringify(richiesta) }),
+
+  /** Ogni lettura di Aurora passa da qui: 403 = negato (il motivo arriva nel corpo). */
+  aiAccesso: async (lease: string, risorsa: string, operazione: string): Promise<EsitoAccessoAi> => {
+    try {
+      return await req<EsitoAccessoAi>("/api/ai/governor/accesso", {
+        method: "POST",
+        body: JSON.stringify({ lease, risorsa, operazione }),
+      });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403 && e.corpo && "consentito" in e.corpo)
+        return e.corpo as unknown as EsitoAccessoAi;
+      throw e;
+    }
+  },
+
+  /** Query broker: permesso + dati minimizzati in un passo; scope dal mandato, non dal client. */
+  aiQuery: async <T = unknown>(lease: string, risorsa: string): Promise<EsitoQueryAi<T>> => {
+    try {
+      return await req<EsitoQueryAi<T>>("/api/ai/governor/query", {
+        method: "POST",
+        body: JSON.stringify({ lease, risorsa }),
+      });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403 && e.corpo && "consentito" in e.corpo)
+        return e.corpo as unknown as EsitoQueryAi<T>;
+      throw e;
+    }
+  },
+
+  aiRevocaGrant: (grantId: string) =>
+    req<{ revocato: boolean }>(`/api/ai/governor/grants/${grantId}/revoca`, { method: "POST" }),
+
+  aiArresta: () => req<{ revocati: number }>("/api/ai/governor/arresta", { method: "POST" }),
+
+  aiCosaVede: (grantId: string) =>
+    req<CosaVedeAi>(`/api/ai/governor/grants/${grantId}`),
+
+  // --- Posta (email/PEC): caselle collegate self-service, il triage AI resta sempre da confermare ---
+  caselleEmail: () => req<CasellaEmail[]>("/api/posta/caselle"),
+  creaCasellaEmail: (c: NuovaCasellaEmail) =>
+    req<CasellaEmail>("/api/posta/caselle", { method: "POST", body: JSON.stringify(c) }),
+  eliminaCasellaEmail: (id: string) =>
+    req<void>(`/api/posta/caselle/${id}`, { method: "DELETE" }),
+  sincronizzaCasellaEmail: (id: string) =>
+    req<EsitoSincronizzazioneEmail>(`/api/posta/caselle/${id}/sincronizza`, { method: "POST" }),
+  messaggiEmail: (filtri?: FiltriMessaggiEmail) => {
+    const params = new URLSearchParams();
+    if (filtri?.casellaId) params.set("casellaId", filtri.casellaId);
+    if (filtri?.letto !== undefined) params.set("letto", String(filtri.letto));
+    if (filtri?.urgente !== undefined) params.set("urgente", String(filtri.urgente));
+    if (filtri?.pubblicita !== undefined) params.set("pubblicita", String(filtri.pubblicita));
+    if (filtri?.soloProposte) params.set("soloProposte", "true");
+    const qs = params.toString();
+    return req<MessaggioEmail[]>(`/api/posta/messaggi${qs ? `?${qs}` : ""}`);
+  },
+  corpoMessaggioEmail: (id: string) =>
+    req<{ corpo: string | null; errore: string | null }>(`/api/posta/messaggi/${id}/corpo`),
+  marcaLettoEmail: (id: string, letto: boolean) =>
+    req<void>(`/api/posta/messaggi/${id}/letto`, { method: "POST", body: JSON.stringify({ letto }) }),
+  proponiTriageEmail: (id: string) =>
+    req<MessaggioEmail>(`/api/posta/messaggi/${id}/proponi-ai`, { method: "POST" }),
+  confermaTriageEmail: (id: string, urgente?: boolean | null, pubblicita?: boolean | null) =>
+    req<void>(`/api/posta/messaggi/${id}/conferma`, {
+      method: "POST",
+      body: JSON.stringify({ urgente, pubblicita }),
+    }),
 };
+
+// --- Tipi del Governor AI ---
+
+export interface RichiestaGrantAi {
+  purposeCode: string;
+  modalita: "Stretta" | "Guidata";
+  scopeLevel: "S0" | "S1" | "S2";
+  aziendaId?: string | null;
+  periodo?: string | null;
+  risorse: string[];
+  operazioni: string[];
+  durataMinuti?: number;
+  maxLetture?: number;
+}
+
+export interface ManifestGrantAi {
+  grantId: string;
+  purposeCode: string;
+  modalita: string;
+  scopeLevel: string;
+  aziendaId: string | null;
+  periodo: string | null;
+  risorse: string[];
+  operazioni: string[];
+  autonomiaMax: string;
+  scadeUtc: string;
+  maxLetture: number;
+  lettureUsate: number;
+  stato: string;
+  descrizione: string;
+}
+
+export interface GrantAiEmesso {
+  manifest: ManifestGrantAi;
+  lease: string;
+}
+
+export interface EsitoAccessoAi {
+  consentito: boolean;
+  motivo: string | null;
+  lettureRimanenti: number;
+}
+
+export interface CosaVedeAi {
+  manifest: ManifestGrantAi;
+  eventi: { sequenza: number; evento: string; dettaglio: string; motivo: string | null; quandoUtc: string }[];
+}
+
+export interface EsitoQueryAi<T = unknown> {
+  consentito: boolean;
+  motivo: string | null;
+  risorsa: string;
+  righe: T[];
+  totale: number;
+  lettureRimanenti: number;
+}
+
+export interface RigaScadenzaAi { titolo: string; urgenza: string; giorniAllaScadenza: number }
+export interface RigaAziendaAi {
+  ragioneSociale: string;
+  matricolaInpsPresente: boolean;
+  patInailPresente: boolean;
+  codiceCatastalePresente: boolean;
+  ibanPresente: boolean;
+  recapitoFiscalePresente: boolean;
+}
+export interface RigaDipendenteAi { nominativo: string; codiceCcnl: string | null; livello: string | null }
+export interface RigaCartellinoAi {
+  nominativo: string;
+  elaborato: boolean;
+  giorniMalattia: number;
+  numeroEventoMalattiaAnno: number;
+}
 
 export interface Persona {
   id: string; cognome: string; nome: string; codiceFiscale: string;
@@ -993,4 +1241,25 @@ export interface SalvaConfigSdi {
   modalita: string; provider?: string; baseUrl?: string; apiKey?: string | null;
   endpointInvio?: string; endpointEsito?: string; campoId?: string; campoStato?: string;
   firmaLocale: boolean; attivo: boolean;
+}
+
+// --- Tipi Posta (email/PEC) ---
+
+export interface CasellaEmail {
+  id: string; etichetta: string; tipo: string; host: string; porta: number; utente: string;
+  ssl: boolean; attiva: boolean; passwordImpostata: boolean; ultimaSincronizzazioneIl: string | null;
+}
+export interface NuovaCasellaEmail {
+  etichetta: string; tipo: string; host: string; porta: number;
+  utente: string; password?: string; ssl: boolean; attiva: boolean;
+}
+export interface EsitoSincronizzazioneEmail { nuoviMessaggi: number; errore: string | null }
+export interface MessaggioEmail {
+  id: string; casellaId: string; mittente: string; oggetto: string; dataRicezione: string;
+  anteprima: string; letto: boolean; urgente: boolean | null; pubblicita: boolean | null;
+  urgenteProposto: boolean | null; pubblicitaProposto: boolean | null;
+  confidenzaUrgente: number | null; confidenzaPubblicita: number | null; fonteProposta: string | null;
+}
+export interface FiltriMessaggiEmail {
+  casellaId?: string; letto?: boolean; urgente?: boolean; pubblicita?: boolean; soloProposte?: boolean;
 }

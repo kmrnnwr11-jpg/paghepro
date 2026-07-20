@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlarmClock,
+  Archive,
   BadgeEuro,
   Bell,
   BookOpen,
@@ -12,6 +13,7 @@ import {
   ChevronDown,
   CircleDot,
   ClipboardList,
+  Clock,
   Factory,
   FileSignature,
   FileText,
@@ -21,9 +23,12 @@ import {
   Globe2,
   HelpCircle,
   House,
+  History,
   Landmark,
   LayoutDashboard,
   LogOut,
+  Mail,
+  Megaphone,
   Menu,
   PlugZap,
   ReceiptText,
@@ -41,7 +46,19 @@ import {
 import { api, type Azienda, type Promemoria } from "../api";
 import { useAuth } from "../auth";
 import { getRuolo, getToken } from "../api";
-import { AZIENDA_CORRENTE_CAMBIATA, leggiAziendaCorrenteId } from "../aziendaCorrente";
+import {
+  AZIENDA_CORRENTE_CAMBIATA,
+  chiaveStorageTenant,
+  leggiAziendaCorrenteId,
+  leggiUltimaAziendaId,
+  salvaAziendaCorrenteId,
+} from "../aziendaCorrente";
+import {
+  aggiornaStrumentiRecenti,
+  sezioneRichiedeAzienda,
+  type SectionKey,
+  type StrumentoRecente,
+} from "../homeStudio";
 
 // Email dell'utente loggato, letta dal token (per mostrare il vero account, non un nome finto).
 function emailDalToken(): string {
@@ -60,7 +77,7 @@ function inizialiAzienda(nome: string): string {
   if (parole.length === 0) return "AZ";
   return parole.slice(0, 2).map((p) => p[0]).join("").toUpperCase();
 }
-import { Aziende, AziendeLaterale } from "./Aziende";
+import { Aziende } from "./Aziende";
 import { Cedolino } from "./Cedolino";
 import { Dipendente } from "./Dipendente";
 import { Dipendenti } from "./Dipendenti";
@@ -87,42 +104,12 @@ import { Moduli } from "./Moduli";
 import { CollegaProvider } from "./CollegaProvider";
 import { CaricaUnilav } from "./CaricaUnilav";
 import { Studi } from "./Studi";
+import { RegistroAttivita } from "./RegistroAttivita";
+import { Retention } from "./Retention";
+import { Posta } from "./Posta";
 import { aiutoPerSezione } from "../guida";
-
-type SectionKey =
-  | "dashboard"
-  | "aziende"
-  | "pratiche"
-  | "moduli"
-  | "dipendenti"
-  | "dipendente"
-  | "presenze"
-  | "cedolini"
-  | "calcolo"
-  | "adempimenti"
-  | "scadenzario"
-  | "fatture"
-  | "pagamenti"
-  | "firma"
-  | "contabilita"
-  | "lipe"
-  | "iva-annuale"
-  | "bilancio"
-  | "documenti"
-  | "elaborazioni"
-  | "f24"
-  | "fine-anno"
-  | "cu"
-  | "mod770"
-  | "redditi-pf"
-  | "irap"
-  | "ires"
-  | "imu"
-  | "intrastat"
-  | "impostazioni"
-  | "collega-sdi"
-  | "utenti"
-  | "studi";
+import { AuroraPanel } from "../Aurora";
+import { apriLinkEsterno } from "../mobile/piattaforma";
 
 interface NavItem {
   key: SectionKey;
@@ -131,7 +118,7 @@ interface NavItem {
 }
 
 const primaryNav: NavItem[] = [
-  { key: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { key: "dashboard", icon: LayoutDashboard, label: "Home" },
   { key: "aziende", icon: Building2, label: "Aziende" },
   { key: "pratiche", icon: FolderKanban, label: "Pratiche ComUnica" },
   { key: "moduli", icon: ClipboardList, label: "Moduli ufficiali" },
@@ -140,6 +127,7 @@ const primaryNav: NavItem[] = [
   { key: "cedolini", icon: FileText, label: "Cedolini" },
   { key: "adempimenti", icon: Send, label: "Adempimenti" },
   { key: "scadenzario", icon: AlarmClock, label: "Scadenzario" },
+  { key: "posta", icon: Mail, label: "Posta" },
   { key: "fatture", icon: ReceiptText, label: "Fatturazione" },
   { key: "pagamenti", icon: BadgeEuro, label: "Pagamenti clienti" },
   { key: "firma", icon: FileSignature, label: "Firma digitale" },
@@ -167,6 +155,8 @@ const adminNav: NavItem[] = [
   { key: "collega-sdi", icon: PlugZap, label: "Collega Fatturazione" },
   { key: "impostazioni", icon: Settings, label: "Impostazioni" },
   { key: "utenti", icon: ShieldCheck, label: "Utenti e permessi" },
+  { key: "audit", icon: History, label: "Registro attività" },
+  { key: "retention", icon: Archive, label: "Conservazione dati" },
 ];
 
 const quickNav: SectionKey[] = ["dashboard", "aziende", "dipendenti", "documenti", "scadenzario", "f24"];
@@ -180,7 +170,7 @@ const navActiveFor: Partial<Record<SectionKey, SectionKey>> = {
 
 // Breadcrumb per ogni schermata (allineato a PaghePro Studio).
 const crumbsFor: Partial<Record<SectionKey, string[]>> = {
-  dashboard: ["Home", "Dashboard"],
+  dashboard: ["Home studio"],
   dipendente: ["Home", "Dipendenti", "Scheda"],
   presenze: ["Home", "Presenze", "Cartellino mensile"],
   elaborazioni: ["Home", "Cedolini", "Elaborazione"],
@@ -190,7 +180,7 @@ const crumbsFor: Partial<Record<SectionKey, string[]>> = {
 };
 
 const sectionTitle: Record<SectionKey, string> = {
-  dashboard: "Dashboard",
+  dashboard: "Home studio",
   aziende: "Aziende",
   pratiche: "Pratiche ComUnica",
   moduli: "Moduli ufficiali — AA7/10",
@@ -201,6 +191,7 @@ const sectionTitle: Record<SectionKey, string> = {
   calcolo: "Calcolo cedolino",
   adempimenti: "Adempimenti",
   scadenzario: "Scadenzario",
+  posta: "Posta",
   fatture: "Fatturazione",
   pagamenti: "Pagamenti clienti",
   firma: "Firma digitale",
@@ -222,11 +213,46 @@ const sectionTitle: Record<SectionKey, string> = {
   impostazioni: "Impostazioni",
   "collega-sdi": "Collega Fatturazione Elettronica",
   utenti: "Utenti e permessi",
+  audit: "Registro attività",
+  retention: "Conservazione dati (GDPR)",
   studi: "Studi — super-admin",
 };
 
+const CHIAVE_STRUMENTI_RECENTI = "paghepro:strumenti-recenti";
+
+function leggiStrumentiRecenti(): StrumentoRecente[] {
+  try {
+    const valore = JSON.parse(localStorage.getItem(chiaveStorageTenant(CHIAVE_STRUMENTI_RECENTI)) ?? "[]") as unknown;
+    if (!Array.isArray(valore)) return [];
+    return valore.filter((voce): voce is StrumentoRecente => {
+      if (!voce || typeof voce !== "object") return false;
+      const v = voce as Partial<StrumentoRecente>;
+      return typeof v.sezione === "string"
+        && Object.hasOwn(sectionTitle, v.sezione)
+        && typeof v.aziendaId === "string"
+        && typeof v.usatoAlle === "number";
+    }).slice(0, 4);
+  } catch {
+    return [];
+  }
+}
+
+function salvaStrumentiRecenti(voci: StrumentoRecente[]): void {
+  try {
+    localStorage.setItem(chiaveStorageTenant(CHIAVE_STRUMENTI_RECENTI), JSON.stringify(voci));
+  } catch {
+    /* storage non disponibile: le scorciatoie restano facoltative */
+  }
+}
+
 function sezioneDaHash(): SectionKey {
   const candidata = decodeURIComponent(window.location.hash.slice(1)).trim().toLowerCase();
+  if (candidata === "audit" && !["admin", "superadmin"].includes(getRuolo() ?? ""))
+    return "dashboard";
+  if (candidata === "retention" && getRuolo() !== "admin")
+    return "dashboard";
+  if (candidata === "studi" && getRuolo() !== "superadmin")
+    return "dashboard";
   return candidata && Object.hasOwn(sectionTitle, candidata)
     ? candidata as SectionKey
     : "dashboard";
@@ -271,39 +297,66 @@ const kpis = [
   },
 ];
 
-// Vuoto: i dati reali del flusso compariranno qui man mano che lavori (niente esempi finti).
-const workflow: { label: string; value: string; state: string; tone: string; icon: string }[] = [];
-
-// Vuoto: i documenti/adempimenti reali compariranno qui (niente esempi finti).
-const documentQueue: {
-  tag: string; tone: string; title: string; ref: string; due: string; state: string; stateTone: string;
-}[] = [];
-
 export function Dashboard() {
   const { esci } = useAuth();
   const [active, setActive] = useState<SectionKey>(sezioneDaHash);
   const [rapportoSel, setRapportoSel] = useState<string | null>(null);
   const [aiutoAperto, setAiutoAperto] = useState(false);
+  const [auroraAperta, setAuroraAperto] = useState(false);
   const [slidebarAperta, setSlidebarAperta] = useState(false);
   const [commandAperta, setCommandAperta] = useState(false);
+  const [aziende, setAziende] = useState<Azienda[]>([]);
   const [aziendaCorrente, setAziendaCorrente] = useState<Azienda | null>(null);
-  const apriDipendente = (rapportoId: string) => { setRapportoSel(rapportoId); setActive("dipendente"); };
+  const [aziendeInCaricamento, setAziendeInCaricamento] = useState(true);
+  const [erroreAziende, setErroreAziende] = useState<string | null>(null);
+  const [sceltaAziendaRichiesta, setSceltaAziendaRichiesta] = useState(false);
+  const [sezioneDopoScelta, setSezioneDopoScelta] = useState<SectionKey | null>(null);
+  const [strumentiRecenti, setStrumentiRecenti] = useState<StrumentoRecente[]>(leggiStrumentiRecenti);
+  const aziendeRef = useRef<Azienda[]>([]);
+  const apriDipendente = (rapportoId: string) => {
+    setRapportoSel(rapportoId);
+    setActive("dipendente");
+    window.location.hash = "dipendente";
+  };
 
   useEffect(() => {
     let vivo = true;
+    let primaCarica = true;
     async function caricaAziendaCorrente() {
+      if (primaCarica) setAziendeInCaricamento(true);
       try {
         const elenco = await api.aziende();
         if (!vivo) return;
+        aziendeRef.current = elenco;
+        setAziende(elenco);
+        setErroreAziende(null);
         const idCorrente = leggiAziendaCorrenteId();
-        const scelta = (idCorrente ? elenco.find((a) => a.id === idCorrente) : undefined) ?? elenco[0] ?? null;
+        const scelta = idCorrente ? elenco.find((a) => a.id === idCorrente) ?? null : null;
         setAziendaCorrente(scelta);
-      } catch {
-        if (vivo) setAziendaCorrente(null);
+      } catch (e) {
+        if (!vivo) return;
+        aziendeRef.current = [];
+        setAziende([]);
+        setAziendaCorrente(null);
+        setErroreAziende(e instanceof Error ? e.message : "Non riesco a caricare le aziende.");
+      } finally {
+        if (vivo) {
+          setAziendeInCaricamento(false);
+          primaCarica = false;
+        }
       }
     }
 
-    const aggiorna = () => { void caricaAziendaCorrente(); };
+    const aggiorna = (evento: Event) => {
+      const id = (evento as CustomEvent<{ id?: unknown }>).detail?.id;
+      if (typeof id === "string") {
+        const scelta = aziendeRef.current.find((azienda) => azienda.id === id);
+        // L'evento è sincrono: aggiorna subito la shell prima che un modulo
+        // navighi, evitando di mostrare o registrare il cliente precedente.
+        if (scelta) setAziendaCorrente(scelta);
+      }
+      void caricaAziendaCorrente();
+    };
     void caricaAziendaCorrente();
     window.addEventListener(AZIENDA_CORRENTE_CAMBIATA, aggiorna);
     window.addEventListener("storage", aggiorna);
@@ -317,11 +370,27 @@ export function Dashboard() {
   // Promemoria reali (DURC, F24…): il GET rigenera anche le scadenze lato server,
   // quindi l'avviso compare da solo appena un DURC entra nei 30 giorni di preavviso.
   const [promemoria, setPromemoria] = useState<Promemoria[]>([]);
+  const [promemoriaInCaricamento, setPromemoriaInCaricamento] = useState(true);
+  const [errorePromemoria, setErrorePromemoria] = useState<string | null>(null);
   const [avvisoDurcNascosto, setAvvisoDurcNascosto] = useState(
     () => sessionStorage.getItem("avvisoDurcNascosto") === "1",
   );
   useEffect(() => {
-    api.scadenzario().then(setPromemoria).catch(() => { /* offline o non pronto: nessun avviso */ });
+    let vivo = true;
+    setPromemoriaInCaricamento(true);
+    setErrorePromemoria(null);
+    api.scadenzario()
+      .then((voci) => {
+        if (!vivo) return;
+        setPromemoria(voci);
+      })
+      .catch(() => {
+        if (vivo) setErrorePromemoria("Scadenze non disponibili: riprova dallo scadenzario.");
+      })
+      .finally(() => {
+        if (vivo) setPromemoriaInCaricamento(false);
+      });
+    return () => { vivo = false; };
   }, [active]);
   const urgenti = promemoria.filter(
     (p) => p.urgenza === "scaduto" || p.urgenza === "oggi" || p.urgenza === "in_scadenza",
@@ -334,10 +403,44 @@ export function Dashboard() {
 
   const navActive = navActiveFor[active] ?? active;
   const crumbs = useMemo(() => crumbsFor[active] ?? ["Home", sectionTitle[active]], [active]);
+
+  const scegliAzienda = (azienda: Azienda) => {
+    salvaAziendaCorrenteId(azienda.id);
+    setAziendaCorrente(azienda);
+    setSceltaAziendaRichiesta(false);
+  };
+
   const vaiA = (key: SectionKey) => {
+    if (sezioneRichiedeAzienda(key) && !aziendaCorrente) {
+      setSezioneDopoScelta(key);
+      setSceltaAziendaRichiesta(true);
+      setActive("dashboard");
+      if (window.location.hash !== "#dashboard") window.location.hash = "dashboard";
+      setSlidebarAperta(false);
+      window.setTimeout(() => document.getElementById("cerca-azienda-home")?.focus(), 0);
+      return;
+    }
+    if (key === "dashboard") setSezioneDopoScelta(null);
     setActive(key);
     if (window.location.hash !== `#${key}`) window.location.hash = key;
     setSlidebarAperta(false);
+  };
+
+  const apriSelettoreAzienda = () => {
+    setSezioneDopoScelta(null);
+    setActive("dashboard");
+    if (window.location.hash !== "#dashboard") window.location.hash = "dashboard";
+    setSlidebarAperta(false);
+    window.setTimeout(() => document.getElementById("cerca-azienda-home")?.focus(), 0);
+  };
+
+  const riprendiLavoro = (voce: StrumentoRecente) => {
+    const azienda = aziende.find((a) => a.id === voce.aziendaId);
+    if (!azienda) return;
+    setSezioneDopoScelta(null);
+    scegliAzienda(azienda);
+    setActive(voce.sezione);
+    if (window.location.hash !== `#${voce.sezione}`) window.location.hash = voce.sezione;
   };
 
   useEffect(() => {
@@ -345,6 +448,37 @@ export function Dashboard() {
     window.addEventListener("hashchange", aggiornaDaHash);
     return () => window.removeEventListener("hashchange", aggiornaDaHash);
   }, []);
+
+  useEffect(() => {
+    if (aziendeInCaricamento || aziendaCorrente || !sezioneRichiedeAzienda(active)) return;
+    setSezioneDopoScelta(active);
+    setSceltaAziendaRichiesta(true);
+    setActive("dashboard");
+    if (window.location.hash !== "#dashboard") window.location.hash = "dashboard";
+  }, [active, aziendaCorrente, aziendeInCaricamento]);
+
+  useEffect(() => {
+    if (!aziendaCorrente || !sezioneDopoScelta) return;
+    const destinazione = sezioneDopoScelta;
+    setSezioneDopoScelta(null);
+    setSceltaAziendaRichiesta(false);
+    setActive(destinazione);
+    if (window.location.hash !== `#${destinazione}`) window.location.hash = destinazione;
+  }, [aziendaCorrente, sezioneDopoScelta]);
+
+  useEffect(() => {
+    if (!aziendaCorrente || !sezioneRichiedeAzienda(active) || active === "dipendente" || active === "calcolo") return;
+    setStrumentiRecenti((correnti) => {
+      const nuove = aggiornaStrumentiRecenti(
+        correnti,
+        active,
+        aziendaCorrente.id,
+        new Set(aziende.map((azienda) => azienda.id)),
+      );
+      salvaStrumentiRecenti(nuove);
+      return nuove;
+    });
+  }, [active, aziendaCorrente, aziende]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -362,12 +496,18 @@ export function Dashboard() {
   }, []);
 
   // Voce "Studi" visibile solo al super-admin di piattaforma.
-  const adminNavVisibile = getRuolo() === "superadmin"
-    ? [...adminNav, { key: "studi" as SectionKey, icon: Building2, label: "Studi (admin)" }]
-    : adminNav;
+  const ruolo = getRuolo();
+  const amministrazionePerRuolo = adminNav.filter((item) =>
+    (item.key !== "audit" || ruolo === "admin" || ruolo === "superadmin")
+    // La conservazione dati è una responsabilità dell'admin dello studio: il backend
+    // (RetentionEndpoints.SoloAdmin) respinge anche il super-admin di piattaforma.
+    && (item.key !== "retention" || ruolo === "admin"));
+  const adminNavVisibile = ruolo === "superadmin"
+    ? [...amministrazionePerRuolo, { key: "studi" as SectionKey, icon: Building2, label: "Studi (admin)" }]
+    : amministrazionePerRuolo;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${auroraAperta ? "con-aurora" : ""}`}>
       <MiniRail active={navActive} onNavigate={vaiA} onOpenMenu={() => setSlidebarAperta(true)} />
 
       <div
@@ -394,11 +534,11 @@ export function Dashboard() {
           <NavGroup title="Amministrazione" items={adminNavVisibile} active={navActive} onChange={vaiA} />
         </nav>
 
-        <button className="company-switch" type="button" onClick={() => vaiA("aziende")}>
-          <span className="company-icon">{aziendaCorrente ? inizialiAzienda(aziendaCorrente.ragioneSociale) : "🏢"}</span>
+        <button className="company-switch" type="button" onClick={apriSelettoreAzienda}>
+          <span className="company-icon">{aziendaCorrente ? inizialiAzienda(aziendaCorrente.ragioneSociale) : <Building2 size={17} aria-hidden="true" />}</span>
           <span>
-            <strong>{aziendaCorrente?.ragioneSociale ?? "Il tuo studio"}</strong>
-            <small>{aziendaCorrente ? "Azienda selezionata" : "Cambia azienda"}</small>
+            <strong>{aziendaCorrente?.ragioneSociale ?? "Scegli azienda"}</strong>
+            <small>{aziendaCorrente ? "Azienda di lavoro" : "Prima di iniziare"}</small>
           </span>
           <span className="chevron">›</span>
         </button>
@@ -408,8 +548,9 @@ export function Dashboard() {
         <Topbar
           onMenu={() => setSlidebarAperta(true)}
           onCommand={() => setCommandAperta(true)}
-          onCompanyClick={() => vaiA("aziende")}
+          onCompanyClick={apriSelettoreAzienda}
           onAiuto={() => setAiutoAperto(true)}
+          onAurora={() => setAuroraAperto((aperto) => !aperto)}
           onEsci={esci}
           notifiche={urgenti.length}
           onNotifiche={() => vaiA("scadenzario")}
@@ -434,13 +575,35 @@ export function Dashboard() {
             ))}
           </div>
 
-          {active === "dashboard" ? (
-            <DashboardHome onNavigate={vaiA} />
+          {aziendeInCaricamento ? (
+            <section className="glass-card home-loading" aria-live="polite">Caricamento aziende…</section>
+          ) : active === "dashboard" || (!aziendaCorrente && sezioneRichiedeAzienda(active)) ? (
+            <DashboardHome
+              onNavigate={vaiA}
+              aziende={aziende}
+              aziendaCorrente={aziendaCorrente}
+              onScegliAzienda={scegliAzienda}
+              erroreAziende={erroreAziende}
+              sceltaRichiesta={sceltaAziendaRichiesta}
+              promemoria={promemoria}
+              promemoriaInCaricamento={promemoriaInCaricamento}
+              errorePromemoria={errorePromemoria}
+              strumentiRecenti={strumentiRecenti}
+              onRiprendi={riprendiLavoro}
+            />
           ) : (
             <ModuleScreen active={active} onNavigate={vaiA} rapportoSel={rapportoSel} onApriDipendente={apriDipendente} />
           )}
         </main>
       </div>
+
+      {auroraAperta && (
+        <AuroraPanel
+          azienda={aziendaCorrente}
+          onNavigate={vaiA}
+          onChiudi={() => setAuroraAperto(false)}
+        />
+      )}
 
       {aiutoAperto && (
         <AiutoPanel sezione={navActive} onChiudi={() => setAiutoAperto(false)} />
@@ -592,7 +755,7 @@ function CommandPalette({ onClose, onNavigate }: { onClose: () => void; onNaviga
             name="command-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cerca comando, azienda, dipendente o scadenza"
+            placeholder="Cerca uno strumento o un'azione"
           />
           <button type="button" aria-label="Chiudi comandi" onClick={onClose}><X size={17} aria-hidden="true" /></button>
         </div>
@@ -716,7 +879,10 @@ function AvvisoDurc({
         </span>
       </div>
       <div className="avviso-azioni">
-        <a className="btn primary" href={DURC_ONLINE_URL} target="_blank" rel="noreferrer">
+        <a className="btn primary" href={DURC_ONLINE_URL} onClick={(e) => {
+          e.preventDefault();
+          void apriLinkEsterno(DURC_ONLINE_URL);
+        }}>
           🌐 Richiedi Durc On Line
         </a>
         <button className="btn secondary" type="button" onClick={onApriScadenzario}>
@@ -741,6 +907,7 @@ function Topbar({
   onCommand,
   onCompanyClick,
   onAiuto,
+  onAurora,
   onEsci,
   notifiche,
   onNotifiche,
@@ -750,6 +917,7 @@ function Topbar({
   onCommand: () => void;
   onCompanyClick: () => void;
   onAiuto: () => void;
+  onAurora: () => void;
   onEsci: () => void;
   notifiche: number;
   onNotifiche: () => void;
@@ -761,8 +929,8 @@ function Topbar({
         <Menu size={19} aria-hidden="true" />
       </button>
       <button className="soft-button company-top" type="button" onClick={onCompanyClick}>
-        <span>{aziendaCorrente ? inizialiAzienda(aziendaCorrente.ragioneSociale) : "🏢"}</span>
-        <strong>{aziendaCorrente?.ragioneSociale ?? "Il tuo studio"}</strong>
+        <span>{aziendaCorrente ? inizialiAzienda(aziendaCorrente.ragioneSociale) : <Building2 size={15} aria-hidden="true" />}</span>
+        <strong>{aziendaCorrente?.ragioneSociale ?? "Scegli azienda"}</strong>
         <span className="muted">▾</span>
       </button>
 
@@ -771,7 +939,7 @@ function Topbar({
         <input
           id="global-search"
           name="global-search"
-          placeholder="Cerca dipendenti, cedolini, documenti, adempimenti..."
+          placeholder="Cerca uno strumento o un'azione..."
           readOnly
           tabIndex={-1}
         />
@@ -780,7 +948,16 @@ function Topbar({
 
       <div className="topbar-spacer" />
 
-      <button className="soft-button guide-top" type="button" onClick={onAiuto} title="Aiuto: spiega in modo semplice la pagina dove sei">
+      <button
+        className="soft-button guide-top"
+        type="button"
+        onClick={onAurora}
+        title="Aurora: controlla i tuoi dati e ti segnala cosa sistemare (in sola lettura)"
+      >
+        <Sparkles size={18} aria-hidden="true" />
+        <strong>Aurora</strong>
+      </button>
+      <button className="soft-button guide-soft" type="button" onClick={onAiuto} title="Aiuto: spiega in modo semplice la pagina dove sei">
         <HelpCircle size={18} aria-hidden="true" />
         <strong>Aiuto</strong>
       </button>
@@ -812,239 +989,600 @@ function Topbar({
   );
 }
 
-function DashboardHome({ onNavigate }: { onNavigate: (key: SectionKey) => void }) {
-  const [kpiReali, setKpiReali] = useState(kpis);
+// Riquadri colorati della home stile "sportello CAF": ogni modulo è una mattonella
+// piatta con il nome del servizio; il colore aiuta a ritrovarlo a colpo d'occhio.
+interface TileHome {
+  key: SectionKey;
+  label: string;
+  colore: string;
+}
+
+const tilesPaghe: TileHome[] = [
+  { key: "aziende", label: "Aziende", colore: "#43933f" },
+  { key: "dipendenti", label: "Dipendenti", colore: "#33689c" },
+  { key: "presenze", label: "Presenze", colore: "#279a8d" },
+  { key: "cedolini", label: "Cedolini", colore: "#205e86" },
+  { key: "elaborazioni", label: "Elaborazioni", colore: "#4a7fae" },
+  { key: "f24", label: "F24", colore: "#dfa02b" },
+  { key: "cu", label: "CU", colore: "#bd8d2a" },
+  { key: "mod770", label: "770", colore: "#b03a2e" },
+  { key: "redditi-pf", label: "Redditi 730", colore: "#cb4335" },
+  { key: "adempimenti", label: "Adempimenti", colore: "#5d6d7e" },
+  { key: "scadenzario", label: "Scadenze", colore: "#dd7726" },
+  { key: "fine-anno", label: "Fine anno", colore: "#7d6b94" },
+];
+
+const tilesFisco: TileHome[] = [
+  { key: "fatture", label: "Fatture", colore: "#8e2b21" },
+  { key: "pagamenti", label: "Pagamenti", colore: "#1e8449" },
+  { key: "firma", label: "Firma", colore: "#34495e" },
+  { key: "lipe", label: "LIPE / IVA", colore: "#17a2b8" },
+  { key: "iva-annuale", label: "IVA annuale", colore: "#11808f" },
+  { key: "bilancio", label: "Bilancio", colore: "#7d3c98" },
+  { key: "contabilita", label: "Contabilità", colore: "#796a3d" },
+  { key: "irap", label: "IRAP", colore: "#56877c" },
+  { key: "ires", label: "IRES", colore: "#4a69bd" },
+  { key: "imu", label: "IMU", colore: "#b03a8e" },
+  { key: "intrastat", label: "Intrastat", colore: "#6c7a89" },
+  { key: "pratiche", label: "ComUnica", colore: "#6b8e23" },
+  { key: "moduli", label: "Moduli AA7/10", colore: "#927e4a" },
+  { key: "documenti", label: "Documenti", colore: "#7f8c8d" },
+];
+
+function TileGrid({ titolo, tiles, onNavigate }: {
+  titolo: string;
+  tiles: TileHome[];
+  onNavigate: (key: SectionKey) => void;
+}) {
+  return (
+    <section className="qw-card qw-tiles-card">
+      <h2 className="qw-cluster-title">{titolo}</h2>
+      <div className="qw-tile-grid">
+        {tiles.map((tile) => (
+          <button
+            key={tile.key}
+            className="qw-tile"
+            type="button"
+            style={{ background: tile.colore }}
+            title={sectionTitle[tile.key]}
+            onClick={() => onNavigate(tile.key)}
+          >
+            {tile.label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DashboardHome({
+  onNavigate,
+  aziende,
+  aziendaCorrente,
+  onScegliAzienda,
+  erroreAziende,
+  sceltaRichiesta,
+  promemoria,
+  promemoriaInCaricamento,
+  errorePromemoria,
+  strumentiRecenti,
+  onRiprendi,
+}: {
+  onNavigate: (key: SectionKey) => void;
+  aziende: Azienda[];
+  aziendaCorrente: Azienda | null;
+  onScegliAzienda: (azienda: Azienda) => void;
+  erroreAziende: string | null;
+  sceltaRichiesta: boolean;
+  promemoria: Promemoria[];
+  promemoriaInCaricamento: boolean;
+  errorePromemoria: string | null;
+  strumentiRecenti: StrumentoRecente[];
+  onRiprendi: (voce: StrumentoRecente) => void;
+}) {
+  const [ricerca, setRicerca] = useState("");
+  const [kpiReali, setKpiReali] = useState<typeof kpis | null>(null);
+  const [kpiInCaricamento, setKpiInCaricamento] = useState(false);
+  const [erroreKpi, setErroreKpi] = useState<string | null>(null);
+  const annoCorrente = new Date().getFullYear();
+  const [annoSel, setAnnoSel] = useState(annoCorrente);
+  const ultimaAziendaId = leggiUltimaAziendaId();
+
+  // Anni selezionabili: dall'anno corrente indietro fino al più vecchio con
+  // una scadenza registrata (minimo 3 anni, come un archivio di sportello).
+  const anni = useMemo(() => {
+    let minimo = annoCorrente - 3;
+    for (const p of promemoria) {
+      const anno = Number(p.dataScadenza.slice(0, 4));
+      if (Number.isFinite(anno) && anno < minimo) minimo = anno;
+    }
+    const lista: number[] = [];
+    for (let anno = annoCorrente; anno >= minimo; anno -= 1) lista.push(anno);
+    return lista;
+  }, [promemoria, annoCorrente]);
+
+  const aziendeFiltrate = useMemo(() => {
+    const testo = ricerca.trim().toLocaleLowerCase("it");
+    const filtrate = testo
+      ? aziende.filter((a) => [a.ragioneSociale, a.partitaIva, a.codiceFiscale, a.comune, a.provincia]
+        .filter(Boolean)
+        .some((valore) => String(valore).toLocaleLowerCase("it").includes(testo)))
+      : aziende;
+    return [...filtrate].sort((a, b) => {
+      if (a.id === aziendaCorrente?.id) return -1;
+      if (b.id === aziendaCorrente?.id) return 1;
+      if (a.id === ultimaAziendaId) return -1;
+      if (b.id === ultimaAziendaId) return 1;
+      return a.ragioneSociale.localeCompare(b.ragioneSociale, "it");
+    });
+  }, [aziende, aziendaCorrente?.id, ricerca, ultimaAziendaId]);
 
   useEffect(() => {
+    let valido = true;
+    if (!aziendaCorrente) {
+      setKpiReali(null);
+      setErroreKpi(null);
+      setKpiInCaricamento(false);
+      return () => { valido = false; };
+    }
+
+    setKpiReali(null);
+    setErroreKpi(null);
+    setKpiInCaricamento(true);
     const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    (async () => {
+    void (async () => {
       try {
-        const aziende = await api.aziende();
-        const az = aziende[0];
-        if (!az) return;
         const oggi = new Date();
         const anno = oggi.getFullYear();
         const mese = oggi.getMonth() + 1;
         const trimestre = Math.floor((mese - 1) / 3) + 1;
-        const [dip, presenze, fatture, lipe] = await Promise.all([
-          api.dipendenti(az.id),
-          api.presenzeMese(az.id, anno, mese),
-          api.fatture(az.id),
-          api.lipeBozza(az.id, anno, trimestre),
+        const [dipendenti, presenze, fatture, lipe] = await Promise.all([
+          api.dipendenti(aziendaCorrente.id),
+          api.presenzeMese(aziendaCorrente.id, anno, mese),
+          api.fatture(aziendaCorrente.id),
+          api.lipeBozza(aziendaCorrente.id, anno, trimestre),
         ]);
+        if (!valido) return;
         setKpiReali([
-          { icon: Users, tone: "blue", label: "Dipendenti", detail: "In forza", value: String(dip.length), unit: "", foot: "Anagrafiche reali" },
+          { icon: Users, tone: "blue", label: "Dipendenti", detail: "In forza", value: String(dipendenti.length), unit: "", foot: "Anagrafiche dell'azienda" },
           { icon: FileText, tone: "green", label: "Cedolini", detail: `Elaborati ${mese}/${anno}`, value: String(presenze.elaborati), unit: `/${presenze.totale}`, foot: "Cedolini del mese" },
           { icon: ReceiptText, tone: "cyan", label: "Fatture", detail: "Emesse", value: String(fatture.length), unit: "", foot: "Fatture registrate" },
           { icon: Landmark, tone: "amber", label: "IVA dovuta", detail: `${trimestre}° trimestre`, value: euro(lipe.totaleDovuta), unit: " €", foot: "Dalle liquidazioni IVA" },
         ]);
-      } catch { /* mantiene i valori iniziali se l'API non risponde */ }
+      } catch {
+        if (valido) setErroreKpi("Non riesco a caricare tutta la panoramica. I dati non vengono sostituiti con zeri finti.");
+      } finally {
+        if (valido) setKpiInCaricamento(false);
+      }
     })();
-  }, []);
+    return () => { valido = false; };
+  }, [aziendaCorrente]);
+
+  const apriCreazioneAzienda = () => {
+    onNavigate("aziende");
+    window.setTimeout(() => document.getElementById("nuova-azienda-form")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+  };
+
+  const recenti = strumentiRecenti
+    .map((voce) => ({ voce, azienda: aziende.find((a) => a.id === voce.aziendaId) }))
+    .filter((riga): riga is { voce: StrumentoRecente; azienda: Azienda } => Boolean(riga.azienda));
 
   return (
-    <div className="dashboard-grid">
-      <section className="dashboard-main">
-        <div className="page-heading">
-          <div>
-            <h1>Centro operativo</h1>
-            <p>Panoramica lavoro paghe e adempimenti · dati reali</p>
-          </div>
-          <button className="btn primary" type="button" onClick={() => onNavigate("elaborazioni")}>
-            Elabora cedolini
-          </button>
-        </div>
-
-        <section className="ai-strip glass-card">
-          <div>
-            <span className="ai-chip">AI-first</span>
-            <h2>Controllo risparmio fiscale</h2>
-            <p>IVA, costi deducibili, documenti mancanti e scadenze da validare.</p>
-          </div>
-          <div className="ai-actions">
-            <button className="btn primary" type="button" onClick={() => onNavigate("documenti")}>Carica documento</button>
-            <button className="btn secondary" type="button" onClick={() => onNavigate("contabilita")}>Consigli fiscali</button>
-          </div>
-        </section>
-
-        <div className="kpi-grid">
-          {kpiReali.map((kpi) => (
-            <article key={kpi.label} className="glass-card kpi-card">
-              <div className="kpi-head">
-                <span className={`tone-icon ${kpi.tone}`}><kpi.icon size={19} strokeWidth={2.1} aria-hidden="true" /></span>
-                <div>
-                  <strong>{kpi.label}</strong>
-                  <small>{kpi.detail}</small>
-                </div>
-              </div>
-              <div className={`kpi-value ${kpi.tone}`}>
-                {kpi.value}
-                <span>{kpi.unit}</span>
-              </div>
-              <p>{kpi.foot}</p>
-            </article>
+    <div className="qw-home">
+      <section className="qw-band" aria-label="Anno di lavoro">
+        <span className="qw-band-label">Anno</span>
+        <nav className="qw-anni">
+          {anni.map((anno) => (
+            <button
+              key={anno}
+              className={`qw-anno ${anno === annoSel ? "attivo" : ""}`}
+              type="button"
+              aria-pressed={anno === annoSel}
+              onClick={() => setAnnoSel(anno)}
+            >
+              {anno}
+            </button>
           ))}
-        </div>
-
-        <section className="glass-card work-card">
-          <div className="card-title-row">
-            <div>
-              <h2>Flusso di lavoro mensile</h2>
-              <p>Stato avanzamento processi · Giugno 2026</p>
-            </div>
-            <button className="link-button" type="button" onClick={() => onNavigate("presenze")}>
-              Calendario
-            </button>
-          </div>
-          {workflow.length === 0 && (
-            <p className="muto" style={{ marginTop: 14 }}>
-              Nessun processo in corso. Il flusso si popolerà man mano che lavori (presenze, cedolini, F24…).
-            </p>
-          )}
-          <div className="workflow">
-            {workflow.length === 0 ? null : (
-              workflow.map((step, index) => (
-                <div key={step.label} className="workflow-step">
-                  {index < workflow.length - 1 && <span className="workflow-line" />}
-                  <span className={`workflow-dot ${step.tone}`}>{step.icon}</span>
-                  <strong>{step.label}</strong>
-                  <small>{step.value}</small>
-                  <em className={`status-pill ${step.tone}`}>{step.state}</em>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        <section className="glass-card queue-card">
-          <div className="card-title-row">
-            <h2>Coda documenti e adempimenti</h2>
-            <button className="link-button" type="button" onClick={() => onNavigate("documenti")}>
-              Vai a Documenti
-            </button>
-          </div>
-          <div className="tabs-line">
-            <button className="active" type="button">
-              Tutti
-            </button>
-            <button type="button">In attesa</button>
-            <button type="button">In lavorazione</button>
-            <button type="button">Bloccati</button>
-          </div>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Tipo</th>
-                  <th>Descrizione</th>
-                  <th>Riferimento</th>
-                  <th>Scadenza</th>
-                  <th>Stato</th>
-                  <th className="right">Azioni</th>
-                </tr>
-              </thead>
-              <tbody>
-                {documentQueue.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="muto" style={{ padding: 14 }}>
-                      Nessun documento ancora. I tuoi adempimenti reali compariranno qui.
-                    </td>
-                  </tr>
-                ) : (
-                  documentQueue.map((row) => (
-                    <tr key={`${row.tag}-${row.title}`}>
-                      <td>
-                        <span className={`tag ${row.tone}`}>{row.tag}</span>
-                      </td>
-                      <td>
-                        <strong>{row.title}</strong>
-                      </td>
-                      <td>{row.ref}</td>
-                      <td className="num">{row.due}</td>
-                      <td>
-                        <span className={`status-pill ${row.stateTone}`}>{row.state}</span>
-                      </td>
-                      <td className="right">
-                        <button className="mini-action" type="button">
-                          Apri
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        </nav>
+        <span className="qw-band-azienda" title="Azienda su cui stai lavorando">
+          <Building2 size={14} aria-hidden="true" />
+          {aziendaCorrente?.ragioneSociale ?? "Nessuna azienda scelta"}
+        </span>
       </section>
 
-      <DashboardRail onNavigate={onNavigate} />
+      <section className="qw-card company-start-card" aria-labelledby="titolo-scelta-azienda">
+          <div className="company-start-head">
+            <div>
+              <span className="home-step-label">Azienda cliente</span>
+              <h1 id="titolo-scelta-azienda">
+                {aziende.length === 0
+                  ? "Crea la prima azienda"
+                  : aziendaCorrente
+                    ? "Azienda di lavoro"
+                    : "Scegli l'azienda su cui lavorare"}
+              </h1>
+              <p>
+                {aziendaCorrente
+                  ? `Ogni numero e azione qui sotto riguarda ${aziendaCorrente.ragioneSociale}.`
+                  : "Prima scegli il cliente: così cedolini, fatture e adempimenti non finiscono sull'azienda sbagliata."}
+              </p>
+            </div>
+            <button className={`btn ${aziende.length === 0 ? "primary" : "secondary"}`} type="button" onClick={apriCreazioneAzienda}>
+              <Building2 size={17} aria-hidden="true" />
+              {aziende.length === 0 ? "Crea azienda" : "Crea nuova azienda"}
+            </button>
+          </div>
+
+          {sceltaRichiesta && !aziendaCorrente && (
+            <p className="company-choice-alert" role="alert">
+              Prima scegli un'azienda qui sotto; poi aprirò lo strumento richiesto.
+            </p>
+          )}
+          {erroreAziende && <p className="company-choice-alert error" role="alert">{erroreAziende}</p>}
+
+          {aziende.length === 0 ? (
+            <div className="home-empty-company">
+              <Building2 size={24} aria-hidden="true" />
+              <div>
+                <strong>Nessun cliente registrato</strong>
+                <span>Premi “Crea azienda” e inserisci i dati reali. Nessuna azienda viene creata automaticamente.</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              <label className="home-company-search" htmlFor="cerca-azienda-home">
+                <Search size={18} aria-hidden="true" />
+                <input
+                  id="cerca-azienda-home"
+                  aria-label="Cerca azienda cliente"
+                  value={ricerca}
+                  onChange={(e) => setRicerca(e.target.value)}
+                  placeholder="Cerca per nome, partita IVA, codice fiscale o comune"
+                  autoComplete="off"
+                />
+              </label>
+              {aziendeFiltrate.length === 0 ? (
+                <div className="home-company-not-found">Nessuna azienda trovata. Controlla il testo oppure creane una nuova.</div>
+              ) : (
+                <div className="home-company-list" aria-label="Aziende disponibili">
+                  {aziendeFiltrate.slice(0, 6).map((azienda) => {
+                    const selezionata = azienda.id === aziendaCorrente?.id;
+                    const ultima = !selezionata && azienda.id === ultimaAziendaId;
+                    return (
+                      <button
+                        key={azienda.id}
+                        className={`home-company-option ${selezionata ? "selected" : ""}`}
+                        type="button"
+                        aria-pressed={selezionata}
+                        onClick={() => onScegliAzienda(azienda)}
+                      >
+                        <span className="home-company-avatar">{inizialiAzienda(azienda.ragioneSociale)}</span>
+                        <span className="home-company-copy">
+                          <strong>{azienda.ragioneSociale}</strong>
+                          <small>{[
+                            azienda.partitaIva ? `P.IVA ${azienda.partitaIva}` : null,
+                            azienda.codiceFiscale ? `CF ${azienda.codiceFiscale}` : null,
+                            azienda.comune ? `${azienda.comune}${azienda.provincia ? ` (${azienda.provincia})` : ""}` : null,
+                          ].filter(Boolean).join(" · ") || "Anagrafica azienda"}</small>
+                        </span>
+                        <em>{selezionata ? "Scelta" : ultima ? "Ultima usata" : "Scegli"}</em>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {aziendeFiltrate.length > 6 && (
+                <p className="home-company-count">Mostrate 6 aziende su {aziendeFiltrate.length}. Scrivi nel campo per restringere la ricerca.</p>
+              )}
+            </>
+          )}
+        </section>
+
+      <div className="qw-tiles-wrap">
+        <TileGrid titolo="Paghe e personale" tiles={tilesPaghe} onNavigate={onNavigate} />
+        <TileGrid titolo="Fisco e contabilità" tiles={tilesFisco} onNavigate={onNavigate} />
+      </div>
+
+      {recenti.length > 0 && (
+        <div className="qw-recenti" aria-label="Riprendi il lavoro">
+          <span className="qw-recenti-label">Riprendi:</span>
+          {recenti.map(({ voce, azienda }) => {
+            const item = itemPerKey(voce.sezione);
+            return (
+              <button
+                className="qw-recente"
+                type="button"
+                key={`${voce.sezione}-${voce.aziendaId}`}
+                onClick={() => onRiprendi(voce)}
+              >
+                <item.icon size={14} aria-hidden="true" />
+                <strong>{item.label}</strong>
+                <small>{azienda.ragioneSociale} · {tempoRecente(voce.usatoAlle)}</small>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <ScadenzePanel
+        anno={annoSel}
+        promemoria={promemoria}
+        inCaricamento={promemoriaInCaricamento}
+        errore={errorePromemoria}
+        onNavigate={onNavigate}
+      />
+
+      <div className="qw-panels">
+        <section className="qw-card qw-panel">
+          <div className="qw-panel-head">
+            <ClipboardList size={15} aria-hidden="true" />
+            Sommario
+          </div>
+          {!aziendaCorrente ? (
+            <p className="muto qw-panel-empty">Scegli un'azienda qui sopra per vedere i suoi numeri.</p>
+          ) : kpiInCaricamento ? (
+            <p className="muto qw-panel-empty" aria-live="polite">Aggiornamento dati di {aziendaCorrente.ragioneSociale}…</p>
+          ) : erroreKpi ? (
+            <p className="company-choice-alert error" role="alert">{erroreKpi}</p>
+          ) : kpiReali ? (
+            <div>
+              <p className="qw-panel-scope">{aziendaCorrente.ragioneSociale}</p>
+              {kpiReali.map((kpi) => (
+                <div className="qw-som-riga" key={kpi.label}>
+                  <span>{kpi.label}<small>{kpi.detail}</small></span>
+                  <strong className="num">{kpi.value}{kpi.unit}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        <OrologioCalendarioPanel promemoria={promemoria} />
+        <PostaPanel onNavigate={onNavigate} />
+      </div>
     </div>
   );
 }
 
-function DashboardRail({ onNavigate }: { onNavigate: (key: SectionKey) => void }) {
-  // Vuoti: compariranno i dati reali (niente esempi finti).
-  const deadlines: string[][] = [];
-  const receipts: string[][] = [];
+function tempoRecente(timestamp: number): string {
+  const minuti = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (minuti < 1) return "adesso";
+  if (minuti < 60) return `${minuti} min fa`;
+  const ore = Math.floor(minuti / 60);
+  if (ore < 24) return `${ore} ${ore === 1 ? "ora" : "ore"} fa`;
+  const giorni = Math.floor(ore / 24);
+  return giorni === 1 ? "ieri" : `${giorni} giorni fa`;
+}
+
+// Tabella scadenze stile "Comunicazioni" di sportello: tab con contatori,
+// righe reali dallo scadenzario, filtro per anno dalla banda in alto.
+type TabScadenze = "tutte" | "urgenti" | "durc" | "f24";
+
+function ScadenzePanel({
+  anno,
+  promemoria,
+  inCaricamento,
+  errore,
+  onNavigate,
+}: {
+  anno: number;
+  promemoria: Promemoria[];
+  inCaricamento: boolean;
+  errore: string | null;
+  onNavigate: (key: SectionKey) => void;
+}) {
+  const [tab, setTab] = useState<TabScadenze>("tutte");
+
+  const delAnno = promemoria.filter((p) => Number(p.dataScadenza.slice(0, 4)) === anno);
+  const urgenti = delAnno.filter((p) => ["scaduto", "oggi", "in_scadenza"].includes(p.urgenza));
+  const durc = delAnno.filter((p) => p.tipo === "Durc");
+  const f24 = delAnno.filter((p) => p.tipo === "F24");
+  const perTab: Record<TabScadenze, Promemoria[]> = { tutte: delAnno, urgenti, durc, f24 };
+  const tabs: { key: TabScadenze; label: string; conteggio: number }[] = [
+    { key: "tutte", label: "Tutte", conteggio: delAnno.length },
+    { key: "urgenti", label: "Urgenti", conteggio: urgenti.length },
+    { key: "durc", label: "DURC", conteggio: durc.length },
+    { key: "f24", label: "F24", conteggio: f24.length },
+  ];
+  const righe = [...perTab[tab]]
+    .sort((a, b) => a.dataScadenza.localeCompare(b.dataScadenza))
+    .slice(0, 8);
+  const totale = perTab[tab].length;
+
+  const badge = (p: Promemoria): { testo: string; tono: string } => {
+    if (p.urgenza === "scaduto") return { testo: "Scaduto", tono: "red" };
+    if (p.urgenza === "oggi") return { testo: "Oggi", tono: "red" };
+    if (p.urgenza === "in_scadenza") return { testo: "In scadenza", tono: "amber" };
+    return { testo: p.stato, tono: p.stato === "Completato" ? "green" : "blue" };
+  };
+  const dataBreve = (iso: string) => {
+    const data = new Date(`${iso.slice(0, 10)}T12:00:00`);
+    return Number.isNaN(data.getTime()) ? "—" : data.toLocaleDateString("it-IT");
+  };
 
   return (
-    <aside className="dashboard-rail">
-      <section className="glass-card side-card">
-        <div className="side-card-head">
-          <strong>Errori da correggere</strong>
-          <span className="count">0</span>
-        </div>
-        <p className="muto" style={{ fontSize: 13, margin: "6px 2px" }}>
-          Nessun errore. I controlli sui tuoi dati compariranno qui.
-        </p>
-      </section>
-
-      <section className="glass-card side-card">
-        <div className="side-card-head">
-          <strong>Scadenze</strong>
-        </div>
-        {deadlines.length === 0 ? (
-          <p className="muto" style={{ fontSize: 13, margin: "6px 2px" }}>Nessuna scadenza imminente.</p>
-        ) : (
-          deadlines.map(([day, month, title, meta]) => (
-            <div className="deadline-row" key={title}>
-              <span>
-                <b>{day}</b>
-                <small>{month}</small>
-              </span>
-              <strong>
-                {title}
-                <small>{meta}</small>
-              </strong>
-            </div>
-          ))
-        )}
-        <button className="rail-cta" type="button" onClick={() => onNavigate("adempimenti")}>
-          Vedi tutte le scadenze
+    <section className="qw-card qw-comunica" aria-label="Scadenze e promemoria">
+      <div className="qw-com-head">
+        <Megaphone size={16} aria-hidden="true" />
+        <strong>Scadenze e promemoria {anno}</strong>
+        <button className="btn secondary qw-com-apri" type="button" onClick={() => onNavigate("scadenzario")}>
+          Apri scadenzario
         </button>
-      </section>
+      </div>
+      <div className="qw-tabs" role="tablist">
+        {tabs.map((voce) => (
+          <button
+            key={voce.key}
+            className={`qw-tab ${tab === voce.key ? "attiva" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === voce.key}
+            onClick={() => setTab(voce.key)}
+          >
+            {voce.label}
+            {voce.conteggio > 0 && <span className="qw-count">{voce.conteggio}</span>}
+          </button>
+        ))}
+      </div>
+      {inCaricamento ? (
+        <p className="muto qw-panel-empty" aria-live="polite">Aggiornamento scadenze…</p>
+      ) : errore ? (
+        <p className="company-choice-alert error" role="alert">{errore}</p>
+      ) : righe.length === 0 ? (
+        <p className="muto qw-panel-empty">Nessuna scadenza registrata per il {anno} in questa vista.</p>
+      ) : (
+        <>
+          <div className="table-wrap">
+            <table className="data-table qw-com-table">
+              <thead>
+                <tr>
+                  <th>Anno</th>
+                  <th>Scadenza</th>
+                  <th>Promemoria</th>
+                  <th>Tipo</th>
+                  <th>Stato</th>
+                </tr>
+              </thead>
+              <tbody>
+                {righe.map((p) => {
+                  const stato = badge(p);
+                  return (
+                    <tr key={p.id} className="qw-com-riga" onClick={() => onNavigate("scadenzario")}>
+                      <td className="num">{p.dataScadenza.slice(0, 4)}</td>
+                      <td className="num">{dataBreve(p.dataScadenza)}</td>
+                      <td><strong>{p.titolo}</strong>{p.descrizione && <small className="qw-com-desc">{p.descrizione}</small>}</td>
+                      <td>{p.tipo}</td>
+                      <td><span className={`status-pill ${stato.tono}`}>{stato.testo}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="qw-com-foot">Visualizzati 1 - {righe.length} di {totale}</p>
+        </>
+      )}
+    </section>
+  );
+}
 
-      <section className="glass-card side-card">
-        <div className="side-card-head">
-          <strong>Ricevute recenti</strong>
-        </div>
-        {receipts.length === 0 ? (
-          <p className="muto" style={{ fontSize: 13, margin: "6px 2px" }}>Ancora nessuna ricevuta.</p>
-        ) : (
-          receipts.map(([title, meta, time]) => (
-            <div className="receipt-row" key={title}>
-              <span>✓</span>
-              <strong>
-                {title}
-                <small>{meta}</small>
-              </strong>
-              <em>{time}</em>
-            </div>
-          ))
-        )}
-      </section>
-    </aside>
+// Orologio + calendario del mese corrente in un solo riquadro: ora/data aggiornate ogni
+// secondo, oggi evidenziato nella griglia, un puntino sui giorni con scadenze.
+function OrologioCalendarioPanel({ promemoria }: { promemoria: Promemoria[] }) {
+  const [adesso, setAdesso] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setAdesso(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const anno = adesso.getFullYear();
+  const mese = adesso.getMonth();
+  const prefisso = `${anno}-${String(mese + 1).padStart(2, "0")}-`;
+  const giorniConScadenze = new Set(
+    promemoria
+      .filter((p) => p.dataScadenza.startsWith(prefisso))
+      .map((p) => Number(p.dataScadenza.slice(8, 10))),
+  );
+  const giorniNelMese = new Date(anno, mese + 1, 0).getDate();
+  // Lunedì come primo giorno della settimana (uso italiano).
+  const scarto = (new Date(anno, mese, 1).getDay() + 6) % 7;
+  const celle: (number | null)[] = [
+    ...Array.from({ length: scarto }, () => null),
+    ...Array.from({ length: giorniNelMese }, (_, i) => i + 1),
+  ];
+
+  return (
+    <section className="qw-card qw-panel">
+      <div className="qw-panel-head">
+        <Clock size={15} aria-hidden="true" />
+        Orologio e calendario
+      </div>
+      <div className="qw-orologio">
+        <div className="qw-ora num">{adesso.toLocaleTimeString("it-IT")}</div>
+        <div className="qw-data">{adesso.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>
+      </div>
+      <div className="qw-cal-grid">
+        {["Lu", "Ma", "Me", "Gi", "Ve", "Sa", "Do"].map((giorno) => (
+          <span className="qw-cal-dow" key={giorno}>{giorno}</span>
+        ))}
+        {celle.map((giorno, indice) => (
+          <span
+            key={indice}
+            className={`qw-cal-day ${giorno === adesso.getDate() ? "oggi" : ""}`}
+          >
+            {giorno ?? ""}
+            {giorno !== null && giorniConScadenze.has(giorno) && <i className="qw-cal-dot" aria-label="Scadenze nel giorno" />}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// Riepilogo Posta nella dashboard: non letti e proposte AI da confermare, con accesso rapido
+// alla pagina completa. L'euristica/AI propone soltanto: qui si vede solo il conteggio.
+function PostaPanel({ onNavigate }: { onNavigate: (key: SectionKey) => void }) {
+  const [stato, setStato] = useState<"carico" | "senzaCaselle" | "pronto" | "errore">("carico");
+  const [nonLetti, setNonLetti] = useState(0);
+  const [daConfermare, setDaConfermare] = useState(0);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const caselle = await api.caselleEmail();
+        if (!vivo) return;
+        if (caselle.length === 0) {
+          setStato("senzaCaselle");
+          return;
+        }
+        const [nonLettiMsg, proposte] = await Promise.all([
+          api.messaggiEmail({ letto: false }),
+          api.messaggiEmail({ soloProposte: true }),
+        ]);
+        if (!vivo) return;
+        setNonLetti(nonLettiMsg.length);
+        setDaConfermare(proposte.length);
+        setStato("pronto");
+      } catch {
+        if (vivo) setStato("errore");
+      }
+    })();
+    return () => { vivo = false; };
+  }, []);
+
+  return (
+    <section className="qw-card qw-panel">
+      <div className="qw-panel-head">
+        <Mail size={15} aria-hidden="true" />
+        Posta
+      </div>
+      {stato === "carico" && <p className="muto qw-panel-empty" aria-live="polite">Aggiornamento posta…</p>}
+      {stato === "errore" && <p className="company-choice-alert error" role="alert">Non riesco a caricare la posta.</p>}
+      {stato === "senzaCaselle" && (
+        <>
+          <p className="muto qw-panel-empty">Nessuna casella email o PEC collegata.</p>
+          <button className="btn secondary" type="button" onClick={() => onNavigate("posta")}>
+            Collega una casella
+          </button>
+        </>
+      )}
+      {stato === "pronto" && (
+        <>
+          <div className="qw-som-riga">
+            <span>Non letti</span>
+            <strong className="num">{nonLetti}</strong>
+          </div>
+          <div className="qw-som-riga">
+            <span>Da confermare<small>Proposte AI in attesa</small></span>
+            <strong className="num">{daConfermare}</strong>
+          </div>
+          <button className="btn secondary" type="button" onClick={() => onNavigate("posta")}>
+            Apri Posta
+          </button>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -1059,21 +1597,12 @@ function ModuleScreen({
   rapportoSel: string | null;
   onApriDipendente: (rapportoId: string) => void;
 }) {
-  const [aziendeRefreshKey, setAziendeRefreshKey] = useState(0);
-
   if (active === "aziende") {
     return (
-      <div className="module-layout">
+      <div className="module-layout wide aziende-page-layout">
         <div>
-          <div className="page-heading">
-            <div>
-              <h1>Aziende clienti</h1>
-              <p>Anagrafiche, sedi e dati fiscali del tuo studio</p>
-            </div>
-          </div>
-          <Aziende onAziendeCambiate={() => setAziendeRefreshKey((v) => v + 1)} />
+          <Aziende />
         </div>
-        <AziendeLaterale refreshKey={aziendeRefreshKey} onNavigate={onNavigate} />
       </div>
     );
   }
@@ -1114,7 +1643,7 @@ function ModuleScreen({
   }
 
   if (active === "dipendenti") return <Dipendenti onApri={onApriDipendente} />;
-  if (active === "dipendente") return <Dipendente rapportoId={rapportoSel} onPayslip={() => onNavigate("cedolini")} />;
+  if (active === "dipendente") return <Dipendente rapportoId={rapportoSel} onPayslip={() => onNavigate("cedolini")} onBack={() => onNavigate("dipendenti")} />;
   if (active === "presenze") return <Presenze />;
   if (active === "elaborazioni") return <Elaborazione onApriSezione={onNavigate} />;
   if (active === "adempimenti") return <DeadlinesPanel onNavigate={onNavigate} />;
@@ -1122,6 +1651,7 @@ function ModuleScreen({
   if (active === "pratiche") return <Pratiche />;
   if (active === "moduli") return <Moduli />;
   if (active === "scadenzario") return <Scadenzario />;
+  if (active === "posta") return <Posta />;
   if (active === "pagamenti") return <Pagamenti />;
   if (active === "firma") return <Firma />;
   if (active === "contabilita") return <AccountingPanel />;
@@ -1141,6 +1671,8 @@ function ModuleScreen({
   if (active === "impostazioni") return <SettingsPanel />;
   if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;
+  if (active === "audit") return <RegistroAttivita />;
+  if (active === "retention") return <Retention />;
   if (active === "studi") return <Studi />;
 
   return <GenericPanel active={active} onNavigate={onNavigate} />;

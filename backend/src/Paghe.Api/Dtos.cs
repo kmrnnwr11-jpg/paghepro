@@ -13,6 +13,23 @@ public sealed record RegistraRequest(string RagioneSociale, string Email, string
 /// <summary>Credenziali di accesso (con codice 2FA opzionale per chi ha il secondo fattore attivo).</summary>
 public sealed record LoginRequest(string Email, string Password, string? Codice2fa = null);
 
+/// <summary>Refresh opaco inviato soltanto dai client mobili e custodito nel portachiavi nativo.</summary>
+public sealed record RefreshMobileRequest(string RefreshToken);
+
+public sealed record AccessoResponse(
+    string Token,
+    DateTimeOffset ScadeUtc,
+    Guid TenantId,
+    string Ruolo);
+
+public sealed record AccessoMobileResponse(
+    string Token,
+    DateTimeOffset ScadeUtc,
+    Guid TenantId,
+    string Ruolo,
+    string RefreshToken,
+    DateTimeOffset RefreshScadeUtc);
+
 /// <summary>Codice TOTP a 6 cifre per attivare/disattivare il secondo fattore.</summary>
 public sealed record Codice2faRequest(string Codice);
 
@@ -63,7 +80,9 @@ public sealed record CreaDipendenteRequest(
     string CodiceCatastaleComune = "",
     bool DetrazioniLavoroDipendente = true,
     int GiorniDetrazioneAnno = 365,
-    DateOnly? DataAssunzione = null);
+    DateOnly? DataAssunzione = null,
+    int OreSettimanali = 40,
+    string TipoContratto = "Tempo indeterminato");
 
 /// <summary>Richiesta di riclassificazione bilancio: piano dei conti + saldi.</summary>
 public sealed record RiclassificaRequest(

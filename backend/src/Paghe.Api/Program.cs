@@ -21,9 +21,25 @@ using Paghe.Core.PartiteIva;
 using Paghe.Documenti;
 using Paghe.Firma;
 using Paghe.Persistence;
+using Paghe.Persistence.Ai;
+using Paghe.Persistence.Gdpr;
+using Paghe.Persistence.Gdpr.Retention;
+using Paghe.Persistence.Sicurezza;
 using Paghe.Persistence.Trasmissione;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Solo Development/Test possono usare la chiave demo. Anche Staging, QA e ambienti con nomi
+// personalizzati falliscono chiusi se PAGHE_DATA_KEY non è configurata.
+var protettoreDati = ProtettoreDati.CreaDaAmbiente(
+    ProtettoreDati.RichiedeChiaveReale(builder.Environment.EnvironmentName));
+builder.Services.AddSingleton(protettoreDati);
+var eseguiMigrazioneGdpr = args.Contains(
+    "--migra-dati-sensibili",
+    StringComparer.OrdinalIgnoreCase);
+var verificaMigrazioneGdpr = args.Contains(
+    "--verifica-dati-sensibili",
+    StringComparer.OrdinalIgnoreCase);
 
 // Gli enum (es. Qualifica) viaggiano come stringhe nel JSON ("Impiegato").
 builder.Services.ConfigureHttpJsonOptions(o =>
@@ -80,6 +96,12 @@ builder.Services.AddScoped<InailService>();
 builder.Services.AddScoped<IntrastatService>();
 builder.Services.AddScoped<PersoneService>();
 builder.Services.AddScoped<ConsumoAiService>();
+builder.Services.AddScoped<CasellaEmailService>();
+builder.Services.AddScoped<AuditLogService>();
+builder.Services.AddScoped<RetentionService>();
+builder.Services.AddScoped<AiGrantService>();
+builder.Services.AddScoped<ProfessionalQueryBroker>();
+builder.Services.AddSingleton(TimeProvider.System);
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
 // Canale configurabile in "Sdi": "Manuale" (default, prepara il file) oppure "Rest" (provider accreditato).
@@ -163,22 +185,58 @@ builder.Services.AddScoped<NotificheService>();
 // Autenticazione JWT: il tenant è derivato dai claim del token firmato, non da un header.
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TokenService>();
+builder.Services.AddScoped<SessioniRefreshService>();
+builder.Services.AddHostedService<PuliziaSessioniRefreshWorker>();
 builder.Services.AddScoped<PiattaformaAdminService>();
 // La chiave si valuta SUBITO (non nella lambda, che è lazy): in produzione senza una chiave
 // robusta l'avvio si blocca qui con un errore esplicito, non al primo login.
 var chiaveJwt = Encoding.UTF8.GetBytes(TokenService.ChiaveJwt(builder.Configuration));
+
+// Chiave delle lease del Governor AI: derivata dalla chiave JWT (stessa protezione in produzione).
+builder.Services.AddSingleton(new AiGovernorOptions(AiLeaseCodec.DerivaChiave(chiaveJwt)));
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         var chiave = chiaveJwt;
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = false,
-            ValidateAudience = false,
+            ValidateIssuer = true,
+            ValidIssuer = TokenService.Emittente(builder.Configuration),
+            ValidateAudience = true,
+            ValidAudience = TokenService.Destinatario(builder.Configuration),
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(chiave),
+            ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+            ClockSkew = TimeSpan.FromSeconds(30),
+            RoleClaimType = ClaimTypes.Role,
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async contesto =>
+            {
+                var principale = contesto.Principal;
+                var versione = principale?.FindFirst("ver")?.Value;
+                var ruolo = principale?.FindFirst(ClaimTypes.Role)?.Value;
+                if (versione != TokenService.VersioneProtocollo
+                    || !Guid.TryParse(principale?.FindFirst("sub")?.Value, out var utenteId)
+                    || !Guid.TryParse(principale?.FindFirst("tenant_id")?.Value, out var tenantId)
+                    || !Guid.TryParse(principale?.FindFirst("sid")?.Value, out var famigliaId)
+                    || string.IsNullOrWhiteSpace(ruolo))
+                {
+                    contesto.Fail("Sessione non valida.");
+                    return;
+                }
+
+                var sessioni = contesto.HttpContext.RequestServices
+                    .GetRequiredService<SessioniRefreshService>();
+                if (!await sessioni.ValidaAccessoAsync(
+                    tenantId, utenteId, famigliaId, ruolo,
+                    contesto.HttpContext.RequestAborted))
+                    contesto.Fail("Sessione revocata o scaduta.");
+            },
         };
     });
 builder.Services.AddAuthorization();
@@ -211,17 +269,28 @@ var originiCors = builder.Configuration.GetSection("Cors:Origini").Get<string[]>
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 {
     if (builder.Environment.IsDevelopment())
-        p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
-    else if (originiCors.Length > 0)
-        p.WithOrigins(originiCors).AllowAnyHeader().AllowAnyMethod();
-    // Produzione senza origin configurati: policy vuota, il browser blocca le chiamate cross-origin.
+        p.WithOrigins(
+                "http://localhost:5173", "https://localhost:5173",
+                "capacitor://localhost", "https://localhost")
+            .AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+    else
+        p.WithOrigins(originiCors
+                .Concat(["capacitor://localhost", "https://localhost"])
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray())
+            .AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+    // Gli origin Capacitor sono sempre ammessi; i siti web esterni restano esplicitamente configurati.
 }));
 
 var app = builder.Build();
 
+// Presente nell'immagine Railway full-stack; assente nello sviluppo locale e nei test.
+var frontendIntegrato = Directory.Exists(
+    Path.Combine(app.Environment.ContentRootPath, "wwwroot"));
+
 // In produzione senza origin CORS configurati il frontend su altro dominio non funziona:
 // avvisa chiaramente nei log invece di fallire in silenzio.
-if (!app.Environment.IsDevelopment() && originiCors.Length == 0)
+if (!app.Environment.IsDevelopment() && originiCors.Length == 0 && !frontendIntegrato)
     app.Logger.LogWarning(
         "CORS: nessun origin configurato in 'Cors:Origini'. Il browser bloccherà le chiamate " +
         "da un frontend su altro dominio. Impostare es. Cors__Origini__0=https://tuo-frontend.");
@@ -243,13 +312,30 @@ app.Use(async (context, next) =>
     h["X-Content-Type-Options"] = "nosniff";
     h["X-Frame-Options"] = "DENY";
     h["Referrer-Policy"] = "no-referrer";
+    if (context.Request.Path.StartsWithSegments("/api/auth"))
+    {
+        h["Cache-Control"] = "no-store";
+        h["Pragma"] = "no-cache";
+    }
     if (produzione)
         h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
     await next();
 });
 
+// Nel deploy Railway di prova il frontend Vite viene copiato in /app/wwwroot e
+// servito dalla stessa API. In sviluppo e nei test la cartella non esiste, quindi
+// il comportamento corrente (frontend separato su Vite) resta invariato.
+if (frontendIntegrato)
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
+
 app.UseCors();
 app.UseAuthentication();
+// Il registro avvolge limiter, autorizzazione e RBAC: così conserva anche tentativi autenticati
+// negati (403/429), senza registrare body, query string, IP o user-agent.
+app.UseAuditRichieste();
 // Il limiter delle operazioni sensibili usa il claim "sub" quando autenticato; deve quindi
 // essere eseguito dopo l'autenticazione (con fallback sull'IP per le richieste anonime).
 app.UseRateLimiter();
@@ -257,24 +343,6 @@ app.UseAuthorization();
 
 // RBAC: applica la policy per ruolo (sola_lettura → solo lettura; anonimizzazione GDPR → solo admin).
 app.UseControlloRuoli();
-
-// Audit log: rende disponibile "chi opera" (utente + tenant dal token) per tutta la richiesta,
-// così l'interceptor di persistenza registra l'autore di ogni modifica. Va dopo l'autenticazione.
-app.Use(async (context, next) =>
-{
-    var u = context.User;
-    Guid? tenant = Guid.TryParse(u.FindFirst("tenant_id")?.Value, out var t) ? t : null;
-    var idUtente = u.FindFirst("sub")?.Value ?? u.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-    Guid? utente = Guid.TryParse(idUtente, out var ux) ? ux : null;
-
-    if (tenant is null && utente is null)
-    {
-        await next();
-        return;
-    }
-    using (Paghe.Persistence.Gdpr.AmbientContestoAudit.Imposta(tenant, utente))
-        await next();
-});
 
 // Gruppo di endpoint che richiede un token valido (i dati di un tenant).
 var secured = app.MapGroup("").RequireAuthorization();
@@ -284,28 +352,145 @@ var secured = app.MapGroup("").RequireAuthorization();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
-    db.Database.EnsureCreated();
-    db.EnsureSchemaSviluppoCompatibile();
-
-    // PostgreSQL/Supabase: EnsureCreated NON crea le tabelle se il database ne possiede già altre
-    // (Supabase arriva con i propri schemi auth/storage/realtime). Se le tabelle dell'app mancano,
-    // le creiamo esplicitamente con lo script del modello generato da EF Core.
-    if (db.Database.IsNpgsql())
+    var migrazioneGdpr = new MigrazioneDatiSensibili(db, protettoreDati);
+    if (verificaMigrazioneGdpr)
     {
-        var conn = db.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open) conn.Open();
-        using var check = conn.CreateCommand();
-        check.CommandText = "SELECT to_regclass('public.\"ParametriAnno\"') IS NOT NULL";
-        var tabelleAppPresenti = check.ExecuteScalar() is bool b && b;
-        if (!tabelleAppPresenti)
-            db.Database.ExecuteSqlRaw(db.Database.GenerateCreateScript());
+        // Questo ramo deve restare realmente read-only: niente EnsureCreated, DDL, seed o
+        // rotazione della sentinella. Qualunque prerequisito assente provoca un errore.
+        migrazioneGdpr.VerificaCutoverCompletatoAsync().GetAwaiter().GetResult();
+    }
+    else
+    {
+        db.Database.EnsureCreated();
+        db.EnsureSchemaSviluppoCompatibile();
 
-        // Colonne aggiunte dopo la prima creazione dello schema (Postgres supporta IF NOT EXISTS).
-        db.Database.ExecuteSqlRaw(
-            "ALTER TABLE \"Tenants\" ADD COLUMN IF NOT EXISTS \"Sospeso\" boolean NOT NULL DEFAULT false;");
+        // PostgreSQL/Supabase: EnsureCreated NON crea le tabelle se il database ne possiede già altre
+        // (Supabase arriva con i propri schemi auth/storage/realtime). Se le tabelle dell'app mancano,
+        // le creiamo esplicitamente con lo script del modello generato da EF Core.
+        if (db.Database.IsNpgsql())
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open) conn.Open();
+            using var check = conn.CreateCommand();
+            check.CommandText = "SELECT to_regclass('public.\"ParametriAnno\"') IS NOT NULL";
+            var tabelleAppPresenti = check.ExecuteScalar() is bool b && b;
+            if (!tabelleAppPresenti)
+                db.Database.ExecuteSqlRaw(db.Database.GenerateCreateScript());
 
-        // Fine anno: conguaglio in busta, rivalutazione TFR, posizioni INAIL.
-        db.Database.ExecuteSqlRaw("""
+            // Colonne aggiunte dopo la prima creazione dello schema (Postgres supporta IF NOT EXISTS).
+            db.Database.ExecuteSqlRaw(
+                "ALTER TABLE \"Tenants\" ADD COLUMN IF NOT EXISTS \"Sospeso\" boolean NOT NULL DEFAULT false;");
+
+            // Registro attività introdotto dopo i primi database PostgreSQL: va creato anche
+            // quando EnsureCreated non interviene perché esistono già altre tabelle.
+            db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "AuditLog" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_AuditLog" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "UtenteId" uuid NULL,
+                "Categoria" character varying(40) NOT NULL DEFAULT 'ModificaDati',
+                "Azione" character varying(40) NOT NULL,
+                "Entita" character varying(100) NOT NULL,
+                "ChiaveEntita" character varying(500) NOT NULL,
+                "CampiModificati" text NULL,
+                "MetodoHttp" character varying(12) NULL,
+                "PercorsoTemplate" character varying(300) NULL,
+                "Esito" character varying(40) NULL,
+                "StatusCode" integer NULL,
+                "CorrelationId" character varying(100) NULL,
+                "QuandoUtc" timestamp with time zone NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_AuditLog_TenantId_QuandoUtc"
+                ON "AuditLog" ("TenantId", "QuandoUtc");
+            CREATE INDEX IF NOT EXISTS "IX_AuditLog_TenantId_Entita"
+                ON "AuditLog" ("TenantId", "Entita");
+            """);
+
+            // Retention GDPR: policy disattive per impostazione iniziale, blocchi, anteprime
+            // vincolanti e ricevute append-only. Nessuna durata normativa viene preimpostata.
+            db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "PolicyRetention" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_PolicyRetention" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "Categoria" character varying(60) NOT NULL,
+                "Versione" integer NOT NULL,
+                "GiorniConservazione" integer NULL,
+                "Attiva" boolean NOT NULL,
+                "Approvata" boolean NOT NULL,
+                "BaseGiuridica" character varying(200) NULL,
+                "RiferimentoDecisione" character varying(200) NULL,
+                "IstruzioniBackup" character varying(300) NULL,
+                "Finalita" character varying(250) NOT NULL,
+                "Decorrenza" character varying(200) NOT NULL,
+                "Azione" character varying(200) NOT NULL,
+                "CreataUtc" timestamp with time zone NOT NULL,
+                "CreataDaUtenteId" uuid NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PolicyRetention_TenantId_Categoria_Versione"
+                ON "PolicyRetention" ("TenantId", "Categoria", "Versione");
+
+            CREATE TABLE IF NOT EXISTS "BlocchiConservazione" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_BlocchiConservazione" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "Categoria" character varying(60) NOT NULL,
+                "MotivoCodice" character varying(60) NOT NULL,
+                "CreatoUtc" timestamp with time zone NOT NULL,
+                "CreatoDaUtenteId" uuid NOT NULL,
+                "RevocatoUtc" timestamp with time zone NULL,
+                "RevocatoDaUtenteId" uuid NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_BlocchiConservazione_TenantId_Categoria_RevocatoUtc"
+                ON "BlocchiConservazione" ("TenantId", "Categoria", "RevocatoUtc");
+
+            CREATE TABLE IF NOT EXISTS "AnteprimeRetention" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_AnteprimeRetention" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "Categoria" character varying(60) NOT NULL,
+                "VersionePolicy" integer NOT NULL,
+                "SogliaUtc" timestamp with time zone NOT NULL,
+                "Candidati" integer NOT NULL,
+                "Bloccati" integer NOT NULL,
+                "Elaborabili" integer NOT NULL,
+                "ImprontaCandidati" character varying(64) NOT NULL,
+                "ImprontaBlocchi" character varying(64) NOT NULL,
+                "CreataUtc" timestamp with time zone NOT NULL,
+                "ScadeUtc" timestamp with time zone NOT NULL,
+                "CreataDaUtenteId" uuid NOT NULL,
+                "ConsumataUtc" timestamp with time zone NULL
+            );
+            CREATE INDEX IF NOT EXISTS "IX_AnteprimeRetention_TenantId_Categoria_ScadeUtc"
+                ON "AnteprimeRetention" ("TenantId", "Categoria", "ScadeUtc");
+
+            CREATE TABLE IF NOT EXISTS "EsecuzioniRetention" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_EsecuzioniRetention" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "AnteprimaId" uuid NOT NULL,
+                "ChiaveIdempotenza" uuid NOT NULL,
+                "Categoria" character varying(60) NOT NULL,
+                "VersionePolicy" integer NOT NULL,
+                "SogliaUtc" timestamp with time zone NOT NULL,
+                "CandidatiAnteprima" integer NOT NULL,
+                "Bloccati" integer NOT NULL,
+                "Elaborati" integer NOT NULL,
+                "RestantiStimati" integer NOT NULL,
+                "Esito" character varying(40) NOT NULL,
+                "IniziataUtc" timestamp with time zone NOT NULL,
+                "CompletataUtc" timestamp with time zone NOT NULL,
+                "EseguitaDaUtenteId" uuid NOT NULL,
+                "CorrelationId" character varying(100) NULL,
+                "DigestPrecedente" character varying(64) NULL,
+                "Digest" character varying(64) NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_EsecuzioniRetention_TenantId_ChiaveIdempotenza"
+                ON "EsecuzioniRetention" ("TenantId", "ChiaveIdempotenza");
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_EsecuzioniRetention_TenantId_AnteprimaId"
+                ON "EsecuzioniRetention" ("TenantId", "AnteprimaId");
+            CREATE INDEX IF NOT EXISTS "IX_EsecuzioniRetention_TenantId_Categoria_CompletataUtc"
+                ON "EsecuzioniRetention" ("TenantId", "Categoria", "CompletataUtc");
+            """);
+
+            // Fine anno: conguaglio in busta, rivalutazione TFR, posizioni INAIL.
+            db.Database.ExecuteSqlRaw("""
             ALTER TABLE "Cedolini" ADD COLUMN IF NOT EXISTS "ConguaglioIrpef" numeric(15,2) NOT NULL DEFAULT 0;
             ALTER TABLE "ParametriAnno" ADD COLUMN IF NOT EXISTS "VariazioneIstatTfr" numeric(12,5) NULL;
             ALTER TABLE "Rapporti" ADD COLUMN IF NOT EXISTS "FondoTfrIniziale" numeric(15,2) NULL;
@@ -353,8 +538,8 @@ using (var scope = app.Services.CreateScope())
                 ON "PraticheInail" ("TenantId", "AziendaId", "Anno");
             """);
 
-        // Archivio persone fisiche per la compilazione automatica dei moduli ufficiali (AA7/10).
-        db.Database.ExecuteSqlRaw("""
+            // Archivio persone fisiche per la compilazione automatica dei moduli ufficiali (AA7/10).
+            db.Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS "Persone" (
                 "Id" uuid NOT NULL CONSTRAINT "PK_Persone" PRIMARY KEY,
                 "TenantId" uuid NOT NULL,
@@ -377,8 +562,8 @@ using (var scope = app.Services.CreateScope())
                 ON "Persone" ("TenantId", "CodiceFiscale");
             """);
 
-        // Contatore mensile delle chiamate AI per tenant ("AI inclusa nel canone").
-        db.Database.ExecuteSqlRaw("""
+            // Contatore mensile delle chiamate AI per tenant ("AI inclusa nel canone").
+            db.Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS "ConsumiAi" (
                 "Id" uuid NOT NULL CONSTRAINT "PK_ConsumiAi" PRIMARY KEY,
                 "TenantId" uuid NOT NULL,
@@ -390,20 +575,93 @@ using (var scope = app.Services.CreateScope())
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_ConsumiAi_TenantId_Anno_Mese"
                 ON "ConsumiAi" ("TenantId", "Anno", "Mese");
             """);
+
+            // Posta: caselle email/PEC collegate self-service e messaggi importati (triage in proposta).
+            db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS "CaselleEmail" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_CaselleEmail" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "Etichetta" text NOT NULL,
+                "Tipo" text NOT NULL,
+                "Host" text NOT NULL,
+                "Porta" integer NOT NULL,
+                "Utente" text NOT NULL,
+                "Password" text NULL,
+                "Ssl" boolean NOT NULL,
+                "Attiva" boolean NOT NULL,
+                "UltimoUidSincronizzato" bigint NULL,
+                "CreataIl" timestamptz NOT NULL,
+                "UltimaSincronizzazioneIl" timestamptz NULL
+            );
+            CREATE TABLE IF NOT EXISTS "MessaggiEmail" (
+                "Id" uuid NOT NULL CONSTRAINT "PK_MessaggiEmail" PRIMARY KEY,
+                "TenantId" uuid NOT NULL,
+                "CasellaId" uuid NOT NULL,
+                "UidImap" bigint NOT NULL,
+                "Mittente" text NOT NULL,
+                "Oggetto" text NOT NULL,
+                "DataRicezione" timestamptz NOT NULL,
+                "Anteprima" text NOT NULL,
+                "Letto" boolean NOT NULL,
+                "Urgente" boolean NULL,
+                "Pubblicita" boolean NULL,
+                "UrgenteProposto" boolean NULL,
+                "PubblicitaProposto" boolean NULL,
+                "ConfidenzaUrgente" numeric NULL,
+                "ConfidenzaPubblicita" numeric NULL,
+                "FonteProposta" text NULL,
+                "Corpo" text NULL,
+                CONSTRAINT "FK_MessaggiEmail_CaselleEmail_CasellaId"
+                    FOREIGN KEY ("CasellaId") REFERENCES "CaselleEmail" ("Id") ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS "IX_CaselleEmail_TenantId_Attiva" ON "CaselleEmail" ("TenantId", "Attiva");
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_MessaggiEmail_CasellaId_UidImap"
+                ON "MessaggiEmail" ("CasellaId", "UidImap");
+            CREATE INDEX IF NOT EXISTS "IX_MessaggiEmail_TenantId_CasellaId_DataRicezione"
+                ON "MessaggiEmail" ("TenantId", "CasellaId", "DataRicezione");
+            """);
+        }
+
+        // Rete di sicurezza generica: aggiunge le colonne del modello EF assenti dal database
+        // (schema EnsureCreated evoluto nel tempo), su SQLite e PostgreSQL.
+        db.AllineaColonneMancanti();
+
+        // Tabelle del Governor AI (G2), introdotte dopo i primi database esistenti.
+        AiGovernorSchema.EnsureTabelle(db, db.Database.IsNpgsql());
+        SessioniRefreshSchema.EnsureTabelle(db, db.Database.IsNpgsql());
+
+        if (eseguiMigrazioneGdpr)
+        {
+            // Comando amministrativo one-shot: il DDL/backfill non viene eseguito da ogni replica.
+            var esitoMigrazioneGdpr = migrazioneGdpr.EseguiTuttiAsync().GetAwaiter().GetResult();
+            app.Logger.LogInformation(
+                "Migrazione GDPR completata: {ValoriMigrati} valori su {TenantEsaminati} tenant.",
+                esitoMigrazioneGdpr.ValoriMigrati,
+                esitoMigrazioneGdpr.TenantEsaminati);
+        }
+        else
+        {
+            // Solo un database realmente vuoto può ricevere automaticamente la prima sentinella.
+            // Su database popolati il gate resta fail-closed e richiede il runner esplicito.
+            migrazioneGdpr.InizializzaSeDatabaseVuotoAsync().GetAwaiter().GetResult();
+            migrazioneGdpr.VerificaCutoverCompletatoAsync().GetAwaiter().GetResult();
+        }
+
+        if (!eseguiMigrazioneGdpr && !verificaMigrazioneGdpr)
+        {
+            scope.ServiceProvider.GetRequiredService<ParametriNormativiService>()
+                .ImportaSeedSeVuotoAsync().GetAwaiter().GetResult();
+
+            // Sovrascrive i minimi CCNL d'esempio del Seed con il dataset ufficiale (fonti CNEL),
+            // anche sui database già esistenti: upsert idempotente per (codice + anno).
+            new CcnlImportService(db)
+                .ImportaAsync(CcnlDatasetUfficiale.Carica()).GetAwaiter().GetResult();
+        }
     }
-
-    // Rete di sicurezza generica: aggiunge le colonne del modello EF assenti dal database
-    // (schema EnsureCreated evoluto nel tempo), su SQLite e PostgreSQL.
-    db.AllineaColonneMancanti();
-
-    scope.ServiceProvider.GetRequiredService<ParametriNormativiService>()
-        .ImportaSeedSeVuotoAsync().GetAwaiter().GetResult();
-
-    // Sovrascrive i minimi CCNL d'esempio del Seed con il dataset ufficiale (fonti CNEL),
-    // anche sui database già esistenti: upsert idempotente per (codice + anno).
-    new CcnlImportService(db)
-        .ImportaAsync(CcnlDatasetUfficiale.Carica()).GetAwaiter().GetResult();
 }
+
+if (eseguiMigrazioneGdpr || verificaMigrazioneGdpr)
+    return;
 
 // Tenant corrente derivato dal claim "tenant_id" del token JWT (utente autenticato).
 static Guid TenantCorrente(ClaimsPrincipal user) =>
@@ -479,13 +737,22 @@ static object PromemoriaDto(Paghe.Persistence.Entities.PromemoriaEntity p)
         : "futuro";
     return new
     {
-        p.Id, p.AziendaId, p.Tipo, p.RiferimentoId,
-        p.Titolo, p.Descrizione, p.DataScadenza, p.GiorniPreavviso,
-        p.Stato, p.Messaggio, giorniAllaScadenza = giorni, urgenza,
+        p.Id,
+        p.AziendaId,
+        p.Tipo,
+        p.RiferimentoId,
+        p.Titolo,
+        p.Descrizione,
+        p.DataScadenza,
+        p.GiorniPreavviso,
+        p.Stato,
+        p.Messaggio,
+        giorniAllaScadenza = giorni,
+        urgenza,
     };
 }
 
-app.MapGet("/", () => Results.Ok(new
+app.MapGet(frontendIntegrato ? "/api" : "/", () => Results.Ok(new
 {
     servizio = "Paghe SaaS API",
     versione = "0.1.0-mvp",
@@ -573,13 +840,112 @@ app.MapGet("/", () => Results.Ok(new
 
 app.MapGet("/health", () => Results.Ok(new { stato = "ok" }));
 
-// --- Autenticazione (pubblici) -----------------------------------------------------
-app.MapPost("/api/auth/registra", async (RegistraRequest req, AuthService auth, TokenService tokens) =>
+static async Task RegistraAutenticazioneSenzaBloccareAsync(
+    IServiceScopeFactory scopeFactory,
+    Guid? tenantId,
+    Guid? utenteId,
+    string esito,
+    int statusCode,
+    HttpContext http,
+    string azione = "Autenticazione")
 {
+    if (tenantId is null || utenteId is null) return; // credenziali sconosciute: non attribuibili
+    try
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var audit = scope.ServiceProvider.GetRequiredService<AuditLogService>();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await audit.RegistraRichiestaAsync(new RichiestaAudit(
+            tenantId.Value,
+            utenteId.Value,
+            "Autenticazione",
+            azione,
+            "",
+            http.Request.Method,
+            http.Request.Path.Value ?? "/api/auth",
+            esito,
+            statusCode,
+            http.TraceIdentifier,
+            DateTime.UtcNow), timeout.Token);
+    }
+    catch (Exception ex)
+    {
+        http.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("RegistroAttivita")
+            .LogError(ex, "Audit autenticazione fallito. TraceId: {TraceId}", http.TraceIdentifier);
+    }
+}
+
+const string CookieRefresh = "paghepro_refresh";
+const string HeaderClientWeb = "X-PaghePro-Client";
+
+static bool VerificaRichiestaWeb(HttpContext http) =>
+    string.Equals(http.Request.Headers[HeaderClientWeb], "web", StringComparison.Ordinal);
+
+static void ScriviCookieRefresh(HttpContext http, SessioneRefreshEmessa sessione)
+{
+    var produzione = !http.RequestServices.GetRequiredService<IHostEnvironment>().IsDevelopment();
+    http.Response.Cookies.Append(CookieRefresh, sessione.RefreshToken, new CookieOptions
+    {
+        HttpOnly = true,
+        Secure = produzione,
+        SameSite = SameSiteMode.Strict,
+        Path = "/api/auth",
+        Expires = new DateTimeOffset(sessione.ScadeUtc, TimeSpan.Zero),
+        IsEssential = true,
+    });
+}
+
+static void EliminaCookieRefresh(HttpContext http)
+{
+    var produzione = !http.RequestServices.GetRequiredService<IHostEnvironment>().IsDevelopment();
+    http.Response.Cookies.Delete(CookieRefresh, new CookieOptions
+    {
+        HttpOnly = true,
+        Secure = produzione,
+        SameSite = SameSiteMode.Strict,
+        Path = "/api/auth",
+        IsEssential = true,
+    });
+}
+
+static AccessoResponse CreaRispostaAccesso(
+    TokenService tokens,
+    SessioneRefreshEmessa sessione)
+{
+    var accesso = tokens.Crea(sessione.Utente, sessione.FamigliaId);
+    return new(accesso.Token, accesso.ScadeUtc, sessione.Utente.TenantId, sessione.Utente.Ruolo);
+}
+
+static AccessoMobileResponse CreaRispostaAccessoMobile(
+    TokenService tokens,
+    SessioneRefreshEmessa sessione)
+{
+    var accesso = tokens.Crea(sessione.Utente, sessione.FamigliaId);
+    return new(
+        accesso.Token,
+        accesso.ScadeUtc,
+        sessione.Utente.TenantId,
+        sessione.Utente.Ruolo,
+        sessione.RefreshToken,
+        new DateTimeOffset(sessione.ScadeUtc, TimeSpan.Zero));
+}
+
+// --- Autenticazione (pubblici) -----------------------------------------------------
+app.MapPost("/api/auth/registra", async (
+    RegistraRequest req, AuthService auth, TokenService tokens, SessioniRefreshService sessioni,
+    IServiceScopeFactory scopeFactory, HttpContext http) =>
+{
+    if (!VerificaRichiestaWeb(http))
+        return Results.BadRequest(new { errore = "Client web non riconosciuto." });
     try
     {
         var utente = await auth.RegistraAsync(req.RagioneSociale, req.Email, req.Password);
-        return Results.Ok(new { token = tokens.Crea(utente), tenantId = utente.TenantId, ruolo = utente.Ruolo });
+        var sessione = await sessioni.CreaAsync(utente, "web", http.RequestAborted);
+        ScriviCookieRefresh(http, sessione);
+        await RegistraAutenticazioneSenzaBloccareAsync(
+            scopeFactory, utente.TenantId, utente.Id, "Riuscito", StatusCodes.Status200OK, http);
+        return Results.Ok(CreaRispostaAccesso(tokens, sessione));
     }
     catch (ArgumentException ex)
     {
@@ -587,15 +953,43 @@ app.MapPost("/api/auth/registra", async (RegistraRequest req, AuthService auth, 
     }
 }).RequireRateLimiting("auth");
 
-app.MapPost("/api/auth/login", async (LoginRequest req, AuthService auth, TokenService tokens) =>
+app.MapPost("/api/auth/login", async (
+    LoginRequest req, AuthService auth, TokenService tokens, SessioniRefreshService sessioni,
+    IServiceScopeFactory scopeFactory, HttpContext http) =>
 {
+    if (!VerificaRichiestaWeb(http))
+        return Results.BadRequest(new { errore = "Client web non riconosciuto." });
     var r = await auth.AccediAsync(req.Email, req.Password, req.Codice2fa);
+    var statusAccesso = r.Esito switch
+    {
+        EsitoAccesso.Ok => StatusCodes.Status200OK,
+        EsitoAccesso.AccountSospeso => StatusCodes.Status403Forbidden,
+        _ => StatusCodes.Status401Unauthorized,
+    };
+    var identitaAudit = r.Utente is not null
+        ? new IdentitaAccessoAudit(r.Utente.TenantId, r.Utente.Id)
+        : r.IdentitaAudit;
+    if (identitaAudit is not null)
+        await RegistraAutenticazioneSenzaBloccareAsync(
+            scopeFactory,
+            identitaAudit.TenantId,
+            identitaAudit.UtenteId,
+            r.Esito switch
+            {
+                EsitoAccesso.Ok => "Riuscito",
+                EsitoAccesso.ServeCodice2fa => "SecondoFattoreRichiesto",
+                _ => "Negato",
+            },
+            statusAccesso,
+            http);
+    if (r.Esito == EsitoAccesso.Ok)
+    {
+        var sessione = await sessioni.CreaAsync(r.Utente!, "web", http.RequestAborted);
+        ScriviCookieRefresh(http, sessione);
+        return Results.Ok(CreaRispostaAccesso(tokens, sessione));
+    }
     return r.Esito switch
     {
-        EsitoAccesso.Ok => Results.Ok(new
-        {
-            token = tokens.Crea(r.Utente!), tenantId = r.Utente!.TenantId, ruolo = r.Utente!.Ruolo,
-        }),
         EsitoAccesso.ServeCodice2fa => Results.Json(new { serveCodice2fa = true }, statusCode: 401),
         EsitoAccesso.Codice2faErrato => Results.Json(
             new { serveCodice2fa = true, errore = "Codice 2FA non valido." }, statusCode: 401),
@@ -605,13 +999,144 @@ app.MapPost("/api/auth/login", async (LoginRequest req, AuthService auth, TokenS
     };
 }).RequireRateLimiting("auth");
 
+app.MapPost("/api/auth/refresh", async (
+    SessioniRefreshService sessioni, TokenService tokens,
+    IServiceScopeFactory scopeFactory, HttpContext http) =>
+{
+    if (!VerificaRichiestaWeb(http))
+        return Results.BadRequest(new { errore = "Client web non riconosciuto." });
+    http.Request.Cookies.TryGetValue(CookieRefresh, out var refresh);
+    var risultato = await sessioni.RuotaAsync(refresh, "web", http.RequestAborted);
+    if (risultato.Esito == EsitoRotazioneRefresh.Ok)
+    {
+        ScriviCookieRefresh(http, risultato.Sessione!);
+        await RegistraAutenticazioneSenzaBloccareAsync(
+            scopeFactory, risultato.Sessione!.Utente.TenantId, risultato.Sessione.Utente.Id,
+            "Riuscito", StatusCodes.Status200OK, http, "RinnovoSessione");
+        return Results.Ok(CreaRispostaAccesso(tokens, risultato.Sessione!));
+    }
+    if (risultato.Esito != EsitoRotazioneRefresh.Collisione)
+        EliminaCookieRefresh(http);
+    return risultato.Esito switch
+    {
+        EsitoRotazioneRefresh.Collisione => Results.Json(
+            new { errore = "Aggiornamento sessione già in corso." }, statusCode: 409),
+        EsitoRotazioneRefresh.AccountNonAttivo => Results.Json(
+            new { errore = "Account non attivo." }, statusCode: 403),
+        _ => Results.Json(new { errore = "Sessione scaduta. Accedi di nuovo." }, statusCode: 401),
+    };
+}).RequireRateLimiting("auth");
+
+app.MapPost("/api/auth/logout", async (
+    SessioniRefreshService sessioni, IServiceScopeFactory scopeFactory, HttpContext http) =>
+{
+    if (!VerificaRichiestaWeb(http))
+        return Results.BadRequest(new { errore = "Client web non riconosciuto." });
+    http.Request.Cookies.TryGetValue(CookieRefresh, out var refresh);
+    var revocata = await sessioni.RevocaDaTokenAsync(refresh, "Logout", http.RequestAborted);
+    EliminaCookieRefresh(http);
+    if (revocata is not null)
+        await RegistraAutenticazioneSenzaBloccareAsync(
+            scopeFactory, revocata.TenantId, revocata.UtenteId,
+            "Riuscito", StatusCodes.Status204NoContent, http, "Logout");
+    return Results.NoContent();
+}).RequireRateLimiting("auth");
+
+app.MapPost("/api/auth/mobile/registra", async (
+    RegistraRequest req, AuthService auth, TokenService tokens, SessioniRefreshService sessioni,
+    IServiceScopeFactory scopeFactory, HttpContext http) =>
+{
+    try
+    {
+        var utente = await auth.RegistraAsync(req.RagioneSociale, req.Email, req.Password);
+        var sessione = await sessioni.CreaAsync(utente, "mobile", http.RequestAborted);
+        await RegistraAutenticazioneSenzaBloccareAsync(
+            scopeFactory, utente.TenantId, utente.Id, "Riuscito", StatusCodes.Status200OK, http);
+        return Results.Ok(CreaRispostaAccessoMobile(tokens, sessione));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+}).RequireRateLimiting("auth");
+
+app.MapPost("/api/auth/mobile/login", async (
+    LoginRequest req, AuthService auth, TokenService tokens, SessioniRefreshService sessioni,
+    IServiceScopeFactory scopeFactory, HttpContext http) =>
+{
+    var r = await auth.AccediAsync(req.Email, req.Password, req.Codice2fa);
+    var statusAccesso = r.Esito switch
+    {
+        EsitoAccesso.Ok => StatusCodes.Status200OK,
+        EsitoAccesso.AccountSospeso => StatusCodes.Status403Forbidden,
+        _ => StatusCodes.Status401Unauthorized,
+    };
+    var identitaAudit = r.Utente is not null
+        ? new IdentitaAccessoAudit(r.Utente.TenantId, r.Utente.Id)
+        : r.IdentitaAudit;
+    if (identitaAudit is not null)
+        await RegistraAutenticazioneSenzaBloccareAsync(
+            scopeFactory, identitaAudit.TenantId, identitaAudit.UtenteId,
+            r.Esito == EsitoAccesso.Ok ? "Riuscito" : "Negato", statusAccesso, http);
+
+    if (r.Esito == EsitoAccesso.Ok)
+    {
+        var sessione = await sessioni.CreaAsync(r.Utente!, "mobile", http.RequestAborted);
+        return Results.Ok(CreaRispostaAccessoMobile(tokens, sessione));
+    }
+    return r.Esito switch
+    {
+        EsitoAccesso.ServeCodice2fa => Results.Json(new { serveCodice2fa = true }, statusCode: 401),
+        EsitoAccesso.Codice2faErrato => Results.Json(
+            new { serveCodice2fa = true, errore = "Codice 2FA non valido." }, statusCode: 401),
+        EsitoAccesso.AccountSospeso => Results.Json(
+            new { errore = "Studio sospeso. Contatta l'amministratore della piattaforma." }, statusCode: 403),
+        _ => Results.Json(new { errore = "Email o password non corretti." }, statusCode: 401),
+    };
+}).RequireRateLimiting("auth");
+
+app.MapPost("/api/auth/mobile/refresh", async (
+    RefreshMobileRequest req, SessioniRefreshService sessioni, TokenService tokens,
+    IServiceScopeFactory scopeFactory, HttpContext http) =>
+{
+    var risultato = await sessioni.RuotaAsync(req.RefreshToken, "mobile", http.RequestAborted);
+    if (risultato.Esito == EsitoRotazioneRefresh.Ok)
+        await RegistraAutenticazioneSenzaBloccareAsync(
+            scopeFactory, risultato.Sessione!.Utente.TenantId, risultato.Sessione.Utente.Id,
+            "Riuscito", StatusCodes.Status200OK, http, "RinnovoSessioneMobile");
+    return risultato.Esito switch
+    {
+        EsitoRotazioneRefresh.Ok => Results.Ok(CreaRispostaAccessoMobile(tokens, risultato.Sessione!)),
+        EsitoRotazioneRefresh.Collisione => Results.Json(
+            new { errore = "Aggiornamento sessione già in corso." }, statusCode: 409),
+        EsitoRotazioneRefresh.AccountNonAttivo => Results.Json(
+            new { errore = "Account non attivo." }, statusCode: 403),
+        _ => Results.Json(new { errore = "Sessione scaduta. Accedi di nuovo." }, statusCode: 401),
+    };
+}).RequireRateLimiting("auth");
+
+app.MapPost("/api/auth/mobile/logout", async (
+    RefreshMobileRequest req, SessioniRefreshService sessioni,
+    IServiceScopeFactory scopeFactory, HttpContext http) =>
+{
+    var revocata = await sessioni.RevocaDaTokenAsync(req.RefreshToken, "Logout", http.RequestAborted);
+    if (revocata is not null)
+        await RegistraAutenticazioneSenzaBloccareAsync(
+            scopeFactory, revocata.TenantId, revocata.UtenteId,
+            "Riuscito", StatusCodes.Status204NoContent, http, "LogoutMobile");
+    return Results.NoContent();
+}).RequireRateLimiting("auth");
+
 // Accesso con Google (Sign in with Google): il frontend invia il "credential" (ID token Google);
 // lo verifichiamo tramite l'endpoint tokeninfo di Google (aud = nostro Client ID, email verificata),
 // poi accediamo/creiamo l'utente per quell'email. Richiede la config "Google:ClientId".
 app.MapPost("/api/auth/google", async (
     GoogleLoginRequest req, IHttpClientFactory httpFactory, IConfiguration cfg,
-    AuthService auth, TokenService tokens) =>
+    AuthService auth, TokenService tokens, SessioniRefreshService sessioni,
+    IServiceScopeFactory scopeFactory, HttpContext http) =>
 {
+    if (!VerificaRichiestaWeb(http))
+        return Results.BadRequest(new { errore = "Client web non riconosciuto." });
     var clientId = cfg["Google:ClientId"];
     if (string.IsNullOrWhiteSpace(clientId))
         return Results.Json(new { errore = "Accesso con Google non configurato (manca Google:ClientId)." }, statusCode: 501);
@@ -634,7 +1159,11 @@ app.MapPost("/api/auth/google", async (
         return Results.Json(new { errore = "Token Google non valido o email non verificata." }, statusCode: 401);
 
     var utente = await auth.AccediConGoogleAsync(info.Email, info.Name ?? info.Email);
-    return Results.Ok(new { token = tokens.Crea(utente), tenantId = utente.TenantId, ruolo = utente.Ruolo });
+    var sessione = await sessioni.CreaAsync(utente, "web", http.RequestAborted);
+    ScriviCookieRefresh(http, sessione);
+    await RegistraAutenticazioneSenzaBloccareAsync(
+        scopeFactory, utente.TenantId, utente.Id, "Riuscito", StatusCodes.Status200OK, http);
+    return Results.Ok(CreaRispostaAccesso(tokens, sessione));
 }).RequireRateLimiting("auth");
 
 // --- Super-admin di piattaforma: gestione/sospensione studi (solo ruolo superadmin) ----
@@ -756,7 +1285,7 @@ secured.MapPost("/api/cedolini/calcola", async (CalcolaCedolinoRequest req, Para
 
 // Genera l'F24 da versare a partire dagli importi delle paghe (ritenute IRPEF, addizionali, INPS).
 // Restituisce il modello, l'esito dei controlli interni e una bozza leggibile (NON ufficiale).
-app.MapPost("/api/f24/da-paghe", (F24DaPagheRequest req) =>
+secured.MapPost("/api/f24/da-paghe", (F24DaPagheRequest req) =>
 {
     if (req.Sostituto is null || req.Righe is null || req.Righe.Count == 0)
         return Results.BadRequest(new { errore = "Sostituto e almeno una riga di paga sono obbligatori." });
@@ -796,7 +1325,7 @@ secured.MapPost("/api/fatture/calcola", (Fattura fattura) =>
 });
 
 // Generazione del tracciato FatturaPA XML (subset FPR12).
-app.MapPost("/api/fatture/xml", (Fattura fattura) =>
+secured.MapPost("/api/fatture/xml", (Fattura fattura) =>
 {
     if (fattura.Righe.Count == 0)
         return Results.BadRequest(new { errore = "La fattura non ha righe." });
@@ -983,7 +1512,7 @@ app.MapPost("/api/fatture/firma", async (
 }).RequireAuthorization().RequireRateLimiting("sensibili");
 
 // Riclassificazione del bilancio (Stato Patrimoniale + Conto Economico, schema CEE).
-app.MapPost("/api/bilancio/riclassifica", (RiclassificaRequest req) =>
+secured.MapPost("/api/bilancio/riclassifica", (RiclassificaRequest req) =>
 {
     try
     {
@@ -1000,9 +1529,17 @@ app.MapPost("/api/bilancio/riclassifica", (RiclassificaRequest req) =>
 // Restituisce una sintesi del bilancio archiviato (per elenchi e creazione).
 static object SintesiBilancio(Paghe.Persistence.Entities.BilancioEntity b) => new
 {
-    b.Id, b.Anno, b.Stato, b.Quadra,
-    b.ValoreDellaProduzione, b.CostiDellaProduzione, b.UtilePerditaEsercizio,
-    b.TotaleAttivo, b.TotalePassivo, b.PatrimonioNetto, b.SbilancioAttivoPassivo,
+    b.Id,
+    b.Anno,
+    b.Stato,
+    b.Quadra,
+    b.ValoreDellaProduzione,
+    b.CostiDellaProduzione,
+    b.UtilePerditaEsercizio,
+    b.TotaleAttivo,
+    b.TotalePassivo,
+    b.PatrimonioNetto,
+    b.SbilancioAttivoPassivo,
 };
 
 // Redige e archivia il bilancio dell'anno per l'azienda a partire dalle voci indicate.
@@ -1070,10 +1607,20 @@ secured.MapGet("/api/bilanci/{id:guid}", async (Guid id, BilancioService svc, Cl
         return Results.NotFound(new { errore = "Bilancio non trovato." });
     return Results.Ok(new
     {
-        b.Id, b.Anno, b.Stato, b.Quadra,
-        b.ValoreDellaProduzione, b.CostiDellaProduzione, b.ProventiFinanziari, b.OneriFinanziari,
-        b.Imposte, b.UtilePerditaEsercizio,
-        b.TotaleAttivo, b.TotalePassivo, b.PatrimonioNetto, b.SbilancioAttivoPassivo,
+        b.Id,
+        b.Anno,
+        b.Stato,
+        b.Quadra,
+        b.ValoreDellaProduzione,
+        b.CostiDellaProduzione,
+        b.ProventiFinanziari,
+        b.OneriFinanziari,
+        b.Imposte,
+        b.UtilePerditaEsercizio,
+        b.TotaleAttivo,
+        b.TotalePassivo,
+        b.PatrimonioNetto,
+        b.SbilancioAttivoPassivo,
         b.Bozza,
         righe = b.Righe.Select(r => new { r.Codice, r.Descrizione, r.Voce, r.Importo }),
         bilancio = JsonSerializer.Deserialize<JsonElement>(b.BilancioJson),
@@ -1110,7 +1657,7 @@ secured.MapPost("/api/bilanci/{id:guid}/stato",
     catch (InvalidOperationException ex) { return Results.BadRequest(new { errore = ex.Message }); }
 });
 
-app.MapPost("/api/contabilita/iva/liquidazione", (LiquidazioneIvaRequest req) =>
+secured.MapPost("/api/contabilita/iva/liquidazione", (LiquidazioneIvaRequest req) =>
 {
     try
     {
@@ -1507,18 +2054,28 @@ secured.MapPost("/api/aziende/{aziendaId:guid}/dipendenti",
     {
         var dipendente = new Paghe.Persistence.Entities.DipendenteEntity
         {
-            CodiceFiscale = req.CodiceFiscale, Nome = req.Nome, Cognome = req.Cognome, Iban = req.Iban,
+            CodiceFiscale = req.CodiceFiscale,
+            Nome = req.Nome,
+            Cognome = req.Cognome,
+            Iban = req.Iban,
         };
         var rapporto = new Paghe.Persistence.Entities.RapportoLavoroEntity
         {
-            CodiceCcnl = req.CodiceCcnl, Livello = req.Livello, Qualifica = req.Qualifica,
-            NumeroMensilita = req.NumeroMensilita, PartTime = req.PartTime,
-            PercentualePartTime = req.PercentualePartTime, ScattiAnzianita = req.ScattiAnzianita,
-            Superminimo = req.Superminimo, Regione = req.Regione,
+            CodiceCcnl = req.CodiceCcnl,
+            Livello = req.Livello,
+            Qualifica = req.Qualifica,
+            NumeroMensilita = req.NumeroMensilita,
+            PartTime = req.PartTime,
+            PercentualePartTime = req.PercentualePartTime,
+            ScattiAnzianita = req.ScattiAnzianita,
+            Superminimo = req.Superminimo,
+            Regione = req.Regione,
             CodiceCatastaleComune = req.CodiceCatastaleComune,
             DetrazioniLavoroDipendente = req.DetrazioniLavoroDipendente,
             GiorniDetrazioneAnno = req.GiorniDetrazioneAnno,
             DataAssunzione = req.DataAssunzione ?? DateOnly.FromDateTime(DateTime.UtcNow),
+            OreSettimanali = req.OreSettimanali,
+            TipoContratto = req.TipoContratto,
         };
         var creato = await svc.CreaDipendenteERapportoAsync(TenantCorrente(user), aziendaId, dipendente, rapporto);
         return Results.Created($"/api/rapporti/{creato.Id}",
@@ -1598,9 +2155,12 @@ secured.MapGet("/api/aziende/{aziendaId:guid}/dipendenti",
     var rapporti = await svc.ElencoRapportiAsync(TenantCorrente(user), aziendaId);
     return Results.Ok(rapporti.Select(r => new
     {
-        rapportoId = r.Id, r.DipendenteId,
+        rapportoId = r.Id,
+        r.DipendenteId,
         nominativo = $"{r.Dipendente?.Cognome} {r.Dipendente?.Nome}".Trim(),
-        r.CodiceCcnl, r.Livello, r.Qualifica
+        r.CodiceCcnl,
+        r.Livello,
+        r.Qualifica
     }));
 });
 
@@ -1623,7 +2183,12 @@ secured.MapPost("/api/ravvedimento/calcola", (RavvedimentoRequest req) =>
             Paghe.Core.Calcolo.Ravvedimento.ScaglioniEsempioStorico);
         return Results.Ok(new
         {
-            r.GiorniRitardo, r.ScaglioneApplicato, r.Tributo, r.Sanzione, r.Interessi, r.Totale,
+            r.GiorniRitardo,
+            r.ScaglioneApplicato,
+            r.Tributo,
+            r.Sanzione,
+            r.Interessi,
+            r.Totale,
             nota = "Scaglioni di esempio (storico 30%): validare con un Consulente del Lavoro.",
         });
     }
@@ -1674,8 +2239,16 @@ secured.MapPost("/api/rapporti/{rapportoId:guid}/cedolini",
         var c = await svc.CalcolaEArchiviaAsync(
             TenantCorrente(user), rapportoId, cartellino, forzaRicalcolo: forza);
         return Results.Created($"/api/cedolini/{c.Id}",
-            new { c.Id, c.Anno, c.Mese, c.NettoInBusta, c.CostoAzienda,
-                  c.FerieResidue, c.PermessiResidui });
+            new
+            {
+                c.Id,
+                c.Anno,
+                c.Mese,
+                c.NettoInBusta,
+                c.CostoAzienda,
+                c.FerieResidue,
+                c.PermessiResidui
+            });
     }
     catch (ArgumentException ex)
     {
@@ -1770,7 +2343,14 @@ secured.MapPost("/api/aziende/{aziendaId:guid}/f24/mese/salva",
             TenantCorrente(user), aziendaId, req.Anno, req.Mese, req.MatricolaInps, req.CodiceSedeInps ?? "");
         return Results.Created($"/api/f24/{p.Id}", new
         {
-            p.Id, p.Anno, p.Mese, p.DataVersamento, p.TotaleDebiti, p.SaldoFinale, p.Stato, p.Valido,
+            p.Id,
+            p.Anno,
+            p.Mese,
+            p.DataVersamento,
+            p.TotaleDebiti,
+            p.SaldoFinale,
+            p.Stato,
+            p.Valido,
         });
     }
     catch (ArgumentException ex)
@@ -1783,7 +2363,14 @@ secured.MapGet("/api/aziende/{aziendaId:guid}/f24",
     async (Guid aziendaId, PraticheF24Service svc, ClaimsPrincipal user) =>
         Results.Ok((await svc.ElencoAsync(TenantCorrente(user), aziendaId)).Select(p => new
         {
-            p.Id, p.Anno, p.Mese, p.DataVersamento, p.TotaleDebiti, p.SaldoFinale, p.Stato, p.Valido,
+            p.Id,
+            p.Anno,
+            p.Mese,
+            p.DataVersamento,
+            p.TotaleDebiti,
+            p.SaldoFinale,
+            p.Stato,
+            p.Valido,
         })));
 
 secured.MapGet("/api/f24/{id:guid}", async (Guid id, PraticheF24Service svc, ClaimsPrincipal user) =>
@@ -1793,9 +2380,16 @@ secured.MapGet("/api/f24/{id:guid}", async (Guid id, PraticheF24Service svc, Cla
         return Results.NotFound(new { errore = "Pratica F24 non trovata." });
     return Results.Ok(new
     {
-        p.Id, p.Anno, p.Mese, p.DataVersamento,
-        p.TotaleDebiti, p.TotaleCrediti, p.SaldoFinale,
-        p.Stato, p.Valido, p.Bozza,
+        p.Id,
+        p.Anno,
+        p.Mese,
+        p.DataVersamento,
+        p.TotaleDebiti,
+        p.TotaleCrediti,
+        p.SaldoFinale,
+        p.Stato,
+        p.Valido,
+        p.Bozza,
         modello = JsonSerializer.Deserialize<JsonElement>(p.ModelloJson),
     });
 });
@@ -1878,7 +2472,13 @@ secured.MapPost("/api/fatture/{id:guid}/trasmetti",
         var t = await svc.TrasmettiAsync(TenantCorrente(user), id);
         return Results.Created($"/api/trasmissioni/{t.Id}", new
         {
-            t.Id, t.Stato, t.IdentificativoSdi, t.NomeFileXml, t.Firmato, t.Provider, t.MessaggioErrore
+            t.Id,
+            t.Stato,
+            t.IdentificativoSdi,
+            t.NomeFileXml,
+            t.Firmato,
+            t.Provider,
+            t.MessaggioErrore
         });
     }
     catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
@@ -2087,7 +2687,13 @@ secured.MapPost("/api/aziende/{aziendaId:guid}/durc",
             aziendaId, req.Numero, req.DataEmissione, req.DataScadenza, req.Regolare, req.Note));
         return Results.Created($"/api/aziende/{aziendaId}/durc", new
         {
-            d.Id, d.AziendaId, d.Numero, d.DataEmissione, d.DataScadenza, d.Regolare, d.Note,
+            d.Id,
+            d.AziendaId,
+            d.Numero,
+            d.DataEmissione,
+            d.DataScadenza,
+            d.Regolare,
+            d.Note,
         });
     }
     catch (ArgumentException ex) { return Results.BadRequest(new { errore = ex.Message }); }
@@ -2097,7 +2703,13 @@ secured.MapGet("/api/aziende/{aziendaId:guid}/durc",
     async (Guid aziendaId, ScadenzarioService svc, ClaimsPrincipal user) =>
         Results.Ok((await svc.ElencoDurcAsync(TenantCorrente(user), aziendaId)).Select(d => new
         {
-            d.Id, d.AziendaId, d.Numero, d.DataEmissione, d.DataScadenza, d.Regolare, d.Note,
+            d.Id,
+            d.AziendaId,
+            d.Numero,
+            d.DataEmissione,
+            d.DataScadenza,
+            d.Regolare,
+            d.Note,
         })));
 
 // Elenco dei promemoria: solo lettura. L'invio automatico resta esplicito su POST /api/scadenzario/invia-automatiche.
@@ -2244,6 +2856,7 @@ secured.MapPost("/api/documenti-scadenze",
 
 // Collegamento self-service del provider SdI (configurazione per tenant).
 app.MapConfigurazioneSdi();
+app.MapPosta();
 app.MapCertificazioneUnica();
 app.MapAi();
 app.MapLipe();
@@ -2260,6 +2873,21 @@ app.MapImportUnilavPdf(); // UNILAV: carica il PDF → registra datore + lavorat
 app.MapImportVisuraPdf(); // Visura camerale: carica il PDF → estrae i dati azienda (da confermare)
 app.MapModuli();          // archivio Persone + modello ufficiale AA7/10 compilato (PDF AdE)
 app.MapCcnl();            // elenco dei CCNL configurati (menu busta paga)
+app.MapRegistroAttivita(); // registro GDPR: accessi e modifiche, consultabile solo dall'admin
+app.MapRetention();        // policy, blocchi, anteprime e ricevute di conservazione GDPR
+app.MapAiGovernor();       // Governor AI (G2): mandati, preflight, revoca, catena audit
+
+// Un URL API inesistente deve restituire un vero 404 JSON: non deve essere
+// trasformato nel file index.html dal fallback della SPA.
+app.MapMethods(
+    "/api/{**percorso}",
+    ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+    () => Results.NotFound(new { errore = "Endpoint API non trovato." }));
+
+// Fallback SPA: rotte client-side e hash possono essere aperti direttamente senza 404.
+// È registrato solo quando l'immagine contiene davvero il frontend compilato.
+if (frontendIntegrato)
+    app.MapFallbackToFile("index.html");
 
 app.Run();
 

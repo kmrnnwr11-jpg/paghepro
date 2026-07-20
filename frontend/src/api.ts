@@ -197,6 +197,7 @@ export interface Livello { codice: string; descrizione: string; minimoTabellare:
 export interface Rapporto {
   codiceCcnl: string; livello: string; qualifica: string; numeroMensilita: number;
   scattiAnzianita: number; regione: string; codiceCatastaleComune: string;
+  superminimo?: number; partTime?: boolean; percentualePartTime?: number;
 }
 export interface Cartellino {
   anno: number; mese: number;
@@ -1219,6 +1220,10 @@ export interface CreaDipendente {
   codiceFiscale: string; nome: string; cognome: string;
   codiceCcnl: string; livello: string; iban?: string; qualifica?: string;
   regione?: string; codiceCatastaleComune?: string;
+  // Inquadramento e retribuzione (default lato server se omessi).
+  dataAssunzione?: string; tipoContratto?: string; oreSettimanali?: number;
+  numeroMensilita?: number; partTime?: boolean; percentualePartTime?: number;
+  scattiAnzianita?: number; superminimo?: number;
 }
 
 export interface EsitoImportUnilav {

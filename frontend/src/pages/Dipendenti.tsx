@@ -1,12 +1,12 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { api, type Azienda, type DipendenteRapporto, type Livello } from "../api";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Building2, FileUp, Plus, Search, UserPlus, Users, X } from "lucide-react";
+import { api, type Azienda, type Cedolino, type DipendenteRapporto, type Livello } from "../api";
 import { CaricaUnilav } from "./CaricaUnilav";
 import { ComuneAutocomplete } from "../ComuneAutocomplete";
 import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
 
 const DEFAULT_CCNL = "COMMERCIO_TERZIARIO";
 const DEFAULT_LIVELLO = "3";
-const TUTTE_LE_AZIENDE = "__tutte__";
 
 type DipendenteConAzienda = DipendenteRapporto & {
   aziendaId: string;
@@ -48,19 +48,24 @@ function nomeCcnl(codice: string): string {
   return nomi[codice] ?? codice;
 }
 
+const oggiIso = new Date().toISOString().slice(0, 10);
+
 const formVuoto = {
   codiceFiscale: "", nome: "", cognome: "", livello: DEFAULT_LIVELLO, iban: "", qualifica: "Impiegato",
   regione: "", codiceCatastaleComune: "", comuneNome: "",
+  dataAssunzione: oggiIso, tipoContratto: "Tempo indeterminato", oreSettimanali: "40",
+  numeroMensilita: "14", percentualePartTime: "100", scattiAnzianita: "0", superminimo: "0",
 };
 
 export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void }) {
   const [tutteAziende, setTutteAziende] = useState<Azienda[]>([]);
   const [azienda, setAzienda] = useState<Azienda | null>(null);
-  const [filtroAziendaId, setFiltroAziendaId] = useState(TUTTE_LE_AZIENDE);
+  const [filtroAziendaId, setFiltroAziendaId] = useState("");
   const [lista, setLista] = useState<DipendenteConAzienda[]>([]);
   const [livelli, setLivelli] = useState<Livello[]>([]);
   const [form, setForm] = useState(formVuoto);
-  const [mostraForm, setMostraForm] = useState(false);
+  const [vista, setVista] = useState<"archivio" | "nuovo" | "unilav">("archivio");
+  const [ricerca, setRicerca] = useState("");
   const [caricamento, setCaricamento] = useState(true);
   const [salvataggio, setSalvataggio] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
@@ -68,19 +73,12 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
   useEffect(() => {
     (async () => {
       try {
-        let aziende = await api.aziende();
-        if (aziende.length === 0) {
-          try {
-            await api.creaDatasetDemo();
-            aziende = await api.aziende();
-          } catch {
-            // Account non demo: resta il normale archivio vuoto.
-          }
-        }
+        const aziende = await api.aziende();
         setTutteAziende(aziende);
         const a = scegliAziendaPreferita(aziende);
-        if (a) salvaAziendaCorrenteId(a.id);
-        setLista(await caricaDipendentiAziende(aziende));
+        setAzienda(a);
+        setFiltroAziendaId(a?.id ?? "");
+        setLista(a ? await caricaDipendentiAziende([a]) : []);
       } catch (e) {
         setErrore(e instanceof Error ? e.message : "Errore di caricamento");
       } finally {
@@ -107,20 +105,20 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
       })
       .catch(() => { if (vivo) setLivelli([]); });
     return () => { vivo = false; };
-  }, [azienda?.id, azienda?.ccnlDefault, azienda?.livelloDefault]);
+  }, [azienda]);
 
   async function cambiaAzienda(id: string) {
-    setFiltroAziendaId(id);
     const a = tutteAziende.find(x => x.id === id) ?? null;
+    if (!a) return;
+    setFiltroAziendaId(id);
     setAzienda(a);
-    if (a) salvaAziendaCorrenteId(a.id);
+    salvaAziendaCorrenteId(a.id);
     setErrore(null);
-    setMostraForm(false);
+    setVista("archivio");
     setLista([]);
     setCaricamento(true);
     try {
-      const aziendeDaCaricare = a ? [a] : tutteAziende;
-      setLista(await caricaDipendentiAziende(aziendeDaCaricare));
+      setLista(await caricaDipendentiAziende([a]));
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Errore di caricamento");
     } finally {
@@ -147,10 +145,19 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
         qualifica: form.qualifica,
         regione: form.regione || undefined,
         codiceCatastaleComune: form.codiceCatastaleComune || undefined,
+        dataAssunzione: form.dataAssunzione || undefined,
+        tipoContratto: form.tipoContratto,
+        oreSettimanali: Number(form.oreSettimanali) || 40,
+        numeroMensilita: Number(form.numeroMensilita) || 14,
+        partTime: partTime,
+        percentualePartTime: partTime ? Number(form.percentualePartTime) || 100 : 100,
+        scattiAnzianita: Number(form.scattiAnzianita) || 0,
+        superminimo: Number(form.superminimo) || 0,
       });
       setLista(await caricaDipendentiAziende([azienda]));
       setForm(formVuoto);
-      setMostraForm(false);
+      setPartTime(false);
+      setVista("archivio");
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Errore nel salvataggio");
     } finally {
@@ -160,6 +167,7 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
 
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+  const [partTime, setPartTime] = useState(false);
 
   // Dopo l'import UNILAV: porta la lista sull'azienda (datore) creata/trovata dal PDF.
   const dopoImport = async (az: { id: string; ragioneSociale: string }) => {
@@ -192,60 +200,115 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
     }
   };
 
+  const listaFiltrata = useMemo(() => {
+    const testo = ricerca.trim().toLocaleLowerCase("it");
+    if (!testo) return lista;
+    return lista.filter((dipendente) => [
+      dipendente.nominativo,
+      dipendente.qualifica,
+      dipendente.livello,
+      dipendente.codiceCcnl,
+      dipendente.aziendaNome,
+      dipendente.dipendenteId,
+    ].some((valore) => String(valore).toLocaleLowerCase("it").includes(testo)));
+  }, [lista, ricerca]);
+
+  const ccnlPresenti = new Set(lista.map((dipendente) => dipendente.codiceCcnl)).size;
+
+  function apriNuovo() {
+    if (!azienda) {
+      setErrore(tutteAziende.length === 0
+        ? "Prima registra un'azienda: ogni dipendente deve essere collegato a un datore di lavoro."
+        : "Seleziona l'azienda in cui inserire il dipendente.");
+      return;
+    }
+    setErrore(null);
+    setVista("nuovo");
+  }
+
   return (
-    <>
-      <CaricaUnilav onImportato={dopoImport} />
-      <section className="glass-card page-card">
-      <div className="card-title-row">
-        <div>
-          <h1>Dipendenti</h1>
-          <p>Archivio lavoratori — dal database</p>
+    <section className="glass-card employee-workspace">
+      <header className="employee-commandbar">
+        <div className="employee-command-title">
+          <span><Users size={20} aria-hidden="true" /></span>
+          <div>
+            <h1>Dipendenti</h1>
+            <p>{azienda ? azienda.ragioneSociale : "Seleziona un'azienda per iniziare"}</p>
+          </div>
         </div>
-        <button
-          className="btn primary"
-          type="button"
-          onClick={() => {
-            if (!azienda) {
-              setErrore(tutteAziende.length === 0
-                ? "Prima aggiungi un'azienda oppure importa un UNILAV: poi potrai salvare il dipendente."
-                : "Seleziona una singola azienda dal menu prima di aggiungere un dipendente.");
-              setMostraForm(false);
-              return;
-            }
-            setErrore(null);
-            setMostraForm((v) => !v);
-          }}
-        >
-          {mostraForm ? "Chiudi" : "+ Nuovo dipendente"}
-        </button>
+        <nav className="employee-view-tabs" aria-label="Gestione dipendenti">
+          <button className={vista === "archivio" ? "active" : ""} type="button" onClick={() => setVista("archivio")}><Users size={15} /> Archivio</button>
+          <button className={vista === "nuovo" ? "active" : ""} type="button" onClick={apriNuovo}><UserPlus size={15} /> Nuovo</button>
+          <button className={vista === "unilav" ? "active" : ""} type="button" onClick={() => setVista("unilav")}><FileUp size={15} /> Importa UNILAV</button>
+        </nav>
+      </header>
+
+      <div className="employee-companybar">
+        <Building2 size={17} aria-hidden="true" />
+        {tutteAziende.length === 0 ? (
+          <p>Nessuna azienda registrata. <a href="#aziende">Apri Aziende</a></p>
+        ) : (
+          <label>
+            <span>Azienda di lavoro</span>
+            <select value={filtroAziendaId} onChange={(e) => { void cambiaAzienda(e.target.value); }}>
+              {tutteAziende.map((voce) => <option key={voce.id} value={voce.id}>{voce.ragioneSociale}</option>)}
+            </select>
+          </label>
+        )}
       </div>
 
-      {/* selettore azienda */}
-      {tutteAziende.length === 0 ? (
-        <div className="empty-state" style={{ marginBottom: 16 }}>
-          Nessuna azienda registrata.{" "}
-          <a href="#" onClick={e => { e.preventDefault(); window.location.hash = "aziende"; }}>
-            Aggiungi un'azienda prima
-          </a>.
-        </div>
-      ) : (
-        <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <label style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>Azienda:</label>
-          <select
-            value={filtroAziendaId}
-            onChange={e => { void cambiaAzienda(e.target.value); }}
-            style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid rgba(139, 115, 85, 0.45)",
-              background: "#fffdf6", boxShadow: "var(--incavo)", color: "var(--text)", fontSize: 14, flex: 1, maxWidth: 400 }}>
-            <option value={TUTTE_LE_AZIENDE}>Tutte le aziende ({tutteAziende.length})</option>
-            {tutteAziende.map(a => (
-              <option key={a.id} value={a.id}>{a.ragioneSociale}</option>
-            ))}
-          </select>
+      {errore && <div className="employee-error" role="alert">{errore}</div>}
+
+      {vista === "archivio" && (
+        <div className="employee-pane">
+          <div className="employee-stats" aria-label="Riepilogo dipendenti">
+            <div><span>Dipendenti</span><strong>{lista.length}</strong><small>nell'azienda scelta</small></div>
+            <div><span>Qualifiche</span><strong>{new Set(lista.map((d) => d.qualifica)).size}</strong><small>profili presenti</small></div>
+            <div><span>CCNL</span><strong>{ccnlPresenti}</strong><small>contratti applicati</small></div>
+          </div>
+
+          <div className="employee-list-toolbar">
+            <label className="employee-search" htmlFor="cerca-dipendente">
+              <Search size={16} aria-hidden="true" />
+              <input id="cerca-dipendente" value={ricerca} onChange={(e) => setRicerca(e.target.value)} placeholder="Cerca nome, matricola, qualifica o CCNL" />
+              {ricerca && <button type="button" title="Cancella ricerca" onClick={() => setRicerca("")}><X size={15} /></button>}
+            </label>
+            <button className="btn primary" type="button" onClick={apriNuovo}><Plus size={16} /> Nuovo dipendente</button>
+          </div>
+
+          {caricamento ? (
+            <div className="empty-state">Caricamento dipendenti…</div>
+          ) : lista.length === 0 ? (
+            <div className="employee-empty">
+              <UserPlus size={28} aria-hidden="true" />
+              <strong>Nessun dipendente registrato</strong>
+              <p>Inserisci il primo lavoratore manualmente oppure importa il documento UNILAV.</p>
+              <div><button className="btn primary" type="button" onClick={apriNuovo}>Inserisci dipendente</button><button className="btn secondary" type="button" onClick={() => setVista("unilav")}>Importa UNILAV</button></div>
+            </div>
+          ) : listaFiltrata.length === 0 ? (
+            <div className="empty-state">Nessun dipendente corrisponde alla ricerca.</div>
+          ) : (
+            <div className="table-wrap employee-table-wrap">
+              <table className="data-table employee-table">
+                <thead><tr><th>Dipendente</th><th>Matricola</th><th>Qualifica</th><th>Livello</th><th>CCNL</th><th className="right">Azioni</th></tr></thead>
+                <tbody>{listaFiltrata.map((d) => (
+                  <tr key={d.rapportoId} onClick={() => onApri(d.rapportoId)}>
+                    <td><div className="person-cell"><span>{iniziali(d.nominativo)}</span><div><strong>{d.nominativo || "Nominativo mancante"}</strong><small>{d.aziendaNome}</small></div></div></td>
+                    <td className="num">{d.dipendenteId.slice(0, 6).toUpperCase()}</td>
+                    <td>{d.qualifica}</td><td>{d.livello}</td><td>{nomeCcnl(d.codiceCcnl)}</td>
+                    <td className="right"><button className="mini-action" type="button" onClick={(e) => { e.stopPropagation(); onApri(d.rapportoId); }}>Apri scheda</button></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
-      {mostraForm && (
-        <form className="form-grid" onSubmit={aggiungi} style={{ marginBottom: 4 }}>
+      {vista === "nuovo" && (
+        <div className="employee-pane employee-form-pane">
+          <div className="employee-pane-heading"><div><h2>Nuovo dipendente</h2><p>{azienda ? `Rapporto collegato a ${azienda.ragioneSociale}` : "Seleziona prima l'azienda"}</p></div><button className="btn secondary" type="button" onClick={() => setVista("archivio")}>Annulla</button></div>
+        <form className="form-grid employee-create-form" onSubmit={aggiungi}>
           <label>
             <span>Codice fiscale</span>
             <input value={form.codiceFiscale} onChange={set("codiceFiscale")} placeholder="RSSMRA80A01F205X" required maxLength={16} />
@@ -289,59 +352,147 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
                 setForm((f) => ({ ...f, comuneNome: c.nome, codiceCatastaleComune: c.cat, regione: c.reg }))}
             />
           </label>
+
+          <h3 className="wide-field">Inquadramento e retribuzione</h3>
+          <label>
+            <span>Data assunzione</span>
+            <input type="date" value={form.dataAssunzione} onChange={set("dataAssunzione")} required />
+          </label>
+          <label>
+            <span>Tipo contratto</span>
+            <select value={form.tipoContratto} onChange={set("tipoContratto")}>
+              <option>Tempo indeterminato</option>
+              <option>Tempo determinato</option>
+            </select>
+          </label>
+          <label>
+            <span>Ore settimanali</span>
+            <input type="number" min={1} max={48} value={form.oreSettimanali} onChange={set("oreSettimanali")} />
+          </label>
+          <label>
+            <span>Mensilità</span>
+            <select value={form.numeroMensilita} onChange={set("numeroMensilita")}>
+              <option value="13">13 (con tredicesima)</option>
+              <option value="14">14 (con quattordicesima)</option>
+            </select>
+          </label>
+          <label>
+            <span>Part-time</span>
+            <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="checkbox" checked={partTime} onChange={(e) => setPartTime(e.target.checked)} />
+              <input type="number" min={5} max={100} value={form.percentualePartTime}
+                onChange={set("percentualePartTime")} disabled={!partTime}
+                aria-label="Percentuale part-time" style={{ maxWidth: 90 }} /> %
+            </span>
+          </label>
+          <label>
+            <span>Scatti di anzianità maturati</span>
+            <input type="number" min={0} max={12} value={form.scattiAnzianita} onChange={set("scattiAnzianita")} />
+          </label>
+          <label>
+            <span>Superminimo mensile <small>(EUR, oltre il minimo CCNL)</small></span>
+            <input type="number" min={0} step="0.01" value={form.superminimo} onChange={set("superminimo")} />
+          </label>
+
+          <AnteprimaRetribuzione
+            azienda={azienda}
+            livelli={livelli}
+            livello={form.livello || livelloAzienda(azienda)}
+            qualifica={form.qualifica}
+            numeroMensilita={Number(form.numeroMensilita) || 14}
+            scattiAnzianita={Number(form.scattiAnzianita) || 0}
+            superminimo={Number(form.superminimo) || 0}
+            partTime={partTime}
+            percentualePartTime={partTime ? Number(form.percentualePartTime) || 100 : 100}
+            regione={form.regione}
+            codiceCatastaleComune={form.codiceCatastaleComune}
+          />
+
           <button className="btn primary wide-field" type="submit" disabled={salvataggio || !azienda}>
             {salvataggio ? "Salvataggio…" : "Salva dipendente"}
           </button>
         </form>
-      )}
-
-      {errore && <p className="errore">{errore}</p>}
-
-      {caricamento ? (
-        <div className="empty-state">Caricamento…</div>
-      ) : lista.length === 0 ? (
-        <div className="empty-state">Nessun dipendente ancora. Premi “+ Nuovo dipendente” per aggiungerne uno reale.</div>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table spacious">
-            <thead>
-              <tr>
-                <th>Dipendente</th>
-                <th>Azienda</th>
-                <th>Matricola</th>
-                <th>Qualifica</th>
-                <th>Livello</th>
-                <th>CCNL</th>
-                <th className="right">Azioni</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lista.map((d) => (
-                <tr key={d.rapportoId} style={{ cursor: "pointer" }} onClick={() => onApri(d.rapportoId)}>
-                  <td>
-                    <div className="person-cell">
-                      <span>{iniziali(d.nominativo)}</span>
-                      <strong>{d.nominativo || "—"}</strong>
-                    </div>
-                  </td>
-                  <td>{d.aziendaNome}</td>
-                  <td className="num">{d.dipendenteId.slice(0, 6).toUpperCase()}</td>
-                  <td>{d.qualifica}</td>
-                  <td>{d.livello}</td>
-                  <td>{nomeCcnl(d.codiceCcnl)}</td>
-                  <td className="right">
-                    <button className="mini-action" type="button" onClick={(e) => { e.stopPropagation(); onApri(d.rapportoId); }}>
-                      Apri
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
-      </section>
-    </>
+
+      {vista === "unilav" && <div className="employee-pane employee-unilav-pane"><CaricaUnilav onImportato={dopoImport} /></div>}
+    </section>
+  );
+}
+
+// Anteprima retributiva dell'assunzione: paga base dal minimo tabellare CCNL del
+// livello scelto (+ superminimo, riproporzionata sul part-time) e stima del netto
+// col motore reale su un mese ordinario. Solo lettura: i valori restano da validare.
+function AnteprimaRetribuzione({
+  azienda, livelli, livello, qualifica, numeroMensilita, scattiAnzianita,
+  superminimo, partTime, percentualePartTime, regione, codiceCatastaleComune,
+}: {
+  azienda: Azienda | null;
+  livelli: Livello[];
+  livello: string;
+  qualifica: string;
+  numeroMensilita: number;
+  scattiAnzianita: number;
+  superminimo: number;
+  partTime: boolean;
+  percentualePartTime: number;
+  regione: string;
+  codiceCatastaleComune: string;
+}) {
+  const [stima, setStima] = useState<Cedolino | null>(null);
+  const [stimaErrore, setStimaErrore] = useState("");
+  const [stimando, setStimando] = useState(false);
+
+  const livelloSel = livelli.find((l) => l.codice === livello) ?? null;
+  const coeff = partTime ? Math.min(100, Math.max(5, percentualePartTime)) / 100 : 1;
+  const lordoBase = livelloSel === null ? null : (livelloSel.minimoTabellare + superminimo) * coeff;
+  const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  async function stimaNetto() {
+    if (!azienda) return;
+    setStimando(true);
+    setStimaErrore("");
+    setStima(null);
+    try {
+      const adesso = new Date();
+      setStima(await api.calcolaCedolino({
+        codiceCcnl: codiceCcnlAzienda(azienda),
+        livello, qualifica, numeroMensilita, scattiAnzianita,
+        regione, codiceCatastaleComune,
+        superminimo, partTime, percentualePartTime,
+      }, { anno: adesso.getFullYear(), mese: adesso.getMonth() + 1, oreStraordinario: 0 }));
+    } catch {
+      setStimaErrore("Stima non disponibile: controlla livello e comune di residenza.");
+    } finally {
+      setStimando(false);
+    }
+  }
+
+  return (
+    <div className="wide-field" aria-live="polite">
+      <p className="muto">
+        {livelloSel
+          ? <>Paga base mensile CCNL ({livelloSel.codice}): <strong>{euro(livelloSel.minimoTabellare)} EUR</strong>
+            {superminimo > 0 && <> + superminimo <strong>{euro(superminimo)} EUR</strong></>}
+            {partTime && <> · part-time {percentualePartTime}%</>}
+            {lordoBase !== null && <> → lordo di partenza <strong>{euro(lordoBase)} EUR</strong></>}
+            {" "}su {numeroMensilita} mensilità.</>
+          : "Scegli un livello CCNL per vedere la paga base."}
+      </p>
+      <p style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+        <button className="btn secondary" type="button" disabled={stimando || !azienda || !livelloSel} onClick={() => void stimaNetto()}>
+          {stimando ? "Calcolo…" : "Stima netto e costo azienda"}
+        </button>
+        {stima && (
+          <span className="muto">
+            Netto in busta ≈ <strong>{euro(stima.nettoInBusta)} EUR</strong> ·
+            costo azienda ≈ <strong>{euro(stima.costoAzienda)} EUR</strong>
+            {" "}(mese ordinario, stima da validare col Consulente del Lavoro)
+          </span>
+        )}
+        {stimaErrore && <span className="muto">{stimaErrore}</span>}
+      </p>
+    </div>
   );
 }
 

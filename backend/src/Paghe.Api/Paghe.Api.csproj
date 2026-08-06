@@ -5,6 +5,10 @@
     <ProjectReference Include="..\Paghe.Persistence\Paghe.Persistence.csproj" />
     <ProjectReference Include="..\Paghe.Documenti\Paghe.Documenti.csproj" />
     <ProjectReference Include="..\Paghe.Firma\Paghe.Firma.csproj" />
+    <!-- Migrazioni versionate dello schema: un assembly per provider (EF Core non ne ammette
+         due nello stesso). L'host sceglie quale usare dalla stringa di connessione. -->
+    <ProjectReference Include="..\Paghe.Migrazioni.Sqlite\Paghe.Migrazioni.Sqlite.csproj" />
+    <ProjectReference Include="..\Paghe.Migrazioni.Postgres\Paghe.Migrazioni.Postgres.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -12,6 +16,11 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.*" />
+    <!-- Solo design-time: è il progetto di avvio usato da `dotnet ef` per le migrazioni. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>

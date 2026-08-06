@@ -951,6 +951,21 @@ export const api = {
     return (await res.json()) as EsitoImportUnilav;
   },
 
+  // --- Import UNILAV da testo incollato: stessa registrazione, senza file ---
+  importUnilavTesto: (
+    testo: string,
+    opzioni?: { aziendaId?: string; ccnlDefault?: string; livelloDefault?: string },
+  ): Promise<EsitoImportUnilav> =>
+    req<EsitoImportUnilav>("/api/unilav/testo", {
+      method: "POST",
+      body: JSON.stringify({
+        testo,
+        aziendaId: opzioni?.aziendaId || null,
+        ccnlDefault: opzioni?.ccnlDefault || null,
+        livelloDefault: opzioni?.livelloDefault || null,
+      }),
+    }),
+
   // --- Dichiarazioni: Fase 1 Certificazione Unica (bozza) ---
   cuBozza: (rapportoId: string, anno: number) =>
     req<CuBozza>(`/api/rapporti/${rapportoId}/cu/${anno}`),
@@ -1226,6 +1241,15 @@ export interface CreaDipendente {
   scattiAnzianita?: number; superminimo?: number;
 }
 
+/** Un dato che manca (o va confermato) dopo l'import, con dove completarlo e dove trovarlo. */
+export interface CampoDaCompletare {
+  campo: string;
+  dove: "azienda" | "dipendente" | "rapporto" | string;
+  riferimentoId?: string | null;
+  perche: string;
+  doveTrovarlo: string;
+}
+
 export interface EsitoImportUnilav {
   azienda: {
     id: string; ragioneSociale: string;
@@ -1235,9 +1259,12 @@ export interface EsitoImportUnilav {
     id: string;
     dipendente: { id: string; nome: string; cognome: string; codiceFiscale: string };
     codiceCcnl: string; livello: string; qualifica: string;
-    dataAssunzione: string; lavoratoreGiaPresente: boolean;
+    tipoContratto?: string; partTime?: boolean; percentualePartTime?: number;
+    oreSettimanali?: number;
+    dataAssunzione: string; dataCessazione?: string | null; lavoratoreGiaPresente: boolean;
   };
   avvertenze: string[];
+  daCompletare: CampoDaCompletare[];
 }
 
 export interface ConfigSdi {

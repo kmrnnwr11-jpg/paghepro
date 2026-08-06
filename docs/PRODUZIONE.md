@@ -30,30 +30,50 @@ In produzione i segreti vanno passati come **variabili d'ambiente**, mai scritti
 
 ## 2. Database e migrazioni EF
 
-Oggi in sviluppo lo schema si crea con `EnsureCreated()` (+ patch SQL per SQLite). In produzione
-si usano le **migrazioni EF Core**, già predisposte:
+✅ **Fatto.** Lo schema è gestito dalle **migrazioni EF Core versionate**, applicate all'avvio da
+`SchemaDatabase.Applica` (`Paghe.Persistence`). Non esiste più DDL scritto a mano: `EnsureCreated()`,
+i blocchi `CREATE TABLE` in `Program.cs` e gli helper di compatibilità sono stati rimossi.
 
-- 🔧 Factory di design-time pronta: `PagheDbContextFactory` (`Paghe.Persistence`).
-- 🔧 Pacchetti EF di tooling aggiunti; `dotnet ef` 10 verificato funzionante.
+EF Core ammette un solo assembly di migrazioni per contesto, quindi ce n'è **uno per provider**:
 
-🧑 **Generare la prima migrazione** (da fare **quando lo schema è stabile**, vedi nota):
+| Provider | Progetto | Migrazione iniziale |
+|---|---|---|
+| SQLite | `src/Paghe.Migrazioni.Sqlite` | `20260801054909_Iniziale` |
+| PostgreSQL | `src/Paghe.Migrazioni.Postgres` | `20260801054920_Iniziale` |
+
+`Program.cs` sceglie l'assembly dalla stringa di connessione (`MigrationsAssembly`).
+
+**Cosa succede all'avvio** (registrato nel log come `Schema database: ...`):
+
+1. database inesistente o senza tabelle dell'applicazione → le migrazioni creano tutto;
+2. database già gestito dalle migrazioni → applica quelle mancanti;
+3. database creato *prima* delle migrazioni → viene **adottato**: colonne, tabelle e indici
+   mancanti sono completati dalla migrazione iniziale, che viene poi registrata come applicata.
+   I dati non vengono toccati e nulla viene cancellato (eventuali tabelle o indici di vecchie
+   versioni del modello restano nel database, inutilizzati).
+
+🔧 **Aggiungere una migrazione** dopo una modifica al modello — va fatto per **entrambi** i provider,
+altrimenti l'altro resta indietro:
 ```bash
 cd backend
-dotnet ef migrations add InitialCreate \
-  --project src/Paghe.Persistence \
-  --startup-project src/Paghe.Api \
-  -o Migrations
-```
-🧑 **Applicare le migrazioni** (in deploy):
-```bash
-dotnet ef database update --project src/Paghe.Persistence --startup-project src/Paghe.Api
-```
-Poi sostituire in `Program.cs`, in ambiente Production, `EnsureCreated()` con `db.Database.Migrate()`
-(in sviluppo si può mantenere `EnsureCreated()`).
+ConnectionStrings__Default="Data Source=/tmp/paghe-design.db" \
+  dotnet ef migrations add NomeModifica -p src/Paghe.Migrazioni.Sqlite -s src/Paghe.Api -o Migrazioni
 
-> ⚠️ **Perché non è già generata:** il modello dati è in evoluzione attiva (più moduli in
-> sviluppo in parallelo). Generare lo snapshot ora produrrebbe migrazioni subito superate e
-> conflitti. Va fatto **una volta** quando l'insieme delle entità è stabile: è un solo comando.
+Database__Provider=Postgres \
+ConnectionStrings__Default="Host=localhost;Database=paghe_design;Username=postgres" \
+  dotnet ef migrations add NomeModifica -p src/Paghe.Migrazioni.Postgres -s src/Paghe.Api -o Migrazioni
+```
+La stringa di connessione serve solo a far scegliere il provider: la generazione non apre il database.
+
+🧑 **Applicare le migrazioni fuori dall'avvio** (deploy controllato):
+```bash
+ConnectionStrings__Default="$STRINGA_REALE" \
+  dotnet ef database update -p src/Paghe.Migrazioni.Postgres -s src/Paghe.Api
+```
+
+> ⚠️ **Prima di aggiornare un database con dati veri**: backup verificato (sezione 3), una sola
+> replica attiva durante l'aggiornamento, e revisione del SQL generato con
+> `dotnet ef migrations script`.
 
 ## 3. Backup cifrati
 

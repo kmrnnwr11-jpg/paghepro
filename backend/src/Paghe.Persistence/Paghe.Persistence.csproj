@@ -14,16 +14,11 @@
     <PackageReference Include="MailKit" Version="4.17.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.9" />
-    <!-- Provider SQLite e strumenti di design-time: usati dalla factory delle migrazioni
-         (dotnet ef). A runtime l'host sceglie il provider (SQLite in dev, Npgsql in prod). -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
+    <!-- Il contesto resta indipendente dal provider: SQLite e Npgsql sono referenziati dall'host
+         (Paghe.Api) e dai due progetti di migrazione, non da qui. -->
     <!-- Pin del runtime nativo SQLite a una versione non vulnerabile (NU1903 /
          GHSA-2m69-gcr7-jv3q): sovrascrive il lib.e_sqlite3 2.1.11 transitivo. Allineato ad Api/Tests. -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
 
   <PropertyGroup>

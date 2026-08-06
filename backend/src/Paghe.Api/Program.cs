@@ -61,10 +61,12 @@ bool usaPostgres =
             || connectionString.Contains("postgres", StringComparison.OrdinalIgnoreCase)));
 builder.Services.AddDbContext<PagheDbContext>(o =>
 {
+    // Ogni provider ha il proprio assembly di migrazioni: EF Core non può tenerne due nello
+    // stesso (un solo ModelSnapshot per contesto). Vedi Paghe.Migrazioni.Sqlite/.Postgres.
     if (usaPostgres)
-        o.UseNpgsql(connectionString);
+        o.UseNpgsql(connectionString, sql => sql.MigrationsAssembly("Paghe.Migrazioni.Postgres"));
     else
-        o.UseSqlite(connectionString);
+        o.UseSqlite(connectionString, sql => sql.MigrationsAssembly("Paghe.Migrazioni.Sqlite"));
 });
 builder.Services.AddScoped<AziendeService>();
 builder.Services.AddScoped<DemoDatasetService>();
@@ -347,7 +349,7 @@ app.UseControlloRuoli();
 // Gruppo di endpoint che richiede un token valido (i dati di un tenant).
 var secured = app.MapGroup("").RequireAuthorization();
 
-// Crea lo schema del database se non esiste (in produzione usare le migrazioni EF)
+// Porta il database allo schema corrente applicando le migrazioni EF versionate
 // e carica i parametri normativi di esempio se le tabelle sono vuote.
 using (var scope = app.Services.CreateScope())
 {
@@ -361,274 +363,9 @@ using (var scope = app.Services.CreateScope())
     }
     else
     {
-        db.Database.EnsureCreated();
-        db.EnsureSchemaSviluppoCompatibile();
-
-        // PostgreSQL/Supabase: EnsureCreated NON crea le tabelle se il database ne possiede già altre
-        // (Supabase arriva con i propri schemi auth/storage/realtime). Se le tabelle dell'app mancano,
-        // le creiamo esplicitamente con lo script del modello generato da EF Core.
-        if (db.Database.IsNpgsql())
-        {
-            var conn = db.Database.GetDbConnection();
-            if (conn.State != System.Data.ConnectionState.Open) conn.Open();
-            using var check = conn.CreateCommand();
-            check.CommandText = "SELECT to_regclass('public.\"ParametriAnno\"') IS NOT NULL";
-            var tabelleAppPresenti = check.ExecuteScalar() is bool b && b;
-            if (!tabelleAppPresenti)
-                db.Database.ExecuteSqlRaw(db.Database.GenerateCreateScript());
-
-            // Colonne aggiunte dopo la prima creazione dello schema (Postgres supporta IF NOT EXISTS).
-            db.Database.ExecuteSqlRaw(
-                "ALTER TABLE \"Tenants\" ADD COLUMN IF NOT EXISTS \"Sospeso\" boolean NOT NULL DEFAULT false;");
-
-            // Registro attività introdotto dopo i primi database PostgreSQL: va creato anche
-            // quando EnsureCreated non interviene perché esistono già altre tabelle.
-            db.Database.ExecuteSqlRaw("""
-            CREATE TABLE IF NOT EXISTS "AuditLog" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_AuditLog" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "UtenteId" uuid NULL,
-                "Categoria" character varying(40) NOT NULL DEFAULT 'ModificaDati',
-                "Azione" character varying(40) NOT NULL,
-                "Entita" character varying(100) NOT NULL,
-                "ChiaveEntita" character varying(500) NOT NULL,
-                "CampiModificati" text NULL,
-                "MetodoHttp" character varying(12) NULL,
-                "PercorsoTemplate" character varying(300) NULL,
-                "Esito" character varying(40) NULL,
-                "StatusCode" integer NULL,
-                "CorrelationId" character varying(100) NULL,
-                "QuandoUtc" timestamp with time zone NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS "IX_AuditLog_TenantId_QuandoUtc"
-                ON "AuditLog" ("TenantId", "QuandoUtc");
-            CREATE INDEX IF NOT EXISTS "IX_AuditLog_TenantId_Entita"
-                ON "AuditLog" ("TenantId", "Entita");
-            """);
-
-            // Retention GDPR: policy disattive per impostazione iniziale, blocchi, anteprime
-            // vincolanti e ricevute append-only. Nessuna durata normativa viene preimpostata.
-            db.Database.ExecuteSqlRaw("""
-            CREATE TABLE IF NOT EXISTS "PolicyRetention" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_PolicyRetention" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "Categoria" character varying(60) NOT NULL,
-                "Versione" integer NOT NULL,
-                "GiorniConservazione" integer NULL,
-                "Attiva" boolean NOT NULL,
-                "Approvata" boolean NOT NULL,
-                "BaseGiuridica" character varying(200) NULL,
-                "RiferimentoDecisione" character varying(200) NULL,
-                "IstruzioniBackup" character varying(300) NULL,
-                "Finalita" character varying(250) NOT NULL,
-                "Decorrenza" character varying(200) NOT NULL,
-                "Azione" character varying(200) NOT NULL,
-                "CreataUtc" timestamp with time zone NOT NULL,
-                "CreataDaUtenteId" uuid NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PolicyRetention_TenantId_Categoria_Versione"
-                ON "PolicyRetention" ("TenantId", "Categoria", "Versione");
-
-            CREATE TABLE IF NOT EXISTS "BlocchiConservazione" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_BlocchiConservazione" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "Categoria" character varying(60) NOT NULL,
-                "MotivoCodice" character varying(60) NOT NULL,
-                "CreatoUtc" timestamp with time zone NOT NULL,
-                "CreatoDaUtenteId" uuid NOT NULL,
-                "RevocatoUtc" timestamp with time zone NULL,
-                "RevocatoDaUtenteId" uuid NULL
-            );
-            CREATE INDEX IF NOT EXISTS "IX_BlocchiConservazione_TenantId_Categoria_RevocatoUtc"
-                ON "BlocchiConservazione" ("TenantId", "Categoria", "RevocatoUtc");
-
-            CREATE TABLE IF NOT EXISTS "AnteprimeRetention" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_AnteprimeRetention" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "Categoria" character varying(60) NOT NULL,
-                "VersionePolicy" integer NOT NULL,
-                "SogliaUtc" timestamp with time zone NOT NULL,
-                "Candidati" integer NOT NULL,
-                "Bloccati" integer NOT NULL,
-                "Elaborabili" integer NOT NULL,
-                "ImprontaCandidati" character varying(64) NOT NULL,
-                "ImprontaBlocchi" character varying(64) NOT NULL,
-                "CreataUtc" timestamp with time zone NOT NULL,
-                "ScadeUtc" timestamp with time zone NOT NULL,
-                "CreataDaUtenteId" uuid NOT NULL,
-                "ConsumataUtc" timestamp with time zone NULL
-            );
-            CREATE INDEX IF NOT EXISTS "IX_AnteprimeRetention_TenantId_Categoria_ScadeUtc"
-                ON "AnteprimeRetention" ("TenantId", "Categoria", "ScadeUtc");
-
-            CREATE TABLE IF NOT EXISTS "EsecuzioniRetention" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_EsecuzioniRetention" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "AnteprimaId" uuid NOT NULL,
-                "ChiaveIdempotenza" uuid NOT NULL,
-                "Categoria" character varying(60) NOT NULL,
-                "VersionePolicy" integer NOT NULL,
-                "SogliaUtc" timestamp with time zone NOT NULL,
-                "CandidatiAnteprima" integer NOT NULL,
-                "Bloccati" integer NOT NULL,
-                "Elaborati" integer NOT NULL,
-                "RestantiStimati" integer NOT NULL,
-                "Esito" character varying(40) NOT NULL,
-                "IniziataUtc" timestamp with time zone NOT NULL,
-                "CompletataUtc" timestamp with time zone NOT NULL,
-                "EseguitaDaUtenteId" uuid NOT NULL,
-                "CorrelationId" character varying(100) NULL,
-                "DigestPrecedente" character varying(64) NULL,
-                "Digest" character varying(64) NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_EsecuzioniRetention_TenantId_ChiaveIdempotenza"
-                ON "EsecuzioniRetention" ("TenantId", "ChiaveIdempotenza");
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_EsecuzioniRetention_TenantId_AnteprimaId"
-                ON "EsecuzioniRetention" ("TenantId", "AnteprimaId");
-            CREATE INDEX IF NOT EXISTS "IX_EsecuzioniRetention_TenantId_Categoria_CompletataUtc"
-                ON "EsecuzioniRetention" ("TenantId", "Categoria", "CompletataUtc");
-            """);
-
-            // Fine anno: conguaglio in busta, rivalutazione TFR, posizioni INAIL.
-            db.Database.ExecuteSqlRaw("""
-            ALTER TABLE "Cedolini" ADD COLUMN IF NOT EXISTS "ConguaglioIrpef" numeric(15,2) NOT NULL DEFAULT 0;
-            ALTER TABLE "ParametriAnno" ADD COLUMN IF NOT EXISTS "VariazioneIstatTfr" numeric(12,5) NULL;
-            ALTER TABLE "Rapporti" ADD COLUMN IF NOT EXISTS "FondoTfrIniziale" numeric(15,2) NULL;
-            ALTER TABLE "Aziende" ADD COLUMN IF NOT EXISTS "AssoggettataIva" boolean NOT NULL DEFAULT true;
-            CREATE TABLE IF NOT EXISTS "PosizioniInail" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_PosizioniInail" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "AziendaId" uuid NOT NULL,
-                "Anno" integer NOT NULL,
-                "Pat" text NOT NULL,
-                "VoceTariffa" text NOT NULL,
-                "TassoPerMille" numeric(8,3) NOT NULL,
-                "AggiornataIl" timestamptz NOT NULL,
-                CONSTRAINT "FK_PosizioniInail_Aziende_AziendaId"
-                    FOREIGN KEY ("AziendaId") REFERENCES "Aziende" ("Id") ON DELETE CASCADE
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosizioniInail_TenantId_AziendaId_Anno"
-                ON "PosizioniInail" ("TenantId", "AziendaId", "Anno");
-            CREATE INDEX IF NOT EXISTS "IX_PosizioniInail_AziendaId"
-                ON "PosizioniInail" ("AziendaId");
-            """);
-
-            // Pratiche di autoliquidazione INAIL archiviate (calcolo + bozza), con stato.
-            db.Database.ExecuteSqlRaw("""
-            CREATE TABLE IF NOT EXISTS "PraticheInail" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_PraticheInail" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "AziendaId" uuid NOT NULL,
-                "Anno" integer NOT NULL,
-                "Pat" text NOT NULL,
-                "VoceTariffa" text NOT NULL,
-                "NumeroCedolini" integer NOT NULL,
-                "RetribuzioniAnno" numeric(15,2) NOT NULL,
-                "TassoPerMille" numeric(8,3) NOT NULL,
-                "Regolazione" numeric(15,2) NOT NULL,
-                "RataAnticipata" numeric(15,2) NOT NULL,
-                "RataGiaVersata" numeric(15,2) NOT NULL,
-                "TotaleDaVersare" numeric(15,2) NOT NULL,
-                "Stato" text NOT NULL,
-                "Bozza" text NOT NULL,
-                "CreataIl" timestamptz NOT NULL,
-                "UltimoAggiornamento" timestamptz NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS "IX_PraticheInail_TenantId_AziendaId_Anno"
-                ON "PraticheInail" ("TenantId", "AziendaId", "Anno");
-            """);
-
-            // Archivio persone fisiche per la compilazione automatica dei moduli ufficiali (AA7/10).
-            db.Database.ExecuteSqlRaw("""
-            CREATE TABLE IF NOT EXISTS "Persone" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_Persone" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "Cognome" text NOT NULL,
-                "Nome" text NOT NULL,
-                "CodiceFiscale" text NOT NULL,
-                "Sesso" text NULL,
-                "DataNascita" date NULL,
-                "ComuneNascita" text NULL,
-                "ProvinciaNascita" text NULL,
-                "IndirizzoResidenza" text NULL,
-                "CapResidenza" text NULL,
-                "ComuneResidenza" text NULL,
-                "ProvinciaResidenza" text NULL,
-                "Telefono" text NULL,
-                "Email" text NULL,
-                "CreataIl" timestamptz NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Persone_TenantId_CodiceFiscale"
-                ON "Persone" ("TenantId", "CodiceFiscale");
-            """);
-
-            // Contatore mensile delle chiamate AI per tenant ("AI inclusa nel canone").
-            db.Database.ExecuteSqlRaw("""
-            CREATE TABLE IF NOT EXISTS "ConsumiAi" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_ConsumiAi" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "Anno" integer NOT NULL,
-                "Mese" integer NOT NULL,
-                "Chiamate" integer NOT NULL,
-                "AggiornatoIl" timestamptz NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_ConsumiAi_TenantId_Anno_Mese"
-                ON "ConsumiAi" ("TenantId", "Anno", "Mese");
-            """);
-
-            // Posta: caselle email/PEC collegate self-service e messaggi importati (triage in proposta).
-            db.Database.ExecuteSqlRaw("""
-            CREATE TABLE IF NOT EXISTS "CaselleEmail" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_CaselleEmail" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "Etichetta" text NOT NULL,
-                "Tipo" text NOT NULL,
-                "Host" text NOT NULL,
-                "Porta" integer NOT NULL,
-                "Utente" text NOT NULL,
-                "Password" text NULL,
-                "Ssl" boolean NOT NULL,
-                "Attiva" boolean NOT NULL,
-                "UltimoUidSincronizzato" bigint NULL,
-                "CreataIl" timestamptz NOT NULL,
-                "UltimaSincronizzazioneIl" timestamptz NULL
-            );
-            CREATE TABLE IF NOT EXISTS "MessaggiEmail" (
-                "Id" uuid NOT NULL CONSTRAINT "PK_MessaggiEmail" PRIMARY KEY,
-                "TenantId" uuid NOT NULL,
-                "CasellaId" uuid NOT NULL,
-                "UidImap" bigint NOT NULL,
-                "Mittente" text NOT NULL,
-                "Oggetto" text NOT NULL,
-                "DataRicezione" timestamptz NOT NULL,
-                "Anteprima" text NOT NULL,
-                "Letto" boolean NOT NULL,
-                "Urgente" boolean NULL,
-                "Pubblicita" boolean NULL,
-                "UrgenteProposto" boolean NULL,
-                "PubblicitaProposto" boolean NULL,
-                "ConfidenzaUrgente" numeric NULL,
-                "ConfidenzaPubblicita" numeric NULL,
-                "FonteProposta" text NULL,
-                "Corpo" text NULL,
-                CONSTRAINT "FK_MessaggiEmail_CaselleEmail_CasellaId"
-                    FOREIGN KEY ("CasellaId") REFERENCES "CaselleEmail" ("Id") ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS "IX_CaselleEmail_TenantId_Attiva" ON "CaselleEmail" ("TenantId", "Attiva");
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_MessaggiEmail_CasellaId_UidImap"
-                ON "MessaggiEmail" ("CasellaId", "UidImap");
-            CREATE INDEX IF NOT EXISTS "IX_MessaggiEmail_TenantId_CasellaId_DataRicezione"
-                ON "MessaggiEmail" ("TenantId", "CasellaId", "DataRicezione");
-            """);
-        }
-
-        // Rete di sicurezza generica: aggiunge le colonne del modello EF assenti dal database
-        // (schema EnsureCreated evoluto nel tempo), su SQLite e PostgreSQL.
-        db.AllineaColonneMancanti();
-
-        // Tabelle del Governor AI (G2), introdotte dopo i primi database esistenti.
-        AiGovernorSchema.EnsureTabelle(db, db.Database.IsNpgsql());
-        SessioniRefreshSchema.EnsureTabelle(db, db.Database.IsNpgsql());
+        // Schema gestito dalle migrazioni EF versionate (un assembly per provider).
+        // I database creati prima delle migrazioni vengono adottati con una baseline.
+        app.Logger.LogInformation("Schema database: {Esito}.", SchemaDatabase.Applica(db));
 
         if (eseguiMigrazioneGdpr)
         {
@@ -2870,6 +2607,7 @@ app.MapImu();
 app.MapInail();
 app.MapIntrastat();
 app.MapImportUnilavPdf(); // UNILAV: carica il PDF → registra datore + lavoratore + rapporto
+app.MapImportUnilavTesto(); // UNILAV: incolla il testo → stessi dati registrati, senza file
 app.MapImportVisuraPdf(); // Visura camerale: carica il PDF → estrae i dati azienda (da confermare)
 app.MapModuli();          // archivio Persone + modello ufficiale AA7/10 compilato (PDF AdE)
 app.MapCcnl();            // elenco dei CCNL configurati (menu busta paga)

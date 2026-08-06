@@ -1180,7 +1180,7 @@ Checklist pre-primo-cliente completa in `docs/PRODUZIONE.md` §6.
 | # | Lavoro | Chi | Dipende da | Stato |
 |---|---|---|---|---|
 | 1 | **Completare Fase 3 GDPR**: chiudere retention (verifica finale ramo `epic/f3-gdpr-cifratura`, UI retention, fusione ramo) | 🔧 | — | in corso |
-| 2 | **Migrazioni EF versionate** + consolidamento DDL + snapshot iniziale | 🔧 | schema stabile (post-#1) | ❌ 🔴 |
+| 2 | **Migrazioni EF versionate** + consolidamento DDL + snapshot iniziale | 🔧 | schema stabile (post-#1) | ✅ (1/8/2026) |
 | 3 | **RLS PostgreSQL** + test | 🔧 | #2 | ❌ 🔴 |
 | 4 | Cartellino giornaliero + regole CCNL versionate + ciclo cedolino con snapshot + codice CNEL | 🔧 | — | ❌ 🔴 P0 paghe |
 | 5 | Gestione utenti studio (endpoint+UI), cambio/recupero password, revoca sessioni su cambio password, cancellazione account | 🔧 | — | ❌ (sblocca anche mobile) |
@@ -1239,7 +1239,7 @@ Checklist pre-primo-cliente completa in `docs/PRODUZIONE.md` §6.
 1. **Conteggi test non consolidati**: i documenti citano 74/380/416/487/490/597/615 in punti diversi (storia della crescita). Rimedio pianificato: registro canonico machine-readable generato da codice (Fase 0 del master plan AI) — da realizzare.
 2. **`react-router-dom` in `package.json` ma mai importato**: rimuovere la dipendenza (la navigazione è hash-based artigianale).
 3. **`db/schema.sql` deliberatamente divergente** dal modello EF (archivio storico bloccato): non aggiornarlo; la fonte è `PagheDbContext`. Concetti utili non ancora realizzati (familiari a carico, partita doppia, catalogo voci) sono elencati in §6.3.
-4. **DDL duplicato** SQLite (`EnsureSchemaSviluppoCompatibile`) vs Postgres (`Program.cs`): si consolida con le migrazioni EF (#2 della roadmap).
+4. ~~**DDL duplicato** SQLite (`EnsureSchemaSviluppoCompatibile`) vs Postgres (`Program.cs`)~~: **risolto** il 1/8/2026 con le migrazioni EF versionate (un assembly per provider); il DDL scritto a mano è stato rimosso e `SchemaDatabase.Applica` adotta i database preesistenti.
 5. **`docs/PIANO-COMPLETAMENTO.md`** è una fotografia storica (26/6/2026): non usarla per lo stato corrente.
 6. **Più piani AI coesistenti**: la precedenza è fissata (PIANO-AI-LIBERA-LIMITI-USO > master > personale); le fasi P-1…P6 sono storiche e non vanno implementate.
 

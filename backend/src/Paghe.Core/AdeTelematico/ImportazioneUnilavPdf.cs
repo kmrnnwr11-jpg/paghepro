@@ -36,6 +36,8 @@ public static class ImportazioneUnilavPdf
         "settore", "comune sede legale", "cap sede legale", "cap sede di lavoro", "indirizzo sede legale",
         "comune sede di lavoro", "indirizzo sede di lavoro", "telefono", "fax", "email", "e-mail",
         "recapiti", "ragione sociale", "denominazione",
+        "sede legale", "sede di lavoro", "sede lavoro", "nome e cognome", "cognome e nome",
+        "data e luogo di nascita", "codice ateco", "ateco", "pubblica amministrazione",
     };
 
     public static RisultatoImportUnilav Importa(string testo)
@@ -43,7 +45,7 @@ public static class ImportazioneUnilavPdf
         if (string.IsNullOrWhiteSpace(testo))
             throw new ArgumentException("Il testo dell'UNILAV è vuoto: il PDF non contiene testo leggibile.");
 
-        var righe = testo.Replace("\r\n", "\n").Replace('\r', '\n')
+        var righe = Normalizza(testo)
             .Split('\n').Select(r => r.Trim()).Where(r => r.Length > 0).ToList();
 
         // Indici delle intestazioni di sezione (qualsiasi tipo = confine di blocco).
@@ -58,23 +60,50 @@ public static class ImportazioneUnilavPdf
         string datoreBlk = Blocco(righe, intestazioni, "datore");
         string lavoratoreBlk = Blocco(righe, intestazioni, "lavoratore");
         string rapportoBlk = Blocco(righe, intestazioni, "rapporto");
+        // Il rappresentante legale ha una sezione propria: se non c'è NON si cerca altrove,
+        // altrimenti si prenderebbe per errore il nome del lavoratore.
+        string? rappresentanteBlk = BloccoSeEsiste(righe, intestazioni, "rappresentante");
+
+        var sede = Sede(Campo(datoreBlk, "sede legale", "sede di lavoro", "sede lavoro"));
+        var (attecoDatore, settoreDatore) = Ateco(Campo(datoreBlk, "codice ateco", "ateco", "settore"));
+        var (nomeRappr, cognomeRappr, _) = NomeCognome(rappresentanteBlk);
 
         var datore = new DatoreLavoroUnilav(
             CodiceFiscaleOPiva(Campo(datoreBlk, "codice fiscale", "cod. fiscale", "c.f.", "partita iva", "p. iva", "p.iva")),
-            Campo(datoreBlk, "ragione sociale", "denominazione"));
+            Campo(datoreBlk, "ragione sociale", "denominazione"),
+            Indirizzo: Campo(datoreBlk, "indirizzo sede legale", "indirizzo sede di lavoro", "indirizzo") ?? sede.Indirizzo,
+            Cap: Cap(Campo(datoreBlk, "cap sede legale", "cap sede di lavoro", "c.a.p.", "cap")) ?? sede.Cap,
+            Comune: Campo(datoreBlk, "comune sede legale", "comune sede di lavoro", "comune") ?? sede.Comune,
+            Provincia: Provincia(Campo(datoreBlk, "provincia sede legale", "provincia")) ?? sede.Provincia,
+            Telefono: SoloCifre(Campo(datoreBlk, "telefono", "tel.")),
+            Email: Email(Campo(datoreBlk, "e-mail", "email", "posta elettronica")),
+            CodiceAteco: attecoDatore,
+            Settore: settoreDatore,
+            // Matricola INPS e P.A.T. INAIL sono dati dell'azienda, ma i moduli li stampano ora
+            // nella sezione del datore ora in quella del rapporto: si cercano in entrambe.
+            MatricolaInps: CodiceNumerico(Campo(datoreBlk, "matricola inps", "codice ente previdenziale", "ente previdenziale")
+                ?? Campo(rapportoBlk, "matricola inps", "codice ente previdenziale", "ente previdenziale"), 8),
+            PatInail: CodiceNumerico(Campo(datoreBlk, "pat inail", "patinail", "p.a.t. inail")
+                ?? Campo(rapportoBlk, "pat inail", "patinail", "p.a.t. inail"), 6),
+            RappresentanteNome: nomeRappr,
+            RappresentanteCognome: cognomeRappr,
+            RappresentanteCodiceFiscale: CodiceFiscale(Campo(rappresentanteBlk, "codice fiscale", "cod. fiscale", "c.f.")));
+
+        var (nomeLav, cognomeLav, nomeCognomeUnico) = NomeCognome(lavoratoreBlk);
 
         var lavoratore = new LavoratoreUnilav(
             CodiceFiscale(Campo(lavoratoreBlk, "codice fiscale", "cod. fiscale", "c.f.")),
-            Campo(lavoratoreBlk, "cognome"),
-            Campo(lavoratoreBlk, "nome"),
+            cognomeLav,
+            nomeLav,
             Campo(lavoratoreBlk, "sesso"),
-            Data(Campo(lavoratoreBlk, "data di nascita", "data nascita")),
+            Data(Campo(lavoratoreBlk, "data di nascita", "data nascita", "data e luogo di nascita")),
             Campo(lavoratoreBlk, "comune di nascita", "comune nascita"),
             Campo(lavoratoreBlk, "provincia di nascita", "provincia nascita"),
             Campo(lavoratoreBlk, "cittadinanza"),
             Campo(lavoratoreBlk, "comune di domicilio", "comune domicilio", "comune di residenza"),
             Campo(lavoratoreBlk, "provincia di domicilio", "provincia domicilio"),
-            Campo(lavoratoreBlk, "c.a.p.", "cap"));
+            Campo(lavoratoreBlk, "c.a.p.", "cap"),
+            nomeCognomeUnico);
 
         var rapporto = new RapportoUnilav(
             Data(Campo(rapportoBlk, "data inizio", "data di inizio", "data assunzione", "decorrenza")),
@@ -107,19 +136,39 @@ public static class ImportazioneUnilavPdf
         };
     }
 
+    /// <summary>
+    /// Ripulisce il testo prima della lettura. Serve perché l'utente può <b>incollare</b> l'UNILAV
+    /// così com'è oppure un riepilogo scritto a elenco puntato con i grassetti (Markdown):
+    /// togliendo marcatori e puntini le etichette tornano riconoscibili come nel PDF.
+    /// </summary>
+    private static string Normalizza(string testo)
+    {
+        var righe = testo.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n')
+            .Select(r => Regex.Replace(r, @"\*\*|__|`", ""))      // grassetto/corsivo Markdown
+            .Select(r => Regex.Replace(r, @"^\s*[*+\-•·–]\s+", "")) // puntini di elenco a inizio riga
+            .Select(r => r.Trim());
+        return string.Join('\n', righe);
+    }
+
     /// <summary>Classifica una riga come intestazione di sezione (datore/lavoratore/rapporto/altro) o null.</summary>
     private static string? TipoSezione(string riga)
     {
         // Toglie un eventuale prefisso "Sezione N - ".
         string n = Regex.Replace(riga.Trim(), @"(?i)^sezione\s+\d+\s*[-–]\s*", "").Trim().TrimEnd(':').Trim().ToLowerInvariant();
+        // ...e l'attacco discorsivo dei riepiloghi ("Dati del Datore di Lavoro", "Dati Generali della
+        // Comunicazione"): resta il nome della sezione, uguale a quello dei moduli ufficiali.
+        n = Regex.Replace(n, @"^dati\s+(generali\s+)?(del|dello|della|dei|degli|dell')\s+", "").Trim();
 
         if (n.Contains("mittente")) return "altro";                       // "Dati Mittente (se diverso da datore di lavoro)"
         if (n == "datore di lavoro") return "datore";
         if (n == "lavoratore") return "lavoratore";
-        if (n is "dati rapporto" or "rapporto di lavoro" or "inizio" or "dati del rapporto" || n.StartsWith("inizio rapporto"))
+        if (n is "dati rapporto" or "rapporto di lavoro" or "inizio" or "dati del rapporto" or "rapporto"
+            || n.StartsWith("inizio rapporto"))
             return "rapporto";
-        if (n is "evento" or "rappresentante legale" or "proroga" or "sede legale" or "sede lavoro"
-            or "dati invio" or "datore di lavoro estero" || n.StartsWith("dati invio"))
+        if (n is "rappresentante legale" or "legale rappresentante") return "rappresentante";
+        if (n is "evento" or "proroga" or "sede legale" or "sede lavoro" or "comunicazione"
+            or "dati invio" or "datore di lavoro estero" || n.StartsWith("dati invio")
+            || n.StartsWith("soggetto abilitato"))
             return "altro";
         return null;
     }
@@ -134,12 +183,22 @@ public static class ImportazioneUnilavPdf
         return string.Join('\n', righe.GetRange(h.idx, fine - h.idx));
     }
 
+    /// <summary>Come <see cref="Blocco"/>, ma null se la sezione non c'è (niente ricerca su tutto il testo).</summary>
+    private static string? BloccoSeEsiste(List<string> righe, List<(int idx, string tipo)> intestazioni, string tipo)
+    {
+        (int idx, string tipo) h = intestazioni.FirstOrDefault(x => x.tipo == tipo, (-1, tipo));
+        if (h.idx < 0) return null;
+        int fine = intestazioni.Where(x => x.idx > h.idx).Select(x => x.idx).DefaultIfEmpty(righe.Count).Min();
+        return string.Join('\n', righe.GetRange(h.idx, fine - h.idx));
+    }
+
     /// <summary>
     /// Valore di un campo: trova un'etichetta (parola intera) nel blocco e prende il testo fino alla
     /// prossima etichetta nota o all'a-capo (gestisce più campi sulla stessa riga).
     /// </summary>
-    private static string? Campo(string blocco, params string[] etichette)
+    private static string? Campo(string? blocco, params string[] etichette)
     {
+        if (string.IsNullOrEmpty(blocco)) return null;
         foreach (var et in etichette)
         {
             var m = Regex.Match(blocco, $@"(?<![\p{{L}}]){Regex.Escape(et)}(?=[\s:/]|$)\s*:?\s*", RegexOptions.IgnoreCase);
@@ -162,6 +221,87 @@ public static class ImportazioneUnilavPdf
             if (val.Length > 0) return val;
         }
         return null;
+    }
+
+    /// <summary>Indirizzo scritto tutto su una riga: «VIA ROMA 1, 29017 FIORENZUOLA D'ARDA (PC)».</summary>
+    private static (string? Indirizzo, string? Cap, string? Comune, string? Provincia) Sede(string? valore)
+    {
+        if (string.IsNullOrWhiteSpace(valore)) return (null, null, null, null);
+        var m = Regex.Match(valore.Trim(), @"^(?<via>.+?)[,;]?\s+(?<cap>\d{5})\s+(?<comune>[^()]+?)\s*(\((?<prov>[A-Za-z]{2})\))?$");
+        if (!m.Success) return (valore.Trim(), null, null, null);
+        return (
+            m.Groups["via"].Value.Trim().TrimEnd(','),
+            m.Groups["cap"].Value,
+            m.Groups["comune"].Value.Trim(),
+            m.Groups["prov"].Success ? m.Groups["prov"].Value.ToUpperInvariant() : null);
+    }
+
+    /// <summary>Settore: separa il codice ATECO («82.99.99») dalla descrizione dell'attività.</summary>
+    private static (string? Ateco, string? Settore) Ateco(string? valore)
+    {
+        if (string.IsNullOrWhiteSpace(valore)) return (null, null);
+        var m = Regex.Match(valore, @"\d{2}(\.\d{1,2}){0,3}");
+        string descrizione = (m.Success ? valore.Remove(m.Index, m.Length) : valore).Trim().Trim('-', '–', ':').Trim();
+        return (m.Success ? m.Value : null, descrizione.Length > 0 ? descrizione : null);
+    }
+
+    /// <summary>
+    /// Nome e cognome: se il documento li tiene separati si usano quelli, altrimenti si divide il
+    /// campo unico «Nome e Cognome». In quel caso l'ordine non è certo: chi importa lo deve controllare
+    /// (l'avvertenza viene aggiunta da chi salva).
+    /// </summary>
+    private static (string? Nome, string? Cognome, bool DaCampoUnico) NomeCognome(string? blocco)
+    {
+        // Il campo unico va cercato PRIMA: su una riga «Nome e Cognome: X Y» le etichette singole
+        // «nome» e «cognome» aggancerebbero pezzi della stessa riga e sporcherebbero i due valori.
+        string? nomePrima = Campo(blocco, "nome e cognome");
+        string? cognomePrima = nomePrima is null ? Campo(blocco, "cognome e nome") : null;
+        string? unico = nomePrima ?? cognomePrima;
+        if (!string.IsNullOrWhiteSpace(unico))
+        {
+            var parti = unico.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parti.Length == 1) return (parti[0], null, true);
+            string primo = parti[0], resto = string.Join(' ', parti[1..]);
+            return cognomePrima is not null ? (resto, primo, true) : (primo, resto, true);
+        }
+        return (Campo(blocco, "nome")?.Trim(), Campo(blocco, "cognome")?.Trim(), false);
+    }
+
+    private static string? Cap(string? valore) => Estrai(valore, @"\d{5}");
+
+    private static string? Provincia(string? valore)
+    {
+        if (string.IsNullOrWhiteSpace(valore)) return null;
+        var m = Regex.Match(valore.Trim(), @"(?<![A-Za-z])[A-Za-z]{2}(?![A-Za-z])");
+        return m.Success ? m.Value.ToUpperInvariant() : null;
+    }
+
+    private static string? Email(string? valore) => Estrai(valore, @"[^\s<>@]+@[^\s<>@]+\.[A-Za-z]{2,}");
+
+    private static string? SoloCifre(string? valore)
+    {
+        if (string.IsNullOrWhiteSpace(valore)) return null;
+        string cifre = Regex.Replace(valore, @"\D", "");
+        return cifre.Length > 0 ? cifre : null;
+    }
+
+    /// <summary>
+    /// Codice numerico dentro un valore descrittivo, es. «01 - INPS (Codice: 6104084700)» → la
+    /// matricola. Prende la sequenza di cifre più lunga, se arriva alla lunghezza minima attesa.
+    /// </summary>
+    private static string? CodiceNumerico(string? valore, int cifreMinime)
+    {
+        if (string.IsNullOrWhiteSpace(valore)) return null;
+        var piuLunga = Regex.Matches(valore, @"\d+").Select(m => m.Value)
+            .OrderByDescending(v => v.Length).FirstOrDefault();
+        return piuLunga is not null && piuLunga.Length >= cifreMinime ? piuLunga : null;
+    }
+
+    private static string? Estrai(string? valore, string schema)
+    {
+        if (string.IsNullOrWhiteSpace(valore)) return null;
+        var m = Regex.Match(valore, schema);
+        return m.Success ? m.Value : null;
     }
 
     private static bool EVuotoLogico(string? v) =>

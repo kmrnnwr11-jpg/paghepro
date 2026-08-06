@@ -189,6 +189,18 @@ dotnet run --project src/Paghe.Demo -c Release
 - **Import UNILAV**: `ImportazioneUnilav` legge la Comunicazione Obbligatoria XML (lettura
   namespace-agnostica) e crea in automatico dipendente + rapporto. Endpoint
   `POST /api/aziende/{id}/dipendenti/da-unilav`.
+- **UNILAV incollato + guida ai dati mancanti**: oltre al PDF/foto (`POST /api/unilav/pdf`) si può
+  incollare il testo della comunicazione (`POST /api/unilav/testo`), anche in forma di riepilogo con
+  elenchi puntati e grassetti. Il parser riconosce le sezioni (datore, lavoratore, rapporto,
+  rappresentante legale) e l'import **scrive davvero** l'anagrafica letta: sede, telefono, ATECO,
+  matricola INPS, P.A.T. INAIL, legale rappresentante sull'azienda (solo campi vuoti e solo se è lo
+  stesso datore), tipo contratto, ore settimanali, fine rapporto per il tempo determinato e
+  **percentuale di part-time dedotta dalle ore** (il motore calcola su `PercentualePartTime`: senza,
+  un part-time verrebbe pagato intero). Il livello UNILAV («000008 - VII») è riportato al codice del
+  CCNL solo se quel livello esiste davvero. La risposta include `daCompletare[]` (campo, dove si
+  completa, perché serve, dove trovarlo) e la SPA lo mostra come popup guidato che porta nella
+  sezione giusta con l'azienda già scelta. Non vengono dedotti: qualifica contrattuale (l'UNILAV dà
+  la professione ISTAT, cambia le aliquote INPS) e regione/comune di residenza.
 - **UniEmens INPS (Fase 6, prima versione)**: modulo `Paghe.Core/AdeTelematico/UniEmens`
   (`FlussoUniEmens`, `UniEmensDaCedolini`, `UniEmensXmlWriter`) + `UniEmensService` che genera
   il flusso mensile dai cedolini archiviati (anagrafica lavoratori + imponibile/contributi).
@@ -256,13 +268,18 @@ dotnet run --project src/Paghe.Demo -c Release
   giornaliero, regole CCNL tutte versionate, saldi storici, codice unico CNEL 2026, snapshot
   immutabile e validazione del Consulente del Lavoro. Vedi
   `docs/RICERCA-CEDOLINO-PROFESSIONALE-2026.md`.
-- **Allineamento schema automatico** (`PagheDbContext.AllineaColonneMancanti`, chiamato in
-  `Program.cs` all'avvio): aggiunge le colonne del modello EF mancanti nel database — SQLite e
-  PostgreSQL/Supabase — come rete di sicurezza per gli schemi creati con `EnsureCreated` ed
-  evoluti nel tempo (es. `Aziende.AssoggettataIva`). Le colonne NOT NULL ricevono un DEFAULT
-  neutro; i casi in cui il riempimento neutro sarebbe sbagliato vanno gestiti con un ALTER
-  esplicito PRIMA del passaggio generico (pattern esistente in `Program.cs` per Postgres e in
-  `EnsureSchemaSviluppoCompatibile` per SQLite).
+- **Migrazioni EF versionate (schema del database)**: lo schema è gestito da migrazioni EF, non
+  più da `EnsureCreated()` + DDL scritto a mano. EF ammette un solo assembly di migrazioni per
+  contesto, quindi ce n'è uno per provider: `Paghe.Migrazioni.Sqlite` e `Paghe.Migrazioni.Postgres`
+  (scelti in `Program.cs` con `MigrationsAssembly`). All'avvio `SchemaDatabase.Applica` applica le
+  migrazioni mancanti e, sui database creati **prima** delle migrazioni, li **adotta**: completa
+  colonne, tabelle e indici usando le operazioni della migrazione iniziale e la registra come
+  applicata, senza toccare i dati e senza cancellare nulla. L'esito è nel log
+  (`Schema database: ...`). Verificato dal vivo su SQLite nuovo, SQLite di sviluppo esistente
+  (40→52 tabelle, dati intatti), PostgreSQL nuovo, PostgreSQL tipo Supabase (schema `public` con
+  tabelle estranee) e PostgreSQL con schema preesistente senza storico. **Una modifica al modello
+  richiede una migrazione per entrambi i provider**: comandi in `docs/PRODUZIONE.md` §2.
+  `AllineaColonneMancanti` resta solo come passo interno dell'adozione.
 - **Archivio Persone + modello AA7/10 ufficiale compilato**: anagrafica persone fisiche
   (`PersonaEntity`/`PersoneService`, tenant-isolata, CRUD `/api/persone`, CF unico per tenant) —
   si registrano una volta rappresentanti/soci e si riusano nei moduli. `ModuloAa710`
@@ -361,8 +378,8 @@ In sintesi, prossimi passi 🔴:
 
 1. GDPR: completare retention/cancellazione (cifratura e registro accessi/modifiche fatti), poi
    documenti e decisioni organizzative con il professionista privacy.
-2. Introdurre migrazioni EF versionate quando lo schema è stabilizzato; completare deploy,
-   secret reali, backup/restore e monitoraggio prima del go-live.
+2. Migrazioni EF versionate **fatte**; restano RLS PostgreSQL, deploy, secret reali,
+   backup/restore e monitoraggio prima del go-live.
 3. Generazione file ufficiali AA9/12, AA7/10, ComUnica e LIPE da specifiche pubbliche.
 4. Fattura SdI: infrastruttura di trasmissione **fatta** (gateway/ricevute/deleghe) e **firma
    CAdES locale reale fatta** (`Paghe.Firma`, PFX + CNS/smart card); restano account provider

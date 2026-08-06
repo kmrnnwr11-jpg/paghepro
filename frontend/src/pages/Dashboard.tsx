@@ -44,7 +44,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { api, type Azienda, type Promemoria } from "../api";
-import { useAuth } from "../auth";
+import { eAccountOspite, useAuth } from "../auth";
 import { getRuolo, getToken } from "../api";
 import {
   AZIENDA_CORRENTE_CAMBIATA,
@@ -70,6 +70,15 @@ function emailDalToken(): string {
   } catch {
     return "";
   }
+}
+
+// Come si presenta l'account nella barra in alto. Lo spazio ospite ha un'email tecnica
+// (demo-<codice>@paghe.local) che non ha senso mostrare: lì si scrive semplicemente "Ospite".
+function etichettaAccount(): { iniziali: string; nome: string; dettaglio: string } {
+  const email = emailDalToken();
+  if (!email) return { iniziali: "AC", nome: "Account", dettaglio: "—" };
+  if (eAccountOspite(email)) return { iniziali: "OS", nome: "Ospite", dettaglio: "Senza registrazione" };
+  return { iniziali: email.slice(0, 2).toUpperCase(), nome: email.split("@")[0], dettaglio: email };
 }
 
 function inizialiAzienda(nome: string): string {
@@ -931,6 +940,7 @@ function Topbar({
   onNotifiche: () => void;
   aziendaCorrente: Azienda | null;
 }) {
+  const account = etichettaAccount();
   return (
     <header className="topbar">
       <button className="icon-button topbar-menu" type="button" aria-label="Apri menu" onClick={onMenu}>
@@ -982,11 +992,11 @@ function Topbar({
       <button className="icon-button" type="button" aria-label="Aiuto" title="Aiuto su questa pagina" onClick={onAiuto}>
         <HelpCircle size={18} aria-hidden="true" />
       </button>
-      <button className="user-button" type="button">
-        <span>{(emailDalToken().slice(0, 2) || "AC").toUpperCase()}</span>
+      <button className="user-button" type="button" title={`${account.nome} — ${account.dettaglio}`}>
+        <span>{account.iniziali}</span>
         <strong>
-          {emailDalToken().split("@")[0] || "Account"}
-          <small>{emailDalToken() || "—"}</small>
+          {account.nome}
+          <small>{account.dettaglio}</small>
         </strong>
         <em><ChevronDown size={15} aria-hidden="true" /></em>
       </button>

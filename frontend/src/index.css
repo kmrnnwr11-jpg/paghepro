@@ -759,6 +759,7 @@ kbd {
   align-items: center;
   gap: 10px;
   min-height: 44px;
+  max-width: 200px;
   padding: 6px 12px 6px 6px;
   border-radius: 13px;
 }
@@ -774,6 +775,7 @@ kbd {
   background: linear-gradient(150deg, var(--blue), var(--blue-strong));
   font-size: 12px;
   font-weight: 800;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .user-button strong,
@@ -781,9 +783,14 @@ kbd {
   display: block;
   line-height: 1.2;
   text-align: left;
+  /* Nome ed email lunghi (es. spazio ospite) si tagliano invece di allargare la barra. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-button strong {
+  min-width: 0;
   font-size: 12.5px;
   color: var(--text);
 }
@@ -3163,6 +3170,151 @@ kbd {
   font-size: 12px;
 }
 
+/* Scelta fra caricare il documento e incollarne il testo: stesso binario fisico delle altre tab. */
+.unilav-modi {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: rgba(95, 125, 120, 0.16);
+  box-shadow: inset 0 1px 3px rgba(20, 52, 48, 0.25), 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.unilav-modi button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--soft);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.unilav-modi button.attivo {
+  color: #fff;
+  background: linear-gradient(150deg, var(--blue), var(--blue-strong));
+  box-shadow: var(--rilievo);
+}
+
+.unilav-incolla textarea {
+  width: 100%;
+  min-height: 210px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.unilav-incolla-nota {
+  margin: 8px 0 12px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* Guida ai dati mancanti: pannello sopra la pagina, una riga per dato con l'azione. */
+.unilav-guida-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(20, 52, 48, 0.45);
+  backdrop-filter: blur(3px);
+}
+
+.unilav-guida {
+  width: min(100%, 620px);
+  max-height: 84vh;
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid rgba(95, 125, 120, 0.32);
+  border-radius: 16px;
+  background: var(--grana), var(--panel);
+  box-shadow: 0 30px 70px -30px rgba(20, 52, 48, 0.7);
+}
+
+.unilav-guida-testa {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.unilav-guida-testa strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.unilav-guida-testa small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.unilav-guida-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.unilav-guida-lista li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(95, 125, 120, 0.06);
+}
+
+.unilav-guida-lista strong {
+  display: block;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.unilav-guida-perche,
+.unilav-guida-dove {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.unilav-guida-dove {
+  color: var(--soft);
+}
+
+.unilav-guida-chiudi {
+  width: 100%;
+  margin-top: 14px;
+}
+
+@media (max-width: 620px) {
+  .unilav-guida-lista li {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 .unilav-dropzone {
   min-height: 210px;
   display: flex;
@@ -4833,8 +4985,40 @@ kbd {
   background: var(--line);
 }
 
-.accesso-demo {
+.accesso-ospite {
   width: 100%;
+  min-height: 50px;
+  font-size: 15px;
+}
+
+.accesso-ospite-nota {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.accesso-scelte {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.accesso-indietro {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px;
+  border: 0;
+  background: none;
+  color: var(--soft);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.accesso-indietro:hover {
+  color: var(--text);
 }
 
 .accesso-nota {
@@ -5014,6 +5198,20 @@ kbd {
 .company-switch:hover {
   border-color: rgba(95, 125, 120, 0.55);
   filter: brightness(1.03);
+}
+
+/* Pastiglia account: si solleva appena e la targhetta con le iniziali prende rilievo. */
+.user-button:hover {
+  transform: translateY(-1px);
+}
+
+.user-button:hover > span {
+  transform: scale(1.06);
+  box-shadow: 0 6px 14px -7px rgba(14, 114, 104, 0.85);
+}
+
+.user-button:active > span {
+  transform: scale(0.98);
 }
 
 .link-button:hover {

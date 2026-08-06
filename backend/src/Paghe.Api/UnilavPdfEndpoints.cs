@@ -75,30 +75,7 @@ public static class UnilavPdfEndpoints
                 Guid? aziendaId = Guid.TryParse(form["aziendaId"], out var aid) ? aid : null;
                 var esito = await new ImportUnilavService(db)
                     .ImportaDaTestoAsync(Tenant(user), testo, form["ccnlDefault"], form["livelloDefault"], aziendaId);
-
-                var d = esito.Rapporto.Dipendente!;
-                return Results.Ok(new
-                {
-                    azienda = new
-                    {
-                        esito.Azienda.Id,
-                        esito.Azienda.RagioneSociale,
-                        esito.Azienda.PartitaIva,
-                        esito.Azienda.CodiceFiscale,
-                        creata = esito.AziendaCreata,
-                    },
-                    rapporto = new
-                    {
-                        esito.Rapporto.Id,
-                        dipendente = new { d.Id, d.Nome, d.Cognome, d.CodiceFiscale },
-                        esito.Rapporto.CodiceCcnl,
-                        esito.Rapporto.Livello,
-                        esito.Rapporto.Qualifica,
-                        dataAssunzione = esito.Rapporto.DataAssunzione.ToString("yyyy-MM-dd"),
-                        lavoratoreGiaPresente = esito.LavoratoreEsistente,
-                    },
-                    avvertenze = esito.Avvertenze,
-                });
+                return Results.Ok(Risposta(esito));
             }
             catch (ArgumentException ex)
             {
@@ -109,5 +86,75 @@ public static class UnilavPdfEndpoints
         .DisableAntiforgery();
 
         return app;
+    }
+
+    /// <summary>Testo dell'UNILAV incollato dall'utente (copiato dalla comunicazione o da un riepilogo).</summary>
+    public sealed record ImportUnilavTestoRequest(
+        string Testo, Guid? AziendaId, string? CcnlDefault, string? LivelloDefault);
+
+    /// <summary>Lunghezza massima del testo incollato: un UNILAV sta ampiamente sotto.</summary>
+    private const int CaratteriMassimi = 200_000;
+
+    public static IEndpointRouteBuilder MapImportUnilavTesto(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/api/unilav/testo", async (
+            ImportUnilavTestoRequest req, ClaimsPrincipal user, PagheDbContext db) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.Testo))
+                return Results.BadRequest(new { errore = "Incollare il testo della comunicazione UNILAV." });
+            if (req.Testo.Length > CaratteriMassimi)
+                return Results.BadRequest(new { errore = "Testo troppo lungo: incollare solo la comunicazione." });
+
+            try
+            {
+                var esito = await new ImportUnilavService(db).ImportaDaTestoAsync(
+                    Tenant(user), req.Testo, req.CcnlDefault, req.LivelloDefault, req.AziendaId);
+                return Results.Ok(Risposta(esito));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { errore = ex.Message });
+            }
+        })
+        .RequireAuthorization();
+
+        return app;
+    }
+
+    /// <summary>Risposta comune ai due ingressi (PDF/foto e testo incollato).</summary>
+    private static object Risposta(EsitoImportUnilav esito)
+    {
+        var d = esito.Rapporto.Dipendente!;
+        return new
+        {
+            azienda = new
+            {
+                esito.Azienda.Id,
+                esito.Azienda.RagioneSociale,
+                esito.Azienda.PartitaIva,
+                esito.Azienda.CodiceFiscale,
+                creata = esito.AziendaCreata,
+            },
+            rapporto = new
+            {
+                esito.Rapporto.Id,
+                dipendente = new { d.Id, d.Nome, d.Cognome, d.CodiceFiscale },
+                esito.Rapporto.CodiceCcnl,
+                esito.Rapporto.Livello,
+                esito.Rapporto.Qualifica,
+                esito.Rapporto.TipoContratto,
+                esito.Rapporto.PartTime,
+                esito.Rapporto.PercentualePartTime,
+                esito.Rapporto.OreSettimanali,
+                dataAssunzione = esito.Rapporto.DataAssunzione.ToString("yyyy-MM-dd"),
+                dataCessazione = esito.Rapporto.DataCessazione?.ToString("yyyy-MM-dd"),
+                lavoratoreGiaPresente = esito.LavoratoreEsistente,
+            },
+            avvertenze = esito.Avvertenze,
+            daCompletare = esito.DaCompletare.Select(c => new
+            {
+                c.Campo, c.Dove, c.RiferimentoId, c.Perche, c.DoveTrovarlo,
+            }),
+        };
     }
 }

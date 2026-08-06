@@ -150,9 +150,10 @@ disclaimer e termini.
 **Obiettivo:** il software regge clienti veri senza perdere dati.
 **Perché:** oggi il database si crea "in modo da sviluppo"; in produzione serve il metodo giusto.
 
-- [~] 🔧 Migrazioni EF Core (sostituire `EnsureCreated`) — **infrastruttura pronta**
-  (factory `PagheDbContextFactory` + pacchetti EF; `dotnet ef` verificato). La generazione
-  dello snapshot è **rimandata a schema stabile** (un comando, vedi `docs/PRODUZIONE.md` §2).
+- [x] 🔧 Migrazioni EF Core al posto di `EnsureCreated` — un assembly per provider
+  (`Paghe.Migrazioni.Sqlite`, `Paghe.Migrazioni.Postgres`), migrazione iniziale generata e DDL
+  scritto a mano rimosso. I database già esistenti vengono adottati all'avvio senza perdere dati
+  (provato su SQLite e PostgreSQL). Come si aggiunge una migrazione: `docs/PRODUZIONE.md` §2.
 - [x] 🔧 Chiave JWT come **segreto**: in Production rifiuta default/chiavi deboli (verificato a
   runtime). Stringa di connessione da variabile d'ambiente. Vedi `docs/PRODUZIONE.md` §1.
 - [x] 🔧 **Backup automatici**: script `scripts/backup-db.sh` (SQLite/PostgreSQL, rotazione 14).

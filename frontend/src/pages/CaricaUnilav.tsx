@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Banknote, BriefcaseBusiness, Building2, Check, FileText, LoaderCircle, UploadCloud, UserRound } from "lucide-react";
-import { api, fetchAutenticata, type Cedolino, type EsitoImportUnilav } from "../api";
+import { AlertTriangle, Banknote, BriefcaseBusiness, Building2, Check, ClipboardPaste, FileText, LoaderCircle, UploadCloud, UserRound, X } from "lucide-react";
+import { api, fetchAutenticata, type CampoDaCompletare, type Cedolino, type EsitoImportUnilav } from "../api";
+import { salvaAziendaCorrenteId } from "../aziendaCorrente";
 const MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
   "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
@@ -35,13 +36,24 @@ async function listaCcnl(): Promise<{ codice: string; descrizione: string }[]> {
 export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: string; ragioneSociale: string }) => void }) {
   const [aziende, setAziende] = useState<{ id: string; ragioneSociale: string }[]>([]);
   const [aziendaScelta, setAziendaScelta] = useState(""); // "" = automatico dal PDF
+  const [modo, setModo] = useState<"file" | "testo">("file");
+  const [testo, setTesto] = useState("");
   const [trascina, setTrascina] = useState(false);
   const [caricamento, setCaricamento] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
   const [esito, setEsito] = useState<EsitoImportUnilav | null>(null);
+  const [checklist, setChecklist] = useState<CampoDaCompletare[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { api.aziende().then(setAziende).catch(() => { /* ignora */ }); }, []);
+
+  // Dopo un import riuscito: mostra l'esito e, se qualcosa manca, apre subito la guida.
+  function registraEsito(r: EsitoImportUnilav) {
+    setEsito(r);
+    if (r.daCompletare.length > 0) setChecklist(r.daCompletare);
+    onImportato?.({ id: r.azienda.id, ragioneSociale: r.azienda.ragioneSociale });
+    api.aziende().then(setAziende).catch(() => { /* ignora */ }); // potrebbe aver creato una nuova azienda
+  }
 
   async function gestisci(file: File | undefined | null) {
     if (!file) return;
@@ -56,12 +68,26 @@ export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: st
     setEsito(null);
     setCaricamento(true);
     try {
-      const r = await inviaUnilav(file, aziendaScelta);
-      setEsito(r);
-      onImportato?.({ id: r.azienda.id, ragioneSociale: r.azienda.ragioneSociale });
-      api.aziende().then(setAziende).catch(() => { /* ignora */ }); // potrebbe aver creato una nuova azienda
+      registraEsito(await inviaUnilav(file, aziendaScelta));
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Non sono riuscito a leggere il PDF.");
+    } finally {
+      setCaricamento(false);
+    }
+  }
+
+  async function leggiTesto() {
+    if (testo.trim().length < 20) {
+      setErrore("Incolla il testo della comunicazione UNILAV (datore, lavoratore e rapporto).");
+      return;
+    }
+    setErrore(null);
+    setEsito(null);
+    setCaricamento(true);
+    try {
+      registraEsito(await api.importUnilavTesto(testo, { aziendaId: aziendaScelta || undefined }));
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Non sono riuscito a leggere il testo.");
     } finally {
       setCaricamento(false);
     }
@@ -87,37 +113,133 @@ export function CaricaUnilav({ onImportato }: { onImportato?: (azienda: { id: st
         </select>
       </label>
 
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Trascina o scegli il PDF UNILAV"
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
-        onDragOver={(e) => { e.preventDefault(); setTrascina(true); }}
-        onDragLeave={() => setTrascina(false)}
-        onDrop={(e) => { e.preventDefault(); setTrascina(false); gestisci(e.dataTransfer.files?.[0]); }}
-        className={`unilav-dropzone ${trascina ? "dragging" : ""}`}
-      >
-        <input ref={inputRef} type="file" accept="application/pdf,.pdf,image/*" hidden onChange={(e) => gestisci(e.target.files?.[0])} />
-        {caricamento ? (
-          <><LoaderCircle className="spin" size={30} aria-hidden="true" /><strong>Lettura e registrazione in corso…</strong></>
-        ) : (
-          <>
-            <UploadCloud size={34} aria-hidden="true" />
-            <strong>Trascina qui il PDF UNILAV o una scansione</strong>
-            <span>PDF, JPG o PNG. Puoi anche fare clic per scegliere il file.</span>
-          </>
-        )}
+      <div className="unilav-modi" role="tablist">
+        <button
+          type="button" role="tab" aria-selected={modo === "file"}
+          className={modo === "file" ? "attivo" : ""}
+          onClick={() => { setModo("file"); setErrore(null); }}
+        >
+          <UploadCloud size={15} aria-hidden="true" /> Carica il documento
+        </button>
+        <button
+          type="button" role="tab" aria-selected={modo === "testo"}
+          className={modo === "testo" ? "attivo" : ""}
+          onClick={() => { setModo("testo"); setErrore(null); }}
+        >
+          <ClipboardPaste size={15} aria-hidden="true" /> Incolla il testo
+        </button>
       </div>
+
+      {modo === "file" ? (
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Trascina o scegli il PDF UNILAV"
+          onClick={() => inputRef.current?.click()}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
+          onDragOver={(e) => { e.preventDefault(); setTrascina(true); }}
+          onDragLeave={() => setTrascina(false)}
+          onDrop={(e) => { e.preventDefault(); setTrascina(false); gestisci(e.dataTransfer.files?.[0]); }}
+          className={`unilav-dropzone ${trascina ? "dragging" : ""}`}
+        >
+          <input ref={inputRef} type="file" accept="application/pdf,.pdf,image/*" hidden onChange={(e) => gestisci(e.target.files?.[0])} />
+          {caricamento ? (
+            <><LoaderCircle className="spin" size={30} aria-hidden="true" /><strong>Lettura e registrazione in corso…</strong></>
+          ) : (
+            <>
+              <UploadCloud size={34} aria-hidden="true" />
+              <strong>Trascina qui il PDF UNILAV o una scansione</strong>
+              <span>PDF, JPG o PNG. Puoi anche fare clic per scegliere il file.</span>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="unilav-incolla">
+          <label>
+            <span>Testo della comunicazione</span>
+            <textarea
+              rows={10}
+              value={testo}
+              onChange={(e) => setTesto(e.target.value)}
+              placeholder={"Incolla qui la comunicazione UNILAV.\n\nEsempio:\nDatore di lavoro\nCodice fiscale: ...\nRagione sociale: ...\nLavoratore\nCodice fiscale: ...\nRapporto di lavoro\nData inizio: ..."}
+            />
+          </label>
+          <p className="muto unilav-incolla-nota">
+            Va bene sia il testo copiato dalla comunicazione sia un riepilogo con elenchi puntati:
+            il sistema riconosce le sezioni datore, lavoratore e rapporto. Se nome e cognome sono su
+            un campo unico, l'ordine ti viene chiesto di confermarlo.
+          </p>
+          <button className="btn primary" type="button" onClick={leggiTesto} disabled={caricamento}>
+            {caricamento ? "Lettura e registrazione in corso…" : "Leggi e registra"}
+          </button>
+        </div>
+      )}
 
       {errore && <p className="errore" style={{ marginTop: 12 }}>{errore}</p>}
 
-      {esito && <Risultato esito={esito} />}
+      {esito && <Risultato esito={esito} onApriChecklist={() => setChecklist(esito.daCompletare)} />}
+
+      {checklist && checklist.length > 0 && (
+        <GuidaDatiMancanti
+          campi={checklist}
+          aziendaId={esito?.azienda.id ?? ""}
+          onChiudi={() => setChecklist(null)}
+        />
+      )}
     </section>
   );
 }
 
-function Risultato({ esito }: { esito: EsitoImportUnilav }) {
+/// Popup che elenca i dati mancanti dopo l'import: cosa manca, a cosa serve, dove trovarlo,
+/// e un pulsante che porta nella sezione dove si completa (con l'azienda giusta già scelta).
+function GuidaDatiMancanti({
+  campi, aziendaId, onChiudi,
+}: { campi: CampoDaCompletare[]; aziendaId: string; onChiudi: () => void }) {
+  function completa(dove: string) {
+    if (aziendaId) salvaAziendaCorrenteId(aziendaId);
+    window.location.hash = dove === "azienda" ? "aziende" : "dipendenti";
+    onChiudi();
+  }
+
+  return (
+    <div className="unilav-guida-overlay" role="dialog" aria-modal="true" aria-label="Dati ancora da completare">
+      <div className="unilav-guida">
+        <div className="unilav-guida-testa">
+          <div>
+            <strong><AlertTriangle size={16} aria-hidden="true" /> Manca ancora qualcosa</strong>
+            <small className="muto">
+              L'UNILAV non contiene tutto quello che serve alla busta paga: ecco cosa completare.
+            </small>
+          </div>
+          <button className="icon-button" type="button" aria-label="Chiudi" onClick={onChiudi}>
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+
+        <ul className="unilav-guida-lista">
+          {campi.map((c, i) => (
+            <li key={i}>
+              <div>
+                <strong>{c.campo}</strong>
+                <span className="unilav-guida-perche">{c.perche}</span>
+                <span className="unilav-guida-dove">Dove trovarlo: {c.doveTrovarlo}</span>
+              </div>
+              <button className="btn secondary" type="button" onClick={() => completa(c.dove)}>
+                Completa
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <button className="btn primary unilav-guida-chiudi" type="button" onClick={onChiudi}>
+          Ho capito, lo faccio dopo
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Risultato({ esito, onApriChecklist }: { esito: EsitoImportUnilav; onApriChecklist: () => void }) {
   const d = esito.rapporto.dipendente;
   return (
     <div style={{ marginTop: 16 }}>
@@ -151,9 +273,15 @@ function Risultato({ esito }: { esito: EsitoImportUnilav }) {
         </article>
       </div>
 
+      {esito.daCompletare.length > 0 && (
+        <button className="btn secondary" type="button" style={{ marginTop: 12 }} onClick={onApriChecklist}>
+          <AlertTriangle size={15} /> Mancano {esito.daCompletare.length} dati: vedi cosa fare
+        </button>
+      )}
+
       {esito.avvertenze.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <strong className="unilav-warning-title"><AlertTriangle size={15} /> Dati da completare</strong>
+          <strong className="unilav-warning-title"><AlertTriangle size={15} /> Cosa ha fatto il sistema</strong>
           <ul style={{ margin: "6px 0 0", paddingLeft: 20, color: "var(--muted, #64748b)", fontSize: 13 }}>
             {esito.avvertenze.map((a, i) => <li key={i}>{a}</li>)}
           </ul>

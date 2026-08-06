@@ -5,7 +5,22 @@ using Paghe.Core.Domain;
 namespace Paghe.Core.AdeTelematico;
 
 /// <summary>Dati del datore di lavoro letti dall'UNILAV.</summary>
-public sealed record DatoreLavoroUnilav(string? CodiceFiscale, string? Denominazione);
+public sealed record DatoreLavoroUnilav(
+    string? CodiceFiscale,
+    string? Denominazione,
+    string? Indirizzo = null,
+    string? Cap = null,
+    string? Comune = null,
+    string? Provincia = null,
+    string? Telefono = null,
+    string? Email = null,
+    string? CodiceAteco = null,
+    string? Settore = null,
+    string? MatricolaInps = null,
+    string? PatInail = null,
+    string? RappresentanteNome = null,
+    string? RappresentanteCognome = null,
+    string? RappresentanteCodiceFiscale = null);
 
 /// <summary>Dati anagrafici del lavoratore letti dall'UNILAV.</summary>
 public sealed record LavoratoreUnilav(
@@ -19,7 +34,9 @@ public sealed record LavoratoreUnilav(
     string? Cittadinanza,
     string? ComuneDomicilio,
     string? ProvinciaDomicilio,
-    string? CapDomicilio);
+    string? CapDomicilio,
+    /// <summary>Vero se nome e cognome venivano da un unico campo: l'ordine è da confermare.</summary>
+    bool NomeCognomeDaCampoUnico = false);
 
 /// <summary>Dati del rapporto di lavoro (contratto) letti dall'UNILAV.</summary>
 public sealed record RapportoUnilav(
@@ -157,9 +174,27 @@ public static class ImportazioneUnilav
         return Qualifica.Impiegato;
     }
 
-    /// <summary>Vero se l'orario UNILAV indica un part-time (codici che iniziano per "P").</summary>
-    public static bool EParTime(string? tipoOrario) =>
-        (tipoOrario ?? "").Trim().StartsWith("P", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Vero se l'orario UNILAV indica un part-time. Oltre al codice che inizia per "P"
+    /// (orizzontale) riconosce verticale e misto (codici "V"/"M", es. «M - TEMPO PARZIALE
+    /// MISTO»): senza la descrizione sarebbero scambiati per tempo pieno.
+    /// </summary>
+    public static bool EParTime(string? tipoOrario)
+    {
+        string t = (tipoOrario ?? "").Trim();
+        if (t.Length == 0) return false;
+        if (t.Contains("parziale", StringComparison.OrdinalIgnoreCase)
+            || t.Contains("part-time", StringComparison.OrdinalIgnoreCase)
+            || t.Contains("part time", StringComparison.OrdinalIgnoreCase)
+            || t.Contains("p.time", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (t.Contains("pieno", StringComparison.OrdinalIgnoreCase)
+            || t.Contains("full", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return t.StartsWith("P", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("V", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("M", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static XElement? Sezione(XElement radice, params string[] nomi) =>
         radice.DescendantsAndSelf()

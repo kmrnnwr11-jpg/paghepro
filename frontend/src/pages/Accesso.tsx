@@ -3,7 +3,7 @@ import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { buildMobile } from "../mobile/piattaforma";
 
-type Modo = "accedi" | "registra";
+type Modo = "benvenuto" | "accedi" | "registra";
 
 // ID client Google (Google Cloud → OAuth). Se assente, il bottone Google resta informativo.
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
@@ -14,11 +14,12 @@ interface GoogleId {
 }
 type WindowGoogle = Window & { google?: { accounts: { id: GoogleId } } };
 
-// Schermata di ingresso: ogni persona può creare il proprio account gratuito
-// (spazio privato isolato), accedere a uno esistente, oppure provare la demo.
+// Schermata di ingresso: nessuno è obbligato a registrarsi. Si entra come ospite con un
+// tasto solo; il modulo di accesso/registrazione compare soltanto a chi lo chiede.
+// Nella versione mobile l'ospite non è disponibile: lì si parte dal modulo.
 export function Accesso() {
-  const { accedi, registrati, provaDemo } = useAuth();
-  const [modo, setModo] = useState<Modo>("registra");
+  const { accedi, registrati, entraComeOspite } = useAuth();
+  const [modo, setModo] = useState<Modo>(buildMobile ? "registra" : "benvenuto");
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,6 +69,14 @@ export function Accesso() {
     document.body.appendChild(s);
   }, []);
 
+  function vaiA(nuovo: Modo) {
+    setModo(nuovo);
+    setErrore(null);
+    setInfoGoogle(null);
+    setServe2fa(false);
+    setCodice2fa("");
+  }
+
   async function invia(e: FormEvent) {
     e.preventDefault();
     setErrore(null);
@@ -97,13 +106,13 @@ export function Accesso() {
     }
   }
 
-  async function demo() {
+  async function ospite() {
     setErrore(null);
     setAttesa(true);
     try {
-      await provaDemo();
+      await entraComeOspite();
     } catch (err) {
-      setErrore(err instanceof Error ? err.message : "Demo non disponibile in questo momento.");
+      setErrore(err instanceof Error ? err.message : "Non riesco ad aprire lo spazio ospite. Riprova.");
     } finally {
       setAttesa(false);
     }
@@ -120,118 +129,144 @@ export function Accesso() {
           </div>
         </div>
 
-        <div className="accesso-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={modo === "registra"}
-            className={modo === "registra" ? "attivo" : ""}
-            onClick={() => { setModo("registra"); setErrore(null); setServe2fa(false); setCodice2fa(""); }}
-          >
-            Crea account
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={modo === "accedi"}
-            className={modo === "accedi" ? "attivo" : ""}
-            onClick={() => { setModo("accedi"); setErrore(null); }}
-          >
-            Accedi
-          </button>
-        </div>
+        {modo === "benvenuto" ? (
+          <>
+            <button className="btn primary accesso-ospite" type="button" onClick={ospite} disabled={attesa}>
+              {attesa ? "Apertura in corso…" : "Entra come ospite"}
+            </button>
+            <p className="accesso-ospite-nota muto">
+              Nessuna registrazione: entri subito in uno spazio riservato a questo browser.
+            </p>
 
-        <form onSubmit={invia} className="accesso-form">
-          {modo === "registra" && (
-            <label>
-              <span>Nome o nome dell'attività</span>
-              <input
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                placeholder="Es. Mario Rossi"
-                autoComplete="name"
-              />
-            </label>
-          )}
-          <label>
-            <span>Email</span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="tu@esempio.it"
-              autoComplete="email"
-              required
-            />
-          </label>
-          <label>
-            <span>Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={modo === "registra" ? "Almeno 8 caratteri" : "La tua password"}
-              autoComplete={modo === "registra" ? "new-password" : "current-password"}
-              required
-            />
-          </label>
-          {modo === "accedi" && serve2fa && (
-            <label>
-              <span>Codice di verifica (app di autenticazione)</span>
-              <input
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={codice2fa}
-                onChange={(e) => setCodice2fa(e.target.value)}
-                placeholder="Es. 123456"
-                autoComplete="one-time-code"
-                autoFocus
-              />
-            </label>
-          )}
+            {errore && <span className="errore">{errore}</span>}
 
-          {errore && <span className="errore">{errore}</span>}
+            <div className="accesso-sep"><span>oppure</span></div>
 
-          <button className="btn primary accesso-invia" type="submit" disabled={attesa}>
-            {attesa
-              ? "Attendere…"
-              : modo === "registra"
-                ? "Crea il mio account gratis"
-                : "Entra"}
-          </button>
-        </form>
+            <div className="accesso-scelte">
+              <button className="btn secondary" type="button" onClick={() => vaiA("accedi")} disabled={attesa}>
+                Ho già un account
+              </button>
+              <button className="btn secondary" type="button" onClick={() => vaiA("registra")} disabled={attesa}>
+                Crea account
+              </button>
+            </div>
 
-        {!buildMobile && <div className="accesso-sep"><span>oppure</span></div>}
+            <button
+              className="accesso-google"
+              type="button"
+              onClick={() => {
+                if (!GOOGLE_CLIENT_ID) {
+                  setInfoGoogle(
+                    "L'accesso con Google sarà attivabile a breve (serve un breve passaggio di configurazione). " +
+                      "Per ora entra come ospite oppure crea un account con email e password.",
+                  );
+                  return;
+                }
+                (window as WindowGoogle).google?.accounts.id.prompt();
+              }}
+              disabled={attesa}
+            >
+              <svg viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+              </svg>
+              Continua con Google
+            </button>
+            {infoGoogle && <p className="accesso-info">{infoGoogle}</p>}
+          </>
+        ) : (
+          <>
+            <div className="accesso-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={modo === "registra"}
+                className={modo === "registra" ? "attivo" : ""}
+                onClick={() => vaiA("registra")}
+              >
+                Crea account
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={modo === "accedi"}
+                className={modo === "accedi" ? "attivo" : ""}
+                onClick={() => vaiA("accedi")}
+              >
+                Accedi
+              </button>
+            </div>
 
-        {!buildMobile && <button
-          className="accesso-google"
-          type="button"
-          onClick={() => {
-            if (!GOOGLE_CLIENT_ID) {
-              setInfoGoogle(
-                "L'accesso con Google sarà attivabile a breve (serve un breve passaggio di configurazione). " +
-                  "Per ora accedi con la tua email Gmail e password qui sopra.",
-              );
-              return;
-            }
-            (window as WindowGoogle).google?.accounts.id.prompt();
-          }}
-          disabled={attesa}
-        >
-          <svg viewBox="0 0 48 48" aria-hidden="true">
-            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-          </svg>
-          Continua con Google
-        </button>}
-        {!buildMobile && infoGoogle && <p className="accesso-info">{infoGoogle}</p>}
+            <form onSubmit={invia} className="accesso-form">
+              {modo === "registra" && (
+                <label>
+                  <span>Nome o nome dell'attività</span>
+                  <input
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    placeholder="Es. Mario Rossi"
+                    autoComplete="name"
+                  />
+                </label>
+              )}
+              <label>
+                <span>Email</span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="tu@esempio.it"
+                  autoComplete="email"
+                  required
+                />
+              </label>
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={modo === "registra" ? "Almeno 8 caratteri" : "La tua password"}
+                  autoComplete={modo === "registra" ? "new-password" : "current-password"}
+                  required
+                />
+              </label>
+              {modo === "accedi" && serve2fa && (
+                <label>
+                  <span>Codice di verifica (app di autenticazione)</span>
+                  <input
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={codice2fa}
+                    onChange={(e) => setCodice2fa(e.target.value)}
+                    placeholder="Es. 123456"
+                    autoComplete="one-time-code"
+                    autoFocus
+                  />
+                </label>
+              )}
 
-        {!buildMobile && <button className="btn secondary accesso-demo" type="button" onClick={demo} disabled={attesa}>
-          👀 Prova la demo (senza registrarti)
-        </button>}
+              {errore && <span className="errore">{errore}</span>}
+
+              <button className="btn primary accesso-invia" type="submit" disabled={attesa}>
+                {attesa
+                  ? "Attendere…"
+                  : modo === "registra"
+                    ? "Crea il mio account gratis"
+                    : "Entra"}
+              </button>
+            </form>
+
+            {!buildMobile && (
+              <button className="accesso-indietro" type="button" onClick={() => vaiA("benvenuto")} disabled={attesa}>
+                ‹ Torna indietro (entra come ospite)
+              </button>
+            )}
+          </>
+        )}
 
         <p className="accesso-nota muto">
           Strumento professionale: i valori sono d'esempio e vanno validati con un Consulente del

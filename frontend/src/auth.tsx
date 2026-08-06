@@ -13,26 +13,34 @@ import {
   type SessioneAccesso,
 } from "./sessione";
 
-// Password fissa dell'account demo. L'email invece è UNA PER BROWSER (vedi
-// emailDemoDiQuestoBrowser): così chi prova la demo ha uno spazio isolato e non
+// Password fissa dello spazio ospite. L'email invece è UNA PER BROWSER (vedi
+// emailOspiteDiQuestoBrowser): così chi entra come ospite ha uno spazio isolato e non
 // vede né condivide i dati di altri. Per l'uso vero si usa Accedi / Crea account.
-const DEMO_PASSWORD = "demo-password-1";
+const PASSWORD_OSPITE = "demo-password-1";
+const NOME_OSPITE = "Ospite";
+const CHIAVE_EMAIL_OSPITE = "demo_email";
 
 // Ricorda se l'utente è uscito di PROPOSITO (tasto Esci): in quel caso all'avvio
 // mostriamo la schermata di accesso e NON rientriamo in automatico. Senza questo
 // flag, invece, l'app si apre subito nello spazio personale (login opzionale).
 const USCITA_ESPLICITA = "uscita_esplicita";
 
-// Email demo isolata di questo browser: la crea una volta sola e la riusa.
-function emailDemoDiQuestoBrowser(): string {
-  const chiave = "demo_email";
-  let email = localStorage.getItem(chiave);
-  if (!email) {
-    const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    email = `demo-${id}@paghe.local`;
-    localStorage.setItem(chiave, email);
-  }
+// Apre un nuovo spazio ospite per questo browser e lo ricorda.
+function nuovaEmailOspite(): string {
+  const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const email = `demo-${id}@paghe.local`;
+  localStorage.setItem(CHIAVE_EMAIL_OSPITE, email);
   return email;
+}
+
+// Spazio ospite isolato di questo browser: lo crea una volta sola e lo riusa.
+function emailOspiteDiQuestoBrowser(): string {
+  return localStorage.getItem(CHIAVE_EMAIL_OSPITE) ?? nuovaEmailOspite();
+}
+
+/** true se l'account è uno spazio ospite aperto senza registrazione. */
+export function eAccountOspite(email: string): boolean {
+  return /^demo-.+@paghe\.local$/i.test(email.trim());
 }
 
 interface AuthState {
@@ -43,8 +51,8 @@ interface AuthState {
   accedi: (email: string, password: string, codice2fa?: string) => Promise<void>;
   /** Crea un nuovo account personale (spazio privato isolato) ed entra. */
   registrati: (ragioneSociale: string, email: string, password: string) => Promise<void>;
-  /** Entra in un account demo isolato (uno per browser), solo per provare. */
-  provaDemo: () => Promise<void>;
+  /** Entra come ospite, senza registrarsi: spazio isolato, uno per browser. */
+  entraComeOspite: () => Promise<void>;
   /** Esce: cancella il token e torna alla schermata di accesso. */
   esci: () => Promise<void>;
 }
@@ -78,16 +86,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applica],
   );
 
-  const provaDemo = useCallback(async () => {
+  const entraComeOspite = useCallback(async () => {
     if (buildMobile)
-      throw new Error("La demo automatica non crea account nella versione mobile. Accedi o registrati.");
-    // Demo isolata per browser: entra nel proprio account demo, o lo crea al volo la prima volta.
-    const email = emailDemoDiQuestoBrowser();
+      throw new Error("L'ingresso come ospite non è disponibile nella versione mobile. Accedi o registrati.");
+    // Spazio ospite isolato per browser: entra nel proprio, o lo crea al volo la prima volta.
+    const apri = async (email: string) => {
+      try {
+        return await api.login(email, PASSWORD_OSPITE);
+      } catch {
+        return await api.registra(NOME_OSPITE, email, PASSWORD_OSPITE);
+      }
+    };
     let r;
     try {
-      r = await api.login(email, DEMO_PASSWORD);
+      r = await apri(emailOspiteDiQuestoBrowser());
     } catch {
-      r = await api.registra("Prova demo", email, DEMO_PASSWORD);
+      // Lo spazio ospite ricordato non è più utilizzabile (account rimosso, email già
+      // presa, errore del server): ne apriamo uno nuovo invece di lasciare bloccati.
+      r = await apri(nuovaEmailOspite());
     }
     await applica(r);
   }, [applica]);
@@ -105,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // All'avvio prova prima la sessione protetta. Solo nel web, se non esiste e l'utente non
-  // aveva premuto Esci, può ancora creare lo spazio demo isolato.
+  // aveva premuto Esci, può ancora aprire lo spazio ospite isolato.
   const avviato = useRef(false);
   useEffect(() => {
     if (avviato.current) return;
@@ -117,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         if (!buildMobile && localStorage.getItem(USCITA_ESPLICITA) !== "1") {
           try {
-            await provaDemo();
+            await entraComeOspite();
             return;
           } catch {
             // Motore non raggiungibile: mostra comunque la schermata di accesso.
@@ -127,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIngressoInCorso(false);
       }
     })();
-  }, [provaDemo]);
+  }, [entraComeOspite]);
 
   useEffect(() => {
     const sincronizza = () => setTok(getAccessToken());
@@ -136,8 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthState>(
-    () => ({ token, ingressoInCorso, accedi, registrati, provaDemo, esci }),
-    [token, ingressoInCorso, accedi, registrati, provaDemo, esci],
+    () => ({ token, ingressoInCorso, accedi, registrati, entraComeOspite, esci }),
+    [token, ingressoInCorso, accedi, registrati, entraComeOspite, esci],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,53 +1,55 @@
 # ─────────────────────────────────────────────────────────────
-# Blueprint Render.com per Paghe SaaS (backend + frontend).
+# Blueprint Render.com per PaghePro.
 # Su Render: New → Blueprint → seleziona questo repo → Apply.
-# Vedi DEPLOY.md per la guida completa passo-passo.
+# Guida completa: docs/DEPLOY-GRATIS.md
 #
-# ►► MODALITÀ "PROVA GRATIS" ATTIVA (0 €, niente carta) ◄◄
-#    - Il backend si "addormenta" se non usato: la prima apertura è lenta (~30-60s).
-#    - I DATI SI AZZERANO ai riavvii: gli account di prova spariscono. OK per provare,
-#      NON per dati veri.
-#    Per passare a USO REALE (dati salvati) cambia le 3 righe segnate "# PER USO REALE".
+# Un solo servizio: ASP.NET serve la SPA React e le API dallo stesso
+# dominio, quindi non servono CORS né VITE_API_URL.
+#
+# Il database NON sta qui: è PostgreSQL su Supabase. Il piano Free di
+# Render non ha disco persistente, quindi un database dentro il container
+# verrebbe cancellato a ogni riavvio. Tenendolo fuori, i dati restano.
 # ─────────────────────────────────────────────────────────────
 
 services:
-  # 1) BACKEND — API .NET in Docker
   - type: web
-    name: paghe-api
+    name: paghepro
     runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    plan: free               # PER USO REALE: cambia in "starter" (~7$/mese, serve per il disco)
-    region: frankfurt        # data center in Europa
+    dockerfilePath: ./Dockerfile.railway
+    dockerContext: .
+    plan: free
+    region: frankfurt
     healthCheckPath: /health
-    # PER USO REALE: togli il "#" alle 4 righe qui sotto (disco persistente = dati salvati)
-    # disk:
-    #   name: paghe-data
-    #   mountPath: /data
-    #   sizeGB: 1
     envVars:
-      - key: ConnectionStrings__Default
-        value: Data Source=/tmp/paghe.db   # PER USO REALE: metti  Data Source=/data/paghe.db
-      - key: Jwt__Key
-        generateValue: true  # Render genera una chiave segreta forte e la tiene riservata
-      - key: PAGHE_DATA_KEY
-        sync: false          # obbligatoria: incolla l'output di `openssl rand -base64 32`
-      - key: Cors__Origini__0
-        sync: false          # da impostare a mano = URL pubblico del frontend (es. https://paghe-frontend.onrender.com)
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
 
-  # 2) FRONTEND — sito statico (React/Vite). Gratis sempre. Punta all'URL del backend.
-  - type: web
-    name: paghe-frontend
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
-    envVars:
-      - key: NODE_VERSION
-        value: "22"
-      - key: VITE_API_URL
-        sync: false          # da impostare a mano = URL pubblico di paghe-api (es. https://paghe-api.onrender.com)
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+      # Stringa Supabase in formato Npgsql, Session pooler (IPv4).
+      # La Direct connection risolve solo su IPv6: da Render non funziona.
+      # La password va scritta com'è: il percent-encode vale solo per l'URI.
+      - key: ConnectionStrings__Default
+        sync: false
+
+      # Firma i token di accesso. In Production l'avvio è bloccato se
+      # manca o è più corta di 32 byte: `openssl rand -base64 48`.
+      - key: Jwt__Key
+        sync: false
+
+      # Cifra IBAN e dati sanitari a riposo: `openssl rand -base64 32`.
+      # Da conservare fuori da Render: se si perde, quei dati non si recuperano.
+      - key: PAGHE_DATA_KEY
+        sync: false
+
+      # Prova il flusso di trasmissione senza inviare nulla di reale.
+      - key: Sdi__Provider
+        value: Simulato
+
+      - key: Ai__Provider
+        value: Spento
+
+      # Riduce il consumo di memoria: il piano Free ha 512 MB.
+      - key: DOTNET_gcServer
+        value: "0"
+
+      - key: Logging__LogLevel__Microsoft.EntityFrameworkCore
+        value: Warning

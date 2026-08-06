@@ -1,5 +1,12 @@
 # Mettere Paghe SaaS online — guida passo-passo
 
+> ⚠️ **Documento superato dal 2026-08-06.** `render.yaml` ora descrive **un solo servizio**
+> (SPA + API sullo stesso dominio) con database PostgreSQL su Supabase, piano gratuito e senza
+> disco. La procedura corrente è in **[`docs/DEPLOY-GRATIS.md`](docs/DEPLOY-GRATIS.md)**.
+> Questa pagina resta come descrizione dell'impianto precedente a due servizi (backend Docker con
+> disco a pagamento + sito statico separato con `VITE_API_URL`), che non corrisponde più al
+> blueprint nel repository.
+
 Questa guida porta il software **su internet**, accessibile da un indirizzo web, senza
 modificare il codice. Usiamo **Render.com** perché ha un'unica dashboard per backend +
 frontend ed è adatto a chi non è tecnico.

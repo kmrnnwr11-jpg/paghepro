@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Eccezione: il plugin mobile tiene in dist/ due file scritti a mano (non generati
+# da nessun processo di build). Senza, `npm run build` non trova il modulo e il
+# frontend non compila da un clone pulito.
+!mobile-plugins/*/dist/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -44,6 +44,17 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Webapp pubblicata online (6 agosto 2026)**: <https://paghepro.onrender.com>, un solo servizio
+  Render Free costruito da `Dockerfile.railway` (SPA e API sulla stessa origine, niente CORS né
+  `VITE_API_URL`) con database PostgreSQL su Supabase in Irlanda. Il database sta fuori dal
+  container perché il piano Free di Render non ha disco persistente. `render.yaml` descrive il
+  servizio e tiene i tre segreti come `sync: false`. Verificato dal vivo: `/health`, migrazioni EF
+  applicate su PostgreSQL, registrazione, creazione azienda e **dati ancora presenti dopo il
+  riavvio del servizio**. Limiti accettati: il servizio si addormenta dopo 15 minuti di inattività
+  (risveglio ~60 s) e OCR, JAR di controllo AdE, firma CNS e invio SdI reale non sono disponibili
+  nel container. Procedura in `docs/DEPLOY-GRATIS.md`. **Non è ancora un ambiente validato per
+  cedolini consegnati a clienti**: il motore resta BOZZA DA VALIDARE e mancano retention GDPR e
+  prova di ripristino del backup.
 - **Base applicazioni mobili iOS/Android**: aggiunti Capacitor 8, progetti Xcode e Android
   Studio, build mobile separata con gate obbligatori per URL API HTTPS e app ID definitivo,
   safe area, esclusione del service worker e del login Google/demo nel contenitore nativo,

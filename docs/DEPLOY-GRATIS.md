@@ -5,6 +5,18 @@ che restano anche quando il servizio si spegne.
 
 Aggiornato al 2026-08-06.
 
+## Istanza attiva
+
+| | |
+| --- | --- |
+| Indirizzo | <https://paghepro.onrender.com> |
+| Servizio Render | `paghepro` · piano Free · Frankfurt · `srv-d9qdlumgekts7391qe00` |
+| Database | Supabase `paghepro`, piano Pro, West EU (Ireland) |
+| Pubblicata il | 2026-08-06 |
+
+Verificata dal vivo alla pubblicazione: `/health` a 200, migrazioni EF applicate su PostgreSQL,
+registrazione account, creazione azienda, **riavvio del servizio e dati ancora presenti**.
+
 ## Come funziona questa configurazione
 
 | Pezzo | Dove sta | Costo |

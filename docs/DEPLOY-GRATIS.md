@@ -8,7 +8,7 @@ Aggiornato al 2026-08-06.
 ## Come funziona questa configurazione
 
 | Pezzo | Dove sta | Costo |
-|-------|----------|-------|
+| ----- | -------- | ----- |
 | Sito + API (un solo servizio) | Render, piano **Free**, costruito da `Dockerfile.railway` | 0 € |
 | Database (i dati veri) | Supabase, piano **Free**, PostgreSQL in Europa | 0 € |
 | Indirizzo web | `https://NOME.onrender.com`, fornito da Render | 0 € |
@@ -44,12 +44,18 @@ Segui [`GUIDA-SUPABASE.md`](GUIDA-SUPABASE.md), passi 1 e 2. In sintesi:
 2. **Region: Frankfurt (eu-central-1)** — i dati dei dipendenti restano in UE.
 3. Scegli una **Database Password** robusta e **salvala** in un gestore di password.
 4. **Project Settings → Database → Connection string → Session pooler** (porta 5432).
-   Non usare la Transaction pooler (6543): non crea correttamente le tabelle.
+   Non usare la Transaction pooler (6543): non crea correttamente le tabelle. Non usare la
+   Direct connection: risolve solo su IPv6, che Render non instrada.
 5. Componi la stringa in formato .NET e tienila da parte:
 
+   ```text
+   Host=aws-1-eu-west-1.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.<ref>;Password=<LA-TUA-PASSWORD>;SSL Mode=Require;Trust Server Certificate=true
    ```
-   Host=aws-0-eu-central-1.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.<ref>;Password=<LA-TUA-PASSWORD>;SSL Mode=Require;Trust Server Certificate=true
-   ```
+
+   Il prefisso `aws-N` e la regione vanno letti dal pannello, non indovinati: cambiano da progetto
+   a progetto. Nel formato .NET la password va scritta **così com'è**: il `percent-encode` che
+   Supabase suggerisce vale solo per il formato `postgresql://`. Se contiene `;`, racchiudila tra
+   virgolette singole.
 
 Al primo avvio l'applicazione crea da sola tutte le tabelle tramite le migrazioni EF.
 
@@ -75,7 +81,7 @@ sono più recuperabili da nessuno** — nemmeno con il backup del database.
 3. Compila così:
 
    | Campo | Valore |
-   |-------|--------|
+   | ----- | ------ |
    | Name | `paghepro` (diventa `https://paghepro.onrender.com`) |
    | Region | **Frankfurt** |
    | Branch | `main` |
@@ -121,6 +127,10 @@ Il passo 5 è quello che conta: dimostra che i dati vivono fuori dal container.
 
 Sui piani gratuiti nessuno fa backup al posto tuo. Con buste paga vere di clienti veri, questo
 passo non è facoltativo.
+
+> Sul piano **Supabase Pro** i backup giornalieri sono inclusi e automatici (il pannello mostra
+> `LAST BACKUP`). Restano comunque utili una copia propria cifrata, perché vive fuori dal
+> fornitore, e soprattutto la **prova di ripristino**: quella non la fa nessuno al posto tuo.
 
 Una volta sola, prepara la chiave di cifratura del backup:
 

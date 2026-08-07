@@ -1,0 +1,418 @@
+<meta charset="utf-8">
+<title>PaghePro — Manuale operativo</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font: 10.5pt/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1a1a1a; margin: 0;
+  }
+  h1 { font-size: 26pt; line-height: 1.15; margin: 0 0 6pt; letter-spacing: -0.02em; }
+  h2 {
+    font-size: 15pt; margin: 26pt 0 8pt; padding-bottom: 4pt;
+    border-bottom: 1.5pt solid #1a1a1a; page-break-after: avoid;
+  }
+  h3 { font-size: 11.5pt; margin: 16pt 0 5pt; page-break-after: avoid; }
+  p, li { orphans: 3; widows: 3; }
+  ul, ol { padding-left: 18pt; margin: 6pt 0; }
+  li { margin: 3pt 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0 12pt; font-size: 9.5pt; }
+  th, td { border: 0.5pt solid #b8b8b8; padding: 5pt 7pt; text-align: left; vertical-align: top; }
+  th { background: #ececec; font-weight: 600; }
+  code {
+    font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 9pt;
+    background: #f2f2f2; padding: 1pt 3pt; border-radius: 2pt;
+  }
+  .copertina { page-break-after: always; padding-top: 55mm; }
+  .copertina .sub { font-size: 13pt; color: #444; margin: 0 0 28pt; }
+  .meta { font-size: 9.5pt; color: #555; border-top: 0.5pt solid #ccc; padding-top: 8pt; }
+  .avviso {
+    border: 1pt solid #1a1a1a; border-left: 4pt solid #1a1a1a;
+    padding: 8pt 11pt; margin: 12pt 0; page-break-inside: avoid; background: #fafafa;
+  }
+  .avviso p { margin: 0; }
+  .avviso .tit { font-weight: 700; display: block; margin-bottom: 3pt; }
+  .passo { page-break-inside: avoid; }
+  .nota { font-size: 9.5pt; color: #444; }
+  .indice li { margin: 4pt 0; }
+  .sep { page-break-before: always; }
+  strong { font-weight: 650; }
+</style>
+
+<div class="copertina">
+  <h1>PaghePro</h1>
+  <p class="sub">Manuale operativo — buste paga, PDF, XML e adempimenti</p>
+  <table>
+    <tr><th>Indirizzo</th><td>https://paghepro.onrender.com</td></tr>
+    <tr><th>Destinatario</th><td>Uso interno del fondatore</td></tr>
+    <tr><th>Versione</th><td>7 agosto 2026</td></tr>
+    <tr><th>Stato</th><td>Ambiente in esercizio, motore cedolino da validare</td></tr>
+  </table>
+  <div class="avviso">
+    <p><span class="tit">Da leggere prima di tutto</span>
+    Le buste paga prodotte da questo software riportano la dicitura <strong>BOZZA DA
+    VALIDARE</strong>. È il software stesso a scriverlo. Prima di consegnare un cedolino a un
+    cliente vero, il risultato va confrontato con un Consulente del Lavoro. Questo manuale spiega
+    come usare il programma, non sostituisce quella verifica.</p>
+  </div>
+  <p class="meta">Documento generato dal repository del progetto. La versione aggiornabile è
+  <code>docs/manuale/MANUALE-PAGHEPRO.html</code>.</p>
+</div>
+
+<h2>Indice</h2>
+<ol class="indice">
+  <li>Cosa fa e come è organizzato</li>
+  <li>Accesso</li>
+  <li>Cosa ti serve prima di iniziare con un cliente</li>
+  <li>Il mese tipo, dall'inizio alla fine</li>
+  <li>Passo 1 — Registrare l'azienda</li>
+  <li>Passo 2 — Assumere il dipendente</li>
+  <li>Passo 3 — Inserire le presenze</li>
+  <li>Passo 4 — Produrre la busta paga e il PDF</li>
+  <li>Passo 5 — F24, UniEmens e Certificazione Unica</li>
+  <li>I blocchi del software e perché sono a tuo favore</li>
+  <li>Cosa non funziona nella versione online</li>
+  <li>Dati, backup e sicurezza</li>
+  <li>Cosa manca prima di lavorare con clienti veri</li>
+  <li>Se qualcosa non va</li>
+</ol>
+
+<h2>1. Cosa fa e come è organizzato</h2>
+
+<p>PaghePro è un gestionale per studi: anagrafiche aziende e dipendenti, buste paga con PDF,
+adempimenti mensili (F24, UniEmens), dichiarativi annuali (Certificazione Unica, 770), fatturazione
+elettronica, contabilità IVA e bilancio, scadenzario.</p>
+
+<h3>La regola che governa tutto: prima il cliente</h3>
+
+<p>All'accesso il software <strong>non sceglie e non crea nessuna azienda al posto tuo</strong>.
+Prima cerchi o crei il cliente, poi si aprono gli strumenti che lavorano sui suoi dati.</p>
+
+<p>Queste sezioni non si aprono finché non hai scelto un'azienda: Dipendenti, Presenze, Cedolini,
+Fatture, LIPE, IVA annuale, Bilancio, Fine anno, CU, Modello 770, Redditi PF, IRAP, IRES, IMU,
+Intrastat, Moduli ufficiali.</p>
+
+<p>Se provi ad aprirne una prima, il software ti porta alla scelta del cliente e <em>poi</em>
+riapre da solo la sezione che volevi. Non è un intoppo: è la protezione che impedisce di caricare
+una busta paga sull'azienda sbagliata.</p>
+
+<p class="nota">«Riprendi il lavoro» in home conserva le ultime quattro coppie strumento-cliente.</p>
+
+<h2>2. Accesso</h2>
+
+<ol>
+  <li>Apri <code>https://paghepro.onrender.com</code></li>
+  <li>Crea l'account: ragione sociale dello studio, email, password</li>
+  <li>Da lì in poi entri con email e password</li>
+</ol>
+
+<div class="avviso">
+  <p><span class="tit">La prima apertura della giornata è lenta</span>
+  Il servizio è sul piano gratuito e si sospende dopo 15 minuti senza visite. Il primo accesso
+  successivo impiega <strong>circa un minuto</strong>: la pagina sembra ferma, non lo è. Aspetta,
+  non ricaricare più volte. Dopo il risveglio torna immediato.</p>
+</div>
+
+<p>Puoi installarlo come applicazione sul telefono e sul computer (funzione «installa» del
+browser). L'accesso resta valido tra le schede; l'uscita chiude la sessione ovunque.</p>
+
+<h2>3. Cosa ti serve prima di iniziare con un cliente</h2>
+
+<p>Raccogli questi dati <strong>prima</strong> di aprire il programma. Inserirli dopo significa
+rifare le buste paga.</p>
+
+<table>
+  <tr><th>Dato</th><th>Dove si trova</th><th>Se manca</th></tr>
+  <tr><td>Ragione sociale, sede, P.IVA</td><td>Visura camerale</td><td>Non puoi creare l'azienda</td></tr>
+  <tr><td>Matricola INPS</td><td>Comunicazioni INPS del datore</td><td>UniEmens e F24 bloccati</td></tr>
+  <tr><td>P.A.T. INAIL</td><td>Comunicazioni INAIL</td><td>Autoliquidazione non producibile</td></tr>
+  <tr><td>Codice catastale del comune</td><td>Comune della sede/residenza</td><td><strong>Addizionale comunale a zero: busta sbagliata</strong></td></tr>
+  <tr><td>CCNL e livello</td><td>Contratto del lavoratore</td><td>Retribuzione base errata</td></tr>
+  <tr><td>Data di assunzione</td><td>UNILAV / contratto</td><td>Buste paga incoerenti</td></tr>
+  <tr><td>Percentuale part-time</td><td>Contratto</td><td><strong>Il part-time viene pagato intero</strong></td></tr>
+  <tr><td>Regione di residenza</td><td>Anagrafica lavoratore</td><td>Addizionale regionale a zero</td></tr>
+</table>
+
+<p>Le due righe in grassetto sono gli errori più costosi: il software non può accorgersene, perché
+un campo vuoto è indistinguibile da un campo che vale zero davvero.</p>
+
+<h3>Modalità «prova contributiva»</h3>
+
+<p>Puoi salvare un'anagrafica senza INPS, INAIL e CCNL, per fare prove. Restano visibilmente da
+completare e il server <strong>blocca F24 e UniEmens</strong> finché sono provvisori. È voluto.</p>
+
+<div class="sep"></div>
+<h2>4. Il mese tipo, dall'inizio alla fine</h2>
+
+<p>Per un cliente già registrato, ogni mese ripeti questo percorso:</p>
+
+<ol>
+  <li><strong>Scegli il cliente</strong> in home</li>
+  <li><strong>Presenze</strong> — inserisci straordinari, ferie, permessi, malattia, assenze</li>
+  <li><strong>Conferma</strong> — il software calcola e archivia la busta paga</li>
+  <li><strong>Cedolini</strong> — scarichi il PDF da consegnare</li>
+  <li><strong>F24</strong> — generi il modello di versamento del mese</li>
+  <li><strong>UniEmens</strong> — generi il flusso XML per l'INPS</li>
+</ol>
+
+<p>A gennaio si aggiunge la <strong>Certificazione Unica</strong> dell'anno precedente; nel corso
+dell'anno, quando serve, il <strong>Modello 770</strong> e i dichiarativi.</p>
+
+<h2>5. Passo 1 — Registrare l'azienda</h2>
+
+<p>Sezione <strong>Aziende</strong>. Ha due modalità: <em>Archivio</em> (cerca tra i clienti) e
+<em>Anagrafica</em> (scheda completa del cliente scelto).</p>
+
+<p>La ricerca è immediata e funziona per denominazione, partita IVA, codice fiscale, comune, codice
+ATECO e settore.</p>
+
+<h3>Tre modi per inserire un cliente</h3>
+
+<ol>
+  <li><strong>A mano</strong>: compili la scheda. L'indice laterale ti dice a che punto sei.</li>
+  <li><strong>Da visura camerale</strong>: carichi il PDF e i campi si compilano da soli.</li>
+  <li><strong>Da testo incollato</strong>: incolli un'email o degli appunti; il programma riconosce
+      P.IVA, codice fiscale, sede, PEC, ATECO, settore e legale rappresentante.</li>
+</ol>
+
+<p>Nei modi 2 e 3 <strong>ricontrolla sempre</strong> quello che ha capito. Il riconoscimento
+automatico è buono, non infallibile, e un codice sbagliato qui si propaga a tutte le buste.</p>
+
+<p class="nota">Puoi caricare il <strong>logo</strong> dell'azienda (PNG o JPEG, max 1 MB): comparirà
+in testata su ogni busta paga di quel cliente.</p>
+
+<h2>6. Passo 2 — Assumere il dipendente</h2>
+
+<p>Sezione <strong>Dipendenti</strong>, con il cliente già scelto.</p>
+
+<h3>Dall'UNILAV (consigliato)</h3>
+
+<p>Se hai la Comunicazione Obbligatoria, caricala: XML, PDF, foto o testo incollato. Il programma
+legge datore, lavoratore e rapporto, e scrive davvero l'anagrafica — sede, telefono, ATECO,
+matricola INPS, P.A.T. INAIL, legale rappresentante, tipo contratto, ore settimanali, fine rapporto
+per il tempo determinato e <strong>la percentuale di part-time dedotta dalle ore</strong>.</p>
+
+<p>Al termine compare l'elenco <strong>«Da completare»</strong>: i campi che l'UNILAV non contiene.
+Ogni voce dice cosa manca, dove si completa, perché serve e dove trovarlo. Cliccandola vai nella
+sezione giusta con l'azienda già selezionata.</p>
+
+<div class="avviso">
+  <p><span class="tit">Due cose l'UNILAV non le dà mai</span>
+  La <strong>qualifica contrattuale</strong> (l'UNILAV riporta la professione ISTAT, che è un'altra
+  cosa e cambia le aliquote INPS) e la <strong>regione o comune di residenza</strong>. Vanno
+  inserite a mano, sempre.</p>
+</div>
+
+<h3>A mano</h3>
+
+<p>Servono almeno: codice fiscale, nome, cognome, CCNL e livello. Poi qualifica, data di assunzione,
+mensilità, ore settimanali, tipo contratto, part-time con la sua percentuale, regione e comune.</p>
+
+<p>La scheda del lavoratore è divisa in <em>Anagrafica</em>, <em>Rapporto</em> e <em>Storico</em>, e
+da lì raggiungi i suoi cedolini.</p>
+
+<h3>Cessazione</h3>
+
+<p>Quando il rapporto finisce, inserisci la <strong>data di cessazione</strong> nella scheda. Da
+quel momento i mesi successivi sono bloccati, e la Certificazione Unica compila da sola la data di
+cessazione e barra «in forza al 31/12» solo se il rapporto è ancora aperto.</p>
+
+<div class="sep"></div>
+<h2>7. Passo 3 — Inserire le presenze</h2>
+
+<p>Sezione <strong>Presenze</strong>. È l'<strong>unico</strong> posto dove si inseriscono le
+variabili del mese. La sezione Cedolini è solo archivio e scarico: serve a evitare che due
+ricalcoli in contemporanea cancellino le causali che hai appena inserito.</p>
+
+<table>
+  <tr><th>Voce</th><th>Nota</th></tr>
+  <tr><td>Straordinario normale, notturno, festivo</td><td>In ore, separati per tipo</td></tr>
+  <tr><td>Ferie</td><td>In giorni</td></tr>
+  <tr><td>Permessi ROL ed ex festività</td><td>In ore</td></tr>
+  <tr><td>Malattia</td><td>In giorni, <strong>con il numero dell'evento nell'anno</strong></td></tr>
+  <tr><td>Infortunio INAIL</td><td>In giorni</td></tr>
+  <tr><td>Assenze non retribuite</td><td>In ore, decurtano la mensile</td></tr>
+</table>
+
+<p>Il <strong>numero dell'evento di malattia</strong> (primo episodio dell'anno, secondo, terzo)
+non è un dettaglio: cambia le percentuali di indennità. Se lo lasci a 1 quando è il terzo, la busta
+è sbagliata.</p>
+
+<p>Il cruscotto rilegge tutto il cartellino e chiede una conferma esplicita prima di calcolare. Il
+server rifiuta quantità negative e giornate incompatibili con il mese.</p>
+
+<h2>8. Passo 4 — Produrre la busta paga e il PDF</h2>
+
+<p>Alla conferma il software calcola e <strong>archivia</strong> la busta. In risposta vedi netto,
+costo azienda e i residui di ferie e permessi.</p>
+
+<div class="avviso">
+  <p><span class="tit">Se ferie o permessi risultano negativi</span>
+  Non è un errore da correggere: significa che il lavoratore ha goduto ferie non ancora maturate.
+  Il software non azzera più il valore, perché il dato negativo è l'informazione vera, e compare
+  anche sul PDF. Ti viene mostrato un avviso non bloccante.</p>
+</div>
+
+<h3>Il PDF</h3>
+
+<p>Dalla sezione <strong>Cedolini</strong> scarichi il PDF: modulo A4 tabellare con testata del
+datore (P.IVA, matricola INPS, P.A.T. INAIL, logo), riquadro di inquadramento del dipendente,
+corpo delle voci con quantità, base, competenze e trattenute, riepilogo previdenziale e fiscale,
+causali, saldi ferie e ROL, TFR, costo azienda e netto in busta.</p>
+
+<p>In fondo il PDF riporta: <em>«BOZZA DA VALIDARE — Documento non certificato: sottoporre al
+controllo del professionista»</em>.</p>
+
+<h3>Esempio reale</h3>
+
+<p>Verifica eseguita sul sito il 6 agosto 2026, operaio edile livello 3, luglio 2026, con 8 ore di
+straordinario e 2 giorni di ferie:</p>
+
+<table>
+  <tr><th>Voce</th><th>Importo</th></tr>
+  <tr><td>Paga base</td><td>1.560,00</td></tr>
+  <tr><td>Straordinario (8 h, +15%)</td><td>85,43</td></tr>
+  <tr><td><strong>Totale competenze</strong></td><td><strong>1.645,43</strong></td></tr>
+  <tr><td>INPS dipendente (9,19%)</td><td>−151,22</td></tr>
+  <tr><td>IRPEF netta</td><td>−107,69</td></tr>
+  <tr><td>Addizionale regionale</td><td>−26,79</td></tr>
+  <tr><td><strong>Netto in busta</strong></td><td><strong>1.359,73</strong></td></tr>
+  <tr><td>Costo azienda</td><td>2.220,92</td></tr>
+</table>
+
+<h2>9. Passo 5 — F24, UniEmens e Certificazione Unica</h2>
+
+<p>Tutti e tre partono dalle buste paga <strong>già archiviate</strong> del periodo. Se non hai
+chiuso i cedolini, non escono.</p>
+
+<h3>F24</h3>
+
+<p>Il programma costruisce il modello dai cedolini: ritenute IRPEF, addizionali, contributi INPS.
+Vedi le sezioni Erario, INPS, Regioni e tributi locali, i totali e la data di versamento.</p>
+
+<p>Controlla sempre il campo <strong>valido</strong>: se è negativo, sotto trovi l'elenco preciso
+degli errori (per esempio un codice fiscale incoerente). Non usare un F24 non valido.</p>
+
+<p>Verifica di coerenza che puoi fare a occhio: <strong>l'IRPEF e l'addizionale regionale dell'F24
+devono coincidere al centesimo con quelle della busta paga dello stesso mese.</strong> Nell'esempio
+sopra: 107,69 e 26,79 in entrambi.</p>
+
+<p>L'F24 può essere archiviato come pratica con il suo stato ed esportato nel tracciato telematico
+ufficiale a lunghezza fissa. Quel tracciato è stato validato con il controllo ufficiale
+dell'Agenzia delle Entrate con esito positivo per le sezioni Erario, Regioni e IMU.</p>
+
+<h3>UniEmens</h3>
+
+<p>Genera il flusso XML mensile per l'INPS dai cedolini archiviati.</p>
+
+<div class="avviso">
+  <p><span class="tit">L'XML UniEmens è una bozza</span>
+  Il file porta scritto dentro <code>versione="bozza-non-validata"</code>. La struttura è allineata
+  allo schema pubblico, ma <strong>non è passata dal software di controllo ufficiale INPS</strong>.
+  Non trasmetterlo senza averlo prima fatto validare da quel programma.</p>
+</div>
+
+<h3>Certificazione Unica</h3>
+
+<p>Si genera per rapporto e anno, ed è stampata <strong>sul modello ufficiale dell'Agenzia delle
+Entrate</strong>: anagrafiche, dati fiscali, sezione previdenziale INPS, annotazioni con quota TFR
+e conguaglio. Manca il file telematico: la CU si stampa, non si trasmette.</p>
+
+<div class="sep"></div>
+<h2>10. I blocchi del software e perché sono a tuo favore</h2>
+
+<p>Il programma ti impedisce alcune operazioni. Non sono limiti tecnici: sono protezioni chieste
+apposta, perché ognuna corrisponde a un errore che in uno studio costa caro.</p>
+
+<table>
+  <tr><th>Blocco</th><th>Perché</th></tr>
+  <tr><td>Niente buste di mesi futuri</td><td>Una busta di un mese non concluso è per definizione sbagliata</td></tr>
+  <tr><td>Niente buste prima dell'assunzione</td><td>Il rapporto non esisteva ancora</td></tr>
+  <tr><td>Niente buste dopo la cessazione</td><td>Il rapporto è chiuso</td></tr>
+  <tr><td>Stesso codice fiscale già assunto nella stessa azienda</td><td>Produrrebbe due buste paga alla stessa persona</td></tr>
+  <tr><td>Mesi con F24 già inviato: ricalcolo rifiutato</td><td>Falserebbe un versamento già effettuato</td></tr>
+  <tr><td>F24 e UniEmens bloccati se l'anagrafica contributiva è provvisoria</td><td>Uscirebbero documenti con codici inventati</td></tr>
+</table>
+
+<p>Se lo stesso codice fiscale è già presente in un'<strong>altra</strong> azienda del tuo studio,
+il programma non si blocca: riusa l'anagrafica e crea solo il nuovo rapporto. È corretto, una
+persona può avere due datori di lavoro.</p>
+
+<p>Sul blocco dell'F24 inviato esiste il <strong>ricalcolo forzato</strong>, con conferma esplicita.
+Usalo solo se sai di dover poi rigenerare anche l'F24, altrimenti i due documenti non tornano più.</p>
+
+<h2>11. Cosa non funziona nella versione online</h2>
+
+<p>Non sono guasti: sono funzioni che richiedono programmi installati su un computer, che nel
+server online non ci sono.</p>
+
+<table>
+  <tr><th>Funzione</th><th>Stato</th></tr>
+  <tr><td>Lettura OCR di documenti fotografati</td><td>Non disponibile. I PDF di testo funzionano</td></tr>
+  <tr><td>Controlli ufficiali F24 e AA7/AA9</td><td>Richiedono Java e i programmi dell'Agenzia</td></tr>
+  <tr><td>Firma con smart card o CNS</td><td>Richiede lettore e driver sul computer che firma</td></tr>
+  <tr><td>Invio reale a SdI</td><td>Impostato su «simulato»: prova il percorso, non invia</td></tr>
+  <tr><td>Assistente AI di lettura documenti</td><td>Spento</td></tr>
+</table>
+
+<h2>12. Dati, backup e sicurezza</h2>
+
+<p>I dati non stanno nel sito: stanno in un database <strong>PostgreSQL su Supabase</strong>, in
+Irlanda, quindi dentro l'Unione Europea. È per questo che restano al loro posto anche quando il
+servizio si riavvia o viene aggiornato.</p>
+
+<ul>
+  <li><strong>Backup</strong>: automatici e giornalieri, inclusi nel piano Supabase Pro attivo.</li>
+  <li><strong>Cifratura</strong>: IBAN, dati sanitari, voci del cedolino e credenziali sono cifrati
+      nel database con AES-256.</li>
+  <li><strong>Tracciamento</strong>: ogni lettura e ogni modifica finisce nel registro attività,
+      consultabile dalla sezione dedicata.</li>
+  <li><strong>Sessioni</strong>: l'accesso dura 15 minuti e si rinnova da solo; l'uscita revoca
+      tutto immediatamente.</li>
+</ul>
+
+<div class="avviso">
+  <p><span class="tit">Il backup che nessuno fa al posto tuo</span>
+  Supabase i backup li fa. Ma <strong>un backup mai ripristinato non è un backup</strong> finché non
+  lo dimostri. Almeno una volta, prova un ripristino vero su un database separato e vuoto. Finché
+  non l'hai fatto, non sai se i tuoi dati sono recuperabili.</p>
+</div>
+
+<p>Esiste una chiave di cifratura dei dati sensibili, conservata fuori dal software. <strong>Se
+viene persa, i dati protetti non sono recuperabili da nessuno</strong>, nemmeno partendo dal backup
+del database. Tienila in un gestore di password, separata dai backup.</p>
+
+<h2>13. Cosa manca prima di lavorare con clienti veri</h2>
+
+<p>Elenco onesto, in ordine di importanza.</p>
+
+<ol>
+  <li><strong>Validazione professionale del motore.</strong> I cedolini sono marcati BOZZA DA
+      VALIDARE. Vanno confrontati con un Consulente del Lavoro su buste reali, di mesi e contratti
+      diversi, prima di consegnarne uno a un cliente.</li>
+  <li><strong>Prova di ripristino del backup.</strong> Vedi sopra.</li>
+  <li><strong>Documenti GDPR.</strong> Cifratura e registro attività sono fatti. Mancano le regole
+      di conservazione e cancellazione, l'informativa privacy e la nomina a responsabile del
+      trattamento verso i fornitori (Render e Supabase).</li>
+  <li><strong>Validazione UniEmens.</strong> Il flusso va fatto passare dal software di controllo
+      ufficiale INPS.</li>
+  <li><strong>Il risveglio lento.</strong> Con clienti paganti, l'attesa di un minuto alla prima
+      apertura diventa un problema commerciale. Si risolve passando a un piano sempre acceso, senza
+      toccare il software né i dati.</li>
+</ol>
+
+<h2>14. Se qualcosa non va</h2>
+
+<table>
+  <tr><th>Sintomo</th><th>Causa più probabile</th><th>Cosa fare</th></tr>
+  <tr><td>La pagina non carica, resta bianca a lungo</td><td>Servizio sospeso per inattività</td><td>Aspetta un minuto senza ricaricare</td></tr>
+  <tr><td>Non trovo la sezione che mi serve</td><td>Non hai ancora scelto il cliente</td><td>Torna in home e scegli l'azienda</td></tr>
+  <tr><td>«Periodo futuro» o «precedente all'assunzione»</td><td>Protezione voluta</td><td>Correggi il mese o la data di assunzione</td></tr>
+  <tr><td>F24 o UniEmens non escono</td><td>Anagrafica contributiva incompleta</td><td>Inserisci matricola INPS e P.A.T. INAIL</td></tr>
+  <tr><td>Addizionali a zero</td><td>Manca regione o codice catastale</td><td>Completa l'anagrafica del lavoratore</td></tr>
+  <tr><td>Il part-time è pagato intero</td><td>Percentuale part-time lasciata al 100%</td><td>Correggi il rapporto e rifai la busta</td></tr>
+  <tr><td>Vengo disconnesso</td><td>Sessione scaduta</td><td>Rientra: è normale, dura 15 minuti</td></tr>
+</table>
+
+<p class="meta" style="margin-top:24pt">PaghePro — manuale operativo, 7 agosto 2026. Le buste paga
+prodotte restano BOZZA DA VALIDARE fino alla verifica di un Consulente del Lavoro.</p>

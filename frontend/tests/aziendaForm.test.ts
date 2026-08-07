@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applicaDatiVisura, parsaTestoAzienda, validaAzienda } from "../src/aziendaForm.ts";
+import {
+  applicaDatiVisura, datiContributiviMancanti, parsaTestoAzienda, validaAzienda,
+} from "../src/aziendaForm.ts";
 import type { NuovaAzienda } from "../src/api.ts";
 
 const aziendaBase: NuovaAzienda = {
@@ -94,4 +96,28 @@ test("la modalità prova allenta solo i dati contributivi", () => {
   const conZeri = validaAzienda({ ...aziendaBase, matricolaInps: "000000", cscInps: "00000" }, { datiContributiviProvvisori: true });
   assert.match(conZeri.matricolaInps ?? "", /Non usare 000000/);
   assert.match(conZeri.cscInps ?? "", /Non usare 00000/);
+});
+
+test("datiContributiviMancanti elenca i codici assenti solo per le aziende con dipendenti", () => {
+  // Azienda senza dipendenti: nessun adempimento contributivo, nessun avviso.
+  assert.deepEqual(datiContributiviMancanti({ haDipendenti: false }), []);
+
+  // Con dipendenti e anagrafica vuota: tutti i codici che bloccano F24 e UniEmens.
+  assert.deepEqual(datiContributiviMancanti({ haDipendenti: true }), [
+    "matricola INPS", "codice sede INPS", "CSC INPS", "P.A.T. INAIL", "CCNL", "livello CCNL",
+  ]);
+
+  // Completa: l'archivio non deve segnalare nulla.
+  assert.deepEqual(datiContributiviMancanti({
+    haDipendenti: true,
+    matricolaInps: "8900000010", codiceSedeInps: "0001", cscInps: "11801",
+    patInail: "80000103", ccnlDefault: "COMMERCIO", livelloDefault: "3",
+  }), []);
+
+  // Gli spazi non contano come valore inserito.
+  assert.deepEqual(datiContributiviMancanti({
+    haDipendenti: true,
+    matricolaInps: "   ", codiceSedeInps: "0001", cscInps: "11801",
+    patInail: "80000103", ccnlDefault: "COMMERCIO", livelloDefault: "3",
+  }), ["matricola INPS"]);
 });

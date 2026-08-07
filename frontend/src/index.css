@@ -2113,6 +2113,18 @@ kbd {
   white-space: nowrap;
 }
 
+/* Azienda con dipendenti ma senza codici INPS/INAIL: F24 e UniEmens sono bloccati
+   dal server, quindi va visto nell'archivio e non scoperto all'adempimento. */
+.company-row-copy small.company-row-incompleta {
+  color: #b45309;
+}
+
+@media (prefers-color-scheme: dark) {
+  .company-row-copy small.company-row-incompleta {
+    color: #fbbf24;
+  }
+}
+
 .company-row-buttons {
   display: flex;
   align-items: center;

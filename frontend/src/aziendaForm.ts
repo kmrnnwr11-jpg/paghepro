@@ -119,6 +119,27 @@ export function applicaDatiVisura(form: NuovaAzienda, dati: DatiVisura): NuovaAz
   };
 }
 
+/**
+ * Dati contributivi che mancano a un'azienda con dipendenti. Il server rifiuta F24 e UniEmens
+ * finché questo elenco non è vuoto: serve a mostrarlo nell'archivio invece di scoprirlo
+ * al momento dell'adempimento.
+ */
+export function datiContributiviMancanti(a: {
+  haDipendenti?: boolean;
+  matricolaInps?: string | null; codiceSedeInps?: string | null; cscInps?: string | null;
+  patInail?: string | null; ccnlDefault?: string | null; livelloDefault?: string | null;
+}): string[] {
+  if (!a.haDipendenti) return [];
+  const mancanti: string[] = [];
+  if (!a.matricolaInps?.trim()) mancanti.push("matricola INPS");
+  if (!a.codiceSedeInps?.trim()) mancanti.push("codice sede INPS");
+  if (!a.cscInps?.trim()) mancanti.push("CSC INPS");
+  if (!a.patInail?.trim()) mancanti.push("P.A.T. INAIL");
+  if (!a.ccnlDefault?.trim()) mancanti.push("CCNL");
+  if (!a.livelloDefault?.trim()) mancanti.push("livello CCNL");
+  return mancanti;
+}
+
 export function validaAzienda(f: NuovaAzienda, opzioni: OpzioniValidazioneAzienda = {}): ErroriAzienda {
   const e: ErroriAzienda = {};
   if (!f.ragioneSociale.trim()) e.ragioneSociale = "Il nome azienda è obbligatorio.";

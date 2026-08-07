@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AlertTriangle, Building2, Check, ClipboardPaste, Edit3, FileText, Landmark, MapPin, Plus, Search, Trash2, UserRound, Users, WalletCards, X } from "lucide-react";
 import { api, type Azienda, type DipendenteRapporto, type NuovaAzienda } from "../api";
-import { applicaDatiVisura, parsaTestoAzienda, validaAzienda, type ErroriAzienda } from "../aziendaForm";
+import {
+  applicaDatiVisura, datiContributiviMancanti, parsaTestoAzienda, validaAzienda,
+  type ErroriAzienda,
+} from "../aziendaForm";
 import { ComuneAutocomplete } from "../ComuneAutocomplete";
 import {
   AZIENDA_CORRENTE_CAMBIATA,
@@ -490,6 +493,7 @@ export function Aziende({
             {aziendeFiltrate.map((a) => {
               const selezionata = correnteId === a.id;
               const dipendenti = dipendentiPerAzienda[a.id] ?? [];
+              const mancanti = datiContributiviMancanti(a);
               return (
                 <article
                   className={`company-row ${selezionata ? "selected" : ""} ${selezionate.has(a.id) ? "marked" : ""} ${idAppenaAggiunta === a.id ? "just-added" : ""}`}
@@ -508,7 +512,14 @@ export function Aziende({
                     <span className="company-row-avatar">{a.ragioneSociale.slice(0, 2).toUpperCase()}</span>
                     <span className="company-row-copy">
                       <strong>{a.ragioneSociale}</strong>
-                      <small>{a.settore ? labelSettore(a.settore) : "Settore non indicato"}</small>
+                      {mancanti.length > 0 ? (
+                        <small className="company-row-incompleta"
+                          title={`Mancano: ${mancanti.join(", ")}. F24 e UniEmens restano bloccati.`}>
+                          Da completare: {mancanti.join(", ")}
+                        </small>
+                      ) : (
+                        <small>{a.settore ? labelSettore(a.settore) : "Settore non indicato"}</small>
+                      )}
                     </span>
                   </button>
 
@@ -889,9 +900,10 @@ export function Aziende({
                       if (tentato) setErrori(validaAzienda(form, { datiContributiviProvvisori: attiva }));
                     }} />
                   <span>
-                    <strong>Modalità prova: dati INPS/INAIL/CCNL da completare</strong><br />
+                    <strong>Non ho ancora i codici INPS/INAIL: li inserisco dopo</strong><br />
                     <small style={{ opacity: 0.8 }}>
-                      Salva l'anagrafica senza inventare codici 000000. Completa i dati ufficiali prima degli adempimenti.
+                      Salva l'anagrafica senza inventare codici 000000. L'azienda resta segnata «da completare»
+                      nell'archivio e F24, UniEmens e INAIL restano bloccati finché non inserisci i codici veri.
                     </small>
                   </span>
                 </label>

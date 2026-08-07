@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PaghePro</string>
+    <string name="title_activity_main">PaghePro</string>
+    <string name="package_name">it.paghepro.app.dev</string>
+    <string name="custom_url_scheme">it.paghepro.app.dev</string>
+</resources>

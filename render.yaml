@@ -51,5 +51,12 @@ services:
       - key: DOTNET_gcServer
         value: "0"
 
+      # .NET sorveglia i file di configurazione con inotify. Durante il cambio di versione
+      # convivono due istanze e il contenitore supera il limite di 128 sentinelle: il processo
+      # muore con "user limit on the number of inotify instances has been reached" e il deploy
+      # fallisce. Con il polling la sorveglianza non usa inotify.
+      - key: DOTNET_USE_POLLING_FILE_WATCHER
+        value: "1"
+
       - key: Logging__LogLevel__Microsoft.EntityFrameworkCore
         value: Warning

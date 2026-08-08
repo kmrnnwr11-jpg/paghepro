@@ -690,12 +690,36 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<int>("Anno")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("BuonoPastoElettronico")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("DatiSaluteProtetti")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("FigliACarico")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("FringeBenefit")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("FringeBenefitGiaErogatoAnno")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("GiorniBuonoPasto")
+                        .HasColumnType("INTEGER");
+
                     b.Property<decimal>("GiorniFerie")
                         .HasPrecision(8, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("GiorniTrasfertaEstero")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("GiorniTrasfertaItalia")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("IndennitaTrasfertaGiornaliera")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Mese")
@@ -724,10 +748,26 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(8, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("PremioRisultato")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("RapportoLavoroId")
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("RedditoAnnoPrecedente")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("RimborsiSpeseDocumentate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RimborsoTrasferta")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ValoreBuonoPasto")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

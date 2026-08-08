@@ -44,6 +44,23 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Aurora: chat AI aperta con strumenti (8 agosto 2026)**: il pannello Aurora non è più un
+  elenco di controlli fissi dietro il mandato del Governatore — è una chat con un modello vero
+  (DeepSeek `deepseek-chat` di default, o GLM/Ollama via endpoint OpenAI-compatibile) con
+  function calling. Il modello legge da solo l'archivio (`elenco_aziende`, `scheda_azienda`,
+  `elenco_dipendenti`, `scadenze_studio`) e **propone** le scritture (`registra_azienda`,
+  `correggi_azienda`, `registra_dipendente`): la SPA le mostra come scheda con i campi
+  compilati e l'elenco di cosa manca (con il perché), e nulla viene scritto finché l'utente non
+  preme «Conferma ed esegui». Il tenant arriva sempre dal token, mai dal modello; valgono le
+  regole del programma (duplicati P.IVA/CF, anti-doppione dipendente). Nessun limite mensile
+  sulla chat: il consumo è solo conteggiato. Verificato dal vivo il giro completo
+  (messaggio → strumento → proposta → archivio ancora vuoto → conferma → azienda registrata);
+  suite **672/672** verde e build SPA verde. Configurazione e limiti in
+  `docs/CHAT-AI-DEEPSEEK.md`. **Attenzione**: con DeepSeek i dati letti escono verso il
+  provider — per dati reali di clienti serve il modello locale (Ollama, provider
+  `Compatibile`). Il Governatore AI (`/api/ai/governor/*`) resta nel codice ma la chat non ci
+  passa più.
+
 - **Webapp pubblicata online (6 agosto 2026)**: <https://paghepro.onrender.com>, un solo servizio
   Render Free costruito da `Dockerfile.railway` (SPA e API sulla stessa origine, niente CORS né
   `VITE_API_URL`) con database PostgreSQL su Supabase in Irlanda. Il database sta fuori dal

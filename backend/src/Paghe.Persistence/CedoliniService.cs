@@ -116,6 +116,19 @@ public sealed class CedoliniService
             NumeroEventoMalattiaAnno = cartellino.NumeroEventoMalattiaAnno,
             GiorniInfortunio = cartellino.GiorniInfortunio,
             OreAssenzaNonRetribuita = cartellino.OreAssenzaNonRetribuita,
+            GiorniTrasfertaItalia = cartellino.GiorniTrasfertaItalia,
+            GiorniTrasfertaEstero = cartellino.GiorniTrasfertaEstero,
+            IndennitaTrasfertaGiornaliera = cartellino.IndennitaTrasfertaGiornaliera,
+            RimborsoTrasferta = cartellino.RimborsoTrasferta.ToString(),
+            RimborsiSpeseDocumentate = cartellino.RimborsiSpeseDocumentate,
+            FringeBenefit = cartellino.FringeBenefit,
+            FringeBenefitGiaErogatoAnno = cartellino.FringeBenefitGiaErogatoAnno,
+            FigliACarico = cartellino.FigliACarico,
+            GiorniBuonoPasto = cartellino.GiorniBuonoPasto,
+            ValoreBuonoPasto = cartellino.ValoreBuonoPasto,
+            BuonoPastoElettronico = cartellino.BuonoPastoElettronico,
+            PremioRisultato = cartellino.PremioRisultato,
+            RedditoAnnoPrecedente = cartellino.RedditoAnnoPrecedente,
         });
 
         var entity = new CedolinoEntity
@@ -434,6 +447,22 @@ public sealed class CedoliniService
         NumeroEventoMalattiaAnno = e.NumeroEventoMalattiaAnno > 0 ? e.NumeroEventoMalattiaAnno : 1,
         GiorniInfortunio = e.GiorniInfortunio,
         OreAssenzaNonRetribuita = e.OreAssenzaNonRetribuita,
+        GiorniTrasfertaItalia = e.GiorniTrasfertaItalia,
+        GiorniTrasfertaEstero = e.GiorniTrasfertaEstero,
+        IndennitaTrasfertaGiornaliera = e.IndennitaTrasfertaGiornaliera,
+        // I cartellini archiviati prima di questi campi hanno la colonna vuota: vale il forfettario.
+        RimborsoTrasferta = Enum.TryParse<TipoRimborsoTrasferta>(e.RimborsoTrasferta, out var tipo)
+            ? tipo
+            : TipoRimborsoTrasferta.Forfettario,
+        RimborsiSpeseDocumentate = e.RimborsiSpeseDocumentate,
+        FringeBenefit = e.FringeBenefit,
+        FringeBenefitGiaErogatoAnno = e.FringeBenefitGiaErogatoAnno,
+        FigliACarico = e.FigliACarico,
+        GiorniBuonoPasto = e.GiorniBuonoPasto,
+        ValoreBuonoPasto = e.ValoreBuonoPasto,
+        BuonoPastoElettronico = e.BuonoPastoElettronico,
+        PremioRisultato = e.PremioRisultato,
+        RedditoAnnoPrecedente = e.RedditoAnnoPrecedente,
     };
 }
 

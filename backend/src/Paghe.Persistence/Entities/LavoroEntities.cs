@@ -1,3 +1,5 @@
+using Paghe.Core.Domain;
+
 namespace Paghe.Persistence.Entities;
 
 /// <summary>Lavoratore (persona fisica), persistito.</summary>
@@ -147,6 +149,24 @@ public class CartellinoEntity
 
     internal void ConfermaProtezioneDatiSalute() => DatiSaluteModificati = false;
     public decimal OreAssenzaNonRetribuita { get; set; }
+
+    // ---- Elementi retributivi agevolati del mese ------------------------------------
+    // Vanno archiviati con il resto del cartellino: il PDF della busta si rigenera
+    // ricalcolando da qui, e senza questi campi mostrerebbe una busta priva di trasferta,
+    // fringe benefit e buoni pasto, con totali diversi da quelli archiviati.
+    public decimal GiorniTrasfertaItalia { get; set; }
+    public decimal GiorniTrasfertaEstero { get; set; }
+    public decimal IndennitaTrasfertaGiornaliera { get; set; }
+    public string RimborsoTrasferta { get; set; } = nameof(TipoRimborsoTrasferta.Forfettario);
+    public decimal RimborsiSpeseDocumentate { get; set; }
+    public decimal FringeBenefit { get; set; }
+    public decimal FringeBenefitGiaErogatoAnno { get; set; }
+    public bool FigliACarico { get; set; }
+    public int GiorniBuonoPasto { get; set; }
+    public decimal ValoreBuonoPasto { get; set; }
+    public bool BuonoPastoElettronico { get; set; } = true;
+    public decimal PremioRisultato { get; set; }
+    public decimal RedditoAnnoPrecedente { get; set; }
 }
 
 /// <summary>Cedolino calcolato e archiviato (testata con i totali).</summary>

@@ -194,5 +194,56 @@ public sealed class PersistenzaCedoliniTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task ElementiAgevolati_SopravvivonoAllArchiviazioneEAlRicalcoloPerIlPdf()
+    {
+        // Senza persistenza degli elementi agevolati il PDF, che si rigenera ricalcolando dal
+        // cartellino archiviato, mostrerebbe una busta senza trasferta né buoni pasto e con
+        // totali diversi da quelli archiviati.
+        var (tenant, aziendaId) = await CreaAziendaAsync();
+        var rapportoId = await CreaRapportoAsync(tenant, aziendaId);
+
+        Guid cedolinoId;
+        decimal nettoArchiviato;
+        await using (var db = NuovoContesto())
+        {
+            var c = await new CedoliniService(db, new ParametriNormativiService(db))
+                .CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino
+                {
+                    Anno = 2026, Mese = 6,
+                    GiorniTrasfertaItalia = 5m,
+                    IndennitaTrasfertaGiornaliera = 60m,   // 13,52/giorno oltre soglia
+                    RimborsoTrasferta = TipoRimborsoTrasferta.MistoVittoOAlloggio,
+                    GiorniBuonoPasto = 20, ValoreBuonoPasto = 10m,
+                    FringeBenefit = 200m, FigliACarico = true,
+                    PremioRisultato = 1000m, RedditoAnnoPrecedente = 25000m,
+                });
+            cedolinoId = c.Id;
+            nettoArchiviato = c.NettoInBusta;
+        }
+
+        await using (var db = NuovoContesto())
+        {
+            var dati = await new CedoliniService(db, new ParametriNormativiService(db))
+                .RicalcolaPerPdfAsync(tenant, cedolinoId);
+
+            Assert.NotNull(dati);
+            // Il netto ricalcolato per il PDF deve coincidere con quello archiviato.
+            Assert.Equal(nettoArchiviato, dati!.Cedolino.NettoInBusta);
+
+            // Le voci devono esserci davvero, non solo i totali.
+            var codici = dati.Cedolino.Righe.Select(r => r.Codice).ToList();
+            Assert.Contains("TRASF_IT", codici);
+            Assert.Contains("TRASF_IT_IMP", codici);      // eccedenza con soglia ridotta di 1/3
+            Assert.Contains("BUONI_PASTO", codici);
+            Assert.Contains("FRINGE", codici);
+            Assert.Contains("PREMIO", codici);
+            Assert.Contains("PREMIO_IMP", codici);
+
+            Assert.True(dati.Cedolino.TotaleEsenti > 0m);
+            Assert.Equal(1000m, dati.Cedolino.PremioRisultatoAgevolato);
+        }
+    }
+
     public void Dispose() => _connection.Dispose();
 }

@@ -5886,8 +5886,8 @@ textarea:focus {
 }
 
 /* ============================================================
-   AURORA — pannello a fianco dell'app (controlli automatici oggi,
-   chat AI dopo i cancelli di sicurezza G0–G3 del piano).
+   AURORA — pannello a fianco dell'app: chat con l'assistente, che
+   legge da sola e propone le scritture da confermare.
    ============================================================ */
 
 .app-shell.con-aurora {
@@ -6222,6 +6222,135 @@ textarea:focus {
   flex: none;
   font-variant-numeric: tabular-nums;
   color: var(--soft);
+}
+
+/* Chat: la bolla dell'utente si distingue, quella di Aurora resta la card base. */
+.cp-msg.mio {
+  align-self: flex-end;
+  max-width: 88%;
+  border-color: rgba(14, 114, 104, 0.35);
+  background: rgba(14, 114, 104, 0.10);
+}
+
+.cp-attesa {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.cp-msg > p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Operazione preparata dall'assistente e in attesa della conferma dell'utente. */
+.cp-azione {
+  margin-top: 10px;
+  padding: 10px 11px;
+  border: 1px solid rgba(14, 114, 104, 0.35);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12.5px;
+}
+
+.cp-azione > strong {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 13px;
+}
+
+.cp-azione-campi {
+  margin: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.cp-azione-campi > div {
+  display: grid;
+  grid-template-columns: minmax(0, 42%) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.cp-azione-campi dt {
+  color: var(--muted);
+}
+
+.cp-azione-campi dd {
+  margin: 0;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.cp-azione-mancanti {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.cp-azione-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a4b04;
+}
+
+.cp-azione-mancanti ul {
+  margin: 5px 0 0;
+  padding-left: 17px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+}
+
+.cp-azione-mancanti li.bloccante {
+  color: #991b1b;
+}
+
+.cp-azione-bottoni {
+  display: flex;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.cp-azione-bottoni .btn {
+  min-height: 34px;
+  padding: 0 13px;
+  font-size: 12.5px;
+  gap: 6px;
+}
+
+.cp-comporre {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.cp-comporre textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--campo);
+  box-shadow: var(--inset);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.cp-comporre .btn {
+  flex: none;
+  min-height: 40px;
+  padding: 0 13px;
 }
 
 @media (max-width: 1180px) {

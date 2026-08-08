@@ -695,13 +695,37 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<int>("Anno")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("BuonoPastoElettronico")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("DatiSaluteProtetti")
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("FigliACarico")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("FringeBenefit")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("FringeBenefitGiaErogatoAnno")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("GiorniBuonoPasto")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("GiorniFerie")
                         .HasPrecision(8, 2)
                         .HasColumnType("numeric(8,2)");
+
+                    b.Property<decimal>("GiorniTrasfertaEstero")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("GiorniTrasfertaItalia")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("IndennitaTrasfertaGiornaliera")
+                        .HasColumnType("numeric");
 
                     b.Property<int>("Mese")
                         .HasColumnType("integer");
@@ -729,11 +753,27 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasPrecision(8, 2)
                         .HasColumnType("numeric(8,2)");
 
+                    b.Property<decimal>("PremioRisultato")
+                        .HasColumnType("numeric");
+
                     b.Property<Guid>("RapportoLavoroId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("RedditoAnnoPrecedente")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("RimborsiSpeseDocumentate")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("RimborsoTrasferta")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal>("ValoreBuonoPasto")
+                        .HasColumnType("numeric");
 
                     b.HasKey("Id");
 

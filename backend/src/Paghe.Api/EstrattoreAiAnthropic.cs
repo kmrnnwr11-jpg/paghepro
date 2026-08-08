@@ -26,6 +26,12 @@ public sealed class AiOptions
     public string? Modello { get; set; }
 
     /// <summary>
+    /// Modello dell'assistente a chat (function calling). Vuoto = si usa <see cref="Modello"/>
+    /// e, se manca anche quello, il default del provider (DeepSeek → deepseek-chat).
+    /// </summary>
+    public string? ModelloChat { get; set; }
+
+    /// <summary>
     /// Modello con la "vista" per leggere foto/scansioni. Vuoto = default del provider
     /// (GLM → glm-4v-flash; Claude vede già con il modello principale; DeepSeek → niente
     /// vista). Per Ollama in locale: es. "qwen2.5vl:7b".

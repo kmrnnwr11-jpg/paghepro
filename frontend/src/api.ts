@@ -1058,6 +1058,26 @@ export const api = {
   aiCosaVede: (grantId: string) =>
     req<CosaVedeAi>(`/api/ai/governor/grants/${grantId}`),
 
+  // --- Chat con l'assistente: legge da sola, scrive solo dopo la conferma dell'utente ---
+
+  aiChatStato: () => req<StatoChatAi>("/api/ai/chat/stato"),
+
+  aiChat: (messaggio: string, storia: MessaggioChatAi[], aziendaId?: string | null) =>
+    req<RispostaChatAi>("/api/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({ messaggio, storia, aziendaId: aziendaId ?? null }),
+    }),
+
+  aiChatConferma: (azione: AzionePropostaAi, storia: MessaggioChatAi[]) =>
+    req<EsitoAzioneChatAi>("/api/ai/chat/azione", {
+      method: "POST",
+      body: JSON.stringify({
+        strumento: azione.strumento,
+        argomentiJson: azione.argomentiJson,
+        storia,
+      }),
+    }),
+
   // --- Posta (email/PEC): caselle collegate self-service, il triage AI resta sempre da confermare ---
   caselleEmail: () => req<CasellaEmail[]>("/api/posta/caselle"),
   creaCasellaEmail: (c: NuovaCasellaEmail) =>
@@ -1160,6 +1180,51 @@ export interface RigaCartellinoAi {
   elaborato: boolean;
   giorniMalattia: number;
   numeroEventoMalattiaAnno: number;
+}
+
+// --- Chat con l'assistente (AI vera, con strumenti) ---
+
+/** Messaggio della conversazione: il client lo rimanda indietro così com'è. */
+export interface MessaggioChatAi {
+  ruolo: string;
+  contenuto: string | null;
+  chiamate?: { id: string; nome: string; argomentiJson: string }[] | null;
+  chiamataId?: string | null;
+}
+
+export interface CampoPropostoAi { etichetta: string; valore: string }
+export interface CampoMancanteAi { etichetta: string; perche: string; bloccante: boolean }
+
+/** Operazione che scrive: l'assistente la prepara, l'utente la conferma. */
+export interface AzionePropostaAi {
+  strumento: string;
+  titolo: string;
+  argomentiJson: string;
+  campi: CampoPropostoAi[];
+  mancanti: CampoMancanteAi[];
+  puoProcedere: boolean;
+  sezione: string | null;
+}
+
+export interface RispostaChatAi {
+  testo: string;
+  storia: MessaggioChatAi[];
+  azione: AzionePropostaAi | null;
+  ok: boolean;
+}
+
+export interface EsitoAzioneChatAi {
+  riuscita: boolean;
+  messaggio: string;
+  storia: MessaggioChatAi[];
+  esito: { aziendaId?: string; rapportoId?: string; denominazione?: string } | null;
+}
+
+export interface StatoChatAi {
+  attiva: boolean;
+  provider: string;
+  modello: string;
+  messaggio: string | null;
 }
 
 export interface Persona {

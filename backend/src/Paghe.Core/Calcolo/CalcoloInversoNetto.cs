@@ -1,3 +1,4 @@
+using System.Globalization;
 using Paghe.Core.Domain;
 
 namespace Paghe.Core.Calcolo;
@@ -33,6 +34,11 @@ public static class CalcoloInversoNetto
     /// <summary>Iterazioni della ricerca binaria: 60 bastano ampiamente per il centesimo.</summary>
     private const int IterazioniMassime = 60;
 
+    /// <summary>Le note finiscono sotto gli occhi dell'utente: importi in formato italiano.</summary>
+    private static readonly CultureInfo Italiano = CultureInfo.GetCultureInfo("it-IT");
+
+    private static string Euro(decimal importo) => importo.ToString("N2", Italiano);
+
     public static EsitoCalcoloInverso Calcola(
         MotoreCalcoloCedolino motore,
         RapportoLavoro rapporto,
@@ -56,7 +62,7 @@ public static class CalcoloInversoNetto
                 SuperminimoNecessario: 0m,
                 LordoMensile: minimo.TotaleCompetenze,
                 CostoAzienda: minimo.CostoAzienda,
-                Nota: $"Con il solo minimo tabellare del CCNL il netto è già {minimo.NettoInBusta:N2} €. "
+                Nota: $"Con il solo minimo tabellare del CCNL il netto è già {Euro(minimo.NettoInBusta)} €. "
                     + "Non si può scendere sotto il minimo contrattuale: per un importo inferiore "
                     + "servono meno ore contrattuali o assenze realmente avvenute.");
         }
@@ -91,9 +97,9 @@ public static class CalcoloInversoNetto
             LordoMensile: migliore.TotaleCompetenze,
             CostoAzienda: migliore.CostoAzienda,
             Nota: scarto <= Tolleranza * 2m
-                ? $"Netto {migliore.NettoInBusta:N2} € con un superminimo di "
-                  + $"{Arrotondamento.Euro(superminimoMigliore):N2} € al mese."
-                : $"Netto più vicino ottenibile: {migliore.NettoInBusta:N2} €. "
+                ? $"Netto {Euro(migliore.NettoInBusta)} € con un superminimo di "
+                  + $"{Euro(Arrotondamento.Euro(superminimoMigliore))} € al mese."
+                : $"Netto più vicino ottenibile: {Euro(migliore.NettoInBusta)} €. "
                   + "Lo scarto dipende dagli arrotondamenti al centesimo delle singole voci.");
     }
 }

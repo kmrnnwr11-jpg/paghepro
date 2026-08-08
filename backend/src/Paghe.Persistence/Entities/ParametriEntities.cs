@@ -17,6 +17,20 @@ public class ParametriAnnoEntity
 
     /// <summary>Variazione ISTAT per la rivalutazione TFR dell'anno (es. 0,01 = +1%). Null se non ancora inserita.</summary>
     public decimal? VariazioneIstatTfr { get; set; }
+
+    // ---- Limiti degli elementi retributivi agevolati -------------------------------
+    // Soglie di legge, quindi versionate per anno come tutto il resto. Nullable perché i
+    // database creati prima di questa colonna non le hanno: in quel caso valgono i default
+    // di ParametriNormativi, e restano modificabili senza toccare il codice.
+    public decimal? TrasfertaItaliaEsenteGiorno { get; set; }
+    public decimal? TrasfertaEsteroEsenteGiorno { get; set; }
+    public decimal? FringeBenefitSogliaAnnua { get; set; }
+    public decimal? FringeBenefitSogliaAnnuaConFigli { get; set; }
+    public decimal? BuonoPastoElettronicoEsenteGiorno { get; set; }
+    public decimal? BuonoPastoCartaceoEsenteGiorno { get; set; }
+    public decimal? PremioRisultatoLimiteAnnuo { get; set; }
+    public decimal? PremioRisultatoAliquota { get; set; }
+    public decimal? PremioRisultatoRedditoMassimo { get; set; }
 }
 
 /// <summary>Aliquota contributiva INPS per anno e qualifica.</summary>

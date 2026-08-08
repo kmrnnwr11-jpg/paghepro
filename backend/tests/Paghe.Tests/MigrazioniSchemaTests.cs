@@ -49,6 +49,19 @@ public sealed class MigrazioniSchemaTests : IDisposable
         return righe;
     }
 
+    /// <summary>
+    /// Lo storico deve contenere esattamente le migrazioni dell'assembly, quali che siano.
+    /// Confrontare con l'elenco reale invece che con un numero fisso: così il test non si rompe
+    /// quando si aggiunge una migrazione, ma continua ad accorgersi se una resta indietro.
+    /// </summary>
+    private void AssertSchemaAllineato()
+    {
+        using var db = NuovoContesto();
+        Assert.Equal(
+            db.Database.GetMigrations().OrderBy(m => m, StringComparer.Ordinal),
+            MigrazioniApplicate().OrderBy(m => m, StringComparer.Ordinal));
+    }
+
     [Fact]
     public void DatabaseVuoto_LeMigrazioniCreanoLoSchemaELoRegistrano()
     {
@@ -58,7 +71,7 @@ public sealed class MigrazioniSchemaTests : IDisposable
 
         Assert.Contains("Aziende", Tabelle());
         Assert.Contains("PolicyRetention", Tabelle());
-        Assert.Single(MigrazioniApplicate());
+        AssertSchemaAllineato();
     }
 
     [Fact]
@@ -84,7 +97,7 @@ public sealed class MigrazioniSchemaTests : IDisposable
             Assert.Contains("adottato", esito);
         }
 
-        Assert.Single(MigrazioniApplicate());
+        AssertSchemaAllineato();
         using var verifica = NuovoContesto();
         Assert.Equal("Alfa Srl", Assert.Single(verifica.Aziende).RagioneSociale);
     }
@@ -105,7 +118,7 @@ public sealed class MigrazioniSchemaTests : IDisposable
             Assert.Contains("PraticheInail", SchemaDatabase.Applica(db));
 
         Assert.Contains("PraticheInail", Tabelle());
-        Assert.Single(MigrazioniApplicate());
+        AssertSchemaAllineato();
 
         using var cmd = _connection.CreateCommand();
         cmd.CommandText =
@@ -122,7 +135,7 @@ public sealed class MigrazioniSchemaTests : IDisposable
         using (var db = NuovoContesto())
             Assert.Equal("schema già aggiornato", SchemaDatabase.Applica(db));
 
-        Assert.Single(MigrazioniApplicate());
+        AssertSchemaAllineato();
     }
 
     public void Dispose() => _connection.Dispose();

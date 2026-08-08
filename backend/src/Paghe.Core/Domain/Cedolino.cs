@@ -45,6 +45,18 @@ public sealed class Cedolino
 
     public decimal NettoInBusta { get; set; }
 
+    /// <summary>
+    /// Somme erogate in esenzione (trasferta entro soglia, rimborsi documentati, fringe benefit
+    /// e buoni pasto entro i limiti): entrano nel netto ma non nell'imponibile.
+    /// </summary>
+    public decimal TotaleEsenti { get; set; }
+
+    /// <summary>Quota di premio di risultato assoggettata a imposta sostitutiva.</summary>
+    public decimal PremioRisultatoAgevolato { get; set; }
+
+    /// <summary>Imposta sostitutiva trattenuta sul premio di risultato.</summary>
+    public decimal ImpostaSostitutivaPremio { get; set; }
+
     public decimal QuotaTfr { get; set; }
 
     /// <summary>Costo aziendale totale del lavoratore (lordo + contributi c/datore + quota TFR).</summary>

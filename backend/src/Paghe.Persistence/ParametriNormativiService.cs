@@ -36,6 +36,15 @@ public sealed class ParametriNormativiService
             MaggiorazioneStraordinarioFestivo = p.MaggiorazioneStraordinarioFestivo,
             TfrDivisore = p.TfrDivisore,
             TfrContributoFondo = p.TfrContributoFondo,
+            TrasfertaItaliaEsenteGiorno = p.TrasfertaItaliaEsenteGiorno,
+            TrasfertaEsteroEsenteGiorno = p.TrasfertaEsteroEsenteGiorno,
+            FringeBenefitSogliaAnnua = p.FringeBenefitSogliaAnnua,
+            FringeBenefitSogliaAnnuaConFigli = p.FringeBenefitSogliaAnnuaConFigli,
+            BuonoPastoElettronicoEsenteGiorno = p.BuonoPastoElettronicoEsenteGiorno,
+            BuonoPastoCartaceoEsenteGiorno = p.BuonoPastoCartaceoEsenteGiorno,
+            PremioRisultatoLimiteAnnuo = p.PremioRisultatoLimiteAnnuo,
+            PremioRisultatoAliquota = p.PremioRisultatoAliquota,
+            PremioRisultatoRedditoMassimo = p.PremioRisultatoRedditoMassimo,
         });
 
         foreach (var (qualifica, aliquota) in p.AliquoteInps)
@@ -95,6 +104,17 @@ public sealed class ParametriNormativiService
         // prevalgono sull'aliquota piatta di DB, che resta come fallback.
         var regimiMef = CaricaRegimiMef.PerAnno(anno);
 
+        // Valori di riferimento delle soglie agevolate, usati quando la riga dell'anno
+        // non le contiene ancora.
+        var predefiniti = new ParametriNormativi
+        {
+            Anno = anno,
+            ScaglioniIrpef = [],
+            AliquoteInps = new Dictionary<Qualifica, AliquotaInps>(),
+            AddizionaleRegionale = new Dictionary<string, decimal>(),
+            AddizionaleComunale = new Dictionary<string, decimal>(),
+        };
+
         return new ParametriNormativi
         {
             Anno = anno,
@@ -116,6 +136,18 @@ public sealed class ParametriNormativiService
             TfrDivisore = pa.TfrDivisore,
             TfrContributoFondo = pa.TfrContributoFondo,
             TfrVariazioneIstat = pa.VariazioneIstatTfr,
+
+            // Limiti degli elementi agevolati: se la riga dell'anno non li ha (database
+            // creato prima di queste colonne) restano i default di ParametriNormativi.
+            TrasfertaItaliaEsenteGiorno = pa.TrasfertaItaliaEsenteGiorno ?? predefiniti.TrasfertaItaliaEsenteGiorno,
+            TrasfertaEsteroEsenteGiorno = pa.TrasfertaEsteroEsenteGiorno ?? predefiniti.TrasfertaEsteroEsenteGiorno,
+            FringeBenefitSogliaAnnua = pa.FringeBenefitSogliaAnnua ?? predefiniti.FringeBenefitSogliaAnnua,
+            FringeBenefitSogliaAnnuaConFigli = pa.FringeBenefitSogliaAnnuaConFigli ?? predefiniti.FringeBenefitSogliaAnnuaConFigli,
+            BuonoPastoElettronicoEsenteGiorno = pa.BuonoPastoElettronicoEsenteGiorno ?? predefiniti.BuonoPastoElettronicoEsenteGiorno,
+            BuonoPastoCartaceoEsenteGiorno = pa.BuonoPastoCartaceoEsenteGiorno ?? predefiniti.BuonoPastoCartaceoEsenteGiorno,
+            PremioRisultatoLimiteAnnuo = pa.PremioRisultatoLimiteAnnuo ?? predefiniti.PremioRisultatoLimiteAnnuo,
+            PremioRisultatoAliquota = pa.PremioRisultatoAliquota ?? predefiniti.PremioRisultatoAliquota,
+            PremioRisultatoRedditoMassimo = pa.PremioRisultatoRedditoMassimo ?? predefiniti.PremioRisultatoRedditoMassimo,
         };
     }
 

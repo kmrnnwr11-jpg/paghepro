@@ -64,35 +64,44 @@ public static class SchemaDatabase
             return "schema dell'applicazione creato dalle migrazioni EF";
         }
 
-        // Adozione di uno schema preesistente. Prima si completa ciò che manca rispetto alla
-        // migrazione iniziale, altrimenti la baseline dichiarerebbe applicato uno schema parziale.
+        // Adozione di uno schema preesistente: lo si porta al modello CORRENTE (colonne, tabelle e
+        // indici mancanti) e si registrano TUTTE le migrazioni come applicate.
+        //
+        // Registrare solo la iniziale non funziona: AllineaColonneMancanti confronta con il modello
+        // corrente, quindi aggiunge già le colonne introdotte dalle migrazioni successive, e
+        // Migrate() fallirebbe poi con "duplicate column". Lo schema è a livello della testa: va
+        // dichiarato tale.
         db.AllineaColonneMancanti();
         var tabelleCreate = CompletaSchema(db, attese.Where(t => !presenti.Contains(t)).ToList());
 
-        var iniziale = db.Database.GetMigrations().FirstOrDefault()
-            ?? throw new InvalidOperationException(
+        var migrazioni = db.Database.GetMigrations().ToList();
+        if (migrazioni.Count == 0)
+            throw new InvalidOperationException(
                 "Nessuna migrazione trovata nell'assembly configurato: verificare MigrationsAssembly " +
                 "in Program.cs e il riferimento al progetto di migrazione.");
 
         // Gli script provengono da EF (nome della tabella di storico e valori), non da input utente.
         var storico = db.Database.GetService<IHistoryRepository>();
         db.Database.ExecuteSqlRaw(storico.GetCreateIfNotExistsScript());
-        db.Database.ExecuteSqlRaw(
-            storico.GetInsertScript(new HistoryRow(iniziale, ProductInfo.GetVersion())));
+        foreach (var migrazione in migrazioni)
+            db.Database.ExecuteSqlRaw(
+                storico.GetInsertScript(new HistoryRow(migrazione, ProductInfo.GetVersion())));
 
-        // Migrazioni successive alla iniziale (se esistono) applicate normalmente.
-        db.Database.Migrate();
-
-        return $"schema preesistente adottato alla migrazione {iniziale}"
+        return $"schema preesistente adottato alle {migrazioni.Count} migrazioni "
+            + $"(fino a {migrazioni[^1]})"
             + (tabelleCreate.Count == 0
-                ? " (nessuna tabella da completare)"
+                ? "; nessuna tabella da completare"
                 : $"; completate {tabelleCreate.Count} tabelle: {string.Join(", ", tabelleCreate)}");
     }
 
     /// <summary>
-    /// Crea le tabelle e gli indici assenti riusando le operazioni della migrazione iniziale: il
-    /// DDL resta generato da EF per il provider in uso, senza istruzioni scritte a mano. Ciò che è
-    /// stato introdotto da migrazioni successive viene creato dopo, da <c>Migrate()</c>.
+    /// Crea le tabelle e gli indici assenti riusando le operazioni di <b>tutte</b> le migrazioni,
+    /// nell'ordine: il DDL resta generato da EF per il provider in uso, senza istruzioni scritte a
+    /// mano. Le colonne le ha già allineate <c>AllineaColonneMancanti</c> sul modello corrente.
+    ///
+    /// Serve scorrere tutte le migrazioni, non solo la prima: dopo l'adozione lo storico dichiara
+    /// applicata l'intera catena, quindi non c'è un <c>Migrate()</c> successivo che crei le tabelle
+    /// introdotte dopo la migrazione iniziale.
     ///
     /// Non rimuove nulla: eventuali tabelle o indici lasciati da versioni precedenti del modello
     /// restano nel database (inutilizzati) invece di essere cancellati all'avvio.
@@ -100,21 +109,24 @@ public static class SchemaDatabase
     private static List<string> CompletaSchema(PagheDbContext db, List<string> tabelleMancanti)
     {
         var assembly = db.Database.GetService<IMigrationsAssembly>();
-        var prima = assembly.Migrations.FirstOrDefault();
-        if (prima.Value is null) return [];
-
-        var migrazione = assembly.CreateMigration(prima.Value, db.Database.ProviderName!);
+        if (assembly.Migrations.Count == 0) return [];
 
         var daCreare = new HashSet<string>(tabelleMancanti, StringComparer.OrdinalIgnoreCase);
         var indiciPresenti = IndiciPresenti(db);
-        var operazioni = migrazione.UpOperations.Where(op => op switch
+
+        var operazioni = new List<MigrationOperation>();
+        foreach (var (_, tipo) in assembly.Migrations)
         {
-            CreateTableOperation t => daCreare.Contains(t.Name),
-            // Copre sia gli indici delle tabelle nuove sia quelli aggiunti al modello dopo la
-            // creazione di una tabella già esistente.
-            CreateIndexOperation i => !indiciPresenti.Contains(i.Name),
-            _ => false,
-        }).ToList();
+            var migrazione = assembly.CreateMigration(tipo, db.Database.ProviderName!);
+            operazioni.AddRange(migrazione.UpOperations.Where(op => op switch
+            {
+                CreateTableOperation t => daCreare.Contains(t.Name),
+                // Copre sia gli indici delle tabelle nuove sia quelli aggiunti al modello dopo la
+                // creazione di una tabella già esistente.
+                CreateIndexOperation i => !indiciPresenti.Contains(i.Name),
+                _ => false,
+            }));
+        }
         if (operazioni.Count == 0) return [];
 
         var comandi = db.Database.GetService<IMigrationsSqlGenerator>().Generate(operazioni, db.Model);

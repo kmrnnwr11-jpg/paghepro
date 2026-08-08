@@ -1606,8 +1606,20 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<decimal?>("BuonoPastoCartaceoEsenteGiorno")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("BuonoPastoElettronicoEsenteGiorno")
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("DivisoreOrario")
                         .HasPrecision(12, 5)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("FringeBenefitSogliaAnnua")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("FringeBenefitSogliaAnnuaConFigli")
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("MaggiorazioneStraordinario")
@@ -1622,12 +1634,27 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(12, 5)
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("PremioRisultatoAliquota")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("PremioRisultatoLimiteAnnuo")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("PremioRisultatoRedditoMassimo")
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("TfrContributoFondo")
                         .HasPrecision(12, 5)
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("TfrDivisore")
                         .HasPrecision(12, 5)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("TrasfertaEsteroEsenteGiorno")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("TrasfertaItaliaEsenteGiorno")
                         .HasColumnType("TEXT");
 
                     b.Property<decimal?>("VariazioneIstatTfr")

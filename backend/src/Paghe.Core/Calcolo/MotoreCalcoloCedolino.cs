@@ -115,10 +115,17 @@ public sealed class MotoreCalcoloCedolino
                 quantita: cartellino.OreAssenzaNonRetribuita, @base: pagaOraria, importo: -decurtazione);
         }
 
+        // ---- 2-bis. Elementi retributivi agevolati ------------------------------------
+        // Le quote esenti entrano nel netto ma non nell'imponibile; le eccedenze sono
+        // retribuzione ordinaria a tutti gli effetti.
+        var agevolati = AggiungiElementiAgevolati(cedolino, cartellino, _parametri);
+
         decimal totaleCompetenze = SommaCompetenze(cedolino);
 
         // ---- 3. Contributi previdenziali ---------------------------------------------
-        decimal imponibileInps = totaleCompetenze;
+        // Le somme esenti sono escluse dalla base contributiva; il premio di risultato NO:
+        // l'agevolazione sostituisce la sola IRPEF, i contributi restano dovuti per intero.
+        decimal imponibileInps = totaleCompetenze - agevolati.TotaleEsenti;
         var aliquotaBase = _parametri.AliquotaInps(rapporto.Qualifica);
         // Quota c/dipendente effettiva: base + 0,30% CIG (>15 dip) + fondi di settore (FIS, FSBS...).
         var quotaDip = CalcoloContributi.QuotaInpsDipendente(
@@ -130,7 +137,13 @@ public sealed class MotoreCalcoloCedolino
             TipoVoce.Trattenuta, @base: imponibileInps, importo: -contributiDip);
 
         // ---- 4. IRPEF -----------------------------------------------------------------
-        decimal imponibileIrpefMese = imponibileInps - contributiDip;
+        // Il premio di risultato agevolato esce dalla base IRPEF ordinaria: paga l'imposta
+        // sostitutiva calcolata più sotto, al netto dei suoi contributi.
+        decimal contributiSuPremio = Arrotondamento.Euro(
+            agevolati.PremioAgevolato * aliquota.Dipendente);
+        decimal premioNettoContributi = agevolati.PremioAgevolato - contributiSuPremio;
+
+        decimal imponibileIrpefMese = imponibileInps - contributiDip - premioNettoContributi;
         decimal redditoAnnuoPresunto = imponibileIrpefMese * 12m;
 
         decimal irpefLordaAnnua = CalcoloIrpef.IrpefLordaAnnua(redditoAnnuoPresunto, _parametri.ScaglioniIrpef);
@@ -154,6 +167,14 @@ public sealed class MotoreCalcoloCedolino
             CalcoloAddizionali.Dovuta(redditoAnnuoPresunto, regimeReg) / 12m);
         decimal addComMese = Arrotondamento.Euro(
             CalcoloAddizionali.Dovuta(redditoAnnuoPresunto, regimeCom) / 12m);
+
+        // Imposta sostitutiva sul premio di risultato (in luogo di IRPEF e addizionali).
+        decimal impostaSostitutivaPremio = Arrotondamento.Euro(
+            premioNettoContributi * _parametri.PremioRisultatoAliquota);
+        if (impostaSostitutivaPremio > 0m)
+            AggiungiRiga(cedolino, "PREMIO_IMP",
+                $"Imposta sostitutiva premio di risultato ({_parametri.PremioRisultatoAliquota:P0})",
+                TipoVoce.Trattenuta, @base: premioNettoContributi, importo: -impostaSostitutivaPremio);
 
         if (addRegMese > 0m)
             AggiungiRiga(cedolino, "ADD_REG", "Addizionale regionale",
@@ -187,6 +208,9 @@ public sealed class MotoreCalcoloCedolino
         cedolino.AddizionaleRegionale = addRegMese;
         cedolino.AddizionaleComunale = addComMese;
         cedolino.NettoInBusta = Arrotondamento.Euro(totaleCompetenze - totaleTrattenute);
+        cedolino.TotaleEsenti = agevolati.TotaleEsenti;
+        cedolino.PremioRisultatoAgevolato = agevolati.PremioAgevolato;
+        cedolino.ImpostaSostitutivaPremio = impostaSostitutivaPremio;
         cedolino.QuotaTfr = quotaTfr;
         cedolino.CostoAzienda = Arrotondamento.Euro(totaleCompetenze + contributiDatore + quotaTfr);
 
@@ -207,6 +231,100 @@ public sealed class MotoreCalcoloCedolino
         cedolino.PermessiResidui = permessiMaturati - permessiGoduti;
 
         return cedolino;
+    }
+
+    /// <summary>Esito del blocco agevolati: somme esenti e quota di premio a imposta sostitutiva.</summary>
+    private readonly record struct EsitoAgevolati(decimal TotaleEsenti, decimal PremioAgevolato);
+
+    /// <summary>
+    /// Aggiunge al cedolino trasferta, rimborsi documentati, fringe benefit, buoni pasto e
+    /// premio di risultato, separando per ciascuno la quota esente dall'eccedenza imponibile.
+    ///
+    /// Tutte le voci sono competenze: entrano nel netto. L'imponibile viene poi ridotto della
+    /// sola quota esente, in modo che le eccedenze siano tassate come retribuzione ordinaria.
+    /// </summary>
+    private static EsitoAgevolati AggiungiElementiAgevolati(
+        Cedolino cedolino, Cartellino c, ParametriNormativi p)
+    {
+        decimal esenti = 0m;
+
+        // Trasferta Italia ed estero: soglie diverse, stessa logica.
+        void Trasferta(decimal giorni, decimal limite, string codice, string descrizione)
+        {
+            var q = CalcoloElementiAgevolati.Trasferta(
+                giorni, c.IndennitaTrasfertaGiornaliera, limite, c.RimborsoTrasferta);
+            if (q.Totale <= 0m) return;
+
+            if (q.Esente > 0m)
+            {
+                AggiungiRiga(cedolino, codice, $"{descrizione} (esente)", TipoVoce.Competenza,
+                    quantita: giorni, @base: c.IndennitaTrasfertaGiornaliera, importo: q.Esente);
+                esenti += q.Esente;
+            }
+            if (q.Imponibile > 0m)
+                AggiungiRiga(cedolino, codice + "_IMP", $"{descrizione} oltre soglia (imponibile)",
+                    TipoVoce.Competenza, quantita: giorni, importo: q.Imponibile);
+        }
+
+        Trasferta(c.GiorniTrasfertaItalia, p.TrasfertaItaliaEsenteGiorno,
+            "TRASF_IT", "Indennità di trasferta Italia");
+        Trasferta(c.GiorniTrasfertaEstero, p.TrasfertaEsteroEsenteGiorno,
+            "TRASF_EE", "Indennità di trasferta estero");
+
+        // Rimborso a piè di lista: esente se le spese sono documentate e tracciabili.
+        if (c.RimborsiSpeseDocumentate > 0m)
+        {
+            decimal r = Arrotondamento.Euro(c.RimborsiSpeseDocumentate);
+            AggiungiRiga(cedolino, "RIMB_SPESE", "Rimborso spese documentate (esente)",
+                TipoVoce.Competenza, importo: r);
+            esenti += r;
+        }
+
+        // Fringe benefit: soglia annua, regola «tutto o niente».
+        var fringe = CalcoloElementiAgevolati.FringeBenefit(
+            c.FringeBenefit, c.FringeBenefitGiaErogatoAnno,
+            CalcoloElementiAgevolati.SogliaFringeBenefit(p, c.FigliACarico));
+        if (fringe.Esente > 0m)
+        {
+            AggiungiRiga(cedolino, "FRINGE", "Fringe benefit (esente)",
+                TipoVoce.Competenza, importo: fringe.Esente);
+            esenti += fringe.Esente;
+        }
+        if (fringe.Imponibile > 0m)
+            AggiungiRiga(cedolino, "FRINGE_IMP",
+                "Fringe benefit oltre soglia annua (imponibile per intero)",
+                TipoVoce.Competenza, importo: fringe.Imponibile);
+
+        // Buoni pasto: limite giornaliero, imponibile la sola eccedenza.
+        decimal limiteBuono = c.BuonoPastoElettronico
+            ? p.BuonoPastoElettronicoEsenteGiorno
+            : p.BuonoPastoCartaceoEsenteGiorno;
+        var buoni = CalcoloElementiAgevolati.BuoniPasto(
+            c.GiorniBuonoPasto, c.ValoreBuonoPasto, limiteBuono);
+        if (buoni.Esente > 0m)
+        {
+            AggiungiRiga(cedolino, "BUONI_PASTO",
+                $"Buoni pasto {(c.BuonoPastoElettronico ? "elettronici" : "cartacei")} (esente)",
+                TipoVoce.Competenza, quantita: c.GiorniBuonoPasto, @base: c.ValoreBuonoPasto,
+                importo: buoni.Esente);
+            esenti += buoni.Esente;
+        }
+        if (buoni.Imponibile > 0m)
+            AggiungiRiga(cedolino, "BUONI_IMP", "Buoni pasto oltre soglia (imponibile)",
+                TipoVoce.Competenza, quantita: c.GiorniBuonoPasto, importo: buoni.Imponibile);
+
+        // Premio di risultato: la quota agevolata resta contributiva, cambia solo l'IRPEF.
+        var (premioAgevolato, premioOrdinario) = CalcoloElementiAgevolati.PremioRisultato(
+            c.PremioRisultato, c.RedditoAnnoPrecedente,
+            p.PremioRisultatoLimiteAnnuo, p.PremioRisultatoRedditoMassimo);
+        if (premioAgevolato > 0m)
+            AggiungiRiga(cedolino, "PREMIO", "Premio di risultato (imposta sostitutiva)",
+                TipoVoce.Competenza, importo: premioAgevolato);
+        if (premioOrdinario > 0m)
+            AggiungiRiga(cedolino, "PREMIO_ORD", "Premio di risultato a tassazione ordinaria",
+                TipoVoce.Competenza, importo: premioOrdinario);
+
+        return new EsitoAgevolati(esenti, premioAgevolato);
     }
 
     private static void CalcolaMalattia(Cedolino cedolino, decimal giorniMalattia, int nEvento, decimal pagaGiornaliera, decimal rmgInps)

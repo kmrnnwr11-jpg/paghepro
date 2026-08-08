@@ -37,7 +37,7 @@ Leggile prima di qualunque chiamata. Violarle produce danni reali su dati di lav
 
 Ogni chiamata dal web deve portare:
 
-```
+```text
 X-PaghePro-Client: web
 ```
 
@@ -55,7 +55,7 @@ X-PaghePro-Client: web
 
 Risposta: `{"token":"eyJ...", ...}`. Da qui in avanti ogni chiamata protetta vuole:
 
-```
+```text
 Authorization: Bearer <token>
 ```
 
@@ -82,7 +82,7 @@ ritentare in parallelo**: sembrerebbe un errore ed è solo il risveglio.
 
 Questo è il percorso completo, nell'ordine obbligato. Ogni passo dipende dal precedente.
 
-```
+```text
 azienda → dipendente+rapporto → cedolino → PDF
                                     ↓
                           UniEmens XML · F24 · CU
@@ -241,6 +241,88 @@ Altri percorsi:
 - `GET /api/cedolini/{id}/pdf` — **PDF della busta** (`application/pdf`)
 - `POST /api/cedolini/calcola` — calcolo senza archiviare (simulazione)
 
+### Elementi retributivi agevolati (facoltativi, nel cartellino)
+
+Somme esenti da imposte e contributi entro i limiti di legge. **Vanno indicate solo se realmente
+spettanti.** Il software applica le soglie; non attesta che il presupposto esista.
+
+```json
+{
+  "anno": 2026, "mese": 7,
+
+  "giorniTrasfertaItalia": 5,
+  "giorniTrasfertaEstero": 0,
+  "indennitaTrasfertaGiornaliera": 46.48,
+  "rimborsoTrasferta": "Forfettario",
+  "rimborsiSpeseDocumentate": 0,
+
+  "fringeBenefit": 0,
+  "fringeBenefitGiaErogatoAnno": 0,
+  "figliACarico": false,
+
+  "giorniBuonoPasto": 20,
+  "valoreBuonoPasto": 10,
+  "buonoPastoElettronico": true,
+
+  "premioRisultato": 0,
+  "redditoAnnoPrecedente": 0
+}
+```
+
+Limiti 2026 applicati dal motore:
+
+| Elemento | Limite | Regola sull'eccedenza |
+| --- | --- | --- |
+| Trasferta Italia | 46,48 €/giorno | Solo l'eccedenza è imponibile |
+| Trasferta estero | 77,47 €/giorno | Solo l'eccedenza è imponibile |
+| Trasferta con rimborso misto | Soglia ridotta di 1/3 o 2/3 | `rimborsoTrasferta`: `MistoVittoOAlloggio` / `MistoVittoEAlloggio` |
+| Fringe benefit | 1.000 €/anno (2.000 con figli a carico) | **Tutto o niente**: superata la soglia è imponibile l'intero importo |
+| Buoni pasto elettronici | 10 €/giorno | Solo l'eccedenza |
+| Buoni pasto cartacei | 4 €/giorno | Solo l'eccedenza |
+| Premio di risultato | 5.000 €/anno, imposta sostitutiva 1% | Oltre il limite, o con reddito precedente > 80.000 €, tassazione ordinaria |
+
+Il premio di risultato **resta soggetto a contributi INPS**: l'agevolazione sostituisce la sola
+IRPEF. Richiede un contratto collettivo di secondo livello: se non c'è, non è agevolabile.
+
+Nella risposta trovi `totaleEsenti`, `premioRisultatoAgevolato` e `impostaSostitutivaPremio`.
+
+**Cosa devi rifiutare di fare.** Se l'utente ti chiede di inserire una trasferta non avvenuta, o
+giorni di assenza non reali, per far uscire un certo importo o per ridurre le tasse: **non farlo e
+spiega perché**. Una trasferta fittizia viene riqualificata come retribuzione, con recupero di
+contributi e imposte, sanzioni e responsabilità penale. Le assenze inventate sono falsificazione
+del cartellino. Le vie legittime per aumentare il netto sono quelle della tabella qui sopra, più
+il welfare aziendale, e presuppongono tutte che il fatto sia reale e documentato.
+
+### Calcolo inverso: netto voluto → lordo necessario
+
+```http
+POST /api/cedolini/lordo-per-netto
+```
+
+```json
+{"rapporto": { ... }, "cartellino": {"anno": 2026, "mese": 7}, "nettoDesiderato": 1500}
+```
+
+Risposta:
+
+```json
+{
+  "raggiungibile": true,
+  "nettoDesiderato": 1500, "nettoOttenuto": 1500.00,
+  "superminimoNecessario": 245.67,
+  "lordoMensile": 1586.66, "costoAzienda": 2130.12,
+  "nota": "Netto 1.500,00 € con un superminimo di 245,67 € al mese."
+}
+```
+
+È una **simulazione**: non archivia nulla. Cerca il superminimo individuale che produce il netto
+voluto, lasciando invariati CCNL, livello e cartellino.
+
+Se `raggiungibile` è `false`, il netto richiesto è **sotto il minimo tabellare del CCNL**: la `nota`
+spiega qual è il netto minimo contrattuale. Non è un limite tecnico da aggirare. Per un importo
+inferiore le uniche strade legittime sono meno ore contrattuali (part-time) o assenze realmente
+avvenute. Riporta la nota all'utente così com'è.
+
 ### Passo 4 — Adempimenti del mese
 
 Tutti richiedono che le buste del periodo siano **già archiviate**.
@@ -330,7 +412,7 @@ Se l'utente chiede una di queste, **dillo subito** invece di provare e riferire 
 
 Sequenza eseguita realmente il 2026-08-06 sull'istanza in produzione, con i valori ottenuti.
 
-```
+```text
 POST /api/auth/login                              → token
 POST /api/demo/dataset                            → 5 aziende, 5 dipendenti
 GET  /api/aziende                                 → azienda "DEMO Edil Casa Srl"

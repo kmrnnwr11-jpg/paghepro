@@ -53,4 +53,26 @@ public sealed class RapportoLavoro
     /// nel Multiservizi, FSBS 0,15% nella somministrazione). Espresso come frazione (0,002667 = 0,2667%).
     /// </summary>
     public decimal ContributiFondiSettore { get; init; }
+
+    /// <summary>
+    /// Copia del rapporto con un diverso superminimo. Serve al calcolo inverso netto → lordo,
+    /// che cerca per tentativi il superminimo corrispondente al netto voluto.
+    /// </summary>
+    public RapportoLavoro ConSuperminimo(decimal superminimo) => new()
+    {
+        CodiceCcnl = CodiceCcnl,
+        Livello = Livello,
+        Qualifica = Qualifica,
+        NumeroMensilita = NumeroMensilita,
+        PartTime = PartTime,
+        PercentualePartTime = PercentualePartTime,
+        ScattiAnzianita = ScattiAnzianita,
+        Superminimo = superminimo,
+        Regione = Regione,
+        CodiceCatastaleComune = CodiceCatastaleComune,
+        DetrazioniLavoroDipendente = DetrazioniLavoroDipendente,
+        GiorniDetrazioneAnno = GiorniDetrazioneAnno,
+        AziendaOltre15Dipendenti = AziendaOltre15Dipendenti,
+        ContributiFondiSettore = ContributiFondiSettore,
+    };
 }

@@ -1613,9 +1613,21 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Anno"));
 
+                    b.Property<decimal?>("BuonoPastoCartaceoEsenteGiorno")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("BuonoPastoElettronicoEsenteGiorno")
+                        .HasColumnType("numeric");
+
                     b.Property<decimal>("DivisoreOrario")
                         .HasPrecision(12, 5)
                         .HasColumnType("numeric(12,5)");
+
+                    b.Property<decimal?>("FringeBenefitSogliaAnnua")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("FringeBenefitSogliaAnnuaConFigli")
+                        .HasColumnType("numeric");
 
                     b.Property<decimal>("MaggiorazioneStraordinario")
                         .HasPrecision(12, 5)
@@ -1629,6 +1641,15 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasPrecision(12, 5)
                         .HasColumnType("numeric(12,5)");
 
+                    b.Property<decimal?>("PremioRisultatoAliquota")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("PremioRisultatoLimiteAnnuo")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("PremioRisultatoRedditoMassimo")
+                        .HasColumnType("numeric");
+
                     b.Property<decimal>("TfrContributoFondo")
                         .HasPrecision(12, 5)
                         .HasColumnType("numeric(12,5)");
@@ -1636,6 +1657,12 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<decimal>("TfrDivisore")
                         .HasPrecision(12, 5)
                         .HasColumnType("numeric(12,5)");
+
+                    b.Property<decimal?>("TrasfertaEsteroEsenteGiorno")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("TrasfertaItaliaEsenteGiorno")
+                        .HasColumnType("numeric");
 
                     b.Property<decimal?>("VariazioneIstatTfr")
                         .HasPrecision(12, 5)

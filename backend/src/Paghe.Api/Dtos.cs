@@ -55,6 +55,10 @@ public sealed record RavvedimentoRequest(
 /// <summary>Richiesta di calcolo di un cedolino: rapporto di lavoro + cartellino presenze.</summary>
 public sealed record CalcolaCedolinoRequest(RapportoLavoro Rapporto, Cartellino Cartellino);
 
+/// <summary>Calcolo inverso: netto voluto in busta, con rapporto e cartellino di riferimento.</summary>
+public sealed record CalcolaLordoPerNettoRequest(
+    RapportoLavoro Rapporto, Cartellino Cartellino, decimal NettoDesiderato);
+
 /// <summary>Richiesta di generazione PDF del cedolino (con intestazioni azienda/dipendente).</summary>
 public sealed record CedolinoPdfRequest(
     RapportoLavoro Rapporto,

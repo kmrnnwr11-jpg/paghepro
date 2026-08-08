@@ -56,6 +56,38 @@ public sealed class ParametriNormativi
     /// <summary>Variazione ISTAT per la rivalutazione TFR dell'anno (es. 0,01 = +1%). Null se non inserita.</summary>
     public decimal? TfrVariazioneIstat { get; init; }
 
+    // ---- Limiti degli elementi retributivi agevolati (valori 2026) -------------------
+    // Sono soglie di legge, quindi cambiano per anno come tutto il resto di questa classe.
+    // ATTENZIONE: l'esenzione presuppone che l'elemento sia realmente spettante. Una
+    // trasferta mai avvenuta non e' un'agevolazione: e' retribuzione mascherata.
+
+    /// <summary>Indennità di trasferta in Italia esente per giorno (art. 51 c.5 TUIR): 46,48 €.</summary>
+    public decimal TrasfertaItaliaEsenteGiorno { get; init; } = 46.48m;
+
+    /// <summary>Indennità di trasferta all'estero esente per giorno: 77,47 €.</summary>
+    public decimal TrasfertaEsteroEsenteGiorno { get; init; } = 77.47m;
+
+    /// <summary>Soglia annua di esenzione dei fringe benefit senza figli a carico: 1.000 €.</summary>
+    public decimal FringeBenefitSogliaAnnua { get; init; } = 1000m;
+
+    /// <summary>Soglia annua di esenzione dei fringe benefit con figli a carico: 2.000 €.</summary>
+    public decimal FringeBenefitSogliaAnnuaConFigli { get; init; } = 2000m;
+
+    /// <summary>Buono pasto elettronico esente per giorno: 10 € dal 2026 (era 8 €).</summary>
+    public decimal BuonoPastoElettronicoEsenteGiorno { get; init; } = 10m;
+
+    /// <summary>Buono pasto cartaceo esente per giorno: 4 €.</summary>
+    public decimal BuonoPastoCartaceoEsenteGiorno { get; init; } = 4m;
+
+    /// <summary>Premio di risultato agevolabile nell'anno: 5.000 € per il biennio 2026-2027.</summary>
+    public decimal PremioRisultatoLimiteAnnuo { get; init; } = 5000m;
+
+    /// <summary>Imposta sostitutiva sul premio di risultato: 1% per il biennio 2026-2027.</summary>
+    public decimal PremioRisultatoAliquota { get; init; } = 0.01m;
+
+    /// <summary>Reddito dell'anno precedente oltre il quale il premio non è agevolabile: 80.000 €.</summary>
+    public decimal PremioRisultatoRedditoMassimo { get; init; } = 80000m;
+
     public AliquotaInps AliquotaInps(Qualifica qualifica) =>
         AliquoteInps.TryGetValue(qualifica, out var a)
             ? a

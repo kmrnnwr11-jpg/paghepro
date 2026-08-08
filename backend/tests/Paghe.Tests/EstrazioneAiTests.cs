@@ -7,6 +7,10 @@ using Paghe.Core.Ai;
 using Paghe.Core.PartiteIva;
 using Xunit;
 
+// Paghe.Api espone un CampoProposto omonimo (etichetta + valore, per la chat AI): qui serve
+// quello del seam di estrazione documenti, con la confidenza.
+using CampoProposto = Paghe.Core.Ai.CampoProposto;
+
 namespace Paghe.Tests;
 
 /// <summary>

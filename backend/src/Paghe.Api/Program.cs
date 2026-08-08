@@ -1026,6 +1026,27 @@ secured.MapPost("/api/cedolini/calcola", async (CalcolaCedolinoRequest req, Para
     }
 });
 
+// Calcolo inverso: dato il netto voluto, quale superminimo (e quindi quale lordo) serve.
+// È una simulazione: non archivia nulla. Se il netto richiesto è sotto il minimo tabellare
+// del CCNL, risponde raggiungibile = false invece di forzare una retribuzione fuori contratto.
+secured.MapPost("/api/cedolini/lordo-per-netto", async (
+    CalcolaLordoPerNettoRequest req, ParametriNormativiService svc) =>
+{
+    if (req.Rapporto is null || req.Cartellino is null)
+        return Results.BadRequest(new { errore = "Rapporto e cartellino sono obbligatori." });
+
+    try
+    {
+        var motore = await CostruisciMotore(svc, req.Rapporto, req.Cartellino.Anno);
+        return Results.Ok(CalcoloInversoNetto.Calcola(
+            motore, req.Rapporto, req.Cartellino, req.NettoDesiderato));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
+
 // Genera l'F24 da versare a partire dagli importi delle paghe (ritenute IRPEF, addizionali, INPS).
 // Restituisce il modello, l'esito dei controlli interni e una bozza leggibile (NON ufficiale).
 secured.MapPost("/api/f24/da-paghe", (F24DaPagheRequest req) =>

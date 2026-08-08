@@ -9,34 +9,30 @@ prepara le operazioni. **Le scritture non partono mai da sola: le confermi tu co
 Serve una chiave del provider. Con DeepSeek: <https://platform.deepseek.com> → *API keys* →
 crea la chiave (comincia con `sk-`) e ricarica qualche euro di credito.
 
-Poi imposta due variabili d'ambiente sul server e riavvialo:
+**Sull'app online (paghepro.onrender.com)** il provider è già impostato su DeepSeek in
+[`render.yaml`](../render.yaml): manca soltanto la chiave, che non può stare nel repository.
+
+> Render → servizio **paghepro** → **Environment** → la voce `Ai__ApiKey` (vuota) → incolla la
+> chiave → **Save**. Il servizio si riavvia da solo, un paio di minuti.
+
+**In locale** (Mac), dalla cartella `backend`:
 
 ```bash
-Ai__Provider=DeepSeek
-Ai__ApiKey=sk-la-tua-chiave
+Ai__Provider=DeepSeek Ai__ApiKey=sk-... dotnet run --project src/Paghe.Api -c Release
 ```
-
-- **In locale** (Mac), dalla cartella `backend`:
-
-  ```bash
-  Ai__Provider=DeepSeek Ai__ApiKey=sk-... dotnet run --project src/Paghe.Api -c Release
-  ```
-
-- **Su Render** (paghepro.onrender.com): *Dashboard → il servizio → Environment → Add
-  Environment Variable*, aggiungi `Ai__Provider` = `DeepSeek` e `Ai__ApiKey` = la chiave,
-  poi *Save* (il servizio si riavvia da solo).
 
 La chiave **non va scritta nei file del progetto**: finirebbe su GitHub.
 
 Controllo: apri Aurora, in alto deve comparire `deepseek-chat` invece di «da configurare».
-Oppure chiama `GET /api/ai/chat/stato`.
+Oppure chiama `GET /api/ai/chat/stato`. Finché la chiave manca la chat resta spenta di
+proposito e lo scrive: meglio dirlo prima che prendere un errore a ogni messaggio.
 
 ### Altri provider
 
 Lo stesso canale funziona con qualsiasi endpoint OpenAI-compatibile:
 
 | Provider | `Ai__Provider` | Note |
-|---|---|---|
+| --- | --- | --- |
 | DeepSeek | `DeepSeek` | default `deepseek-chat`, economico |
 | GLM / Zhipu | `Glm` | default `glm-4-flash` |
 | Ollama sul tuo server | `Compatibile` | + `Ai__BaseUrl=http://localhost:11434/v1` e `Ai__Modello=qwen2.5:14b` — nessun dato esce dalla tua macchina |
@@ -86,7 +82,7 @@ nella stessa azienda.
 ## 5. Dove sta nel codice
 
 | Cosa | File |
-|---|---|
+| --- | --- |
 | Dialogo con il provider (function calling) | `backend/src/Paghe.Api/AiChatClient.cs` |
 | Strumenti (letture + scritture proposte) | `backend/src/Paghe.Api/AiChatStrumenti.cs` |
 | Endpoint `/api/ai/chat`, `/api/ai/chat/azione`, `/api/ai/chat/stato` | `backend/src/Paghe.Api/AiChatEndpoints.cs` |

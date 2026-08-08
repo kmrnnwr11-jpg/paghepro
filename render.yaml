@@ -44,8 +44,16 @@ services:
       - key: Sdi__Provider
         value: Simulato
 
+      # Assistente a chat (Aurora) e lettura documenti. "DeepSeek" richiede la chiave qui
+      # sotto; "Spento" ferma tutto. Con provider acceso ma chiave vuota la chat resta
+      # spenta da sola e lo dice, invece di provarci e prendere 401.
       - key: Ai__Provider
-        value: Spento
+        value: DeepSeek
+
+      # Chiave del provider AI (platform.deepseek.com → API keys). Si incolla nel pannello
+      # Render, non nel repository: qui finirebbe su GitHub.
+      - key: Ai__ApiKey
+        sync: false
 
       # Riduce il consumo di memoria: il piano Free ha 512 MB.
       - key: DOTNET_gcServer

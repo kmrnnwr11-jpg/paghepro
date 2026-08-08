@@ -61,8 +61,10 @@ public sealed class AiChatClient
             : opzioni.ModelloChat!;
 
         // Il costruttore non deve mai far fallire l'avvio: se la configurazione non basta,
-        // la chat resta spenta e l'endpoint lo spiega in italiano all'utente.
-        Attivo = baseUrl.Length > 0 && Modello.Length > 0;
+        // la chat resta spenta e l'endpoint lo spiega in italiano all'utente. Senza chiave
+        // un provider remoto risponderebbe 401 a ogni messaggio: meglio dire subito che
+        // manca la chiave (un modello in locale, invece, non ne vuole nessuna).
+        Attivo = baseUrl.Length > 0 && Modello.Length > 0 && !opzioni.ChiaveMancante;
         if (!Attivo) return;
 
         _http.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");

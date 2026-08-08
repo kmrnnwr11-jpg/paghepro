@@ -110,6 +110,24 @@ public sealed class AiChatTests : IDisposable
     }
 
     [Fact]
+    public void Chat_ProviderSenzaChiave_RestaSpenta_ESpiegaCheMancaSoloLaChiave()
+    {
+        var opzioni = new AiOptions { Provider = "DeepSeek" }; // nessuna ApiKey
+        Assert.False(new AiChatClient(new HttpClient(), opzioni).Attivo);
+        Assert.Contains("Ai__ApiKey", AiChatEndpoints.CosaManca(opzioni));
+    }
+
+    [Fact]
+    public void Chat_ModelloInLocale_NonChiedeChiavi()
+    {
+        var chat = new AiChatClient(new HttpClient(), new AiOptions
+        {
+            Provider = "Compatibile", BaseUrl = "http://localhost:11434/v1", Modello = "qwen2.5:14b",
+        });
+        Assert.True(chat.Attivo);
+    }
+
+    [Fact]
     public void Serializza_MessaggioTool_UsaIlFormatoDelProtocollo()
     {
         string json = JsonSerializer.Serialize(AiChatClient.Serializza(new MessaggioChatAi

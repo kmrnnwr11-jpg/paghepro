@@ -43,7 +43,8 @@ public sealed class EstrattoreAiCompatibile : IEstrattoreAiDocumenti
     /// <summary>Modello con la vista; vuoto = il provider non legge immagini.</summary>
     public string? ModelloVisione { get; }
 
-    public bool Attivo => true;
+    /// <summary>Con l'interruttore acceso ma senza chiave si resta spenti: il provider direbbe 401.</summary>
+    public bool Attivo => !_opzioni.ChiaveMancante;
 
     public bool VedeImmagini => !string.IsNullOrWhiteSpace(ModelloVisione);
 

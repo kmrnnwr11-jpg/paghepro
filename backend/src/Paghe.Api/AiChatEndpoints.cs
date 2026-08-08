@@ -46,22 +46,18 @@ public static class AiChatEndpoints
             attiva = chat.Attivo,
             provider = opzioni.Provider,
             modello = chat.Modello,
-            messaggio = chat.Attivo
-                ? null
-                : "Chat AI non configurata: imposta le variabili Ai__Provider=DeepSeek e "
-                    + "Ai__ApiKey=<chiave> sul server, poi riavvialo.",
+            messaggio = chat.Attivo ? null : CosaManca(opzioni),
         })).RequireAuthorization();
 
         // Un turno di conversazione.
         app.MapPost("/api/ai/chat", async (
             RichiestaChatAi richiesta, AiChatClient chat, AiChatStrumenti strumenti,
-            ConsumoAiService consumi, AziendeService aziende, ClaimsPrincipal user,
-            CancellationToken ct) =>
+            ConsumoAiService consumi, AziendeService aziende, AiOptions opzioni,
+            ClaimsPrincipal user, CancellationToken ct) =>
         {
             if (!chat.Attivo)
                 return Results.Ok(new RispostaChatEndpoint(
-                    "La chat AI non è ancora configurata su questo server: servono Ai__Provider "
-                    + "(es. DeepSeek) e Ai__ApiKey.", richiesta.Storia ?? [], null, false));
+                    CosaManca(opzioni), richiesta.Storia ?? [], null, false));
 
             if (string.IsNullOrWhiteSpace(richiesta.Messaggio))
                 return Results.BadRequest(new { errore = "Messaggio vuoto." });
@@ -176,6 +172,18 @@ public static class AiChatEndpoints
 
         return app;
     }
+
+    /// <summary>
+    /// Che cosa manca perché la chat parta, detto a chi deve metterci mano (non a un tecnico):
+    /// o il provider è spento, o c'è il provider ma non la chiave.
+    /// </summary>
+    public static string CosaManca(AiOptions opzioni) =>
+        string.IsNullOrWhiteSpace(opzioni.ApiKey)
+            && !opzioni.Provider.Equals("Spento", StringComparison.OrdinalIgnoreCase)
+            ? $"Manca solo la chiave del provider {opzioni.Provider}: incollala nella variabile "
+                + "Ai__ApiKey (su Render: servizio paghepro → Environment), il servizio si riavvia da solo."
+            : "Chat AI spenta: imposta Ai__Provider (es. DeepSeek) e Ai__ApiKey nelle variabili "
+                + "d'ambiente del server.";
 
     /// <summary>Risultato che il modello riceve al posto dell'esecuzione: sta aspettando l'utente.</summary>
     private static string DescriviAttesa(AzionePropostaAi proposta)

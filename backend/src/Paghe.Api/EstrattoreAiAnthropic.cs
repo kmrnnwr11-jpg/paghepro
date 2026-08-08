@@ -42,6 +42,19 @@ public sealed class AiOptions
     public decimal SogliaConfidenza { get; set; } = 0.6m;
 
     /// <summary>
+    /// Il provider è remoto ma la chiave non c'è: l'interruttore può essere acceso in
+    /// configurazione, però ogni chiamata prenderebbe 401. Meglio dirlo che fingersi attivi.
+    /// Un modello sulla stessa macchina (Ollama e simili) non chiede chiavi.
+    /// </summary>
+    public bool ChiaveMancante =>
+        string.IsNullOrWhiteSpace(ApiKey) && !InLocale(BaseUrl);
+
+    private static bool InLocale(string? baseUrl) =>
+        baseUrl is not null
+        && (baseUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+            || baseUrl.Contains("127.0.0.1", StringComparison.Ordinal));
+
+    /// <summary>
     /// Limite mensile di chiamate AI per studio (tenant), per il modello "AI inclusa nel
     /// canone" con chiave centrale. 0 o negativo = illimitato (es. AI locale/Ollama).
     /// </summary>

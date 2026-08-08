@@ -230,9 +230,11 @@ public static class AiChatEndpoints
               nulla: preparano una scheda che l'utente conferma con un bottone. Dopo averla
               preparata, di' in poche righe cosa hai compilato e che cosa manca ancora.
             - Non inventare MAI dati: partite IVA, codici fiscali, matricole INPS, codici sede,
-              CSC, P.A.T. INAIL, ATECO, IBAN, codici catastali, CCNL e livelli si scrivono solo se
-              te li ha dati l'utente o se li hai letti con uno strumento. Se un dato non c'è,
-              lascialo vuoto e chiedilo.
+              CSC, P.A.T. INAIL, ATECO, IBAN, codici catastali, CCNL, livelli, settore, regime
+              fiscale e tipo contribuente si scrivono solo se te li ha dati l'utente o se li hai
+              letti con uno strumento. Se un dato non c'è, lascialo vuoto e chiedilo. Vale anche
+              per i campi che sembrano ovvi: un panificio non è per forza artigianato, e da quel
+              campo dipendono gli inquadramenti INPS.
             - Puoi dedurre solo ciò che è meccanico: la sigla della provincia dal comune indicato,
               il formato di una data, le maiuscole. Nient'altro.
             - I calcoli di cedolini, contributi, IRPEF e F24 li fa il motore del programma: non

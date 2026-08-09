@@ -72,4 +72,16 @@ public sealed class Cartellino
 
     /// <summary>Reddito di lavoro dipendente dell'anno precedente: sopra il tetto niente agevolazione.</summary>
     public decimal RedditoAnnoPrecedente { get; init; }
+
+    // ---- Calendario giornaliero -----------------------------------------------------
+    // Vuoto = cartellino compilato a totali, come nella prima versione: il motore continua
+    // a leggere i campi qui sopra e nulla cambia. Quando c'è, i totali sono stati derivati
+    // dalle giornate (vedi CalendarioCartellino.Compila) e il calendario resta allegato,
+    // perché LUL, denunce e agricoltura ragionano sul giorno, non sul mese.
+
+    /// <summary>Le giornate del mese, se il cartellino è stato compilato giorno per giorno.</summary>
+    public IReadOnlyList<GiornataCartellino> Giornate { get; init; } = [];
+
+    /// <summary>Giornate di effettivo lavoro. Zero se il cartellino è compilato a totali.</summary>
+    public int GiornateLavorate => Giornate.Count(g => g.ÈLavorata);
 }

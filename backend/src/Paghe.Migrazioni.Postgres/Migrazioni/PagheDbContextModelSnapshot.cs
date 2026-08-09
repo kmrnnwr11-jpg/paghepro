@@ -717,6 +717,10 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<decimal>("FringeBenefitGiaErogatoAnno")
                         .HasColumnType("numeric");
 
+                    b.Property<string>("GiornateProtette")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<int>("GiorniBuonoPasto")
                         .HasColumnType("integer");
 

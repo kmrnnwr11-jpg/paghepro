@@ -712,6 +712,10 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<decimal>("FringeBenefitGiaErogatoAnno")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("GiornateProtette")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("GiorniBuonoPasto")
                         .HasColumnType("INTEGER");
 

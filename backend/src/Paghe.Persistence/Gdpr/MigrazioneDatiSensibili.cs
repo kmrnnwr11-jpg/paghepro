@@ -224,7 +224,13 @@ public sealed class MigrazioneDatiSensibili
             if (await ColonnaEsisteAsync(tabella, colonna, cancellationToken))
                 legacyPresenti.Add(colonna);
         var haLegacy = legacyPresenti.Count > 0;
-        var colonne = new[] { "DatiSaluteProtetti" }.Concat(legacyPresenti).ToArray();
+        // Il calendario giornaliero è protetto quanto la terna e va ruotato con lei: in coda,
+        // così gli indici delle colonne legacy qui sotto restano quelli.
+        var colonne = new[] { "DatiSaluteProtetti" }
+            .Concat(legacyPresenti)
+            .Append("GiornateProtette")
+            .ToArray();
+        var indiceGiornate = colonne.Length - 1;
         var migrati = 0;
 
         await PerOgniBatchTenantAsync(tabella, colonne, tenantId, async (righe, tx) =>
@@ -271,6 +277,20 @@ public sealed class MigrazioneDatiSensibili
                         tabella, "DatiSaluteProtetti", riga.Id, tenantId, nuovo, tx, cancellationToken);
                     migrati++;
                 }
+
+                // Calendario: esiste solo sui cartellini compilati giorno per giorno, quindi
+                // vuoto è legittimo e si salta. Quando c'è, si ricifra con la chiave corrente.
+                var calendario = Stringa(riga.Valori[indiceGiornate]);
+                if (string.IsNullOrWhiteSpace(calendario)) continue;
+
+                var calendarioNuovo = _protettore.RicifraConContesto(
+                    calendario,
+                    ContestoDatiProtetti.GiornateCartellino(tenantId, riga.Id))!;
+                if (string.Equals(calendario, calendarioNuovo, StringComparison.Ordinal)) continue;
+
+                await AggiornaCampoAsync(
+                    tabella, "GiornateProtette", riga.Id, tenantId, calendarioNuovo, tx, cancellationToken);
+                migrati++;
             }
         }, cancellationToken);
 
@@ -596,6 +616,8 @@ public sealed class MigrazioneDatiSensibili
             new CampoCorrente("Dipendenti", "IbanProtetto", false),
             new CampoCorrente("AvvisiPagamento", "IbanProtetto", false),
             new CampoCorrente("Cartellini", "DatiSaluteProtetti", true),
+            // Facoltativo: i cartellini compilati a totali non hanno calendario.
+            new CampoCorrente("Cartellini", "GiornateProtette", false),
             new CampoCorrente("CedolinoVoceEntity", "DatiVoceProtetti", true),
             new CampoCorrente("Utenti", "SegretoTotp", false),
             new CampoCorrente("ConfigurazioniSdi", "ApiKey", false),

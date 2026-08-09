@@ -37,6 +37,14 @@ public sealed class CedoliniService
             .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct)
             ?? throw new ArgumentException("Rapporto di lavoro non trovato per il tenant indicato.");
 
+        // Quando arriva il calendario giorno per giorno è lui la verità: i totali del mese li
+        // ricalcola il server dalle giornate, non li prende dal client. Così cedolino, Libro
+        // Unico e denunce non possono raccontare mesi diversi, e i controlli sul calendario
+        // (giorni scoperti, causali senza ore, malattia con straordinari) fermano qui l'elaborazione.
+        if (cartellino.Giornate.Count > 0)
+            cartellino = CalendarioCartellino.Compila(
+                cartellino, cartellino.Giornate, rapporto.OreSettimanali / 5m);
+
         // Regola: niente busta paga per mesi interamente precedenti all'assunzione.
         if (rapporto.DataAssunzione != default)
         {
@@ -131,6 +139,7 @@ public sealed class CedoliniService
             BuonoPastoElettronico = cartellino.BuonoPastoElettronico,
             PremioRisultato = cartellino.PremioRisultato,
             RedditoAnnoPrecedente = cartellino.RedditoAnnoPrecedente,
+            Giornate = cartellino.Giornate,
         });
 
         var entity = new CedolinoEntity
@@ -474,6 +483,7 @@ public sealed class CedoliniService
         BuonoPastoElettronico = e.BuonoPastoElettronico,
         PremioRisultato = e.PremioRisultato,
         RedditoAnnoPrecedente = e.RedditoAnnoPrecedente,
+        Giornate = e.Giornate,
     };
 }
 

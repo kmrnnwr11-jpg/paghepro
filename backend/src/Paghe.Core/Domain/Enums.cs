@@ -10,6 +10,40 @@ public enum Qualifica
     Apprendista
 }
 
+/// <summary>
+/// Che cosa è stata quella giornata per il lavoratore. È lo stato prevalente del giorno:
+/// le quantità parziali (permessi, straordinari, uscite anticipate) stanno nelle ore della
+/// <see cref="GiornataCartellino"/>, non in una seconda causale.
+/// </summary>
+public enum CausaleGiornata
+{
+    /// <summary>Giornata di lavoro (anche parziale, se ci sono ore di permesso o assenza).</summary>
+    Lavorata,
+
+    Ferie,
+
+    /// <summary>Malattia certificata: va collegata al numero dell'evento nell'anno.</summary>
+    Malattia,
+
+    /// <summary>Inabilità temporanea per infortunio sul lavoro (INAIL).</summary>
+    Infortunio,
+
+    /// <summary>Giornata intera di permesso retribuito (ROL).</summary>
+    PermessoRetribuito,
+
+    /// <summary>Giornata intera goduta a titolo di ex festività.</summary>
+    ExFestivita,
+
+    /// <summary>Assenza non retribuita per l'intera giornata.</summary>
+    AssenzaNonRetribuita,
+
+    /// <summary>Riposo settimanale (di norma la domenica).</summary>
+    RiposoSettimanale,
+
+    /// <summary>Festività nazionale o infrasettimanale.</summary>
+    Festivita
+}
+
 /// <summary>Natura di una voce del cedolino.</summary>
 public enum TipoVoce
 {

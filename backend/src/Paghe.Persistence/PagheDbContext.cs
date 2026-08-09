@@ -365,6 +365,11 @@ public class PagheDbContext : DbContext
             e.Ignore(x => x.NumeroEventoMalattiaAnno);
             e.Ignore(x => x.GiorniInfortunio);
             e.Property(x => x.DatiSaluteProtetti).IsRequired();
+
+            // Il calendario dice quali giorni sono stati malattia: stessa protezione della terna.
+            // Non è obbligatorio: i cartellini compilati a totali hanno la colonna vuota.
+            e.Ignore(x => x.Giornate);
+            e.Property(x => x.GiornateProtette).IsRequired();
         });
         mb.Entity<CedolinoEntity>(e =>
         {

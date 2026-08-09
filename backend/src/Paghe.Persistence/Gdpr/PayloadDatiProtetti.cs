@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text.Json;
+using Paghe.Core.Domain;
 using Paghe.Persistence.Entities;
 
 namespace Paghe.Persistence.Gdpr;
@@ -9,6 +10,13 @@ internal static class PayloadDatiProtetti
 {
     private const int DimensioneSalute = 36; // 2 decimal (16 byte ciascuno) + 1 int (4 byte)
     private const int DimensioneVoce = 2048;
+
+    /// <summary>
+    /// Calendario di un mese: 31 giornate compatte stanno abbondantemente qui dentro. La
+    /// dimensione è fissa come per le voci, così la lunghezza del cifrato non lascia intuire
+    /// quante assenze contenga il mese.
+    /// </summary>
+    private const int DimensioneGiornate = 8192;
 
     public static string SerializzaSalute(decimal malattia, int numeroEvento, decimal infortunio)
     {
@@ -148,4 +156,98 @@ internal static class PayloadDatiProtetti
         decimal? Quantita,
         decimal? Base,
         decimal Importo);
+
+    // ---- Calendario giornaliero del cartellino ----------------------------------------
+    // Dice quali giorni sono stati malattia o infortunio: è un dato sanitario, quindi viaggia
+    // cifrato come la terna salute, non in colonne leggibili. Anno e mese non si serializzano:
+    // stanno già sul cartellino, qui basta il giorno.
+
+    /// <summary>Una giornata nella forma compatta che finisce dentro il payload cifrato.</summary>
+    private sealed record GiornataProtetta(
+        int G, string C, decimal Ord, decimal Per, decimal Exf, decimal Ass,
+        decimal Str, decimal StrN, decimal StrF);
+
+    public static string SerializzaGiornate(IReadOnlyList<GiornataCartellino> giornate)
+    {
+        var compatte = giornate
+            .OrderBy(g => g.Data)
+            .Select(g => new GiornataProtetta(
+                g.Data.Day, g.Causale.ToString(), g.OreOrdinarie, g.OrePermessi,
+                g.OreExFestivita, g.OreAssenzaNonRetribuita,
+                g.OreStraordinario, g.OreStraordinarioNotturno, g.OreStraordinarioFestivo))
+            .ToList();
+
+        var json = JsonSerializer.SerializeToUtf8Bytes(compatte);
+        if (json.Length > DimensioneGiornate - sizeof(int))
+            throw new InvalidOperationException(
+                $"Il calendario del mese supera il payload protetto massimo di {DimensioneGiornate - sizeof(int)} byte.");
+
+        var payload = new byte[DimensioneGiornate];
+        try
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), json.Length);
+            json.CopyTo(payload.AsSpan(sizeof(int)));
+            return Convert.ToBase64String(payload);
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(json);
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(payload);
+        }
+    }
+
+    /// <summary>Rilegge il calendario. Payload vuoto = cartellino compilato a totali.</summary>
+    public static IReadOnlyList<GiornataCartellino> DeserializzaGiornate(
+        string? payloadBase64, int anno, int mese)
+    {
+        if (string.IsNullOrWhiteSpace(payloadBase64)) return [];
+
+        byte[] payload;
+        try
+        {
+            payload = Convert.FromBase64String(payloadBase64);
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException("Payload calendario Base64 non valido.", ex);
+        }
+
+        if (payload.Length != DimensioneGiornate)
+            throw new InvalidOperationException(
+                $"Payload calendario di lunghezza non valida: {payload.Length} byte.");
+
+        try
+        {
+            var lunghezza = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+            if (lunghezza <= 0 || lunghezza > DimensioneGiornate - sizeof(int))
+                throw new InvalidOperationException("Lunghezza interna del payload calendario non valida.");
+
+            var compatte = JsonSerializer.Deserialize<List<GiornataProtetta>>(
+                    payload.AsSpan(sizeof(int), lunghezza))
+                ?? throw new InvalidOperationException("Payload calendario vuoto.");
+
+            return [.. compatte.Select(g => new GiornataCartellino
+            {
+                Data = new DateOnly(anno, mese, g.G),
+                Causale = Enum.TryParse<CausaleGiornata>(g.C, out var causale)
+                    ? causale
+                    : CausaleGiornata.Lavorata,
+                OreOrdinarie = g.Ord,
+                OrePermessi = g.Per,
+                OreExFestivita = g.Exf,
+                OreAssenzaNonRetribuita = g.Ass,
+                OreStraordinario = g.Str,
+                OreStraordinarioNotturno = g.StrN,
+                OreStraordinarioFestivo = g.StrF,
+            })];
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("Payload calendario non valido.", ex);
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(payload);
+        }
+    }
 }

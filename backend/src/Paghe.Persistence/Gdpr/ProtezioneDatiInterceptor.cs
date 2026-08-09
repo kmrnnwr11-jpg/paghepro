@@ -44,6 +44,14 @@ internal sealed class ProtezioneDatiInterceptor : SaveChangesInterceptor, IMater
                     salute.Malattia,
                     salute.NumeroEvento,
                     salute.Infortunio);
+                // Il calendario può mancare: i cartellini compilati a totali non ne hanno uno.
+                cartellino.CaricaGiornate(PayloadDatiProtetti.DeserializzaGiornate(
+                    string.IsNullOrWhiteSpace(cartellino.GiornateProtette)
+                        ? null
+                        : protettore.SvelaConContesto(
+                            cartellino.GiornateProtette,
+                            ContestoDatiProtetti.GiornateCartellino(cartellino.TenantId, cartellino.Id)),
+                    cartellino.Anno, cartellino.Mese));
                 break;
             case CedolinoVoceEntity voce:
                 if (string.IsNullOrWhiteSpace(voce.DatiVoceProtetti))
@@ -134,7 +142,8 @@ internal sealed class ProtezioneDatiInterceptor : SaveChangesInterceptor, IMater
                     entry.Property(nameof(AvvisoPagamentoEntity.IbanProtetto)).IsModified =
                         entry.State != EntityState.Added;
                     break;
-                case CartellinoEntity c when entry.State == EntityState.Added || c.DatiSaluteModificati:
+                case CartellinoEntity c when entry.State == EntityState.Added
+                        || c.DatiSaluteModificati || c.GiornateModificate:
                     ValidaIdentita(c.TenantId, c.Id, nameof(CartellinoEntity));
                     c.DatiSaluteProtetti = protettore.ProteggiConContesto(
                         PayloadDatiProtetti.SerializzaSalute(
@@ -143,6 +152,13 @@ internal sealed class ProtezioneDatiInterceptor : SaveChangesInterceptor, IMater
                             c.GiorniInfortunio),
                         ContestoDatiProtetti.SaluteCartellino(c.TenantId, c.Id))!;
                     entry.Property(nameof(CartellinoEntity.DatiSaluteProtetti)).IsModified =
+                        entry.State != EntityState.Added;
+                    c.GiornateProtette = c.Giornate.Count == 0
+                        ? ""
+                        : protettore.ProteggiConContesto(
+                            PayloadDatiProtetti.SerializzaGiornate(c.Giornate),
+                            ContestoDatiProtetti.GiornateCartellino(c.TenantId, c.Id))!;
+                    entry.Property(nameof(CartellinoEntity.GiornateProtette)).IsModified =
                         entry.State != EntityState.Added;
                     break;
                 case CedolinoVoceEntity v when entry.State == EntityState.Added || v.DatiVoceModificati:
@@ -186,7 +202,10 @@ internal sealed class ProtezioneDatiInterceptor : SaveChangesInterceptor, IMater
                 case AziendaEntity a: a.ConfermaProtezioneIban(); break;
                 case DipendenteEntity d: d.ConfermaProtezioneIban(); break;
                 case AvvisoPagamentoEntity a: a.ConfermaProtezioneIban(); break;
-                case CartellinoEntity c: c.ConfermaProtezioneDatiSalute(); break;
+                case CartellinoEntity c:
+                    c.ConfermaProtezioneDatiSalute();
+                    c.ConfermaProtezioneGiornate();
+                    break;
                 case CedolinoVoceEntity v: v.ConfermaProtezioneDatiVoce(); break;
             }
         }
@@ -216,6 +235,9 @@ internal static class ContestoDatiProtetti
 
     public static string SaluteCartellino(Guid tenantId, Guid id) =>
         Crea(tenantId, "Cartellini", id, "DatiSaluteProtetti");
+
+    public static string GiornateCartellino(Guid tenantId, Guid id) =>
+        Crea(tenantId, "Cartellini", id, "GiornateProtette");
 
     public static string VoceCedolino(Guid tenantId, Guid id) =>
         Crea(tenantId, "CedolinoVoceEntity", id, "DatiVoceProtetti");

@@ -102,6 +102,68 @@ public sealed class ContributiSettoreDalDatabaseTests : IDisposable
     }
 
     [Fact]
+    public async Task CalendarioGiornaliero_IlServerRicalcolaITotaliENonSiFidaDelClient()
+    {
+        var (tenant, rapportoId) = await PreparaAsync(oltreQuindici: false, fondiSettore: 0m);
+
+        // Il client manda un calendario con 3 giorni di ferie e, per sbaglio o per malizia,
+        // dichiara zero ferie nei totali: deve vincere il calendario.
+        var giornate = new List<GiornataCartellino>();
+        for (int g = 1; g <= 31; g++)
+        {
+            var data = new DateOnly(2026, 5, g);
+            giornate.Add(new GiornataCartellino
+            {
+                Data = data,
+                Causale = data.DayOfWeek == DayOfWeek.Sunday ? CausaleGiornata.RiposoSettimanale
+                    : g is 4 or 5 or 6 ? CausaleGiornata.Ferie
+                    : CausaleGiornata.Lavorata,
+                OreOrdinarie = data.DayOfWeek == DayOfWeek.Sunday || g is 4 or 5 or 6 ? 0m : 8m,
+            });
+        }
+
+        await using var db = NuovoContesto();
+        var svc = new CedoliniService(db, new ParametriNormativiService(db),
+            new OrologioFisso(new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero)));
+        var cedolino = await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino
+        {
+            Anno = 2026, Mese = 5, GiorniFerie = 0m, Giornate = giornate,
+        });
+
+        var cartellino = await db.Cartellini.SingleAsync(c => c.Id != Guid.Empty);
+        Assert.Equal(3m, cartellino.GiorniFerie);       // derivate dal calendario, non lo zero inviato
+        Assert.Equal(31, cartellino.Giornate.Count);    // e il calendario resta archiviato
+        Assert.True(cedolino.NettoInBusta > 0m);
+    }
+
+    [Fact]
+    public async Task CalendarioIncompleto_LElaborazioneSiFerma()
+    {
+        var (tenant, rapportoId) = await PreparaAsync(oltreQuindici: false, fondiSettore: 0m);
+
+        await using var db = NuovoContesto();
+        var svc = new CedoliniService(db, new ParametriNormativiService(db),
+            new OrologioFisso(new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero)));
+
+        var errore = await Assert.ThrowsAsync<ArgumentException>(() =>
+            svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino
+            {
+                Anno = 2026, Mese = 5,
+                Giornate =
+                [
+                    new GiornataCartellino
+                    {
+                        Data = new DateOnly(2026, 5, 1),
+                        Causale = CausaleGiornata.Lavorata, OreOrdinarie = 8m,
+                    },
+                ],
+            }));
+
+        Assert.Contains("non è elaborabile", errore.Message);
+        Assert.Empty(await db.Cedolini.ToListAsync());
+    }
+
+    [Fact]
     public async Task IlPdfRicalcolatoUsaGliStessiContributiDellArchivio()
     {
         // Il PDF passa da RicalcolaPerPdfAsync: se lì l'azienda non arrivasse al motore, il

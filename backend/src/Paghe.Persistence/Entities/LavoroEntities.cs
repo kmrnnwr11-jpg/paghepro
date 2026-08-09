@@ -148,6 +148,41 @@ public class CartellinoEntity
     }
 
     internal void ConfermaProtezioneDatiSalute() => DatiSaluteModificati = false;
+
+    // ---- Calendario giornaliero -----------------------------------------------------
+    // Dice quali giorni sono stati malattia o infortunio, quindi è dato sanitario quanto la
+    // terna qui sopra: sta in un payload cifrato, non in una tabella figlia leggibile.
+    // Lista vuota = cartellino compilato a totali, come prima del calendario.
+
+    private IReadOnlyList<GiornataCartellino> _giornate = [];
+
+    /// <summary>Le giornate del mese, disponibili al dominio; non mappate direttamente.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public IReadOnlyList<GiornataCartellino> Giornate
+    {
+        get => _giornate;
+        set
+        {
+            _giornate = value ?? [];
+            GiornateModificate = true;
+        }
+    }
+
+    /// <summary>Payload cifrato e tenant-bound del calendario. Vuoto = nessun calendario.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string GiornateProtette { get; set; } = "";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool GiornateModificate { get; private set; }
+
+    internal void CaricaGiornate(IReadOnlyList<GiornataCartellino> giornate)
+    {
+        _giornate = giornate;
+        GiornateModificate = false;
+    }
+
+    internal void ConfermaProtezioneGiornate() => GiornateModificate = false;
+
     public decimal OreAssenzaNonRetribuita { get; set; }
 
     // ---- Elementi retributivi agevolati del mese ------------------------------------

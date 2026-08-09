@@ -22,6 +22,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
         {
             ["IbanProtetto"] = "Iban",
             ["DatiSaluteProtetti"] = "DatiSalute",
+            ["GiornateProtette"] = "CalendarioPresenze",
             ["DatiVoceProtetti"] = "DatiVoceCedolino",
             [nameof(UtenteEntity.SegretoTotp)] = "DueFattori",
             [nameof(ConfigurazioneSdiEntity.ApiKey)] = "CredenzialeProvider",

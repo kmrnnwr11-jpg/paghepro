@@ -1476,6 +1476,8 @@ secured.MapPost("/api/aziende", async (CreaAziendaRequest req, AziendeService sv
             HaDipendenti = req.HaDipendenti,
             TipoContribuente = req.TipoContribuente,
             AssoggettataIva = req.AssoggettataIva,
+            OltreQuindiciDipendenti = req.OltreQuindiciDipendenti,
+            ContributiFondiSettore = req.ContributiFondiSettore,
         });
         return Results.Created($"/api/aziende/{azienda.Id}", new { azienda.Id, azienda.RagioneSociale });
     }
@@ -1521,7 +1523,8 @@ secured.MapPatch("/api/aziende/{id:guid}", async (
             req.CscInps, req.PatInail, req.CcnlDefault,
             req.LivelloDefault, req.Iban,
             req.LegaleRappresentanteNome, req.LegaleRappresentanteCognome,
-            req.LegaleRappresentanteCodiceFiscale));
+            req.LegaleRappresentanteCodiceFiscale,
+            req.OltreQuindiciDipendenti, req.ContributiFondiSettore));
     return a is null
         ? Results.NotFound(new { errore = "Azienda non trovata per il tenant indicato." })
         : Results.Ok(new { a.Id, a.RagioneSociale });

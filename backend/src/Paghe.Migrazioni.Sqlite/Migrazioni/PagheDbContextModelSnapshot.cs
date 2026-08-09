@@ -482,6 +482,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("ContributiFondiSettore")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("CscInps")
                         .HasColumnType("TEXT");
 
@@ -519,6 +522,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<string>("Nazione")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("OltreQuindiciDipendenti")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("PartitaIva")
                         .HasColumnType("TEXT");

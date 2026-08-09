@@ -74,7 +74,9 @@ public sealed class CedoliniService
                     + "l'F24 del mese andrà poi rigenerato.");
         }
 
-        var dominio = ToDominio(rapporto);
+        var aziendaDelRapporto = await _db.Aziende.FirstOrDefaultAsync(
+            a => a.Id == rapporto.AziendaId && a.TenantId == tenantId, ct);
+        var dominio = ToDominio(rapporto, aziendaDelRapporto);
         var parametri = await _parametri.CaricaParametriAsync(cartellino.Anno, ct);
         var ccnl = await _parametri.CaricaCcnlAsync(rapporto.CodiceCcnl, cartellino.Anno, ct);
         var cedolino = new MotoreCalcoloCedolino(parametri, ccnl).Calcola(dominio, cartellino);
@@ -303,17 +305,19 @@ public sealed class CedoliniService
                  && c.Anno == archiviato.Anno && c.Mese == archiviato.Mese, ct);
         if (cartellino is null) return null;
 
+        // L'azienda serve prima del calcolo: porta i due dati contributivi (0,30% CIG oltre i 15
+        // dipendenti e fondi di settore) senza i quali il PDF non coinciderebbe con l'archivio.
+        var azienda = await _db.Aziende
+            .FirstOrDefaultAsync(a => a.Id == archiviato.AziendaId && a.TenantId == tenantId, ct);
+
         var parametri = await _parametri.CaricaParametriAsync(archiviato.Anno, ct);
         var ccnl = await _parametri.CaricaCcnlAsync(rapporto.CodiceCcnl, archiviato.Anno, ct);
         var cedolino = new MotoreCalcoloCedolino(parametri, ccnl)
-            .Calcola(ToDominio(rapporto), ToDominio(cartellino));
+            .Calcola(ToDominio(rapporto, azienda), ToDominio(cartellino));
 
         // Riapplica il conguaglio archiviato (dicembre): il PDF deve coincidere con l'archivio.
         if (archiviato.ConguaglioIrpef != 0m)
             ConguaglioFiscale.ApplicaACedolino(cedolino, archiviato.ConguaglioIrpef);
-
-        var azienda = await _db.Aziende
-            .FirstOrDefaultAsync(a => a.Id == archiviato.AziendaId && a.TenantId == tenantId, ct);
 
         var dipendente = await _db.Dipendenti
             .FirstOrDefaultAsync(d => d.Id == rapporto.DipendenteId && d.TenantId == tenantId, ct);
@@ -417,7 +421,12 @@ public sealed class CedoliniService
             await _db.SaveChangesAsync(ct);
     }
 
-    private static RapportoLavoro ToDominio(RapportoLavoroEntity e) => new()
+    /// <param name="azienda">
+    /// Serve per i due dati contributivi che stanno sull'azienda e non sul rapporto: la soglia
+    /// dei 15 dipendenti (0,30% CIG) e i fondi di settore. Senza, la quota INPS a carico del
+    /// dipendente uscirebbe sottostimata.
+    /// </param>
+    private static RapportoLavoro ToDominio(RapportoLavoroEntity e, AziendaEntity? azienda) => new()
     {
         CodiceCcnl = e.CodiceCcnl,
         Livello = e.Livello,
@@ -431,6 +440,8 @@ public sealed class CedoliniService
         CodiceCatastaleComune = e.CodiceCatastaleComune,
         DetrazioniLavoroDipendente = e.DetrazioniLavoroDipendente,
         GiorniDetrazioneAnno = e.GiorniDetrazioneAnno,
+        AziendaOltre15Dipendenti = azienda?.OltreQuindiciDipendenti ?? false,
+        ContributiFondiSettore = azienda?.ContributiFondiSettore ?? 0m,
     };
 
     private static Cartellino ToDominio(CartellinoEntity e) => new()

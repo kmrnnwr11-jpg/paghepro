@@ -22,7 +22,16 @@ const vuota: NuovaAzienda = {
   matricolaInps: "", codiceSedeInps: "", cscInps: "", patInail: "", ccnlDefault: "", livelloDefault: "",
   iban: "", legaleRappresentanteNome: "", legaleRappresentanteCognome: "", legaleRappresentanteCodiceFiscale: "",
   canalePredefinito: "", haDipendenti: true, tipoContribuente: "", assoggettataIva: true,
+  oltreQuindiciDipendenti: false, contributiFondiSettore: 0,
 };
+
+// Fondi di settore a carico del dipendente, verificati su buste reali. Il valore è una frazione:
+// finisce direttamente nel calcolo della quota INPS, quindi meglio sceglierlo che digitarlo.
+const FONDI_SETTORE = [
+  { valore: 0, label: "Nessuno" },
+  { valore: 0.002667, label: "FIS 0,2667% — Fondo Integrazione Salariale (es. Multiservizi)" },
+  { valore: 0.0015, label: "FSBS 0,15% — somministrazione" },
+];
 
 const SETTORI_AZIENDA = [
   { codice: "COMMERCIO_SERVIZI", label: "Commercio / servizi", tipoContribuente: "Societa", codiceAteco: "47.91.10", ccnlDefault: "COMMERCIO_TERZIARIO", livelloDefault: "3" },
@@ -323,6 +332,8 @@ export function Aziende({
       settore: a.settore ?? "", codiceAteco: a.codiceAteco ?? "",
       matricolaInps: a.matricolaInps ?? "", codiceSedeInps: a.codiceSedeInps ?? "",
       cscInps: a.cscInps ?? "", patInail: a.patInail ?? "",
+      oltreQuindiciDipendenti: a.oltreQuindiciDipendenti ?? false,
+      contributiFondiSettore: a.contributiFondiSettore ?? 0,
       ccnlDefault: a.ccnlDefault ?? "", livelloDefault: a.livelloDefault ?? "",
       iban: a.iban ?? "",
       legaleRappresentanteNome: a.legaleRappresentanteNome ?? "",
@@ -970,7 +981,34 @@ export function Aziende({
                   placeholder="Es. RSSMRA80A01F205X" value={form.legaleRappresentanteCodiceFiscale ?? ""}
                   onChange={set("legaleRappresentanteCodiceFiscale")} maxLength={16} />
               </Campo>
+              <Campo label="Fondi di settore a carico del dipendente" facoltativo>
+                <select style={selectStyle(undefined)} value={String(form.contributiFondiSettore ?? 0)}
+                  onChange={e => setForm({ ...form, contributiFondiSettore: Number(e.target.value) })}>
+                  {form.contributiFondiSettore != null
+                    && !FONDI_SETTORE.some(f => f.valore === form.contributiFondiSettore) && (
+                    <option value={String(form.contributiFondiSettore)}>
+                      {(form.contributiFondiSettore * 100).toLocaleString("it-IT")}%
+                    </option>
+                  )}
+                  {FONDI_SETTORE.map(f => (
+                    <option key={f.valore} value={String(f.valore)}>{f.label}</option>
+                  ))}
+                </select>
+              </Campo>
             </div>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer",
+              fontSize: 14, marginTop: 12 }}>
+              <input type="checkbox" checked={form.oltreQuindiciDipendenti ?? false}
+                onChange={e => setForm({ ...form, oltreQuindiciDipendenti: e.target.checked })} />
+              <span>
+                Azienda con più di 15 dipendenti (CIG)
+                <small style={{ display: "block", opacity: 0.7 }}>
+                  Aggiunge lo 0,30% alla quota INPS trattenuta al dipendente (9,19% → 9,49%).
+                  Il conteggio di legge è la media del semestre, con i part-time pro quota:
+                  vale la tua dichiarazione, non il numero di dipendenti in archivio.
+                </small>
+              </span>
+            </label>
           </div>
 
           {/* pulsanti finali */}

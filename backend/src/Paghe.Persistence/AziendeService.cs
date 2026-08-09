@@ -94,7 +94,8 @@ public sealed class AziendeService
         string? CscInps = null, string? PatInail = null, string? CcnlDefault = null,
         string? LivelloDefault = null, string? Iban = null,
         string? LegaleRappresentanteNome = null, string? LegaleRappresentanteCognome = null,
-        string? LegaleRappresentanteCodiceFiscale = null);
+        string? LegaleRappresentanteCodiceFiscale = null,
+        bool? OltreQuindiciDipendenti = null, decimal? ContributiFondiSettore = null);
 
     /// <summary>
     /// Corregge l'anagrafica di un'azienda (isolata per tenant): aggiorna solo i campi indicati.
@@ -135,6 +136,8 @@ public sealed class AziendeService
         if (c.LegaleRappresentanteNome is not null) a.LegaleRappresentanteNome = VuotoNull(c.LegaleRappresentanteNome);
         if (c.LegaleRappresentanteCognome is not null) a.LegaleRappresentanteCognome = VuotoNull(c.LegaleRappresentanteCognome);
         if (c.LegaleRappresentanteCodiceFiscale is not null) a.LegaleRappresentanteCodiceFiscale = VuotoNull(c.LegaleRappresentanteCodiceFiscale)?.ToUpperInvariant();
+        if (c.OltreQuindiciDipendenti is not null) a.OltreQuindiciDipendenti = c.OltreQuindiciDipendenti.Value;
+        if (c.ContributiFondiSettore is not null) a.ContributiFondiSettore = c.ContributiFondiSettore.Value;
 
         await VerificaDuplicatiAsync(tenantId, a, ct);
         Normalizza(a);

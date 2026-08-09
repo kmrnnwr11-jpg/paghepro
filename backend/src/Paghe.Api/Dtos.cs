@@ -195,7 +195,9 @@ public sealed record CreaAziendaRequest(
     string? CanalePredefinito = null,
     bool HaDipendenti = false,
     string? TipoContribuente = null,
-    bool AssoggettataIva = true);
+    bool AssoggettataIva = true,
+    bool OltreQuindiciDipendenti = false,
+    decimal ContributiFondiSettore = 0m);
 
 /// <summary>Correzione anagrafica azienda: solo i campi presenti (non null) vengono cambiati.</summary>
 public sealed record CorreggiAziendaRequest(
@@ -226,7 +228,9 @@ public sealed record CorreggiAziendaRequest(
     string? CanalePredefinito = null,
     bool? HaDipendenti = null,
     string? TipoContribuente = null,
-    bool? AssoggettataIva = null);
+    bool? AssoggettataIva = null,
+    bool? OltreQuindiciDipendenti = null,
+    decimal? ContributiFondiSettore = null);
 
 public sealed record EliminaAziendeBulkRequest(List<Guid> Ids);
 

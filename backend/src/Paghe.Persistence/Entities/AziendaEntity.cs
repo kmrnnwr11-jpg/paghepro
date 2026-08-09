@@ -72,6 +72,22 @@ public class AziendaEntity
     public byte[]? Logo { get; set; }
 
     public bool HaDipendenti { get; set; }
+
+    /// <summary>
+    /// L'azienda supera i 15 dipendenti e rientra nella CIG: la quota INPS a carico del dipendente
+    /// è maggiorata dello 0,30% (es. 9,19% → 9,49%). Sta sull'azienda, non sul singolo rapporto:
+    /// è una sua caratteristica, e va dichiarata perché il conteggio di legge (media del semestre,
+    /// part-time pro quota, apprendisti esclusi) non si deduce dal numero di rapporti in archivio.
+    /// </summary>
+    public bool OltreQuindiciDipendenti { get; set; }
+
+    /// <summary>
+    /// Fondi di settore a carico del dipendente in aggiunta alla quota INPS base, come frazione
+    /// (0,002667 = 0,2667%). Verificati su buste reali: FIS 0,2667% nel Multiservizi,
+    /// FSBS 0,15% nella somministrazione. Zero se il CCNL non ne prevede.
+    /// </summary>
+    public decimal ContributiFondiSettore { get; set; }
+
     /// <summary>"Artigiano", "Commerciante", "Professionista", "Societa".</summary>
     public string? TipoContribuente { get; set; }
     public bool AssoggettataIva { get; set; } = true;

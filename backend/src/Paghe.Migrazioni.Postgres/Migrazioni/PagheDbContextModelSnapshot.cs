@@ -487,6 +487,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<decimal>("ContributiFondiSettore")
+                        .HasColumnType("numeric");
+
                     b.Property<string>("CscInps")
                         .HasColumnType("text");
 
@@ -524,6 +527,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<string>("Nazione")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<bool>("OltreQuindiciDipendenti")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("PartitaIva")
                         .HasColumnType("text");

@@ -179,6 +179,10 @@ export interface Azienda {
   ccnlDefault?: string | null; livelloDefault?: string | null; iban?: string | null;
   legaleRappresentanteNome?: string | null; legaleRappresentanteCognome?: string | null; legaleRappresentanteCodiceFiscale?: string | null;
   canalePredefinito?: string | null; haDipendenti?: boolean; tipoContribuente?: string | null; assoggettataIva?: boolean;
+  /** Oltre 15 dipendenti: la quota INPS del dipendente sale dello 0,30% (CIG). */
+  oltreQuindiciDipendenti?: boolean;
+  /** Fondi di settore a carico del dipendente, come frazione (0,002667 = 0,2667%). */
+  contributiFondiSettore?: number;
 }
 export interface NuovaAzienda {
   ragioneSociale: string; partitaIva?: string; codiceFiscale?: string; indirizzo: string;
@@ -187,6 +191,7 @@ export interface NuovaAzienda {
   matricolaInps?: string; codiceSedeInps?: string; cscInps?: string; patInail?: string; ccnlDefault?: string; livelloDefault?: string;
   iban?: string; legaleRappresentanteNome?: string; legaleRappresentanteCognome?: string; legaleRappresentanteCodiceFiscale?: string;
   canalePredefinito?: string; haDipendenti?: boolean; tipoContribuente?: string; assoggettataIva?: boolean;
+  oltreQuindiciDipendenti?: boolean; contributiFondiSettore?: number;
 }
 export interface EsitoCaricamentoScadenza {
   aziendaTrovata: boolean; ragioneSociale?: string | null;

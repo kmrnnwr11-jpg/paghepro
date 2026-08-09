@@ -210,6 +210,8 @@ export interface Cartellino {
   giorniFerie?: number; orePermessi?: number; oreExFestivita?: number;
   giorniMalattia?: number; numeroEventoMalattiaAnno?: number; giorniInfortunio?: number;
   oreAssenzaNonRetribuita?: number;
+  /** Calendario giorno per giorno: quando c'è, il server ne ricava i totali e ignora quelli qui sopra. */
+  giornate?: GiornataCartellino[];
 }
 export interface VoceCedolino { codice: string; descrizione: string; tipo: string; importo: number }
 export interface Cedolino {
@@ -246,6 +248,30 @@ export interface PraticaInail {
   regolazione: number; rataAnticipata: number; rataGiaVersata: number;
   totaleDaVersare: number; stato: string; creataIl: string;
 }
+/** Come si chiama quello che è stato quel giorno. Deve combaciare con l'enum del backend. */
+export type CausaleGiornata =
+  | "Lavorata" | "Ferie" | "Malattia" | "Infortunio" | "PermessoRetribuito"
+  | "ExFestivita" | "AssenzaNonRetribuita" | "RiposoSettimanale" | "Festivita";
+
+export interface GiornataCartellino {
+  data: string;               // AAAA-MM-GG
+  causale: CausaleGiornata;
+  oreOrdinarie: number;
+  orePermessi: number;
+  oreExFestivita: number;
+  oreAssenzaNonRetribuita: number;
+  oreStraordinario: number;
+  oreStraordinarioNotturno: number;
+  oreStraordinarioFestivo: number;
+}
+
+export interface ProblemaCartellino { messaggio: string; bloccante: boolean }
+
+export interface EsitoVerificaCartellino {
+  problemi: ProblemaCartellino[];
+  elaborabile: boolean;
+}
+
 export interface PresenzaRiga {
   rapportoId: string; nominativo: string;
   oreStraordinario: number; oreStraordinarioNotturno: number; oreStraordinarioFestivo: number;
@@ -255,6 +281,10 @@ export interface PresenzaRiga {
   // Saldi dall'ultimo cedolino elaborato prima del mese (null senza storico).
   ferieResidue?: number | null; permessiResidui?: number | null;
   saldiAnno?: number | null; saldiMese?: number | null;
+  /** Ore contrattuali della giornata piena: precompila il calendario. */
+  oreGiornaliere: number;
+  /** Calendario già salvato per il mese; vuoto = cartellino a totali. */
+  giornate: GiornataCartellino[];
 }
 export interface PresenzeMese {
   anno: number; mese: number; totale: number; elaborati: number; righe: PresenzaRiga[];
@@ -572,6 +602,12 @@ export const api = {
   // forza=true: ricalcolo confermato di un mese con F24 già inviato (correzione errore).
   archiviaCedolino: (rapportoId: string, cartellino: Cartellino, forza = false) =>
     req<CedolinoArchiviato>(`/api/rapporti/${rapportoId}/cedolini${forza ? "?forza=true" : ""}`, {
+      method: "POST",
+      body: JSON.stringify(cartellino),
+    }),
+  /** Controlla il calendario del mese senza elaborare: le regole stanno nel backend. */
+  verificaCartellino: (rapportoId: string, cartellino: Cartellino) =>
+    req<EsitoVerificaCartellino>(`/api/rapporti/${rapportoId}/cartellino/verifica`, {
       method: "POST",
       body: JSON.stringify(cartellino),
     }),

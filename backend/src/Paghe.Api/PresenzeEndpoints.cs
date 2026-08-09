@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using Paghe.Core.Domain;
 using Paghe.Persistence;
 
 namespace Paghe.Api;
@@ -19,6 +21,29 @@ public static class PresenzeEndpoints
         {
             var board = await svc.CostruisciAsync(Tenant(user), aziendaId, anno, mese);
             return Results.Ok(board);
+        }).RequireAuthorization();
+
+        // Controllo del calendario prima di elaborare: le regole stanno solo qui, nel dominio,
+        // così la schermata non ne tiene una copia che col tempo direbbe cose diverse.
+        app.MapPost("/api/rapporti/{rapportoId:guid}/cartellino/verifica", async (
+            Guid rapportoId, Cartellino cartellino, ClaimsPrincipal user,
+            PagheDbContext db, CancellationToken ct) =>
+        {
+            var tenantId = Tenant(user);
+            var rapporto = await db.Rapporti.FirstOrDefaultAsync(
+                r => r.Id == rapportoId && r.TenantId == tenantId, ct);
+            if (rapporto is null)
+                return Results.NotFound(new { errore = "Rapporto di lavoro non trovato." });
+
+            var problemi = CalendarioCartellino.Verifica(
+                cartellino.Anno, cartellino.Mese, cartellino.Giornate,
+                rapporto.OreSettimanali / 5m);
+
+            return Results.Ok(new
+            {
+                problemi,
+                elaborabile = !problemi.Any(p => p.Bloccante),
+            });
         }).RequireAuthorization();
 
         return app;

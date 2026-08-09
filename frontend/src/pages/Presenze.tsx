@@ -1,13 +1,17 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { Calculator, CheckCircle2, Download, Pencil, Users, X } from "lucide-react";
-import { api, scaricaBlob, type Azienda, type Cartellino, type PresenzeMese } from "../api";
+import { Calculator, CalendarDays, CheckCircle2, Download, Pencil, Users, X } from "lucide-react";
+import {
+  api, scaricaBlob,
+  type Azienda, type Cartellino, type CausaleGiornata,
+  type GiornataCartellino, type PresenzeMese, type ProblemaCartellino,
+} from "../api";
 import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
 
 const oggi = new Date();
 const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const mesi = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
-type DatiCartellino = Omit<Cartellino, "anno" | "mese"> & {
+type DatiCartellino = Omit<Cartellino, "anno" | "mese" | "giornate"> & {
   oreStraordinarioNotturno: number; oreStraordinarioFestivo: number;
   giorniFerie: number; orePermessi: number; oreExFestivita: number;
   giorniMalattia: number; numeroEventoMalattiaAnno: number; giorniInfortunio: number;
@@ -75,6 +79,55 @@ function DirittiFeriePermessi({ riga, cartellino }: {
   );
 }
 
+// ---------- calendario giorno per giorno ----------
+
+const CAUSALI: { valore: CausaleGiornata; etichetta: string }[] = [
+  { valore: "Lavorata", etichetta: "Lavorata" },
+  { valore: "Ferie", etichetta: "Ferie" },
+  { valore: "Malattia", etichetta: "Malattia" },
+  { valore: "Infortunio", etichetta: "Infortunio" },
+  { valore: "PermessoRetribuito", etichetta: "Permesso ROL" },
+  { valore: "ExFestivita", etichetta: "Ex festività" },
+  { valore: "AssenzaNonRetribuita", etichetta: "Assenza non retribuita" },
+  { valore: "RiposoSettimanale", etichetta: "Riposo" },
+  { valore: "Festivita", etichetta: "Festività" },
+];
+
+/** Il campo ore che quella causale riempie; null = giornata intera, non si misura a ore. */
+function campoOre(causale: CausaleGiornata): keyof GiornataCartellino | null {
+  switch (causale) {
+    case "Lavorata": return "oreOrdinarie";
+    case "PermessoRetribuito": return "orePermessi";
+    case "ExFestivita": return "oreExFestivita";
+    case "AssenzaNonRetribuita": return "oreAssenzaNonRetribuita";
+    default: return null;
+  }
+}
+
+function giornataVuota(data: string, causale: CausaleGiornata, ore: number): GiornataCartellino {
+  const g: GiornataCartellino = {
+    data, causale,
+    oreOrdinarie: 0, orePermessi: 0, oreExFestivita: 0, oreAssenzaNonRetribuita: 0,
+    oreStraordinario: 0, oreStraordinarioNotturno: 0, oreStraordinarioFestivo: 0,
+  };
+  const campo = campoOre(causale);
+  return campo ? { ...g, [campo]: ore } : g;
+}
+
+/** Mese precompilato: feriali lavorati alle ore contrattuali, domeniche a riposo. */
+function calendarioIniziale(anno: number, mese: number, oreGiorno: number): GiornataCartellino[] {
+  const giorni = new Date(anno, mese, 0).getDate();
+  return Array.from({ length: giorni }, (_, i) => {
+    const data = new Date(anno, mese - 1, i + 1);
+    const iso = `${anno}-${String(mese).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`;
+    return data.getDay() === 0
+      ? giornataVuota(iso, "RiposoSettimanale", 0)
+      : giornataVuota(iso, "Lavorata", oreGiorno);
+  });
+}
+
+const GIORNI_SETTIMANA = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
+
 function descrizione(d: DatiCartellino) {
   const parti = [
     d.giorniFerie > 0 && `${d.giorniFerie} gg ferie`,
@@ -102,6 +155,10 @@ export function Presenze() {
   const [scaricando, setScaricando] = useState<string | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
   const [avviso, setAvviso] = useState<string | null>(null);
+  // Calendario giorno per giorno: presente solo per i dipendenti in cui è stato aperto.
+  const [calendari, setCalendari] = useState<Record<string, GiornataCartellino[]>>({});
+  const [problemi, setProblemi] = useState<Record<string, ProblemaCartellino[]>>({});
+  const [verificando, setVerificando] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -124,6 +181,10 @@ export function Presenze() {
     setBoard(b);
     setDati(Object.fromEntries(b.righe.map((r) => [r.rapportoId, dalRiepilogo(r)])));
     setConfermato(Object.fromEntries(b.righe.map((r) => [r.rapportoId, r.elaborato])));
+    // Il calendario riappare solo se era già stato compilato: chi lavora a totali non se lo trova.
+    setCalendari(Object.fromEntries(
+      b.righe.filter((r) => r.giornate.length > 0).map((r) => [r.rapportoId, r.giornate])));
+    setProblemi({});
   }, [azienda, anno, mese]);
 
   useEffect(() => {
@@ -141,6 +202,65 @@ export function Presenze() {
     setConfermato((correnti) => ({ ...correnti, [rapportoId]: false }));
   }
 
+  /** Il cartellino da mandare: col calendario aperto vincono le giornate, i totali li fa il server. */
+  function corpo(rapportoId: string): Cartellino {
+    const giornate = calendari[rapportoId];
+    const base = { anno, mese, ...(dati[rapportoId] ?? vuoto) };
+    return giornate ? { ...base, giornate } : base;
+  }
+
+  function apriCalendario(rapportoId: string, oreGiorno: number) {
+    setCalendari((c) => ({ ...c, [rapportoId]: calendarioIniziale(anno, mese, oreGiorno) }));
+    setConfermato((c) => ({ ...c, [rapportoId]: false }));
+  }
+
+  function chiudiCalendario(rapportoId: string) {
+    setCalendari(({ [rapportoId]: _tolto, ...resto }) => resto);
+    setProblemi(({ [rapportoId]: _via, ...resto }) => resto);
+  }
+
+  function aggiornaGiornata(rapportoId: string, indice: number, modifica: Partial<GiornataCartellino>) {
+    setCalendari((correnti) => {
+      const giornate = correnti[rapportoId];
+      if (!giornate) return correnti;
+      const nuove = giornate.map((g, i) => (i === indice ? { ...g, ...modifica } : g));
+      return { ...correnti, [rapportoId]: nuove };
+    });
+    setConfermato((c) => ({ ...c, [rapportoId]: false }));
+  }
+
+  /** Cambio causale: azzera le ore dell'altra causale, così non restano valori orfani. */
+  function cambiaCausale(
+    rapportoId: string, indice: number, causale: CausaleGiornata, oreGiorno: number,
+  ) {
+    const giornate = calendari[rapportoId];
+    if (!giornate) return;
+    const precedente = giornate[indice];
+    const ore = campoOre(causale)
+      ? (campoOre(precedente.causale) ? Number(precedente[campoOre(precedente.causale)!]) : oreGiorno)
+      : 0;
+    aggiornaGiornata(rapportoId, indice, {
+      ...giornataVuota(precedente.data, causale, ore),
+      // Gli straordinari sopravvivono al cambio causale: sono un dato a parte.
+      oreStraordinario: precedente.oreStraordinario,
+      oreStraordinarioNotturno: precedente.oreStraordinarioNotturno,
+      oreStraordinarioFestivo: precedente.oreStraordinarioFestivo,
+    });
+  }
+
+  async function verifica(rapportoId: string) {
+    setVerificando(rapportoId);
+    setErrore(null);
+    try {
+      const esito = await api.verificaCartellino(rapportoId, corpo(rapportoId));
+      setProblemi((p) => ({ ...p, [rapportoId]: esito.problemi }));
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Impossibile controllare il mese.");
+    } finally {
+      setVerificando(null);
+    }
+  }
+
   async function elabora(rapportoId: string) {
     if (!confermato[rapportoId]) {
       setErrore("Controlla tutti i dati del mese e conferma il cartellino prima di elaborare.");
@@ -152,14 +272,14 @@ export function Presenze() {
     try {
       let cedolino;
       try {
-        cedolino = await api.archiviaCedolino(rapportoId, { anno, mese, ...(dati[rapportoId] ?? vuoto) });
+        cedolino = await api.archiviaCedolino(rapportoId, corpo(rapportoId));
       } catch (e) {
         // Mese con F24 già inviato: il commercialista può correggere un errore
         // ricalcolando comunque, ma solo dopo conferma esplicita.
         const msg = e instanceof Error ? e.message : "";
         if (!msg.includes("ricalcolo forzato")) throw e;
         if (!confirm(`${msg}\n\nVuoi ricalcolare comunque questa busta paga?`)) return;
-        cedolino = await api.archiviaCedolino(rapportoId, { anno, mese, ...(dati[rapportoId] ?? vuoto) }, true);
+        cedolino = await api.archiviaCedolino(rapportoId, corpo(rapportoId), true);
         setAvviso("Busta paga ricalcolata su un mese con F24 già inviato: ricordati di rigenerare l'F24 del mese.");
       }
       // Avviso (non blocco): saldi ferie/permessi sotto zero dopo questo cedolino.
@@ -311,11 +431,130 @@ export function Presenze() {
                             {espanso && (
                               <tr className="presence-editor-row"><td colSpan={5}>
                                 <div className="presence-editor">
+                                  <div className="presence-section calendario-testa">
+                                    <h3>Come vuoi compilare il mese</h3>
+                                    <div className="actions-row">
+                                      <button
+                                        className={`mini-action icon-command${calendari[r.rapportoId] ? "" : " attivo"}`}
+                                        type="button"
+                                        onClick={() => chiudiCalendario(r.rapportoId)}
+                                      >
+                                        <Pencil size={14} /><span>A totali</span>
+                                      </button>
+                                      <button
+                                        className={`mini-action icon-command${calendari[r.rapportoId] ? " attivo" : ""}`}
+                                        type="button"
+                                        onClick={() => apriCalendario(r.rapportoId, r.oreGiornaliere)}
+                                      >
+                                        <CalendarDays size={14} /><span>Giorno per giorno</span>
+                                      </button>
+                                    </div>
+                                    <p className="muto">
+                                      {calendari[r.rapportoId]
+                                        ? "I totali del mese li ricava il programma dalle giornate: quello che scrivi qui sotto è ciò che finisce in busta, nel Libro Unico e nelle denunce."
+                                        : "Stai compilando i totali del mese. Il giorno per giorno serve per il Libro Unico, per la malattia nel nuovo UniEmens e per chi si paga a giornate."}
+                                    </p>
+                                  </div>
+
+                                  {calendari[r.rapportoId] ? (
+                                    <div className="presence-section">
+                                      <h3>Calendario di {mesi[mese]} {anno}</h3>
+                                      <div className="table-wrap calendario-mese">
+                                        <table className="data-table">
+                                          <thead><tr>
+                                            <th>Giorno</th><th>Che cosa è stato</th>
+                                            <th className="right">Ore</th><th className="right">Straordinario</th>
+                                          </tr></thead>
+                                          <tbody>
+                                            {calendari[r.rapportoId].map((g, i) => {
+                                              const data = new Date(g.data + "T00:00:00");
+                                              const festivo = data.getDay() === 0;
+                                              const campo = campoOre(g.causale);
+                                              return (
+                                                <tr key={g.data} className={festivo ? "giorno-riposo" : undefined}>
+                                                  <td>
+                                                    <strong>{data.getDate()}</strong>{" "}
+                                                    <span className="muto">{GIORNI_SETTIMANA[data.getDay()]}</span>
+                                                  </td>
+                                                  <td>
+                                                    <select
+                                                      value={g.causale}
+                                                      onChange={(e) => cambiaCausale(
+                                                        r.rapportoId, i,
+                                                        e.target.value as CausaleGiornata, r.oreGiornaliere)}
+                                                    >
+                                                      {CAUSALI.map((c) => (
+                                                        <option key={c.valore} value={c.valore}>{c.etichetta}</option>
+                                                      ))}
+                                                    </select>
+                                                  </td>
+                                                  <td className="right">
+                                                    {campo ? (
+                                                      <input
+                                                        type="number" min={0} step={0.5}
+                                                        value={Number(g[campo])}
+                                                        onChange={(e) => aggiornaGiornata(
+                                                          r.rapportoId, i,
+                                                          { [campo]: Math.max(0, Number(e.target.value)) })}
+                                                        onFocus={(e) => e.currentTarget.select()}
+                                                      />
+                                                    ) : <span className="muto">—</span>}
+                                                  </td>
+                                                  <td className="right">
+                                                    <input
+                                                      type="number" min={0} step={0.5}
+                                                      value={g.oreStraordinario}
+                                                      onChange={(e) => aggiornaGiornata(
+                                                        r.rapportoId, i,
+                                                        { oreStraordinario: Math.max(0, Number(e.target.value)) })}
+                                                      onFocus={(e) => e.currentTarget.select()}
+                                                    />
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                      {calendari[r.rapportoId].some((g) => g.causale === "Malattia") && (
+                                        <div className="presence-fields" style={{ marginTop: 10 }}>
+                                          {campo(r.rapportoId, "Evento di malattia nell'anno", "numeroEventoMalattiaAnno", "numero")}
+                                        </div>
+                                      )}
+                                      <div className="actions-row" style={{ marginTop: 10 }}>
+                                        <button
+                                          className="btn secondary" type="button"
+                                          disabled={verificando === r.rapportoId}
+                                          onClick={() => { void verifica(r.rapportoId); }}
+                                        >
+                                          {verificando === r.rapportoId ? "Controllo..." : "Controlla il mese"}
+                                        </button>
+                                      </div>
+                                      {problemi[r.rapportoId] && (
+                                        problemi[r.rapportoId].length === 0 ? (
+                                          <p><span className="status-pill green">Mese in ordine</span></p>
+                                        ) : (
+                                          <ul className="calendario-problemi">
+                                            {problemi[r.rapportoId].map((p, i) => (
+                                              <li key={i} className={p.bloccante ? "bloccante" : undefined}>
+                                                <span className={`status-pill ${p.bloccante ? "red" : "amber"}`}>
+                                                  {p.bloccante ? "Da correggere" : "Attenzione"}
+                                                </span>{" "}
+                                                {p.messaggio}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )
+                                      )}
+                                    </div>
+                                  ) : (
+                                  <>
                                   <div className="presence-section"><h3>Ferie e permessi retribuiti</h3><div className="presence-fields">
                                     {campo(r.rapportoId, "Ferie godute", "giorniFerie", "giorni")}
                                     {campo(r.rapportoId, "Permessi ROL", "orePermessi", "ore")}
                                     {campo(r.rapportoId, "Ex festivita", "oreExFestivita", "ore")}
                                   </div><DirittiFeriePermessi riga={r} cartellino={cartellino} /></div>
+                                  {/* segue: sezioni a totali, usate solo senza calendario */}
                                   <div className="presence-section"><h3>Malattia e infortunio</h3><div className="presence-fields">
                                     {campo(r.rapportoId, "Malattia", "giorniMalattia", "giorni")}
                                     {campo(r.rapportoId, "Evento nell'anno", "numeroEventoMalattiaAnno", "numero")}
@@ -327,6 +566,8 @@ export function Presenze() {
                                     {campo(r.rapportoId, "Straordinario notturno", "oreStraordinarioNotturno", "ore")}
                                     {campo(r.rapportoId, "Straordinario festivo", "oreStraordinarioFestivo", "ore")}
                                   </div></div>
+                                  </>
+                                  )}
                                   <div className="presence-confirm">
                                     <label><input type="checkbox" checked={Boolean(confermato[r.rapportoId])} onChange={(e) => setConfermato((c) => ({ ...c, [r.rapportoId]: e.target.checked }))} />
                                       <span>Ho controllato presenze, ferie, permessi, malattia, infortunio e assenze del mese.</span>

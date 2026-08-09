@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.Domain;
 
 namespace Paghe.Persistence;
 
@@ -23,7 +24,11 @@ public sealed record PresenzaRiga(
     decimal? FerieResidue,
     decimal? PermessiResidui,
     int? SaldiAnno,
-    int? SaldiMese);
+    int? SaldiMese,
+    /// <summary>Ore contrattuali della giornata piena: precompila il calendario giornaliero.</summary>
+    decimal OreGiornaliere,
+    /// <summary>Calendario già compilato per questo mese; vuoto = cartellino a totali.</summary>
+    IReadOnlyList<GiornataCartellino> Giornate);
 
 /// <summary>Cruscotto presenze/elaborazione di un mese per un'azienda.</summary>
 public sealed record PresenzeMese(
@@ -92,7 +97,12 @@ public sealed class PresenzeService
                     FerieResidue: precedente?.FerieResidue,
                     PermessiResidui: precedente?.PermessiResidui,
                     SaldiAnno: precedente?.Anno,
-                    SaldiMese: precedente?.Mese);
+                    SaldiMese: precedente?.Mese,
+                    // Cinque giorni a settimana: è l'orario più comune e serve solo a
+                    // precompilare la griglia, non a calcolare. L'utente può correggerlo giorno
+                    // per giorno, e con l'agricoltura (sei giorni) il valore arriverà dal CCNL.
+                    OreGiornaliere: Math.Round(r.OreSettimanali / 5m, 2),
+                    Giornate: cart?.Giornate ?? []);
             })
             .ToList();
 

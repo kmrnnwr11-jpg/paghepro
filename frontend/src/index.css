@@ -3800,6 +3800,63 @@ kbd {
   gap: 8px;
 }
 
+/* Calendario giorno per giorno: la scelta del modo e la griglia del mese. */
+.calendario-testa .actions-row {
+  gap: 8px;
+}
+
+.mini-action.attivo {
+  border-color: var(--blue);
+  color: var(--blue-strong);
+  background: rgba(14, 114, 104, 0.12);
+  font-weight: 750;
+}
+
+.calendario-mese {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.calendario-mese table {
+  font-size: 13px;
+}
+
+.calendario-mese td {
+  padding: 4px 10px;
+}
+
+.calendario-mese select,
+.calendario-mese input {
+  width: 100%;
+  min-height: 30px;
+  padding: 2px 8px;
+  font-size: 13px;
+}
+
+.calendario-mese input[type="number"] {
+  max-width: 90px;
+  text-align: right;
+}
+
+.calendario-mese .giorno-riposo {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.calendario-problemi {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.calendario-problemi li.bloccante {
+  font-weight: 650;
+}
+
 .presence-section h3 {
   margin: 0;
   color: var(--muted);

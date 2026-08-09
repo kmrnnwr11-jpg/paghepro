@@ -2278,6 +2278,58 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.ToTable("Rapporti");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.RegoleCcnlEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CcnlCodice")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("DivisoreGiornaliero")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("DivisoreOrario")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Fonte")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("GiorniFerieMese")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("MaggiorazioneStraordinario")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("MaggiorazioneStraordinarioFestivo")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("MaggiorazioneStraordinarioNotturno")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("OrePermessiMese")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CcnlCodice", "Anno")
+                        .IsUnique();
+
+                    b.ToTable("RegoleCcnl");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.RicevutaSdiEntity", b =>
                 {
                     b.Property<Guid>("Id")

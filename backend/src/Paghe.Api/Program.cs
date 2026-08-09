@@ -399,6 +399,10 @@ using (var scope = app.Services.CreateScope())
             // anche sui database già esistenti: upsert idempotente per (codice + anno).
             new CcnlImportService(db)
                 .ImportaAsync(CcnlDatasetUfficiale.Carica()).GetAwaiter().GetResult();
+
+            // Regole di calcolo per contratto (divisori e maggiorazioni dello straordinario):
+            // stesso dataset, stesso upsert. Senza, ogni CCNL userebbe quelle del Commercio.
+            RegoleCcnlDataset.ImportaAsync(db, RegoleCcnlDataset.Carica()).GetAwaiter().GetResult();
         }
     }
 }

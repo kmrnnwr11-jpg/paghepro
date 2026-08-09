@@ -43,9 +43,25 @@ public sealed class ParametriNormativi
     /// <summary>Divisore orario per il calcolo della paga oraria (es. 168).</summary>
     public decimal DivisoreOrario { get; init; } = 168m;
 
+    /// <summary>Divisore per la paga giornaliera quando il CCNL non ne indica uno suo.</summary>
+    public decimal DivisoreGiornaliero { get; init; } = 26m;
+
     public decimal MaggiorazioneStraordinario { get; init; } = 0.15m;
     public decimal MaggiorazioneStraordinarioNotturno { get; init; } = 0.50m;
     public decimal MaggiorazioneStraordinarioFestivo { get; init; } = 0.30m;
+
+    /// <summary>Giorni di ferie maturati al mese quando il CCNL non ha una regola sua.</summary>
+    public decimal GiorniFerieMese { get; init; } = 2.1667m;
+
+    /// <summary>Ore di permesso ROL maturate al mese quando il CCNL non ha una regola sua.</summary>
+    public decimal OrePermessiMese { get; init; } = 6.00m;
+
+    /// <summary>
+    /// Regole per CCNL, per codice contratto. Quando un contratto non c'è si usano i valori
+    /// generali qui sopra: meglio un default dichiarato che un numero nascosto nel motore.
+    /// </summary>
+    public IReadOnlyDictionary<string, RegoleCcnl> RegoleCcnl { get; init; }
+        = new Dictionary<string, RegoleCcnl>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Divisore per la quota annua di TFR (13,5).</summary>
     public decimal TfrDivisore { get; init; } = 13.5m;
@@ -92,6 +108,19 @@ public sealed class ParametriNormativi
         AliquoteInps.TryGetValue(qualifica, out var a)
             ? a
             : throw new ArgumentException($"Aliquota INPS non definita per la qualifica {qualifica}.");
+
+    /// <summary>
+    /// Regole del contratto indicato; se non ce ne sono, quelle generali dell'anno. Stesso
+    /// schema dei regimi addizionali: valore specifico se c'è, altrimenti il default.
+    /// </summary>
+    public RegoleCcnl Regole(string? codiceCcnl) =>
+        codiceCcnl is not null && RegoleCcnl.TryGetValue(codiceCcnl, out var r)
+            ? r
+            : new RegoleCcnl(
+                DivisoreOrario, DivisoreGiornaliero,
+                MaggiorazioneStraordinario, MaggiorazioneStraordinarioNotturno,
+                MaggiorazioneStraordinarioFestivo,
+                GiorniFerieMese, OrePermessiMese);
 
     /// <summary>Regime addizionale regionale (scaglioni MEF se disponibili, altrimenti aliquota piatta).</summary>
     public RegimeAddizionale RegimeRegionale(string regione) =>

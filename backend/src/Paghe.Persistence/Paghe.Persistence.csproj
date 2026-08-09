@@ -8,6 +8,10 @@
     <!-- Dataset ufficiale dei minimi CCNL (docs/dati, fonti CNEL): incorporato come risorsa
          e caricato all'avvio da CcnlDatasetUfficiale, sovrascrive i valori d'esempio del Seed. -->
     <EmbeddedResource Include="..\..\..\docs\dati\minimi-ccnl-*.json" Link="dati-ccnl\%(Filename)%(Extension)" />
+    <!-- Voci variabili (orario, divisori, maggiorazioni): stesse fonti, stesso trattamento.
+         Erano usate solo dai test, quindi in produzione ogni CCNL calcolava gli straordinari
+         con le percentuali del Commercio. -->
+    <EmbeddedResource Include="..\..\..\docs\dati\voci-variabili-ccnl-*.json" Link="dati-ccnl\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

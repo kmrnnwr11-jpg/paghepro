@@ -16,11 +16,15 @@ public sealed class MotoreCalcoloCedolino
 {
     private readonly ParametriNormativi _parametri;
     private readonly Ccnl _ccnl;
+    private readonly RegoleCcnl _regole;
 
     public MotoreCalcoloCedolino(ParametriNormativi parametri, Ccnl ccnl)
     {
         _parametri = parametri;
         _ccnl = ccnl;
+        // Divisori, maggiorazioni e maturazioni cambiano da contratto a contratto: si leggono
+        // una volta qui. Se il CCNL non ha regole proprie valgono quelle generali dell'anno.
+        _regole = parametri.Regole(ccnl.Codice);
     }
 
     public Cedolino Calcola(RapportoLavoro rapporto, Cartellino cartellino)
@@ -41,8 +45,9 @@ public sealed class MotoreCalcoloCedolino
         // Paga oraria e giornaliera (su base full-time/part-time) per straordinari, permessi e assenze.
         decimal retribuzioneMensileFullTime = minimo + edr + scatti + superminimo;
         decimal retribuzioneMensileEffettiva = Arrotondamento.Euro(retribuzioneMensileFullTime * coeffPt);
-        decimal pagaOraria = retribuzioneMensileFullTime / _parametri.DivisoreOrario;
-        decimal pagaGiornaliera = Arrotondamento.Euro(retribuzioneMensileEffettiva / 26m);
+        decimal pagaOraria = retribuzioneMensileFullTime / _regole.DivisoreOrario;
+        decimal pagaGiornaliera = Arrotondamento.Euro(
+            retribuzioneMensileEffettiva / _regole.DivisoreGiornaliero);
         // RMG per indennità INPS (comprensiva dei ratei 13a e 14a su base 30esimi)
         decimal rmgInps = Arrotondamento.Euro((retribuzioneMensileEffettiva * (rapporto.NumeroMensilita / 12m)) / 30m);
 
@@ -79,11 +84,11 @@ public sealed class MotoreCalcoloCedolino
 
         // Straordinari
         AggiungiStraordinario(cedolino, "STRAORD", "Lavoro straordinario",
-            cartellino.OreStraordinario, pagaOraria, _parametri.MaggiorazioneStraordinario);
+            cartellino.OreStraordinario, pagaOraria, _regole.MaggiorazioneStraordinario);
         AggiungiStraordinario(cedolino, "STRAORD_NOTT", "Straordinario notturno",
-            cartellino.OreStraordinarioNotturno, pagaOraria, _parametri.MaggiorazioneStraordinarioNotturno);
+            cartellino.OreStraordinarioNotturno, pagaOraria, _regole.MaggiorazioneStraordinarioNotturno);
         AggiungiStraordinario(cedolino, "STRAORD_FEST", "Straordinario festivo",
-            cartellino.OreStraordinarioFestivo, pagaOraria, _parametri.MaggiorazioneStraordinarioFestivo);
+            cartellino.OreStraordinarioFestivo, pagaOraria, _regole.MaggiorazioneStraordinarioFestivo);
 
         // Malattia INPS + Integrazione Datore
         if (cartellino.GiorniMalattia > 0m)
@@ -214,17 +219,17 @@ public sealed class MotoreCalcoloCedolino
         cedolino.QuotaTfr = quotaTfr;
         cedolino.CostoAzienda = Arrotondamento.Euro(totaleCompetenze + contributiDatore + quotaTfr);
 
-        // Saldi Ferie (es. 2.1667 gg/mese per CCNL Commercio full-time).
+        // Saldi Ferie: quanti giorni al mese lo dice il contratto (regole del CCNL).
         // Il residuo può andare sotto zero (ferie anticipate): è un'informazione vera,
         // usata anche dall'avviso in pagina Presenze.
-        decimal ferieMaturate = Arrotondamento.Euro(2.1667m * cartellino.Mese * coeffPt);
+        decimal ferieMaturate = Arrotondamento.Euro(_regole.GiorniFerieMese * cartellino.Mese * coeffPt);
         decimal ferieGodute = cartellino.GiorniFerie;
         cedolino.FerieMaturate = ferieMaturate;
         cedolino.FerieGodute = ferieGodute;
         cedolino.FerieResidue = ferieMaturate - ferieGodute;
 
-        // Saldi Permessi ROL/Ex-Festività (es. 6 ore/mese per CCNL Commercio full-time)
-        decimal permessiMaturati = Arrotondamento.Euro(6.00m * cartellino.Mese * coeffPt);
+        // Saldi Permessi ROL/Ex-Festività: le ore al mese le dice il contratto.
+        decimal permessiMaturati = Arrotondamento.Euro(_regole.OrePermessiMese * cartellino.Mese * coeffPt);
         decimal permessiGoduti = orePermessiTot;
         cedolino.PermessiMaturati = permessiMaturati;
         cedolino.PermessiGoduti = permessiGoduti;

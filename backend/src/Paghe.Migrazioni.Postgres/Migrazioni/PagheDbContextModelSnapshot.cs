@@ -2285,6 +2285,58 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.ToTable("Rapporti");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.RegoleCcnlEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CcnlCodice")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("DivisoreGiornaliero")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("numeric(8,2)");
+
+                    b.Property<decimal>("DivisoreOrario")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("numeric(8,2)");
+
+                    b.Property<string>("Fonte")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("GiorniFerieMese")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("numeric(8,4)");
+
+                    b.Property<decimal>("MaggiorazioneStraordinario")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("numeric(6,4)");
+
+                    b.Property<decimal>("MaggiorazioneStraordinarioFestivo")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("numeric(6,4)");
+
+                    b.Property<decimal>("MaggiorazioneStraordinarioNotturno")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("numeric(6,4)");
+
+                    b.Property<decimal?>("OrePermessiMese")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("numeric(8,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CcnlCodice", "Anno")
+                        .IsUnique();
+
+                    b.ToTable("RegoleCcnl");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.RicevutaSdiEntity", b =>
                 {
                     b.Property<Guid>("Id")

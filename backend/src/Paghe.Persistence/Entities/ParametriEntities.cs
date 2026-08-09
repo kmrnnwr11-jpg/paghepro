@@ -78,6 +78,32 @@ public class CcnlEntity
     public string Descrizione { get; set; } = "";
 }
 
+/// <summary>
+/// Regole di calcolo di un CCNL per un anno: divisori, maggiorazioni dello straordinario e
+/// maturazione di ferie e permessi. Le colonne facoltative restano nulle quando il dato del
+/// contratto non lo abbiamo: in quel caso vale il default generale dell'anno, dichiarato in
+/// ParametriNormativi, invece di un numero inventato.
+/// </summary>
+public class RegoleCcnlEntity
+{
+    public Guid Id { get; set; }
+    public string CcnlCodice { get; set; } = "";
+    public int Anno { get; set; }
+
+    public decimal DivisoreOrario { get; set; }
+    public decimal? DivisoreGiornaliero { get; set; }
+
+    public decimal MaggiorazioneStraordinario { get; set; }
+    public decimal MaggiorazioneStraordinarioNotturno { get; set; }
+    public decimal MaggiorazioneStraordinarioFestivo { get; set; }
+
+    public decimal? GiorniFerieMese { get; set; }
+    public decimal? OrePermessiMese { get; set; }
+
+    /// <summary>Da dove vengono i numeri (accordo CNEL, tabella…): serve a chi li rivede.</summary>
+    public string? Fonte { get; set; }
+}
+
 /// <summary>Livello di un CCNL con i minimi, versionato per anno.</summary>
 public class CcnlLivelloEntity
 {

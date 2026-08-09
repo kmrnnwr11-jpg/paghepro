@@ -104,6 +104,8 @@ public sealed class ParametriNormativiService
         // prevalgono sull'aliquota piatta di DB, che resta come fallback.
         var regimiMef = CaricaRegimiMef.PerAnno(anno);
 
+        var regoleCcnl = await _db.RegoleCcnl.Where(x => x.Anno == anno).ToListAsync(ct);
+
         // Valori di riferimento delle soglie agevolate, usati quando la riga dell'anno
         // non le contiene ancora.
         var predefiniti = new ParametriNormativi
@@ -133,6 +135,20 @@ public sealed class ParametriNormativiService
             MaggiorazioneStraordinario = pa.MaggiorazioneStraordinario,
             MaggiorazioneStraordinarioNotturno = pa.MaggiorazioneStraordinarioNotturno,
             MaggiorazioneStraordinarioFestivo = pa.MaggiorazioneStraordinarioFestivo,
+
+            // Regole per contratto: dove il dato del CCNL manca vale il default dell'anno,
+            // così un contratto senza tabella non prende di nascosto quelle del Commercio.
+            RegoleCcnl = regoleCcnl.ToDictionary(
+                r => r.CcnlCodice,
+                r => new RegoleCcnl(
+                    r.DivisoreOrario,
+                    r.DivisoreGiornaliero ?? predefiniti.DivisoreGiornaliero,
+                    r.MaggiorazioneStraordinario,
+                    r.MaggiorazioneStraordinarioNotturno,
+                    r.MaggiorazioneStraordinarioFestivo,
+                    r.GiorniFerieMese ?? predefiniti.GiorniFerieMese,
+                    r.OrePermessiMese ?? predefiniti.OrePermessiMese),
+                StringComparer.OrdinalIgnoreCase),
             TfrDivisore = pa.TfrDivisore,
             TfrContributoFondo = pa.TfrContributoFondo,
             TfrVariazioneIstat = pa.VariazioneIstatTfr,

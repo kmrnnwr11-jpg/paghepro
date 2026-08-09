@@ -38,6 +38,7 @@ public class PagheDbContext : DbContext
     public DbSet<AddizionaleComunaleEntity> AddizionaliComunali => Set<AddizionaleComunaleEntity>();
     public DbSet<CcnlEntity> Ccnl => Set<CcnlEntity>();
     public DbSet<CcnlLivelloEntity> CcnlLivelli => Set<CcnlLivelloEntity>();
+    public DbSet<RegoleCcnlEntity> RegoleCcnl => Set<RegoleCcnlEntity>();
 
     // Autenticazione
     public DbSet<TenantEntity> Tenants => Set<TenantEntity>();
@@ -286,6 +287,19 @@ public class PagheDbContext : DbContext
             e.Property(x => x.MinimoTabellare).HasPrecision(15, 2);
             e.Property(x => x.Edr).HasPrecision(15, 2);
             e.Property(x => x.ImportoScatto).HasPrecision(15, 2);
+        });
+        mb.Entity<RegoleCcnlEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.CcnlCodice, x.Anno }).IsUnique();
+            e.Property(x => x.DivisoreOrario).HasPrecision(8, 2);
+            e.Property(x => x.DivisoreGiornaliero).HasPrecision(8, 2);
+            e.Property(x => x.GiorniFerieMese).HasPrecision(8, 4);
+            e.Property(x => x.OrePermessiMese).HasPrecision(8, 2);
+            foreach (var p in new[] { nameof(RegoleCcnlEntity.MaggiorazioneStraordinario),
+                nameof(RegoleCcnlEntity.MaggiorazioneStraordinarioNotturno),
+                nameof(RegoleCcnlEntity.MaggiorazioneStraordinarioFestivo) })
+                e.Property(p).HasPrecision(6, 4);
         });
 
         // --- Autenticazione ---

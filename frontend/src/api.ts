@@ -183,6 +183,8 @@ export interface Azienda {
   oltreQuindiciDipendenti?: boolean;
   /** Fondi di settore a carico del dipendente, come frazione (0,002667 = 0,2667%). */
   contributiFondiSettore?: number;
+  /** Firma, sigla o timbro autentico caricato e cifrato; l'immagine grezza non viene esposta. */
+  haFirmaSiglaTimbro?: boolean;
 }
 export interface NuovaAzienda {
   ragioneSociale: string; partitaIva?: string; codiceFiscale?: string; indirizzo: string;
@@ -210,6 +212,8 @@ export interface Cartellino {
   giorniFerie?: number; orePermessi?: number; oreExFestivita?: number;
   giorniMalattia?: number; numeroEventoMalattiaAnno?: number; giorniInfortunio?: number;
   oreAssenzaNonRetribuita?: number;
+  statoAssegniFamiliari?: "DaVerificare" | "NonSpettanti" | "Spettanti";
+  importoAssegniFamiliari?: number;
   /** Calendario giorno per giorno: quando c'è, il server ne ricava i totali e ignora quelli qui sopra. */
   giornate?: GiornataCartellino[];
 }
@@ -224,6 +228,15 @@ export interface CedolinoArchiviato {
   imponibileIrpef?: number; irpefNetta?: number;
   conguaglioIrpef?: number;
   ferieResidue?: number; permessiResidui?: number;
+  stato: StatoCedolino; versione: number; codiceCnel?: string | null;
+}
+export type StatoCedolino = "PreWorkflow" | "Bozza" | "Controllata" | "Validata" | "Chiusa";
+export interface StatoWorkflowCedolino {
+  id: string; stato: StatoCedolino; versione: number;
+  controllatoIl?: string | null; controllatoDa?: string | null;
+  validatoIl?: string | null; validatoDa?: string | null;
+  chiusoIl?: string | null; chiusoDa?: string | null;
+  codiceCnel?: string | null; hashSnapshot?: string | null; hashPdf?: string | null;
 }
 export interface ConguaglioAnnuale {
   irpefLordaAnnua: number; detrazioniSpettanti: number; irpefNettaAnnua: number;
@@ -278,6 +291,8 @@ export interface PresenzaRiga {
   giorniFerie: number; orePermessi: number; oreExFestivita: number;
   giorniMalattia: number; numeroEventoMalattiaAnno: number; giorniInfortunio: number;
   oreAssenzaNonRetribuita: number; elaborato: boolean; netto: number;
+  statoAssegniFamiliari: "DaVerificare" | "NonSpettanti" | "Spettanti";
+  importoAssegniFamiliari: number;
   // Saldi dall'ultimo cedolino elaborato prima del mese (null senza storico).
   ferieResidue?: number | null; permessiResidui?: number | null;
   saldiAnno?: number | null; saldiMese?: number | null;
@@ -325,6 +340,7 @@ export interface RapportoDettaglio {
   codiceCcnl: string; livello: string; qualifica: string;
   numeroMensilita: number; partTime: boolean; percentualePartTime: number;
   scattiAnzianita: number; superminimo: number; regione: string; dataAssunzione: string;
+  ferieResidueIniziali: number; permessiResiduiIniziali: number;
   dataCessazione?: string | null;
 }
 /** Campi correggibili della scheda dipendente: solo quelli presenti vengono cambiati. */
@@ -335,6 +351,7 @@ export interface CorrezioneRapporto {
   scattiAnzianita?: number; superminimo?: number;
   regione?: string; codiceCatastaleComune?: string; dataAssunzione?: string;
   fondoTfrIniziale?: number;
+  ferieResidueIniziali?: number; permessiResiduiIniziali?: number;
   dataCessazione?: string; rimuoviDataCessazione?: boolean;
 }
 export interface Fattura {
@@ -573,6 +590,21 @@ export const api = {
     return URL.createObjectURL(await res.blob());
   },
   rimuoviLogoAzienda: (id: string) => req<void>(`/api/aziende/${id}/logo`, { method: "DELETE" }),
+  // Immagine autentica del datore: cifrata, admin-only e mai scaricabile come file grezzo.
+  caricaFirmaTimbroAzienda: async (id: string, file: File): Promise<void> => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetchAutenticata(`/api/aziende/${id}/firma-timbro`, { method: "POST", body: form, headers });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error((e as { errore?: string }).errore ?? `Errore ${res.status}`);
+    }
+  },
+  rimuoviFirmaTimbroAzienda: (id: string) =>
+    req<void>(`/api/aziende/${id}/firma-timbro`, { method: "DELETE" }),
   // Certificazione Unica (CU) di un dipendente per anno: PDF sul modello ufficiale AdE.
   certificazioneUnicaPdf: async (rapportoId: string, anno: number): Promise<{ blob: Blob; filename: string }> => {
     const token = getToken();
@@ -599,6 +631,21 @@ export const api = {
   // Cedolini archiviati per dipendente (rapporto): alimentano CU e 770.
   cedoliniArchiviati: (rapportoId: string) =>
     req<CedolinoArchiviato[]>(`/api/rapporti/${rapportoId}/cedolini`),
+  statoCedolino: (id: string) =>
+    req<StatoWorkflowCedolino>(`/api/cedolini/${id}/stato`),
+  controllaCedolino: (id: string, versioneAttesa: number) =>
+    req<StatoWorkflowCedolino>(`/api/cedolini/${id}/controlla`, {
+      method: "POST", body: JSON.stringify({ versioneAttesa }),
+    }),
+  validaCedolino: (id: string, dati: {
+    versioneAttesa: number; nominativo: string; qualifica: string; riferimento: string;
+  }) => req<StatoWorkflowCedolino>(`/api/cedolini/${id}/valida`, {
+    method: "POST", body: JSON.stringify(dati),
+  }),
+  chiudiCedolino: (id: string, versioneAttesa: number) =>
+    req<StatoWorkflowCedolino>(`/api/cedolini/${id}/chiudi`, {
+      method: "POST", body: JSON.stringify({ versioneAttesa }),
+    }),
   // forza=true: ricalcolo confermato di un mese con F24 già inviato (correzione errore).
   archiviaCedolino: (rapportoId: string, cartellino: Cartellino, forza = false) =>
     req<CedolinoArchiviato>(`/api/rapporti/${rapportoId}/cedolini${forza ? "?forza=true" : ""}`, {
@@ -611,7 +658,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(cartellino),
     }),
-  // Scarica il PDF di un cedolino archiviato (rigenerato dal backend).
+  // PreWorkflow = ricostruzione storica non validata; Bozza/Controllata/Validata = anteprima;
+  // Chiusa = byte immutabili archiviati.
   cedolinoPdf: async (id: string): Promise<{ blob: Blob; filename: string }> => {
     const token = getToken();
     const headers: Record<string, string> = {};
@@ -1345,6 +1393,7 @@ export interface CreaDipendente {
   dataAssunzione?: string; tipoContratto?: string; oreSettimanali?: number;
   numeroMensilita?: number; partTime?: boolean; percentualePartTime?: number;
   scattiAnzianita?: number; superminimo?: number;
+  ferieResidueIniziali?: number; permessiResiduiIniziali?: number;
 }
 
 /** Un dato che manca (o va confermato) dopo l'import, con dove completarlo e dove trovarlo. */

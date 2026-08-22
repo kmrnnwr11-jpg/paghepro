@@ -16,6 +16,8 @@ type DatiCartellino = Omit<Cartellino, "anno" | "mese" | "giornate"> & {
   giorniFerie: number; orePermessi: number; oreExFestivita: number;
   giorniMalattia: number; numeroEventoMalattiaAnno: number; giorniInfortunio: number;
   oreAssenzaNonRetribuita: number;
+  statoAssegniFamiliari: "DaVerificare" | "NonSpettanti" | "Spettanti";
+  importoAssegniFamiliari: number;
 };
 
 const vuoto: DatiCartellino = {
@@ -23,6 +25,7 @@ const vuoto: DatiCartellino = {
   giorniFerie: 0, orePermessi: 0, oreExFestivita: 0,
   giorniMalattia: 0, numeroEventoMalattiaAnno: 1, giorniInfortunio: 0,
   oreAssenzaNonRetribuita: 0,
+  statoAssegniFamiliari: "DaVerificare", importoAssegniFamiliari: 0,
 };
 
 function dalRiepilogo(r: PresenzeMese["righe"][number]): DatiCartellino {
@@ -37,6 +40,8 @@ function dalRiepilogo(r: PresenzeMese["righe"][number]): DatiCartellino {
     numeroEventoMalattiaAnno: r.numeroEventoMalattiaAnno,
     giorniInfortunio: r.giorniInfortunio,
     oreAssenzaNonRetribuita: r.oreAssenzaNonRetribuita,
+    statoAssegniFamiliari: r.statoAssegniFamiliari,
+    importoAssegniFamiliari: r.importoAssegniFamiliari,
   };
 }
 
@@ -198,6 +203,23 @@ export function Presenze() {
     setDati((correnti) => ({
       ...correnti,
       [rapportoId]: { ...(correnti[rapportoId] ?? vuoto), [chiave]: valore },
+    }));
+    setConfermato((correnti) => ({ ...correnti, [rapportoId]: false }));
+  }
+
+  function aggiornaAnf(
+    rapportoId: string,
+    stato: "DaVerificare" | "NonSpettanti" | "Spettanti",
+  ) {
+    setDati((correnti) => ({
+      ...correnti,
+      [rapportoId]: {
+        ...(correnti[rapportoId] ?? vuoto),
+        statoAssegniFamiliari: stato,
+        importoAssegniFamiliari: stato === "Spettanti"
+          ? (correnti[rapportoId]?.importoAssegniFamiliari ?? 0)
+          : 0,
+      },
     }));
     setConfermato((correnti) => ({ ...correnti, [rapportoId]: false }));
   }
@@ -568,11 +590,47 @@ export function Presenze() {
                                   </div></div>
                                   </>
                                   )}
+                                  <div className="presence-section">
+                                    <h3>Assegni familiari (ANF)</h3>
+                                    <p className="muto">Indica sempre l’esito del mese. Se spettano, scrivi l’importo: il PDF finale non accetta un dato sconosciuto.</p>
+                                    <div className="presence-fields">
+                                      <label>
+                                        <span>Esito verifica</span>
+                                        <select value={cartellino.statoAssegniFamiliari}
+                                          onChange={(e) => aggiornaAnf(
+                                            r.rapportoId,
+                                            e.target.value as "DaVerificare" | "NonSpettanti" | "Spettanti")}>
+                                          <option value="DaVerificare">Da verificare</option>
+                                          <option value="NonSpettanti">Non spettanti</option>
+                                          <option value="Spettanti">Spettanti</option>
+                                        </select>
+                                      </label>
+                                      {cartellino.statoAssegniFamiliari === "Spettanti" && (
+                                        <label>
+                                          <span>Importo ANF del mese</span>
+                                          <div className="presence-number">
+                                            <input type="number" min={0.01} step={0.01}
+                                              value={cartellino.importoAssegniFamiliari}
+                                              onChange={(e) => aggiorna(
+                                                r.rapportoId, "importoAssegniFamiliari",
+                                                Math.max(0, Number(e.target.value)))} />
+                                            <span>EUR</span>
+                                          </div>
+                                        </label>
+                                      )}
+                                    </div>
+                                  </div>
                                   <div className="presence-confirm">
                                     <label><input type="checkbox" checked={Boolean(confermato[r.rapportoId])} onChange={(e) => setConfermato((c) => ({ ...c, [r.rapportoId]: e.target.checked }))} />
                                       <span>Ho controllato presenze, ferie, permessi, malattia, infortunio e assenze del mese.</span>
                                     </label>
-                                    <button className="btn primary" type="button" disabled={!confermato[r.rapportoId] || elaborando === r.rapportoId} onClick={() => elabora(r.rapportoId)}>
+                                    <button className="btn primary" type="button"
+                                      disabled={!confermato[r.rapportoId]
+                                        || cartellino.statoAssegniFamiliari === "DaVerificare"
+                                        || (cartellino.statoAssegniFamiliari === "Spettanti"
+                                          && cartellino.importoAssegniFamiliari <= 0)
+                                        || elaborando === r.rapportoId}
+                                      onClick={() => elabora(r.rapportoId)}>
                                       <Calculator size={16} /> {elaborando === r.rapportoId ? "Elaborazione..." : r.elaborato ? "Ricalcola cedolino" : "Genera cedolino"}
                                     </button>
                                   </div>

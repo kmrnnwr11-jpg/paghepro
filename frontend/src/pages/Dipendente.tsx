@@ -1,6 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ArrowLeft, BriefcaseBusiness, Check, CircleUserRound, FileText, Pencil, ReceiptText, Save, X } from "lucide-react";
-import { api, type CedolinoArchiviato, type RapportoDettaglio } from "../api";
+import { api, scaricaBlob, type CedolinoArchiviato, type RapportoDettaglio } from "../api";
+import {
+  alimentaAdempimenti,
+  documentoDefinitivo,
+  etichettaDownloadCedolino,
+  etichettaStatoCedolino,
+  statoEffettivo,
+} from "../cedolinoStati";
 
 type Tab = "anagrafica" | "rapporto" | "storico";
 
@@ -24,6 +31,7 @@ export function Dipendente({ rapportoId, onPayslip, onBack }: { rapportoId: stri
   const [errore, setErrore] = useState<string | null>(null);
   const [caricamento, setCaricamento] = useState(true);
   const [inModifica, setInModifica] = useState(false);
+  const [scaricandoId, setScaricandoId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!rapportoId) { setCaricamento(false); return; }
@@ -63,10 +71,26 @@ export function Dipendente({ rapportoId, onPayslip, onBack }: { rapportoId: stri
     ["Part-time", d.partTime ? `Sì · ${d.percentualePartTime}%` : "No · 100%"],
     ["Scatti anzianità", String(d.scattiAnzianita)],
     ["Superminimo", `${euro(d.superminimo)} €`],
+    ["Ferie riportate al 1° gennaio", `${d.ferieResidueIniziali.toLocaleString("it-IT")} giorni`],
+    ["ROL/ex festività riportati al 1° gennaio", `${d.permessiResiduiIniziali.toLocaleString("it-IT")} ore`],
     ["Regione", d.regione || "—"],
     ["Data assunzione", d.dataAssunzione],
     ["Data cessazione", d.dataCessazione ?? "In forza"],
   ];
+  // Lo storico espone i chiusi e gli archivi pre-workflow, distinguendoli. Una bozza resta
+  // nell'area di lavorazione e lo storico precedente non deve sembrare validato a posteriori.
+  const cedoliniStorico = cedolini.filter((c) => alimentaAdempimenti(statoEffettivo(c)));
+  const cessato = Boolean(d.dataCessazione);
+
+  async function scaricaCedolino(id: string) {
+    setErrore(null); setScaricandoId(id);
+    try {
+      const { blob, filename } = await api.cedolinoPdf(id);
+      await scaricaBlob(blob, filename);
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Non riesco a scaricare il cedolino.");
+    } finally { setScaricandoId(null); }
+  }
 
   return (
     <div className="detail-layout employee-detail-layout">
@@ -76,8 +100,9 @@ export function Dipendente({ rapportoId, onPayslip, onBack }: { rapportoId: stri
         <div className="emp-id">
           <div className="emp-id-top">
             <h1>{d.cognome} {d.nome}</h1>
-            <span className={`status-pill ${d.anonimizzato ? "slate" : "green"}`}>
-              {!d.anonimizzato && <Check size={12} aria-hidden="true" />}{d.anonimizzato ? "Anonimizzato" : "In forza"}
+            <span className={`status-pill ${d.anonimizzato || cessato ? "slate" : "green"}`}>
+              {!d.anonimizzato && !cessato && <Check size={12} aria-hidden="true" />}
+              {d.anonimizzato ? "Anonimizzato" : cessato ? "Rapporto cessato" : "In forza"}
             </span>
           </div>
           <div className="emp-id-meta">
@@ -132,10 +157,16 @@ export function Dipendente({ rapportoId, onPayslip, onBack }: { rapportoId: stri
           )}
 
           {tab === "storico" && (
-            cedolini.length === 0 ? (
-              <div className="employee-empty"><FileText size={28} /><strong>Nessun cedolino archiviato</strong><p>Il primo documento comparirà dopo l’elaborazione mensile.</p><button className="btn primary" type="button" onClick={onPayslip}>Apri Cedolini</button></div>
+            cedoliniStorico.length === 0 ? (
+              <div className="employee-empty"><FileText size={28} /><strong>Nessun cedolino nello storico</strong><p>Qui l’ufficio vede i documenti chiusi dal nuovo workflow e gli eventuali archivi precedenti, sempre indicati separatamente.</p><button className="btn primary" type="button" onClick={onPayslip}>Apri lavorazione Cedolini</button></div>
             ) : (
-              <div className="table-wrap">
+              <div>
+                <p style={{ fontSize: 12, opacity: 0.72, margin: "0 0 10px" }}>
+                  Archivio interno dell’ufficio. “Chiuso” significa immutabile; “pre-workflow”
+                  identifica una ricostruzione storica non definitiva, né validata retroattivamente. Consegna e presa
+                  visione del lavoratore non sono automatiche.
+                </p>
+                <div className="table-wrap">
                 <table className="data-table spacious">
                   <thead>
                     <tr>
@@ -143,23 +174,36 @@ export function Dipendente({ rapportoId, onPayslip, onBack }: { rapportoId: stri
                       <th className="right">Imponibile IRPEF</th>
                       <th className="right">Ritenute IRPEF</th>
                       <th className="right">Netto</th>
+                      <th>Stato</th>
                       <th className="right">Azioni</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {[...cedolini].sort((a, b) => b.anno - a.anno || b.mese - a.mese).map((c) => (
-                      <tr key={c.id}>
-                        <td><strong>{mesi[c.mese]} {c.anno}</strong></td>
-                        <td className="right num">{c.imponibileIrpef != null ? `${euro(c.imponibileIrpef)} €` : "—"}</td>
-                        <td className="right num">{c.irpefNetta != null ? `${euro(c.irpefNetta)} €` : "—"}</td>
-                        <td className="right num"><strong>{euro(c.nettoInBusta)} €</strong></td>
-                        <td className="right">
-                          <button className="mini-action" type="button" onClick={onPayslip}>Apri</button>
-                        </td>
-                      </tr>
-                    ))}
+                    {[...cedoliniStorico].sort((a, b) => b.anno - a.anno || b.mese - a.mese).map((c) => {
+                      const stato = statoEffettivo(c);
+                      return (
+                        <tr key={c.id}>
+                          <td><strong>{mesi[c.mese]} {c.anno}</strong></td>
+                          <td className="right num">{c.imponibileIrpef != null ? `${euro(c.imponibileIrpef)} €` : "—"}</td>
+                          <td className="right num">{c.irpefNetta != null ? `${euro(c.irpefNetta)} €` : "—"}</td>
+                          <td className="right num"><strong>{euro(c.nettoInBusta)} €</strong></td>
+                          <td>
+                            <span className={`status-pill ${documentoDefinitivo(stato) ? "green" : "slate"}`}>
+                              {etichettaStatoCedolino[stato]}
+                            </span>
+                          </td>
+                          <td className="right">
+                            <button className="mini-action" type="button" disabled={scaricandoId === c.id}
+                              onClick={() => void scaricaCedolino(c.id)}>
+                              {scaricandoId === c.id ? "Download…" : etichettaDownloadCedolino(stato)}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+                </div>
               </div>
             )
           )}
@@ -186,6 +230,8 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
     numeroMensilita: String(d.numeroMensilita),
     percentualePartTime: String(d.partTime ? d.percentualePartTime : 100),
     scattiAnzianita: String(d.scattiAnzianita), superminimo: String(d.superminimo),
+    ferieResidueIniziali: String(d.ferieResidueIniziali),
+    permessiResiduiIniziali: String(d.permessiResiduiIniziali),
     dataAssunzione: dataIso(d.dataAssunzione),
     dataCessazione: d.dataCessazione ? dataIso(d.dataCessazione) : "",
   });
@@ -209,6 +255,8 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
         partTime: pct < 100, percentualePartTime: pct,
         scattiAnzianita: Number(f.scattiAnzianita) || 0,
         superminimo: Number(f.superminimo) || 0,
+        ferieResidueIniziali: Number(f.ferieResidueIniziali) || 0,
+        permessiResiduiIniziali: Number(f.permessiResiduiIniziali) || 0,
         dataAssunzione: f.dataAssunzione || undefined,
         dataCessazione: f.dataCessazione || undefined,
         rimuoviDataCessazione: f.dataCessazione ? undefined : true,
@@ -254,6 +302,10 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
           <input type="number" min={1} max={100} value={f.percentualePartTime} onChange={set("percentualePartTime")} /></label>
         <label><span>Scatti anzianità</span><input type="number" min={0} value={f.scattiAnzianita} onChange={set("scattiAnzianita")} /></label>
         <label><span>Superminimo €</span><input type="number" min={0} step="0.01" value={f.superminimo} onChange={set("superminimo")} /></label>
+        <label><span>Ferie riportate al 1° gennaio <small>(giorni)</small></span>
+          <input type="number" step="0.01" value={f.ferieResidueIniziali} onChange={set("ferieResidueIniziali")} /></label>
+        <label><span>ROL/ex festività riportati al 1° gennaio <small>(ore)</small></span>
+          <input type="number" step="0.01" value={f.permessiResiduiIniziali} onChange={set("permessiResiduiIniziali")} /></label>
         <label><span>Data assunzione</span><input type="date" value={f.dataAssunzione} onChange={set("dataAssunzione")} /></label>
         <label><span>Data cessazione <small>(vuoto = ancora in forza)</small></span>
           <input type="date" value={f.dataCessazione} onChange={set("dataCessazione")} /></label>

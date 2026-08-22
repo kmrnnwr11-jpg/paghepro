@@ -55,6 +55,7 @@ const formVuoto = {
   regione: "", codiceCatastaleComune: "", comuneNome: "",
   dataAssunzione: oggiIso, tipoContratto: "Tempo indeterminato", oreSettimanali: "40",
   numeroMensilita: "14", percentualePartTime: "100", scattiAnzianita: "0", superminimo: "0",
+  ferieResidueIniziali: "0", permessiResiduiIniziali: "0",
 };
 
 export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void }) {
@@ -153,6 +154,8 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
         percentualePartTime: partTime ? Number(form.percentualePartTime) || 100 : 100,
         scattiAnzianita: Number(form.scattiAnzianita) || 0,
         superminimo: Number(form.superminimo) || 0,
+        ferieResidueIniziali: Number(form.ferieResidueIniziali) || 0,
+        permessiResiduiIniziali: Number(form.permessiResiduiIniziali) || 0,
       });
       setLista(await caricaDipendentiAziende([azienda]));
       setForm(formVuoto);
@@ -392,6 +395,16 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
           <label>
             <span>Superminimo mensile <small>(EUR, oltre il minimo CCNL)</small></span>
             <input type="number" min={0} step="0.01" value={form.superminimo} onChange={set("superminimo")} />
+          </label>
+          <label>
+            <span>Ferie riportate al 1° gennaio <small>(giorni)</small></span>
+            <input type="number" step="0.01" value={form.ferieResidueIniziali}
+              onChange={set("ferieResidueIniziali")} />
+          </label>
+          <label>
+            <span>ROL/ex festività riportati al 1° gennaio <small>(ore)</small></span>
+            <input type="number" step="0.01" value={form.permessiResiduiIniziali}
+              onChange={set("permessiResiduiIniziali")} />
           </label>
 
           <AnteprimaRetribuzione

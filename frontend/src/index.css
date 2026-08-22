@@ -1151,7 +1151,7 @@ kbd {
 
 .status-pill.green,
 .tag.green {
-  color: #059669;
+  color: #047857;
   background: rgba(16, 185, 129, 0.14);
 }
 
@@ -1163,12 +1163,12 @@ kbd {
 
 .status-pill.amber,
 .tag.amber {
-  color: #d97706;
+  color: #92400e;
   background: rgba(217, 119, 6, 0.14);
 }
 
 .status-pill.red {
-  color: #dc2626;
+  color: #b91c1c;
   background: rgba(239, 68, 68, 0.14);
 }
 
@@ -1178,7 +1178,7 @@ kbd {
 }
 
 .status-pill.slate {
-  color: #64748b;
+  color: #475569;
   background: rgba(100, 116, 139, 0.12);
 }
 

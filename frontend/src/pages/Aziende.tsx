@@ -129,6 +129,8 @@ export function Aziende({
   const [idAppenaAggiunta, setIdAppenaAggiunta] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoInCorso, setLogoInCorso] = useState(false);
+  const [firmaTimbroConfigurata, setFirmaTimbroConfigurata] = useState(false);
+  const [firmaTimbroInCorso, setFirmaTimbroInCorso] = useState(false);
   const [datiContributiviProvvisori, setDatiContributiviProvvisori] = useState(false);
   const [ricerca, setRicerca] = useState("");
   const [vista, setVista] = useState<"archivio" | "scheda">("archivio");
@@ -232,6 +234,39 @@ export function Aziende({
     finally { setLogoInCorso(false); }
   }
 
+  // Il file non viene mai riletto dal browser: l'API espone soltanto lo stato
+  // configurato/non configurato, così l'immagine autentica resta protetta.
+  function apriSelettoreFirmaTimbro() {
+    if (!inModificaId || firmaTimbroInCorso) return;
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "image/png,image/jpeg";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file || !inModificaId) return;
+      setFirmaTimbroInCorso(true); setErroreApi(null);
+      try {
+        await api.caricaFirmaTimbroAzienda(inModificaId, file);
+        setFirmaTimbroConfigurata(true);
+        mostraSuccesso("Firma, sigla o timbro salvato in modo protetto. Comparirà soltanto sui cedolini chiusi.");
+      } catch (err) {
+        setErroreApi(err instanceof Error ? err.message : "Caricamento firma, sigla o timbro non riuscito.");
+      } finally { setFirmaTimbroInCorso(false); }
+    };
+    input.click();
+  }
+
+  async function rimuoviFirmaTimbro() {
+    if (!inModificaId || firmaTimbroInCorso) return;
+    setFirmaTimbroInCorso(true); setErroreApi(null);
+    try {
+      await api.rimuoviFirmaTimbroAzienda(inModificaId);
+      setFirmaTimbroConfigurata(false);
+      mostraSuccesso("Firma, sigla o timbro rimosso.");
+    } catch (err) {
+      setErroreApi(err instanceof Error ? err.message : "Rimozione firma, sigla o timbro non riuscita.");
+    } finally { setFirmaTimbroInCorso(false); }
+  }
+
   // ---------- selezione bulk ----------
   function toggleSelezione(id: string) {
     setSelezionate(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -317,6 +352,7 @@ export function Aziende({
     setVista("scheda");
     setSezioneAttiva("identita");
     void caricaAnteprimaLogo(a.id);
+    setFirmaTimbroConfigurata(Boolean(a.haFirmaSiglaTimbro));
     salvaAziendaCorrenteId(a.id);
     setCorrenteId(a.id);
     setDatiContributiviProvvisori(Boolean(a.haDipendenti && [
@@ -351,6 +387,7 @@ export function Aziende({
     setDaConfermare(null); setVista("archivio");
     setDatiContributiviProvvisori(false);
     aggiornaAnteprimaLogo(null);
+    setFirmaTimbroConfigurata(false);
   }
 
   async function salvaCorrezione() {
@@ -633,6 +670,42 @@ export function Aziende({
             </button>
             {logoUrl && (
               <button className="btn danger compact" type="button" disabled={logoInCorso} onClick={rimuoviLogo}>
+                Rimuovi
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Firma/sigla/timbro autentico: necessario solo al momento della chiusura. */}
+      {inModificaId && (
+        <div style={{ marginBottom: 18, padding: 14, borderRadius: 10,
+          background: "var(--panel-strong)", border: "1px solid var(--line)",
+          display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <span style={{ width: 64, height: 64, borderRadius: 8, display: "flex",
+            alignItems: "center", justifyContent: "center", fontSize: 25,
+            color: firmaTimbroConfigurata ? "#197149" : "var(--text)",
+            background: firmaTimbroConfigurata ? "rgba(46, 204, 113, 0.12)" : "var(--panel)",
+            border: `1px ${firmaTimbroConfigurata ? "solid #2ecc71" : "dashed var(--line)"}` }}>
+            {firmaTimbroConfigurata ? "✓" : "✍"}
+          </span>
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <strong style={{ fontSize: 14 }}>Firma, sigla o timbro del datore</strong>
+            <p style={{ margin: "2px 0 0", fontSize: 12, lineHeight: 1.45, opacity: 0.75 }}>
+              {firmaTimbroConfigurata ? "Configurato e cifrato." : "Non ancora configurato."}
+              {" "}Serve per chiudere la busta paga. Carica solo un'immagine autentica che sei autorizzato a usare:
+              non è una firma digitale e non compare nelle bozze.
+            </p>
+            <small style={{ opacity: 0.65 }}>PNG o JPEG, massimo 500 KB.</small>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn secondary" type="button" disabled={firmaTimbroInCorso}
+              onClick={apriSelettoreFirmaTimbro}>
+              {firmaTimbroInCorso ? "Attendere…" : firmaTimbroConfigurata ? "Sostituisci" : "Carica"}
+            </button>
+            {firmaTimbroConfigurata && (
+              <button className="btn danger compact" type="button" disabled={firmaTimbroInCorso}
+                onClick={rimuoviFirmaTimbro}>
                 Rimuovi
               </button>
             )}

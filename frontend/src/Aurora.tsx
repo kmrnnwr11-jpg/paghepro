@@ -1,50 +1,66 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, CircleAlert, Send, ShieldCheck, Sparkles, X } from "lucide-react";
+import { Send, ShieldCheck, Sparkles, X } from "lucide-react";
 import {
   api,
   type Azienda,
-  type AzionePropostaAi,
+  type CosaVedeAi,
+  type EsitoPreflightAi,
+  type EsitoQueryAi,
+  type GrantAiEmesso,
+  type ManifestGrantAi,
   type MessaggioChatAi,
+  type RigaCedolinoMeseAi,
   type StatoChatAi,
 } from "./api";
-import { scegliAziendaPreferita } from "./aziendaCorrente";
+import { anteprimaContestoAurora, type ContestoAurora } from "./auroraContext";
+import {
+  ambitoControlloCedolini,
+  contaStatiCedolini,
+  richiestaControlloCedolini,
+  stessoAmbitoControlloCedolini,
+  type AmbitoControlloCedolini,
+} from "./auroraCedolini";
 
-// Aurora di PaghePro — assistente a chat vera (modello DeepSeek o altro provider
-// configurato sul server). Parla, legge l'archivio da sola con i suoi strumenti e,
-// quando c'è da scrivere qualcosa, prepara l'operazione compilata: la conferma —
-// sempre — resta all'utente, con l'elenco dei dati che mancano sotto gli occhi.
-
-type SezioneAurora = "scadenzario" | "presenze" | "aziende" | "dipendenti";
-
-const SEZIONI: SezioneAurora[] = ["scadenzario", "presenze", "aziende", "dipendenti"];
+// La chat resta senza strumenti. Il controllo cedolini è un percorso deterministico separato:
+// preflight visibile, mandato del Governor, proiezione minimizzata e revoca immediata.
 
 interface Bolla {
   id: number;
   chi: "utente" | "aurora";
   testo: string;
-  azione?: AzionePropostaAi;
-  azioneChiusa?: boolean;
-  vaiA?: SezioneAurora;
+  citazione?: string;
 }
 
-const SUGGERIMENTI: { etichetta: string; richiesta: string; serveAzienda: boolean }[] = [
-  { etichetta: "Cosa scade", richiesta: "Quali scadenze ho in arrivo? Dimmi le più urgenti.", serveAzienda: false },
-  { etichetta: "Cosa manca all'azienda", richiesta: "Controlla l'anagrafica di questa azienda e dimmi cosa manca.", serveAzienda: true },
-  { etichetta: "Nuova azienda", richiesta: "Voglio registrare una nuova azienda cliente: dimmi quali dati ti servono.", serveAzienda: false },
-  { etichetta: "Dipendenti", richiesta: "Fammi il punto sui dipendenti di questa azienda.", serveAzienda: true },
+const SUGGERIMENTI = [
+  { etichetta: "Spiega questa pagina", richiesta: "Spiegami in modo semplice a cosa serve questa pagina." },
+  { etichetta: "Cosa devo fare", richiesta: "Quali sono i passaggi normali da fare in questa pagina?" },
+  { etichetta: "Non ho capito", richiesta: "Non ho capito questa schermata: fammi una domanda per capire cosa mi serve." },
 ];
 
-function sezioneDi(azione: AzionePropostaAi): SezioneAurora | undefined {
-  return SEZIONI.find((s) => s === azione.sezione);
+const SUGGERIMENTI_CON_TESTO = [
+  { etichetta: "Spiegami questo", richiesta: "Spiegami questo testo in parole semplici." },
+  { etichetta: "Fammi un esempio", richiesta: "Spiegami questo testo con un esempio pratico." },
+  { etichetta: "Cosa significa", richiesta: "Qual è il significato più importante di questo testo?" },
+];
+
+const BOZZA_TESTO_SELEZIONATO = "Spiegami questo testo in parole semplici.";
+
+function periodoCorrente() {
+  const oggi = new Date();
+  return `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, "0")}`;
 }
 
 export function AuroraPanel({
-  azienda: aziendaDallaDashboard,
-  onNavigate,
+  azienda,
+  sezione,
+  contesto,
+  onRimuoviContesto,
   onChiudi,
 }: {
   azienda: Azienda | null;
-  onNavigate: (sezione: SezioneAurora) => void;
+  sezione: string;
+  contesto: ContestoAurora | null;
+  onRimuoviContesto: () => void;
   onChiudi: () => void;
 }) {
   const [bolle, setBolle] = useState<Bolla[]>([]);
@@ -52,34 +68,74 @@ export function AuroraPanel({
   const [bozza, setBozza] = useState("");
   const [inCorso, setInCorso] = useState(false);
   const [stato, setStato] = useState<StatoChatAi | null>(null);
-  // Se la dashboard non ha ancora un'azienda corrente (es. appena creata), il
-  // pannello se la cerca da solo nell'archivio: lo scope resta sempre aggiornato.
-  const [azienda, setAzienda] = useState<Azienda | null>(aziendaDallaDashboard);
+  const [periodo, setPeriodo] = useState(periodoCorrente);
+  const [preflight, setPreflight] = useState<EsitoPreflightAi | null>(null);
+  const [ambitoPreflight, setAmbitoPreflight] = useState<AmbitoControlloCedolini | null>(null);
+  const [mandato, setMandato] = useState<GrantAiEmesso | null>(null);
+  const [mandatiResidui, setMandatiResidui] = useState<ManifestGrantAi[]>([]);
+  const [esitoCedolini, setEsitoCedolini] = useState<EsitoQueryAi<RigaCedolinoMeseAi> | null>(null);
+  const [trasparenza, setTrasparenza] = useState<CosaVedeAi | null>(null);
+  const [erroreControllo, setErroreControllo] = useState<string | null>(null);
+  const [controlloInCorso, setControlloInCorso] = useState(false);
   const prossimoId = useRef(1);
   const fondo = useRef<HTMLDivElement>(null);
   const storiaRef = useRef<MessaggioChatAi[]>([]);
+  const campoMessaggio = useRef<HTMLTextAreaElement>(null);
+  const chiusuraInCorso = useRef(false);
+  const ambitoCorrente = azienda ? ambitoControlloCedolini(azienda.id, periodo) : null;
+  const ambitoCorrenteRef = useRef<AmbitoControlloCedolini | null>(ambitoCorrente);
+  ambitoCorrenteRef.current = ambitoCorrente;
+  const preflightCorrente = stessoAmbitoControlloCedolini(ambitoPreflight, ambitoCorrente)
+    ? preflight
+    : null;
 
   useEffect(() => { storiaRef.current = storia; }, [storia]);
 
   useEffect(() => {
-    if (aziendaDallaDashboard) {
-      setAzienda(aziendaDallaDashboard);
-      return;
-    }
-    api.aziende()
-      .then((elenco) => setAzienda(scegliAziendaPreferita(elenco)))
-      .catch(() => { /* motore spento: lo scope resta "Il tuo studio" */ });
-  }, [aziendaDallaDashboard]);
+    if (!contesto) return;
+    setBozza((corrente) => corrente.trim() || BOZZA_TESTO_SELEZIONATO);
+  }, [contesto]);
 
   useEffect(() => {
-    api.aiChatStato().then(setStato).catch(() => setStato(null));
+    const id = window.setTimeout(() => campoMessaggio.current?.focus(), 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onChiudi(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onChiudi]);
+    api.aiChatStato().then(setStato).catch(() => setStato(null));
+    api.aiGrants()
+      .then((grants) => setMandatiResidui(grants.filter((grant) =>
+        grant.stato === "Attivo" && new Date(grant.scadeUtc).getTime() > Date.now())))
+      .catch(() => setMandatiResidui([]));
+  }, []);
+
+  useEffect(() => {
+    if (!mandato || mandato.manifest.aziendaId === (azienda?.id ?? null)) return;
+    const grantId = mandato.manifest.grantId;
+    const manifestPrecedente = mandato.manifest;
+    // Non mostrare mai righe del cliente precedente sotto la nuova intestazione. Conserviamo
+    // soltanto il manifest minimo necessario a rendere revocabile un eventuale errore di rete.
+    setMandato(null);
+    setMandatiResidui((correnti) => [
+      manifestPrecedente,
+      ...correnti.filter((grant) => grant.grantId !== grantId),
+    ]);
+    setPreflight(null);
+    setAmbitoPreflight(null);
+    setEsitoCedolini(null);
+    setTrasparenza(null);
+    setControlloInCorso(true);
+    setErroreControllo("Cambio azienda: sto revocando il mandato precedente.");
+    void api.aiRevocaGrant(grantId)
+      .then(() => {
+        setMandatiResidui((correnti) => correnti.filter((grant) => grant.grantId !== grantId));
+        setErroreControllo(null);
+      })
+      .catch(() => {
+        setErroreControllo("Il vecchio mandato non è stato revocato: usa Revoca mandati residui prima di continuare.");
+      })
+      .finally(() => setControlloInCorso(false));
+  }, [azienda?.id, mandato]);
 
   useEffect(() => {
     fondo.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -91,14 +147,34 @@ export function AuroraPanel({
   const invia = async (testo: string) => {
     const messaggio = testo.trim();
     if (!messaggio || inCorso) return;
-    aggiungi({ chi: "utente", testo: messaggio });
+    const contestoDaInviare = contesto;
+    aggiungi({
+      chi: "utente",
+      testo: messaggio,
+      citazione: contestoDaInviare ? anteprimaContestoAurora(contestoDaInviare, 240) : undefined,
+    });
     setBozza("");
     setInCorso(true);
     try {
-      const r = await api.aiChat(messaggio, storiaRef.current, azienda?.id ?? null);
-      setStoria(r.storia);
-      aggiungi({ chi: "aurora", testo: r.testo, azione: r.azione ?? undefined });
+      const r = await api.aiChat(
+        messaggio,
+        storiaRef.current,
+        azienda?.id ?? null,
+        contestoDaInviare
+          ? { testo: contestoDaInviare.testo, sezione: contestoDaInviare.sezione }
+          : null,
+        sezione,
+      );
+      aggiungi({ chi: "aurora", testo: r.testo });
+      if (r.ok) {
+        setStoria(r.storia);
+        if (contestoDaInviare) onRimuoviContesto();
+      } else {
+        // Il provider spento risponde in modo controllato: conserva testo e domanda per il retry.
+        setBozza(messaggio);
+      }
     } catch (e) {
+      setBozza(messaggio);
       aggiungi({
         chi: "aurora",
         testo: `Non riesco a parlare con l'assistente: ${e instanceof Error ? e.message : "errore"}.`,
@@ -108,54 +184,315 @@ export function AuroraPanel({
     }
   };
 
-  const conferma = async (bollaId: number, azione: AzionePropostaAi) => {
-    if (inCorso) return;
-    setInCorso(true);
+  const rimuoviContesto = () => {
+    setBozza((corrente) => corrente === BOZZA_TESTO_SELEZIONATO ? "" : corrente);
+    onRimuoviContesto();
+  };
+
+  const suggerimenti = contesto ? SUGGERIMENTI_CON_TESTO : SUGGERIMENTI;
+  const conteggi = esitoCedolini ? contaStatiCedolini(esitoCedolini.righe) : null;
+
+  const mostraPreflight = async () => {
+    if (!azienda || controlloInCorso) return;
+    if (mandatiResidui.length > 0) {
+      setErroreControllo("Revoca il mandato precedente prima di iniziare un nuovo controllo.");
+      return;
+    }
+    setControlloInCorso(true);
+    setErroreControllo(null);
+    setPreflight(null);
+    setAmbitoPreflight(null);
+    setEsitoCedolini(null);
+    setTrasparenza(null);
+    const ambitoRichiesto = ambitoControlloCedolini(azienda.id, periodo);
     try {
-      const r = await api.aiChatConferma(azione, storiaRef.current);
-      setStoria(r.storia);
-      setBolle((prima) => prima.map((b) => (b.id === bollaId ? { ...b, azioneChiusa: true } : b)));
-      aggiungi({
-        chi: "aurora",
-        testo: r.messaggio,
-        vaiA: r.riuscita ? sezioneDi(azione) : undefined,
-      });
+      const esito = await api.aiPreflight(
+        richiestaControlloCedolini(ambitoRichiesto.aziendaId, ambitoRichiesto.periodo),
+      );
+      setPreflight(esito);
+      setAmbitoPreflight(ambitoRichiesto);
     } catch (e) {
-      aggiungi({
-        chi: "aurora",
-        testo: `Non sono riuscita a eseguire l'operazione: ${e instanceof Error ? e.message : "errore"}.`,
-      });
+      setErroreControllo(e instanceof Error ? e.message : "Preflight non disponibile.");
     } finally {
-      setInCorso(false);
+      setControlloInCorso(false);
     }
   };
 
-  const annulla = (bollaId: number) =>
-    setBolle((prima) => prima.map((b) => (b.id === bollaId ? { ...b, azioneChiusa: true } : b)));
+  const avviaControllo = async () => {
+    if (!azienda || !preflightCorrente?.consentito || controlloInCorso) return;
+    const ambitoAvvio = ambitoControlloCedolini(azienda.id, periodo);
+    setControlloInCorso(true);
+    setErroreControllo(null);
+    try {
+      const nuovoMandato = await api.aiEmettiGrant(
+        richiestaControlloCedolini(ambitoAvvio.aziendaId, ambitoAvvio.periodo),
+      );
+      if (!stessoAmbitoControlloCedolini(ambitoAvvio, ambitoCorrenteRef.current)) {
+        try {
+          await api.aiRevocaGrant(nuovoMandato.manifest.grantId);
+        } catch {
+          setMandatiResidui((correnti) => [
+            nuovoMandato.manifest,
+            ...correnti.filter((grant) => grant.grantId !== nuovoMandato.manifest.grantId),
+          ]);
+          throw new Error(
+            "Azienda o mese cambiati durante l’avvio e mandato non revocato: usa Revoca mandati residui.",
+          );
+        }
+        throw new Error("Azienda o mese cambiati durante l’avvio: mandato revocato. Ripeti il preflight.");
+      }
+      setMandato(nuovoMandato);
+      setMandatiResidui([]);
+      const esito = await api.aiQuery<RigaCedolinoMeseAi>(nuovoMandato.lease, "Cedolini");
+      if (!esito.consentito) throw new Error(esito.motivo ?? "Accesso negato dal Governor.");
+      setEsitoCedolini(esito);
+      setMandato({
+        ...nuovoMandato,
+        manifest: {
+          ...nuovoMandato.manifest,
+          lettureUsate: nuovoMandato.manifest.maxLetture - esito.lettureRimanenti,
+        },
+      });
+    } catch (e) {
+      setErroreControllo(e instanceof Error ? e.message : "Controllo non riuscito.");
+    } finally {
+      setControlloInCorso(false);
+    }
+  };
+
+  const mostraTrasparenza = async () => {
+    if (!mandato || controlloInCorso) return;
+    setControlloInCorso(true);
+    setErroreControllo(null);
+    try {
+      setTrasparenza(await api.aiCosaVede(mandato.manifest.grantId));
+    } catch (e) {
+      setErroreControllo(e instanceof Error ? e.message : "Registro non disponibile.");
+    } finally {
+      setControlloInCorso(false);
+    }
+  };
+
+  const arresta = async () => {
+    if (controlloInCorso) return;
+    setControlloInCorso(true);
+    setErroreControllo(null);
+    try {
+      await api.aiArresta();
+      setMandato(null);
+      setMandatiResidui([]);
+      setPreflight(null);
+      setAmbitoPreflight(null);
+      setEsitoCedolini(null);
+      setTrasparenza(null);
+    } catch (e) {
+      setErroreControllo(e instanceof Error ? e.message : "Arresto non riuscito.");
+    } finally {
+      setControlloInCorso(false);
+    }
+  };
+
+  const chiudiSicuro = async () => {
+    if (chiusuraInCorso.current) return;
+    if (controlloInCorso) {
+      setErroreControllo("Attendi la conclusione del controllo prima di chiudere Aurora.");
+      return;
+    }
+    if (!mandato && mandatiResidui.length === 0) {
+      onChiudi();
+      return;
+    }
+
+    chiusuraInCorso.current = true;
+    setControlloInCorso(true);
+    setErroreControllo("Sto revocando il mandato prima di chiudere Aurora.");
+    try {
+      if (mandato)
+        await api.aiRevocaGrant(mandato.manifest.grantId);
+      else
+        await api.aiArresta();
+      setMandato(null);
+      setMandatiResidui([]);
+      onChiudi();
+    } catch (e) {
+      setErroreControllo(
+        `Non chiudo Aurora perché il mandato non è stato revocato: ${e instanceof Error ? e.message : "errore"}. Usa Revoca mandato e riprova.`,
+      );
+    } finally {
+      chiusuraInCorso.current = false;
+      setControlloInCorso(false);
+    }
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") void chiudiSicuro(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   return (
-    <aside className="aurora-panel glass-panel" role="complementary" aria-label="Aurora PaghePro">
+    <aside id="aurora-panel" className="aurora-panel glass-panel" role="complementary" aria-label="Aurora PaghePro">
       <header className="cp-mandato">
         <div className="cp-mandato-riga">
           <span className="cp-titolo"><Sparkles size={16} aria-hidden="true" /> Aurora</span>
-          <span className={`cp-badge${stato?.attiva ? " attivo" : ""}`}>
-            {stato === null ? "…" : stato.attiva ? stato.modello : "da configurare"}
+          <span className={`cp-badge${mandato ? " attivo" : ""}`}>
+            {mandato ? "mandato attivo" : stato?.attiva
+              ? `${stato.provider} · ${stato.modello}`
+              : "controllo deterministico"}
           </span>
-          <button className="cp-chiudi" type="button" aria-label="Chiudi Aurora" onClick={onChiudi}>
+          <button className="cp-chiudi" type="button" aria-label="Chiudi Aurora" disabled={controlloInCorso} onClick={() => void chiudiSicuro()}>
             <X size={16} aria-hidden="true" />
           </button>
         </div>
         <p className="cp-scope">
-          Azienda: <b>{azienda?.ragioneSociale ?? "nessuna scelta"}</b><br />
-          Chiedi quello che ti serve: legge l'archivio da sola, scrive solo se confermi tu.
+          Pagina: <b>{sezione}</b>{azienda ? <> · Azienda: <b>{azienda.ragioneSociale}</b></> : null}<br />
+          La chat spiega soltanto. Il controllo cedolini legge un lotto massimo di 10 righe
+          solo dopo il preflight e non modifica nulla.
         </p>
       </header>
 
-      <div className="cp-thread">
+      {contesto && (
+        <section className="cp-contesto" aria-label="Testo selezionato per Aurora">
+          <div className="cp-contesto-testa">
+            <strong>Testo selezionato · {contesto.sezione}</strong>
+            <button type="button" onClick={rimuoviContesto} aria-label="Rimuovi testo selezionato">
+              <X size={15} aria-hidden="true" />
+            </button>
+          </div>
+          <blockquote>{anteprimaContestoAurora(contesto, 320)}</blockquote>
+          <small>
+            {contesto.troncato ? "Testo ridotto a 4.000 caratteri. " : ""}
+            Sarà allegato una volta sola alla prossima domanda, anche se usi un pulsante rapido.
+          </small>
+        </section>
+      )}
+
+      <div className="cp-thread" role="log" aria-live="polite" aria-relevant="additions text">
+        <section className="cp-preflight" aria-label="Controllo governato dei cedolini">
+          <span className="cp-preflight-tag">Controllo cedolini · lotto 10</span>
+          {!azienda ? (
+            <div className="cp-esito avviso">
+              <strong>Scegli prima un’azienda</strong>
+              <span>Aurora non seleziona mai automaticamente il primo cliente.</span>
+            </div>
+          ) : (
+            <>
+              <label className="cp-mese">
+                <span>Mese da controllare</span>
+                <input
+                  type="month"
+                  value={periodo}
+                  disabled={Boolean(mandato) || controlloInCorso}
+                  onChange={(e) => {
+                    setPeriodo(e.target.value);
+                    setPreflight(null);
+                    setEsitoCedolini(null);
+                    setTrasparenza(null);
+                  }}
+                />
+              </label>
+              {!preflightCorrente && !mandato && (
+                <button className="btn secondary" type="button" disabled={controlloInCorso || mandatiResidui.length > 0} onClick={mostraPreflight}>
+                  Mostra cosa controllerà
+                </button>
+              )}
+            </>
+          )}
+
+          {preflightCorrente && !mandato && (
+            <div className={`cp-esito ${preflightCorrente.consentito ? "ok" : "urgente"}`}>
+              <strong>{preflightCorrente.consentito ? "Pronto per la tua conferma" : "Controllo non consentito"}</strong>
+              <span>{preflightCorrente.descrizione ?? preflightCorrente.motivo}</span>
+              {preflightCorrente.consentito && (
+                <button className="btn primary" type="button" disabled={controlloInCorso} onClick={avviaControllo}>
+                  Avvia controllo in sola lettura
+                </button>
+              )}
+            </div>
+          )}
+
+          {mandato && (
+            <div className="cp-esito ok">
+              <strong>{mandato.manifest.periodo} · sola lettura</strong>
+              <span>
+                Quota: {mandato.manifest.lettureUsate}/{mandato.manifest.maxLetture} righe ·
+                scade {new Date(mandato.manifest.scadeUtc).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+              <div className="cp-mandato-azioni">
+                <button className="cp-chip" type="button" disabled={controlloInCorso} onClick={mostraTrasparenza}>
+                  Dati letti dal controllo
+                </button>
+                <button className="cp-chip stop" type="button" disabled={controlloInCorso} onClick={arresta}>
+                  Revoca mandato
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!mandato && mandatiResidui.length > 0 && (
+            <div className="cp-esito avviso">
+              <strong>Mandato precedente ancora attivo</strong>
+              <span>
+                La lease non è salvata nello storage, ma il mandato resta attivo sul server. Revoca
+                i {mandatiResidui.length} mandati residui prima di iniziare un nuovo controllo.
+              </span>
+              <button className="btn secondary" type="button" disabled={controlloInCorso} onClick={arresta}>
+                Revoca mandati residui
+              </button>
+            </div>
+          )}
+
+          {conteggi && esitoCedolini && (
+            <div className="cp-lotto">
+              <strong>
+                {esitoCedolini.righe.length} di {esitoCedolini.totale} rapporti controllati
+              </strong>
+              <span className="cp-lotto-riepilogo">
+                {conteggi.cartellino_presente} cartellini presenti · {conteggi.da_compilare} da compilare · {conteggi.gia_elaborato} già elaborati · {conteggi.bloccato} bloccati · {conteggi.protetto} protetti
+              </span>
+              <ul>
+                {esitoCedolini.righe.map((riga) => (
+                  <li key={riga.rapportoId}>
+                    <div><b>{riga.nominativo}</b><span className={`cp-stato ${riga.stato}`}>{riga.stato.replaceAll("_", " ")}</span></div>
+                    <small>{riga.motivo}</small>
+                  </li>
+                ))}
+              </ul>
+              {esitoCedolini.totale > esitoCedolini.righe.length && (
+                <small>
+                  Questo incremento mostra i primi 10. I successivi richiedono il prossimo
+                  checkpoint con cursore verificabile e non vengono letti ora.
+                </small>
+              )}
+            </div>
+          )}
+
+          {trasparenza && (
+            <div className="cp-trasparenza">
+              <div className="cp-trasparenza-testa">
+                <strong>Cosa ha letto il controllo</strong>
+                <span>{trasparenza.manifest.risorse.join(", ")}</span>
+              </div>
+              <ul>
+                {trasparenza.eventi.map((evento) => (
+                  <li key={evento.sequenza}>
+                    <span className={`cp-evento${evento.motivo ? " nega" : ""}`}>{evento.evento}</span>
+                    <span className="cp-evento-dettaglio">{evento.dettaglio}{evento.motivo ? ` · ${evento.motivo}` : ""}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {erroreControllo && (
+            <div className="cp-esito urgente"><strong>Controllo interrotto</strong><span>{erroreControllo}</span></div>
+          )}
+        </section>
+
         <div className="cp-msg">
           <p>
-            Ciao! Scrivimi come parleresti a un collega: «registra questa azienda», poi incolla
-            i dati che hai. Preparo tutto compilato, ti dico cosa manca e aspetto il tuo «Conferma».
+            Ciao! Seleziona una frase, un errore o una voce della pagina e aprimi: te la spiego
+            in modo semplice. Se non capisco che cosa intendi, ti faccio una domanda.
           </p>
         </div>
 
@@ -169,60 +506,8 @@ export function AuroraPanel({
         {bolle.map((b) => (
           <div className={`cp-msg${b.chi === "utente" ? " mio" : ""}`} key={b.id}>
             <p>{b.testo}</p>
+            {b.citazione && <blockquote className="cp-citazione">“{b.citazione}”</blockquote>}
 
-            {b.azione && !b.azioneChiusa && (
-              <div className="cp-azione">
-                <strong>{b.azione.titolo}</strong>
-
-                {b.azione.campi.length > 0 && (
-                  <dl className="cp-azione-campi">
-                    {b.azione.campi.map((c) => (
-                      <div key={c.etichetta}>
-                        <dt>{c.etichetta}</dt>
-                        <dd>{c.valore}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-
-                {b.azione.mancanti.length > 0 && (
-                  <div className="cp-azione-mancanti">
-                    <span className="cp-azione-tag">
-                      <CircleAlert size={13} aria-hidden="true" /> Manca
-                    </span>
-                    <ul>
-                      {b.azione.mancanti.map((m) => (
-                        <li key={m.etichetta} className={m.bloccante ? "bloccante" : undefined}>
-                          <b>{m.etichetta}</b> — {m.perche}
-                          {m.bloccante ? " (necessario)" : ""}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div className="cp-azione-bottoni">
-                  <button
-                    className="btn primary"
-                    type="button"
-                    disabled={inCorso || !b.azione.puoProcedere}
-                    title={b.azione.puoProcedere ? undefined : "Completa prima i dati necessari"}
-                    onClick={() => conferma(b.id, b.azione!)}
-                  >
-                    <Check size={14} aria-hidden="true" /> Conferma ed esegui
-                  </button>
-                  <button className="btn secondary" type="button" disabled={inCorso} onClick={() => annulla(b.id)}>
-                    Annulla
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {b.vaiA && (
-              <button className="btn secondary cp-vai" type="button" onClick={() => onNavigate(b.vaiA!)}>
-                Apri {b.vaiA} →
-              </button>
-            )}
           </div>
         ))}
 
@@ -231,7 +516,7 @@ export function AuroraPanel({
       </div>
 
       <div className="cp-rapidi" aria-label="Domande rapide">
-        {SUGGERIMENTI.filter((s) => !s.serveAzienda || azienda).map((s) => (
+        {suggerimenti.map((s) => (
           <button key={s.etichetta} type="button" disabled={inCorso} onClick={() => invia(s.richiesta)}>
             {s.etichetta}
           </button>
@@ -243,6 +528,7 @@ export function AuroraPanel({
         onSubmit={(e) => { e.preventDefault(); void invia(bozza); }}
       >
         <textarea
+          ref={campoMessaggio}
           value={bozza}
           onChange={(e) => setBozza(e.target.value)}
           onKeyDown={(e) => {
@@ -251,7 +537,7 @@ export function AuroraPanel({
               void invia(bozza);
             }
           }}
-          placeholder="Scrivi o incolla i dati… (Invio manda, Maiusc+Invio va a capo)"
+          placeholder="Scrivi ad Aurora… (Invio per inviare)"
           rows={2}
           aria-label="Messaggio per Aurora"
         />
@@ -263,8 +549,10 @@ export function AuroraPanel({
       <footer className="cp-nota">
         <ShieldCheck size={14} aria-hidden="true" />
         <span>
-          Aurora vede solo i dati del tuo studio e non esegue nulla da sola: registrazioni e
-          correzioni partono soltanto quando premi «Conferma».
+          La chat invia al server messaggio, sezione, ID dell’azienda scelta e fino a 12 tue domande
+          precedenti; il testo selezionato è monouso. Il controllo deterministico usa azienda e mese
+          confermati e restituisce, per massimo 10 rapporti, ID tecnici, nominativo, stato e motivo.
+          Questi dati del controllo non vanno a un modello o provider AI e non vengono modificati.
         </span>
       </footer>
     </aside>

@@ -59,6 +59,11 @@ import {
   type SectionKey,
   type StrumentoRecente,
 } from "../homeStudio";
+import {
+  creaContestoAurora,
+  leggiTestoSelezionatoAurora,
+  type ContestoAurora,
+} from "../auroraContext";
 
 // Email dell'utente loggato, letta dal token (per mostrare il vero account, non un nome finto).
 function emailDalToken(): string {
@@ -314,6 +319,7 @@ export function Dashboard() {
   const [rapportoSel, setRapportoSel] = useState<string | null>(null);
   const [aiutoAperto, setAiutoAperto] = useState(false);
   const [auroraAperta, setAuroraAperto] = useState(false);
+  const [contestoAurora, setContestoAurora] = useState<ContestoAurora | null>(null);
   const [slidebarAperta, setSlidebarAperta] = useState(false);
   const [commandAperta, setCommandAperta] = useState(false);
   const [aziende, setAziende] = useState<Azienda[]>([]);
@@ -324,6 +330,9 @@ export function Dashboard() {
   const [sezioneDopoScelta, setSezioneDopoScelta] = useState<SectionKey | null>(null);
   const [strumentiRecenti, setStrumentiRecenti] = useState<StrumentoRecente[]>(leggiStrumentiRecenti);
   const aziendeRef = useRef<Azienda[]>([]);
+  const contestoCatturato = useRef<ContestoAurora | null>(null);
+  const triggerAurora = useRef<HTMLElement | null>(null);
+  const auroraFab = useRef<HTMLButtonElement>(null);
   const apriDipendente = (rapportoId: string) => {
     setRapportoSel(rapportoId);
     setActive("dipendente");
@@ -415,6 +424,46 @@ export function Dashboard() {
   const navActive = navActiveFor[active] ?? active;
   const crumbs = useMemo(() => crumbsFor[active] ?? ["Home", sectionTitle[active]], [active]);
 
+  const catturaSelezionePerAurora = () => {
+    contestoCatturato.current = creaContestoAurora(
+      leggiTestoSelezionatoAurora(),
+      sectionTitle[active],
+    );
+  };
+
+  const chiudiAurora = () => {
+    const trigger = triggerAurora.current;
+    setAuroraAperto(false);
+    setContestoAurora(null);
+    contestoCatturato.current = null;
+    window.setTimeout(() => {
+      (trigger?.isConnected ? trigger : auroraFab.current)?.focus();
+      triggerAurora.current = null;
+    }, 0);
+  };
+
+  const commutaAurora = (trigger?: HTMLElement) => {
+    if (auroraAperta) {
+      // La chiusura deve passare dal pannello: lì un eventuale mandato viene
+      // revocato prima dello smontaggio. Il toggle della topbar si limita quindi
+      // a riportare il focus su Aurora quando è già aperta.
+      document.querySelector<HTMLButtonElement>("#aurora-panel .cp-chiudi")?.focus();
+      return;
+    }
+
+    if (trigger)
+      triggerAurora.current = trigger;
+    else if (document.activeElement instanceof HTMLElement)
+      triggerAurora.current = document.activeElement;
+    const selezionato = contestoCatturato.current ?? creaContestoAurora(
+      leggiTestoSelezionatoAurora(),
+      sectionTitle[active],
+    );
+    setContestoAurora(selezionato);
+    setAuroraAperto(true);
+    contestoCatturato.current = null;
+  };
+
   const scegliAzienda = (azienda: Azienda) => {
     salvaAziendaCorrenteId(azienda.id);
     setAziendaCorrente(azienda);
@@ -498,6 +547,12 @@ export function Dashboard() {
   }, [active, aziendaCorrente, aziende]);
 
   useEffect(() => {
+    // Il testo selezionato non attraversa schermate diverse e non viene mai persistito.
+    setContestoAurora(null);
+    contestoCatturato.current = null;
+  }, [active]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -567,7 +622,9 @@ export function Dashboard() {
           onCommand={() => setCommandAperta(true)}
           onCompanyClick={apriSelettoreAzienda}
           onAiuto={() => setAiutoAperto(true)}
-          onAurora={() => setAuroraAperto((aperto) => !aperto)}
+          onAurora={commutaAurora}
+          onAuroraPointerDown={catturaSelezionePerAurora}
+          auroraAperta={auroraAperta}
           onEsci={esci}
           notifiche={urgenti.length}
           onNotifiche={() => vaiA("scadenzario")}
@@ -582,7 +639,7 @@ export function Dashboard() {
           />
         )}
 
-        <main className="content-area">
+        <main className="content-area" data-aurora-selectable>
           <div className="breadcrumbs">
             {crumbs.map((crumb, index) => (
               <span key={crumb} className={index === crumbs.length - 1 ? "current" : undefined}>
@@ -617,9 +674,28 @@ export function Dashboard() {
       {auroraAperta && (
         <AuroraPanel
           azienda={aziendaCorrente}
-          onNavigate={vaiA}
-          onChiudi={() => setAuroraAperto(false)}
+          sezione={sectionTitle[active]}
+          contesto={contestoAurora}
+          onRimuoviContesto={() => setContestoAurora(null)}
+          onChiudi={chiudiAurora}
         />
+      )}
+
+      {!auroraAperta && (
+        <button
+          ref={auroraFab}
+          className="aurora-fab"
+          type="button"
+          aria-label="Apri Aurora; se hai selezionato un testo, chiedi una spiegazione"
+          aria-controls="aurora-panel"
+          aria-expanded="false"
+          title="Aurora — seleziona un testo e premi qui per fartelo spiegare"
+          onPointerDown={catturaSelezionePerAurora}
+          onClick={(evento) => commutaAurora(evento.currentTarget)}
+        >
+          <Sparkles size={21} aria-hidden="true" />
+          <span>Aurora</span>
+        </button>
       )}
 
       {aiutoAperto && (
@@ -925,6 +1001,8 @@ function Topbar({
   onCompanyClick,
   onAiuto,
   onAurora,
+  onAuroraPointerDown,
+  auroraAperta,
   onEsci,
   notifiche,
   onNotifiche,
@@ -934,7 +1012,9 @@ function Topbar({
   onCommand: () => void;
   onCompanyClick: () => void;
   onAiuto: () => void;
-  onAurora: () => void;
+  onAurora: (trigger: HTMLButtonElement) => void;
+  onAuroraPointerDown: () => void;
+  auroraAperta: boolean;
   onEsci: () => void;
   notifiche: number;
   onNotifiche: () => void;
@@ -969,8 +1049,14 @@ function Topbar({
       <button
         className="soft-button guide-top"
         type="button"
-        onClick={onAurora}
-        title="Aurora: controlla i tuoi dati e ti segnala cosa sistemare (in sola lettura)"
+        aria-label={auroraAperta ? "Porta in primo piano Aurora" : "Apri Aurora"}
+        aria-controls="aurora-panel"
+        aria-expanded={auroraAperta}
+        onPointerDown={onAuroraPointerDown}
+        onClick={(evento) => onAurora(evento.currentTarget)}
+        title={auroraAperta
+          ? "Aurora è aperta; usa Chiudi nel pannello per revocare in sicurezza"
+          : "Aurora: seleziona un testo e premi qui per fartelo spiegare"}
       >
         <Sparkles size={18} aria-hidden="true" />
         <strong>Aurora</strong>

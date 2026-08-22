@@ -425,7 +425,9 @@ export function Presenze() {
                           <Fragment key={r.rapportoId}>
                             <tr>
                               <td><strong>{r.nominativo || "-"}</strong></td>
-                              <td className="presence-summary">{descrizione(cartellino)}</td>
+                              <td className="presence-summary" data-aurora-private>
+                                {descrizione(cartellino)}
+                              </td>
                               <td><span className={`status-pill ${r.elaborato ? "green" : confermato[r.rapportoId] ? "blue" : "amber"}`}>
                                 {r.elaborato ? "Elaborato" : confermato[r.rapportoId] ? "Pronto" : "Da controllare"}
                               </span></td>
@@ -451,7 +453,7 @@ export function Presenze() {
                               </td>
                             </tr>
                             {espanso && (
-                              <tr className="presence-editor-row"><td colSpan={5}>
+                              <tr className="presence-editor-row" data-aurora-private><td colSpan={5}>
                                 <div className="presence-editor">
                                   <div className="presence-section calendario-testa">
                                     <h3>Come vuoi compilare il mese</h3>

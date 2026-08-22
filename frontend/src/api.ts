@@ -1108,8 +1108,16 @@ export const api = {
 
   // --- Governor AI (G2): mandati, accessi governati, revoca, trasparenza ---
 
+  aiPreflight: (richiesta: RichiestaGrantAi) =>
+    req<EsitoPreflightAi>("/api/ai/governor/preflight", {
+      method: "POST",
+      body: JSON.stringify(richiesta),
+    }),
+
   aiEmettiGrant: (richiesta: RichiestaGrantAi) =>
     req<GrantAiEmesso>("/api/ai/governor/grants", { method: "POST", body: JSON.stringify(richiesta) }),
+
+  aiGrants: () => req<ManifestGrantAi[]>("/api/ai/governor/grants"),
 
   /** Ogni lettura di Aurora passa da qui: 403 = negato (il motivo arriva nel corpo). */
   aiAccesso: async (lease: string, risorsa: string, operazione: string): Promise<EsitoAccessoAi> => {
@@ -1147,23 +1155,25 @@ export const api = {
   aiCosaVede: (grantId: string) =>
     req<CosaVedeAi>(`/api/ai/governor/grants/${grantId}`),
 
-  // --- Chat con l'assistente: legge da sola, scrive solo dopo la conferma dell'utente ---
+  // --- Aurora personale: solo spiegazioni, senza accesso all'archivio né azioni ---
 
   aiChatStato: () => req<StatoChatAi>("/api/ai/chat/stato"),
 
-  aiChat: (messaggio: string, storia: MessaggioChatAi[], aziendaId?: string | null) =>
+  aiChat: (
+    messaggio: string,
+    storia: MessaggioChatAi[],
+    aziendaId?: string | null,
+    contestoSelezionato?: ContestoSelezionatoAi | null,
+    sezioneUi?: string | null,
+  ) =>
     req<RispostaChatAi>("/api/ai/chat", {
       method: "POST",
-      body: JSON.stringify({ messaggio, storia, aziendaId: aziendaId ?? null }),
-    }),
-
-  aiChatConferma: (azione: AzionePropostaAi, storia: MessaggioChatAi[]) =>
-    req<EsitoAzioneChatAi>("/api/ai/chat/azione", {
-      method: "POST",
       body: JSON.stringify({
-        strumento: azione.strumento,
-        argomentiJson: azione.argomentiJson,
+        messaggio,
         storia,
+        aziendaId: aziendaId ?? null,
+        contestoSelezionato: contestoSelezionato ?? null,
+        sezioneUi: sezioneUi ?? null,
       }),
     }),
 
@@ -1234,6 +1244,12 @@ export interface GrantAiEmesso {
   lease: string;
 }
 
+export interface EsitoPreflightAi {
+  consentito: boolean;
+  motivo: string | null;
+  descrizione: string | null;
+}
+
 export interface EsitoAccessoAi {
   consentito: boolean;
   motivo: string | null;
@@ -1267,11 +1283,18 @@ export interface RigaDipendenteAi { nominativo: string; codiceCcnl: string | nul
 export interface RigaCartellinoAi {
   nominativo: string;
   elaborato: boolean;
-  giorniMalattia: number;
-  numeroEventoMalattiaAnno: number;
 }
 
-// --- Chat con l'assistente (AI vera, con strumenti) ---
+export interface RigaCedolinoMeseAi {
+  rapportoId: string;
+  nominativo: string;
+  stato: "cartellino_presente" | "da_compilare" | "gia_elaborato" | "bloccato" | "protetto";
+  motivo: string;
+  cedolinoId: string | null;
+  statoCedolino: string | null;
+}
+
+// --- Chat esplicativa senza strumenti ---
 
 /** Messaggio della conversazione: il client lo rimanda indietro così com'è. */
 export interface MessaggioChatAi {
@@ -1281,32 +1304,17 @@ export interface MessaggioChatAi {
   chiamataId?: string | null;
 }
 
-export interface CampoPropostoAi { etichetta: string; valore: string }
-export interface CampoMancanteAi { etichetta: string; perche: string; bloccante: boolean }
-
-/** Operazione che scrive: l'assistente la prepara, l'utente la conferma. */
-export interface AzionePropostaAi {
-  strumento: string;
-  titolo: string;
-  argomentiJson: string;
-  campi: CampoPropostoAi[];
-  mancanti: CampoMancanteAi[];
-  puoProcedere: boolean;
-  sezione: string | null;
+/** Contesto esplicito e monouso: non è concatenato al messaggio e non concede permessi. */
+export interface ContestoSelezionatoAi {
+  testo: string;
+  sezione: string;
 }
 
 export interface RispostaChatAi {
   testo: string;
   storia: MessaggioChatAi[];
-  azione: AzionePropostaAi | null;
+  azione: null;
   ok: boolean;
-}
-
-export interface EsitoAzioneChatAi {
-  riuscita: boolean;
-  messaggio: string;
-  storia: MessaggioChatAi[];
-  esito: { aziendaId?: string; rapportoId?: string; denominazione?: string } | null;
 }
 
 export interface StatoChatAi {

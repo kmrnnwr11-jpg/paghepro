@@ -5943,8 +5943,8 @@ textarea:focus {
 }
 
 /* ============================================================
-   AURORA — pannello a fianco dell'app: chat con l'assistente, che
-   legge da sola e propone le scritture da confermare.
+   AURORA — pannello a fianco dell'app: chat di spiegazione e
+   controlli deterministici governati in sola lettura.
    ============================================================ */
 
 .app-shell.con-aurora {
@@ -5960,6 +5960,38 @@ textarea:focus {
   flex-direction: column;
   border-radius: 12px;
   overflow: hidden;
+}
+
+.aurora-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1050;
+  min-width: 52px;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid rgba(14, 114, 104, 0.55);
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(145deg, #138f83, #0e7268);
+  box-shadow: 0 14px 32px -14px rgba(8, 66, 61, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.aurora-fab:hover {
+  filter: brightness(1.08);
+}
+
+.aurora-fab:focus-visible {
+  outline: 3px solid rgba(19, 143, 131, 0.35);
+  outline-offset: 3px;
 }
 
 .cp-mandato {
@@ -6015,6 +6047,63 @@ textarea:focus {
   font-size: 12px;
   line-height: 1.55;
   color: var(--muted);
+}
+
+.cp-contesto {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(14, 114, 104, 0.07);
+}
+
+.cp-contesto-testa {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-contesto-testa strong {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--blue-strong);
+}
+
+.cp-contesto-testa button {
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: var(--bottone);
+  cursor: pointer;
+}
+
+.cp-contesto blockquote,
+.cp-citazione {
+  margin: 8px 0 6px;
+  padding: 7px 9px;
+  border-left: 3px solid rgba(14, 114, 104, 0.55);
+  border-radius: 0 8px 8px 0;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.58);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.cp-contesto small {
+  display: block;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.cp-citazione {
+  margin-bottom: 0;
+  text-align: left;
 }
 
 .cp-thread {
@@ -6083,6 +6172,91 @@ textarea:focus {
   padding: 0 14px;
   font-size: 13px;
 }
+
+.cp-mese {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.cp-mese input {
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  background: var(--campo);
+  box-shadow: var(--inset);
+  font: inherit;
+}
+
+.cp-lotto {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.cp-lotto-riepilogo,
+.cp-lotto > small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.cp-lotto ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cp-lotto li {
+  padding: 7px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.cp-lotto li > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.cp-lotto li b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cp-lotto li small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.cp-stato {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(94, 107, 105, 0.12);
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.cp-stato.cartellino_presente { color: #065f46; background: rgba(7, 135, 102, 0.12); }
+.cp-stato.bloccato { color: #991b1b; background: rgba(212, 56, 56, 0.12); }
+.cp-stato.da_compilare { color: #8a4b04; background: rgba(184, 100, 8, 0.12); }
 
 .cp-esito {
   display: flex;
@@ -6392,6 +6566,8 @@ textarea:focus {
 .cp-comporre textarea {
   flex: 1;
   min-width: 0;
+  min-height: 48px;
+  max-height: 96px;
   resize: none;
   padding: 9px 11px;
   border: 1px solid var(--line);
@@ -6405,9 +6581,13 @@ textarea:focus {
 }
 
 .cp-comporre .btn {
-  flex: none;
+  /* Nei breakpoint mobili la regola globale .btn usa width: 100%: senza
+     questo override il tasto comprime il campo fino a una sola lettera. */
+  flex: 0 0 42px;
+  width: 42px;
+  min-width: 42px;
   min-height: 40px;
-  padding: 0 13px;
+  padding: 0;
 }
 
 @media (max-width: 1180px) {
@@ -6432,6 +6612,25 @@ textarea:focus {
 
   .aurora-panel {
     inset: 10px 10px 88px auto;
+  }
+
+  .aurora-fab {
+    right: 14px;
+    bottom: 84px;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 0 13px;
+  }
+}
+
+@media (max-width: 520px) {
+  .aurora-fab span {
+    display: none;
+  }
+
+  .aurora-fab {
+    width: 50px;
+    padding: 0;
   }
 }
 

@@ -674,7 +674,7 @@ public sealed class AuroraRuntimeTests : IDisposable
             a => a.Evento == "Accesso" && a.Dettaglio.Contains("Dipendenti"));
     }
 
-    // ---------- Scritture: oggi le policy non concedono draft ----------
+    // ---------- Scritture: senza rollout A3 il collaudo non concede draft ----------
 
     [Fact]
     public async Task Grant_OperazioneDraft_RifiutataDallePolicyCorrenti()
@@ -688,7 +688,7 @@ public sealed class AuroraRuntimeTests : IDisposable
             ["Dipendenti"], ["read", "draft"]));
 
         Assert.Null(grant);
-        Assert.Contains("draft", errore);
+        Assert.Contains("collaudo A3 non è abilitato", errore);
     }
 
     // ---------- Sessione: la lease del pannello si risolve, mai si forgia ----------
@@ -740,16 +740,40 @@ public sealed class AuroraRuntimeTests : IDisposable
     private const string ArgomentiProva =
         """{"nome":"Mario","cognome":"Rossi","codiceFiscale":"RSSMRA80A01F205X"}""";
 
-    private async Task<(AiPropostaEntity Proposta, string Token, AiRuntimeStore Store)>
-        NuovaPropostaAsync(PagheDbContext db)
+    private const string UndoProva =
+        """{"versionePrecedente":3,"cognome":"Rossi"}""";
+
+    private NuovaPropostaAurora RichiestaProva(bool confermabile = true) => new(
+        _tenant, _utente, Guid.NewGuid(), null,
+        "strumento_prova", "1.0", "Presenze", "apply_reversible",
+        Guid.NewGuid(), "2026-07",
+        ArgomentiProva, UndoProva, "PRE-HASH", "POST-HASH",
+        "Assunzione di Rossi Mario",
+        [new RigaDiffAurora("Nome", null, "Mario"), new RigaDiffAurora("Cognome", null, "Rossi")],
+        confermabile);
+
+    private static Task<EsitoAccessoAi> QuotaConsentita(CancellationToken _) =>
+        Task.FromResult(new EsitoAccessoAi(true, null, 0, 1, 1));
+
+    private async Task<(AiPropostaEntity Proposta, string? Token, AiRuntimeStore Store)>
+        NuovaPropostaAsync(PagheDbContext db, bool confermabile = true)
     {
         var store = new AiRuntimeStore(db, _opzioniProposta, _orologio);
-        var (proposta, token) = await store.CreaPropostaAsync(
-            _tenant, _utente, null, null, "strumento_prova", ArgomentiProva,
-            "Assunzione di Rossi Mario",
-            [new RigaDiffAurora("Nome", null, "Mario"), new RigaDiffAurora("Cognome", null, "Rossi")]);
+        var (proposta, token) = await store.CreaPropostaGovernataAsync(
+            RichiestaProva(confermabile), QuotaConsentita);
         return (proposta, token, store);
     }
+
+    /// <summary>Conferma con Governor e audit finti sempre favorevoli: prova il solo protocollo.</summary>
+    private static Task<EsitoOperazionePropostaAurora> ConfermaProvaAsync(
+        AiRuntimeStore store, Guid tenant, Guid utente, string? token,
+        Func<MetadatiPropostaAurora, string, CancellationToken, Task<(bool, string)>> applica) =>
+        store.ConfermaGovernataAsync(
+            tenant, utente, token,
+            _ => (true, null),
+            (_, ct) => QuotaConsentita(ct),
+            applica,
+            (_, _) => Task.CompletedTask);
 
     [Fact]
     public async Task Proposta_ArgomentiCifrati_MaiInChiaroNelDatabase()
@@ -763,8 +787,23 @@ public sealed class AuroraRuntimeTests : IDisposable
         Assert.DoesNotContain("Rossi", salvata.Titolo);
         Assert.DoesNotContain("Mario", salvata.DiffJson);
         Assert.DoesNotContain("Cognome", salvata.DiffJson);
+        Assert.DoesNotContain("Rossi", salvata.UndoProtetto);
         Assert.Equal("InAttesa", salvata.Stato);
+        Assert.True(salvata.Confermabile);
         Assert.Equal(AiRuntimeStore.Hash(ArgomentiProva), salvata.ArgomentiHash);
+    }
+
+    [Fact]
+    public async Task Proposta_NonConfermabile_RestaShadowSenzaToken()
+    {
+        await using var db = NuovoContesto();
+        var (proposta, token, _) = await NuovaPropostaAsync(db, confermabile: false);
+
+        Assert.Null(token);
+        var salvata = await db.AiProposte.AsNoTracking().SingleAsync(p => p.Id == proposta.Id);
+        Assert.Equal("Shadow", salvata.Stato);
+        Assert.False(salvata.Confermabile);
+        Assert.Null(salvata.SlotAttivo);
     }
 
     [Fact]
@@ -774,17 +813,18 @@ public sealed class AuroraRuntimeTests : IDisposable
         var (_, token, store) = await NuovaPropostaAsync(db);
         int applicazioni = 0;
 
-        var primo = await store.ConfermaAsync(_tenant, _utente, token, (strumento, argomenti, _) =>
+        var primo = await ConfermaProvaAsync(store, _tenant, _utente, token, (meta, comando, _) =>
         {
             applicazioni++;
-            Assert.Equal("strumento_prova", strumento);
-            Assert.Equal(ArgomentiProva, argomenti); // gli argomenti tornano decifrati e intatti
+            Assert.Equal("strumento_prova", meta.Strumento);
+            Assert.Equal(ArgomentiProva, comando); // il comando torna decifrato e intatto
             return Task.FromResult((true, """{"rapportoId":"nuovo"}"""));
         });
-        var replay = await store.ConfermaAsync(_tenant, _utente, token,
+        var replay = await ConfermaProvaAsync(store, _tenant, _utente, token,
             (_, _, _) => { applicazioni++; return Task.FromResult((true, "{}")); });
 
         Assert.Equal("Applicata", primo.Stato);
+        Assert.NotNull(primo.TokenUndo);
         Assert.Equal("GiaApplicata", replay.Stato);
         Assert.Equal(primo.EsitoJson, replay.EsitoJson);
         Assert.Equal(1, applicazioni);
@@ -797,8 +837,8 @@ public sealed class AuroraRuntimeTests : IDisposable
         var (_, token, store) = await NuovaPropostaAsync(db);
         int applicazioni = 0;
 
-        var alterato = token[..^2] + (token[^1] == 'A' ? "BB" : "AA");
-        var esito = await store.ConfermaAsync(_tenant, _utente, alterato,
+        var alterato = token![..^2] + (token[^1] == 'A' ? "BB" : "AA");
+        var esito = await ConfermaProvaAsync(store, _tenant, _utente, alterato,
             (_, _, _) => { applicazioni++; return Task.FromResult((true, "{}")); });
 
         Assert.Equal("NonValida", esito.Stato);
@@ -811,16 +851,16 @@ public sealed class AuroraRuntimeTests : IDisposable
         await using var db = NuovoContesto();
         var (_, token, store) = await NuovaPropostaAsync(db);
         int applicazioni = 0;
-        Task<(bool, string)> MaiApplicare(string s, string a, CancellationToken c)
+        Task<(bool, string)> MaiApplicare(MetadatiPropostaAurora m, string a, CancellationToken c)
         {
             applicazioni++;
             return Task.FromResult((true, "{}"));
         }
 
         Assert.Equal("NonTrovata",
-            (await store.ConfermaAsync(Guid.NewGuid(), _utente, token, MaiApplicare)).Stato);
+            (await ConfermaProvaAsync(store, Guid.NewGuid(), _utente, token, MaiApplicare)).Stato);
         Assert.Equal("NonTrovata",
-            (await store.ConfermaAsync(_tenant, Guid.NewGuid(), token, MaiApplicare)).Stato);
+            (await ConfermaProvaAsync(store, _tenant, Guid.NewGuid(), token, MaiApplicare)).Stato);
         Assert.Equal(0, applicazioni);
     }
 
@@ -831,7 +871,7 @@ public sealed class AuroraRuntimeTests : IDisposable
         var (proposta, token, store) = await NuovaPropostaAsync(db);
         _orologio.Avanza(AiRuntimeStore.DurataProposta + TimeSpan.FromSeconds(1));
 
-        var esito = await store.ConfermaAsync(_tenant, _utente, token,
+        var esito = await ConfermaProvaAsync(store, _tenant, _utente, token,
             (_, _, _) => Task.FromResult((true, "{}")));
 
         Assert.Equal("Scaduta", esito.Stato);
@@ -840,18 +880,102 @@ public sealed class AuroraRuntimeTests : IDisposable
     }
 
     [Fact]
-    public async Task Proposta_DominioRifiuta_RegistrataComeAnnullata()
+    public async Task Proposta_DominioRifiuta_RegistrataComeConflitto_SenzaEffetti()
     {
         await using var db = NuovoContesto();
         var (proposta, token, store) = await NuovaPropostaAsync(db);
 
-        var esito = await store.ConfermaAsync(_tenant, _utente, token,
+        var esito = await ConfermaProvaAsync(store, _tenant, _utente, token,
             (_, _, _) => Task.FromResult((false, """{"errore":"Codice fiscale già assunto."}""")));
 
-        Assert.Equal("Fallita", esito.Stato);
-        Assert.Contains("già assunto", esito.EsitoJson);
+        Assert.Equal("Conflitto", esito.Stato);
+        Assert.Equal("Conflitto",
+            (await db.AiProposte.AsNoTracking().SingleAsync(p => p.Id == proposta.Id)).Stato);
+
+        // Un nuovo tentativo di conferma non riapre la proposta né applica nulla.
+        var replay = await ConfermaProvaAsync(store, _tenant, _utente, token,
+            (_, _, _) => Task.FromResult((true, "{}")));
+        Assert.Equal("Conflitto", replay.Stato);
+    }
+
+    [Fact]
+    public async Task Proposta_Annullata_NonPiuConfermabile()
+    {
+        await using var db = NuovoContesto();
+        var (proposta, token, store) = await NuovaPropostaAsync(db);
+        int applicazioni = 0;
+
+        var annullo = await store.AnnullaAsync(
+            _tenant, _utente, token, (_, _) => Task.CompletedTask);
+        var conferma = await ConfermaProvaAsync(store, _tenant, _utente, token,
+            (_, _, _) => { applicazioni++; return Task.FromResult((true, "{}")); });
+
+        Assert.Equal("Annullata", annullo.Stato);
+        Assert.Equal("Annullata", conferma.Stato);
+        Assert.Equal(0, applicazioni);
         Assert.Equal("Annullata",
             (await db.AiProposte.AsNoTracking().SingleAsync(p => p.Id == proposta.Id)).Stato);
+    }
+
+    [Fact]
+    public async Task Proposta_Undo_RipristinaUnaVolta_ConTokenDedicato()
+    {
+        await using var db = NuovoContesto();
+        var (proposta, token, store) = await NuovaPropostaAsync(db);
+        var applicata = await ConfermaProvaAsync(store, _tenant, _utente, token,
+            (_, _, _) => Task.FromResult((true, """{"cartellinoId":"c1"}""")));
+        int ripristini = 0;
+
+        // Il token di conferma non è spendibile come undo.
+        var conTokenSbagliato = await store.RipristinaAsync(
+            _tenant, _utente, token,
+            _ => (true, null),
+            (_, _, _) => { ripristini++; return Task.FromResult((true, "{}")); },
+            (_, _) => Task.CompletedTask);
+        Assert.Equal("NonValida", conTokenSbagliato.Stato);
+
+        var primo = await store.RipristinaAsync(
+            _tenant, _utente, applicata.TokenUndo,
+            _ => (true, null),
+            (meta, undoJson, _) =>
+            {
+                ripristini++;
+                Assert.Equal("strumento_prova", meta.Strumento);
+                Assert.Equal(UndoProva, undoJson); // l'undo torna decifrato e intatto
+                return Task.FromResult((true, """{"ripristinato":true}"""));
+            },
+            (_, _) => Task.CompletedTask);
+        var replay = await store.RipristinaAsync(
+            _tenant, _utente, applicata.TokenUndo,
+            _ => (true, null),
+            (_, _, _) => { ripristini++; return Task.FromResult((true, "{}")); },
+            (_, _) => Task.CompletedTask);
+
+        Assert.Equal("Ripristinata", primo.Stato);
+        Assert.Equal("GiaRipristinata", replay.Stato);
+        Assert.Equal(1, ripristini);
+        Assert.Equal("Ripristinata",
+            (await db.AiProposte.AsNoTracking().SingleAsync(p => p.Id == proposta.Id)).Stato);
+    }
+
+    [Fact]
+    public async Task Proposta_Undo_OltreLaFinestra_Rifiutato()
+    {
+        await using var db = NuovoContesto();
+        var (_, token, store) = await NuovaPropostaAsync(db);
+        var applicata = await ConfermaProvaAsync(store, _tenant, _utente, token,
+            (_, _, _) => Task.FromResult((true, "{}")));
+        _orologio.Avanza(AiRuntimeStore.DurataUndo + TimeSpan.FromSeconds(1));
+        int ripristini = 0;
+
+        var esito = await store.RipristinaAsync(
+            _tenant, _utente, applicata.TokenUndo,
+            _ => (true, null),
+            (_, _, _) => { ripristini++; return Task.FromResult((true, "{}")); },
+            (_, _) => Task.CompletedTask);
+
+        Assert.Equal("Scaduta", esito.Stato);
+        Assert.Equal(0, ripristini);
     }
 
     [Fact]
@@ -876,5 +1000,13 @@ public sealed class AuroraRuntimeTests : IDisposable
         var lease = AiLeaseCodec.Crea(id, "NONCE", DateTime.UtcNow, scade,
             AiLeaseCodec.DerivaChiave(Encoding.UTF8.GetBytes("chiave-qualunque-32-byte-di-test!")));
         Assert.Null(AiPropostaCodec.Prova(lease, chiave));
+
+        // I token v2 sono tipizzati: una conferma non vale come undo, né viceversa.
+        var conferma = AiPropostaCodec.CreaConferma(id, "HASH", scade, chiave);
+        var undo = AiPropostaCodec.CreaUndo(id, "HASH", scade, chiave);
+        Assert.NotNull(AiPropostaCodec.ProvaConferma(conferma, chiave));
+        Assert.NotNull(AiPropostaCodec.ProvaUndo(undo, chiave));
+        Assert.Null(AiPropostaCodec.ProvaUndo(conferma, chiave));
+        Assert.Null(AiPropostaCodec.ProvaConferma(undo, chiave));
     }
 }

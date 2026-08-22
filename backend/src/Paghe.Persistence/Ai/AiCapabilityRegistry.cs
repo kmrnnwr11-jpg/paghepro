@@ -27,7 +27,7 @@ public static class AiCapabilityRegistry
 
         new("controllo.durc_f24", "Adempimenti", "read",
             ["strict", "guided"], ["Durc", "PraticheF24"],
-            ["SCADENZE_PROMEMORIA", "CONTROLLO_ANOMALIE_PAGHE"],
+            ["SCADENZE_PROMEMORIA", "CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE"],
             EffettiEsterni: false, GateRichiesto: "G2"),
 
         new("controllo.anagrafica.azienda", "Anagrafiche", "read",
@@ -44,6 +44,11 @@ public static class AiCapabilityRegistry
             ["guided"], ["Cartellini", "Rapporti", "Cedolini", "Ccnl", "ParametriNormativi"],
             ["CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE"],
             EffettiEsterni: false, GateRichiesto: "G2"),
+
+        new("compila.presenze.assenza_non_retribuita", "Paghe", "reversible_write",
+            ["guided"], ["Dipendenti", "Rapporti", "Cartellini", "Cedolini", "PraticheF24"],
+            ["PREPARAZIONE_MESE_PAGHE"],
+            EffettiEsterni: false, GateRichiesto: "A3"),
 
         // Richiedono un modello: restano spente finché l'isolamento G1 e il gate G3 non sono provati.
         new("spiegazione.calcolo.cedolino", "Paghe", "unavailable",
@@ -92,5 +97,35 @@ public static class AiCapabilityRegistry
         }
 
         return (true, null);
+    }
+
+    /// <summary>
+    /// Verifica una coppia esatta risorsa/operazione. Le letture seguono G2; draft e
+    /// apply_reversible richiedono una capability reversibile A3 per quella stessa risorsa.
+    /// </summary>
+    public static (bool Consentito, string? Motivo) VerificaPermesso(
+        string purposeCode, string modalita, string risorsa, string operazione)
+    {
+        if (operazione is "read" or "search")
+            return VerificaUsoG2(purposeCode, modalita, [risorsa]);
+
+        if (operazione is not ("draft" or "apply_reversible"))
+            return (false, $"Operazione '{operazione}' non riconosciuta.");
+
+        string modo = modalita switch
+        {
+            "Stretta" => "strict",
+            "Guidata" => "guided",
+            _ => "",
+        };
+        var capability = Capabilities.FirstOrDefault(c =>
+            c.StatoLocale == "reversible_write"
+            && c.GateRichiesto == "A3"
+            && c.PurposeCode.Contains(purposeCode, StringComparer.OrdinalIgnoreCase)
+            && c.RisorseUsate.Contains(risorsa, StringComparer.OrdinalIgnoreCase)
+            && c.ModalitaSupportate.Contains(modo, StringComparer.OrdinalIgnoreCase));
+        return capability is null
+            ? (false, $"La coppia '{risorsa}:{operazione}' non è disponibile al gate A3.")
+            : (true, null);
     }
 }

@@ -17,9 +17,16 @@ public static class AiGovernorEndpoints
         var gruppo = app.MapGroup("/api/ai/governor").RequireAuthorization();
 
         // Catalogo e policy correnti: la UI del preflight si costruisce da qui.
-        gruppo.MapGet("/catalogo", () => Results.Ok(new
+        gruppo.MapGet("/catalogo", (ClaimsPrincipal user, AiRolloutPolicy rollout) => Results.Ok(new
         {
             policyVersione = AiUsagePolicyStore.Versione,
+            a3 = new
+            {
+                proposte = rollout.ProposteAbilitate(TenantCorrente(user), UtenteCorrente(user))
+                    && RuoloScrittura(user),
+                conferma = rollout.EffettiAbilitati(TenantCorrente(user), UtenteCorrente(user))
+                    && RuoloScrittura(user),
+            },
             finalita = AiUsagePolicyStore.Tutte.Select(p => new
             {
                 p.PurposeCode,
@@ -56,12 +63,23 @@ public static class AiGovernorEndpoints
 
         gruppo.MapPost("/preflight", async (
             ClaimsPrincipal user, AiGrantService servizio, RichiestaGrant richiesta, CancellationToken ct) =>
-            Results.Ok(await servizio.PreflightAsync(TenantCorrente(user), UtenteCorrente(user), richiesta, ct)));
+        {
+            if (RichiedeA3(richiesta) && !RuoloScrittura(user))
+                return Results.Ok(new EsitoPreflight(
+                    false, "Il ruolo corrente non può richiedere operazioni A3.", null));
+            return Results.Ok(await servizio.PreflightAsync(
+                TenantCorrente(user), UtenteCorrente(user), richiesta, ct,
+                user.FindFirst(ClaimTypes.Role)?.Value));
+        });
 
         gruppo.MapPost("/grants", async (
             ClaimsPrincipal user, AiGrantService servizio, RichiestaGrant richiesta, CancellationToken ct) =>
         {
-            var (grant, errore) = await servizio.EmettiAsync(TenantCorrente(user), UtenteCorrente(user), richiesta, ct);
+            if (RichiedeA3(richiesta) && !RuoloScrittura(user))
+                return Results.Forbid();
+            var (grant, errore) = await servizio.EmettiAsync(
+                TenantCorrente(user), UtenteCorrente(user), richiesta, ct,
+                user.FindFirst(ClaimTypes.Role)?.Value);
             return grant is null ? Results.BadRequest(new { errore }) : Results.Ok(grant);
         });
 
@@ -115,6 +133,12 @@ public static class AiGovernorEndpoints
         gruppo.MapPost("/accesso", async (
             ClaimsPrincipal user, AiGrantService servizio, RichiestaAccesso richiesta, CancellationToken ct) =>
         {
+            if ((richiesta.Operazione ?? "").Trim().ToLowerInvariant() is not ("read" or "search"))
+                return Results.Json(new
+                {
+                    consentito = false,
+                    motivo = "Questo endpoint diagnostico accetta soltanto lettura e ricerca.",
+                }, statusCode: 403);
             var esito = await servizio.AutorizzaAccessoAsync(
                 TenantCorrente(user), UtenteCorrente(user), richiesta.Lease,
                 richiesta.Risorsa, richiesta.Operazione, quantita: 1, ct);
@@ -135,7 +159,7 @@ public static class AiGovernorEndpoints
         return app;
     }
 
-    public sealed record RichiestaAccesso(string Lease, string Risorsa, string Operazione);
+    public sealed record RichiestaAccesso(string? Lease, string? Risorsa, string? Operazione);
 
     public sealed record RichiestaQuery(string Lease, string Risorsa);
 
@@ -148,4 +172,17 @@ public static class AiGovernorEndpoints
         Guid.TryParse(user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id)
             ? id
             : throw new InvalidOperationException("Utente non presente nel token.");
+
+    private static bool RuoloScrittura(ClaimsPrincipal user)
+    {
+        var ruolo = user.FindFirst(ClaimTypes.Role)?.Value;
+        return string.Equals(ruolo, RuoloPolicy.Operatore, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ruolo, RuoloPolicy.Admin, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ruolo, AuthService.RuoloSuperAdmin, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool RichiedeA3(RichiestaGrant richiesta) =>
+        (richiesta.Operazioni ?? []).Any(op =>
+            string.Equals(op?.Trim(), "draft", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(op?.Trim(), "apply_reversible", StringComparison.OrdinalIgnoreCase));
 }

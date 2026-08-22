@@ -35,6 +35,24 @@ public class AiScopeGrantEntity
     /// <summary>Operazioni concesse, separate da virgola: read, search, draft.</summary>
     public string OperazioniAmmesse { get; set; } = "";
 
+    /// <summary>
+    /// Coppie esatte risorsa|operazione separate da virgola. Evita che un grant misto
+    /// trasformi, per prodotto cartesiano, una risorsa di sola lettura in scrivibile.
+    /// </summary>
+    public string PermessiAmmessi { get; set; } = "";
+
+    /// <summary>
+    /// Identità esatte nome@versione dei tool A3. È valorizzato dal server, mai dal prompt
+    /// o dal browser, così un futuro tool sulla stessa risorsa non eredita questo mandato.
+    /// </summary>
+    public string StrumentiAmmessi { get; set; } = "";
+
+    /// <summary>
+    /// ATTIVA soltanto per un mandato A3 spendibile. L'indice univoco obbliga a revocare
+    /// consapevolmente il pilot precedente prima di emetterne un altro.
+    /// </summary>
+    public string? SlotA3Attivo { get; set; }
+
     /// <summary>A1 (lettura/ricerca) o A2 (anche bozze). A3+ non concedibili in G2.</summary>
     public string AutonomiaMax { get; set; } = "A1";
 
@@ -56,6 +74,14 @@ public class AiScopeGrantEntity
     public int MaxLetture { get; set; }
 
     public int LettureUsate { get; set; }
+
+    /// <summary>Quote distinte: preparare una proposta non consuma né nasconde letture.</summary>
+    public int MaxProposte { get; set; }
+    public int ProposteUsate { get; set; }
+
+    /// <summary>Effetti reversibili realmente confermati dall'utente.</summary>
+    public int MaxEffetti { get; set; }
+    public int EffettiUsati { get; set; }
 
     /// <summary>Attivo | Revocato | Scaduto.</summary>
     public string Stato { get; set; } = "Attivo";

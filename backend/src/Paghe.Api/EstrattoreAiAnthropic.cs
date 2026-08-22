@@ -38,6 +38,21 @@ public sealed class AiOptions
     public bool GateLocaleG1Verificato { get; set; }
 
     /// <summary>
+    /// Gate di autonomia del runtime. Il valore di produzione resta A2; A3 richiede inoltre
+    /// che tenant e utente compaiano entrambi nelle allowlist immutabili qui sotto.
+    /// </summary>
+    public string GateAurora { get; set; } = "A2";
+
+    /// <summary>
+    /// Coppie esatte "tenant-guid:utente-guid" ammesse al collaudo. Due liste separate
+    /// produrrebbero un pericoloso prodotto cartesiano; email e domini non autorizzano mai.
+    /// </summary>
+    public string[] CoppieShadowA3 { get; set; } = [];
+
+    /// <summary>Off | DryRun (sole proposte) | Confirmed (proposte, conferma e undo).</summary>
+    public string ModalitaA3 { get; set; } = "Off";
+
+    /// <summary>
     /// Host HTTPS ammessi per Provider=Compatibile. I provider conosciuti hanno una allowlist
     /// incorporata; una BaseUrl configurabile non diventa mai un canale egress arbitrario.
     /// </summary>

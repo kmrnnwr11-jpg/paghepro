@@ -16,7 +16,8 @@ public sealed record RigaAzienda(
     bool IbanPresente,
     bool RecapitoFiscalePresente);
 
-public sealed record RigaDipendente(string Nominativo, string? CodiceCcnl, string? Livello);
+public sealed record RigaDipendente(
+    Guid RapportoId, string Nominativo, string? CodiceCcnl, string? Livello);
 
 public sealed record RigaCartellino(string Nominativo, bool Elaborato);
 
@@ -272,6 +273,7 @@ public sealed class ProfessionalQueryBroker(
         var righe = await query
             .OrderBy(r => r.Dipendente!.Cognome).ThenBy(r => r.Dipendente!.Nome)
             .Select(r => new RigaDipendente(
+                r.Id,
                 (r.Dipendente!.Cognome + " " + r.Dipendente.Nome).Trim(),
                 r.CodiceCcnl,
                 r.Livello))

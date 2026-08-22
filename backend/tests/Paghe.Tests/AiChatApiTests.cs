@@ -132,7 +132,7 @@ public sealed class AiChatApiTests : IDisposable
     }
 
     [Fact]
-    public async Task Conferma_ConGateA3Chiuso_Risponde409_ENonLeggeOApplicaProposte()
+    public async Task Conferma_ConTokenNonFirmatoDalServer_RespintaSenzaEffetti()
     {
         using var client = await NuovoClientAutenticatoAsync();
         var tenant = _tenantCorrente;
@@ -143,8 +143,10 @@ public sealed class AiChatApiTests : IDisposable
             token = "token-che-non-deve-essere-letto",
         });
 
-        Assert.Equal(HttpStatusCode.Conflict, risposta.StatusCode);
-        Assert.Contains("gate A3", await risposta.Content.ReadAsStringAsync(),
+        // Il protocollo A3 accetta soltanto token firmati dal server: qualunque altro
+        // valore muore prima di toccare provider, proposta o dominio.
+        Assert.Equal(HttpStatusCode.BadRequest, risposta.StatusCode);
+        Assert.Contains("alterato", await risposta.Content.ReadAsStringAsync(),
             StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, _providerFinto.Chiamate);
         Assert.Equal(prima, await FotografaDominioAsync(tenant));

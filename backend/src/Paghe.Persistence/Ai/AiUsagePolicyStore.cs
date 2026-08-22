@@ -14,7 +14,11 @@ public sealed record AiUsagePolicy(
     IReadOnlyList<string> OperazioniAmmesse,
     int TtlMassimoMinuti,
     int QuotaLettureDefault,
-    int QuotaLettureMassima);
+    int QuotaLettureMassima,
+    int QuotaProposteDefault = 0,
+    int QuotaProposteMassima = 0,
+    int QuotaEffettiDefault = 0,
+    int QuotaEffettiMassima = 0);
 
 /// <summary>
 /// Elenco chiuso e versionato delle finalità ammesse (purpose code del G0 Governance Pack).
@@ -23,7 +27,7 @@ public sealed record AiUsagePolicy(
 /// </summary>
 public static class AiUsagePolicyStore
 {
-    public const string Versione = "2026-08-17.2";
+    public const string Versione = "2026-08-22.3";
 
     private static readonly string[] SolaLettura = ["read", "search"];
 
@@ -47,11 +51,16 @@ public static class AiUsagePolicyStore
 
             ["PREPARAZIONE_MESE_PAGHE"] = new(
                 "PREPARAZIONE_MESE_PAGHE",
-                "Controllare la preparazione mensile paghe senza calcolare né salvare cedolini.",
-                ScopeMassimo: "S2", AutonomiaMassima: "A1",
+                "Controllare il mese e, nel collaudo A3, proporre correzioni reversibili delle presenze.",
+                ScopeMassimo: "S2", AutonomiaMassima: "A3",
                 ["Aziende", "Dipendenti", "Rapporti", "Cartellini", "Cedolini",
-                    "ParametriNormativi", "Ccnl"], SolaLettura,
-                TtlMassimoMinuti: 120, QuotaLettureDefault: 250, QuotaLettureMassima: 1000),
+                    "PraticheF24", "ParametriNormativi", "Ccnl"],
+                ["read", "search", "draft", "apply_reversible"],
+                TtlMassimoMinuti: 120, QuotaLettureDefault: 250, QuotaLettureMassima: 1000,
+                QuotaProposteDefault: 3, QuotaProposteMassima: 10,
+                // Primo pilot: un solo effetto per mandato. Per ripetere il collaudo
+                // l'operatore deve revocare consapevolmente il mandato e rifare il preflight.
+                QuotaEffettiDefault: 1, QuotaEffettiMassima: 1),
 
             ["LETTURA_DOCUMENTO"] = new(
                 "LETTURA_DOCUMENTO",

@@ -55,6 +55,92 @@ public sealed class StrumentoScritturaDichiarata(DescrittoreStrumento descrittor
     public DescrittoreStrumento Descrittore { get; } = descrittore;
 }
 
+/// <summary>Primo tool A3 reale: patch server-side del solo calendario presenze.</summary>
+public sealed class StrumentoCompilaPresenzeAurora(
+    CompilaPresenzeAuroraService servizio,
+    AiGrantService governor) : IStrumentoAurora
+{
+    private static readonly string[] DipendenzeLettura =
+        ["Dipendenti", "Rapporti", "Cartellini", "Cedolini", "PraticheF24"];
+
+    public DescrittoreStrumento Descrittore { get; } =
+        AuroraStrumentiCatalogo.CompilaPresenze;
+
+    public async Task<PropostaAurora> PreparaAsync(
+        ContestoAurora contesto, string argomentiJson, CancellationToken ct)
+    {
+        if (contesto.Manifest?.AziendaId is not { } aziendaId
+            || contesto.Manifest.Periodo is not { } periodo)
+            return new("Presenze non modificabili", [], false,
+                "Serve un mandato S2 con azienda e periodo.");
+        try
+        {
+            // Tutte le dipendenze vengono validate prima; la quota è prenotata con un solo
+            // incremento, quindi un residuo insufficiente non produce consumi parziali.
+            var (accesso, _) = await governor.AutorizzaPacchettoLettureAsync(
+                contesto.TenantId, contesto.UtenteId, contesto.Lease,
+                DipendenzeLettura, ct);
+            if (!accesso.Consentito)
+                return new("Presenze non modificabili", [], false, accesso.Motivo);
+
+            try
+            {
+                var proposta = await servizio.PreparaAsync(
+                    contesto.TenantId, aziendaId, periodo, argomentiJson, ct);
+                return new(
+                    proposta.Titolo,
+                    proposta.Diff,
+                    true,
+                    null,
+                    proposta.ComandoCanonicoJson,
+                    proposta.UndoJson,
+                    proposta.PrecondizioneHash,
+                    proposta.PostcondizioneHash);
+            }
+            catch (OperazioneAuroraNonConsentitaException ex)
+            {
+                // I controlli hanno effettivamente letto i dati e il motivo viene restituito:
+                // la quota resta consumata. I motivi D3A sono già resi indistinguibili dal service.
+                return new("Presenze non modificabili", [], false, ex.Message);
+            }
+            catch
+            {
+                // Errore operativo senza risultato: riconcilia l'intero pacchetto.
+                await governor.RimborsaLettureAsync(
+                    contesto.TenantId, contesto.UtenteId,
+                    contesto.Manifest.GrantId, DipendenzeLettura.Length,
+                    CancellationToken.None);
+                throw;
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+    }
+
+    public async Task<(bool Riuscita, string EsitoJson)> ApplicaAsync(
+        ContestoAurora contesto, string argomentiJson, CancellationToken ct)
+    {
+        if (contesto.AziendaIdProposta is not { } aziendaId
+            || contesto.PeriodoProposta is not { } periodo)
+            throw new OperazioneAuroraNonConsentitaException(
+                "Scope server-side della proposta assente.");
+        var esito = await servizio.ApplicaAsync(
+            contesto.TenantId, aziendaId, periodo, argomentiJson, ct);
+        return (true, esito.EsitoJson);
+    }
+
+    public async Task<(bool Riuscita, string EsitoJson)> RipristinaAsync(
+        ContestoAurora contesto, string undoJson, CancellationToken ct)
+    {
+        if (contesto.AziendaIdProposta is not { } aziendaId
+            || contesto.PeriodoProposta is not { } periodo)
+            throw new OperazioneAuroraNonConsentitaException(
+                "Scope server-side della proposta assente.");
+        var esito = await servizio.RipristinaAsync(
+            contesto.TenantId, aziendaId, periodo, undoJson, ct);
+        return (true, esito.EsitoJson);
+    }
+}
+
 /// <summary>Catalogo Aurora della fase A2: le sette capacità legacy riclassificate.</summary>
 public static class AuroraStrumentiCatalogo
 {
@@ -76,6 +162,64 @@ public static class AuroraStrumentiCatalogo
         additionalProperties = false,
         description = "Definito nella fase A3 del piano Aurora.",
     };
+
+    private static readonly object SchemaCompilaPresenze = new
+    {
+        type = "object",
+        properties = new
+        {
+            rapportoId = new
+            {
+                type = "string",
+                format = "uuid",
+                description = "ID rapporto restituito da elenco_dipendenti.",
+            },
+            date = new
+            {
+                type = "array",
+                minItems = 1,
+                maxItems = 31,
+                uniqueItems = true,
+                items = new { type = "string", format = "date" },
+            },
+            causale = new
+            {
+                type = "string",
+                @const = "AssenzaNonRetribuita",
+            },
+        },
+        required = new[] { "rapportoId", "date", "causale" },
+        additionalProperties = false,
+    };
+
+    public static readonly DescrittoreStrumento CompilaPresenze = new(
+        "compila_presenze",
+        "Prepara assenze non retribuite su giornate lavorate (da confermare)",
+        "Prepara una modifica reversibile del cartellino del mese: trasforma soltanto le date "
+        + "indicate da giornata lavorata completa ad assenza non retribuita. Usa rapportoId "
+        + "restituito da elenco_dipendenti. Non usare per malattia, infortunio, rapporti parziali, "
+        + "date future o mesi con cedolino.",
+        SchemaCompilaPresenze,
+        "scrittura_reversibile",
+        "diff",
+        "operatore",
+        Risorsa: "Cartellini",
+        Operazione: "draft",
+        Gate: "A3",
+        Idempotente: true,
+        Undo: "Ripristino automatico finché il cartellino non cambia e non esiste un cedolino.",
+        OperazioneConferma: "apply_reversible",
+        VersioneStrumento: CompilaPresenzeAuroraService.VersioneStrumento,
+        PermessiRichiesti:
+        [
+            "Dipendenti|read",
+            "Rapporti|read",
+            "Cartellini|read",
+            "Cedolini|read",
+            "PraticheF24|read",
+            "Cartellini|draft",
+            "Cartellini|apply_reversible",
+        ]);
 
     /// <summary>Le letture attive: scope dal mandato, righe minimizzate dal broker.</summary>
     public static readonly IReadOnlyList<DescrittoreStrumento> Letture =
@@ -162,11 +306,10 @@ public static class AuroraStrumentiCatalogo
             services.AddScoped<IStrumentoAurora>(sp =>
                 new StrumentoLetturaBroker(d));
         }
-        foreach (var descrittore in ScrittureDichiarate)
-        {
-            var d = descrittore;
-            services.AddScoped<IStrumentoAurora>(_ => new StrumentoScritturaDichiarata(d));
-        }
+        // I tre placeholder legacy restano nel catalogo documentale ma non entrano nel DI.
+        // Il solo tool A3 registrato è quello realmente implementato e allowlisted.
+        services.AddScoped<CompilaPresenzeAuroraService>();
+        services.AddScoped<IStrumentoAurora, StrumentoCompilaPresenzeAurora>();
         services.AddScoped<AiToolRegistry>();
         services.AddScoped<IEsecutoreLettureAurora, EsecutoreLettureAurora>();
         services.AddScoped<AiRuntimeStore>();

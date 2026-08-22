@@ -56,7 +56,7 @@ public sealed class AuroraAgentRuntime(
             return new(testo, null, false);
         }
 
-        var strumenti = registry.PerMandato(contesto.Ruolo, manifest);
+        var strumenti = registry.PerMandato(contesto);
         var catalogo = strumenti.Select(s => AiToolRegistry.PerModello(s.Descrittore)).ToArray();
 
         var run = await store.ApriRunAsync(
@@ -158,7 +158,7 @@ public sealed class AuroraAgentRuntime(
                     // Gli strumenti A2 correnti hanno schema object vuoto con
                     // additionalProperties=false. Il provider non è un'autorità: validiamo
                     // nuovamente lato server e usiamo la forma canonica per l'anti-replay.
-                    if (!ProvaNormalizzaArgomentiA2(
+                    if (!ProvaNormalizzaArgomenti(
                         strumento.Descrittore, chiamata.ArgomentiJson,
                         out var argomentiCanonici, out var motivoSchema))
                     {
@@ -278,20 +278,6 @@ public sealed class AuroraAgentRuntime(
         IStrumentoAurora strumento, ChiamataStrumentoAi chiamata, string hashArgomenti,
         int ordine, int giri, int? tokenTotali, List<MessaggioChatAi> messaggi, CancellationToken ct)
     {
-        // Anche una bozza consuma il mandato: il Governor vidima risorsa e operazione draft.
-        var accesso = await governor.AutorizzaAccessoAsync(
-            contesto.TenantId, contesto.UtenteId, contesto.Lease,
-            strumento.Descrittore.Risorsa, "draft", 1, ct);
-        if (!accesso.Consentito)
-        {
-            await store.RegistraToolCallAsync(run, ordine, chiamata.Nome, hashArgomenti,
-                "Negato", accesso.Motivo, 0, 0, ct);
-            var (etichetta, testo) = ClassificaDiniego(accesso.Motivo);
-            RispondiAlModello(messaggi, chiamata.Id, new { errore = accesso.Motivo });
-            await ChiudiAsync(run, etichetta, accesso.Motivo, giri, tokenTotali, messaggi, ct);
-            return new(testo, null, false);
-        }
-
         var proposta = await strumento.PreparaAsync(contesto, chiamata.ArgomentiJson, ct);
         if (!proposta.PuoProcedere)
         {
@@ -305,19 +291,81 @@ public sealed class AuroraAgentRuntime(
             return null; // il modello chiede all'utente i dati mancanti
         }
 
-        var (entita, token) = await store.CreaPropostaAsync(
-            contesto.TenantId, contesto.UtenteId, contesto.Manifest?.GrantId, run.Id,
-            strumento.Descrittore.Nome, chiamata.ArgomentiJson, proposta.Titolo, proposta.Diff, ct);
+        var manifest = contesto.Manifest
+            ?? throw new InvalidOperationException("Manifest A3 assente.");
+        if (manifest.AziendaId is not { } aziendaId || manifest.Periodo is not { } periodo
+            || proposta.ComandoCanonicoJson is null || proposta.UndoJson is null
+            || proposta.PrecondizioneHash is null || proposta.PostcondizioneHash is null
+            || strumento.Descrittore.OperazioneConferma is not { } operazioneEffetto)
+            throw new InvalidOperationException("La preparazione A3 non ha prodotto un intento completo.");
+
+        bool confermabile = registry.A3ConfermaAbilitataPer(
+            contesto.TenantId, contesto.UtenteId);
+        var nuova = new NuovaPropostaAurora(
+            contesto.TenantId,
+            contesto.UtenteId,
+            manifest.GrantId,
+            run.Id,
+            strumento.Descrittore.Nome,
+            strumento.Descrittore.VersioneStrumento,
+            strumento.Descrittore.Risorsa,
+            operazioneEffetto,
+            aziendaId,
+            periodo,
+            proposta.ComandoCanonicoJson,
+            proposta.UndoJson,
+            proposta.PrecondizioneHash,
+            proposta.PostcondizioneHash,
+            proposta.Titolo,
+            proposta.Diff,
+            confermabile);
+
+        (Paghe.Persistence.Entities.AiPropostaEntity entita, string? token) creata;
+        try
+        {
+            creata = await store.CreaPropostaGovernataAsync(
+                nuova,
+                c => governor.AutorizzaPropostaAsync(
+                    contesto.TenantId, contesto.UtenteId, manifest.GrantId,
+                    aziendaId, periodo, strumento.Descrittore.Risorsa,
+                    contesto.Ruolo, c),
+                ct);
+        }
+        catch (ConflittoPropostaAuroraException ex)
+        {
+            await store.RegistraToolCallAsync(run, ordine, chiamata.Nome, hashArgomenti,
+                "Negato", ex.Message, 0, 0, ct);
+            const string testo = "C'è già una proposta in attesa per questo mandato. "
+                + "Confermala o annullala prima di prepararne un'altra.";
+            await ChiudiAsync(run, "Conflitto", ex.Message, giri, tokenTotali, messaggi, ct);
+            return new(testo, null, false);
+        }
+        catch (PropostaAuroraNegataException ex)
+        {
+            await store.RegistraToolCallAsync(run, ordine, chiamata.Nome, hashArgomenti,
+                "Negato", ex.Message, 0, 0, ct);
+            await ChiudiAsync(run, "Negato", ex.Message, giri, tokenTotali, messaggi, ct);
+            return new(
+                "Non posso creare la proposta con il mandato corrente. "
+                + "Controlla quota, ruolo e stato del mandato nel pannello Aurora.",
+                null,
+                false);
+        }
+
+        var (entita, token) = creata;
         await store.RegistraToolCallAsync(run, ordine, chiamata.Nome, hashArgomenti,
             "Proposta", null, 0, 0, ct);
 
-        string testoProposta = $"Ho preparato: {proposta.Titolo}. Controlla il riepilogo e conferma "
-            + "per applicare l'operazione.";
+        // Titolo e diff possono includere dati d'archivio e restano soltanto nella card UI:
+        // non li trasformiamo in testo assistant che rientrerebbe nel prompt del turno seguente.
+        string testoProposta = confermabile
+            ? "Ho preparato una proposta. Controlla il riepilogo e conferma per applicarla."
+            : "Ho preparato un'anteprima di collaudo. In modalità DryRun non può modificare dati.";
         messaggi.Add(new MessaggioChatAi { Ruolo = "assistant", Contenuto = testoProposta });
         await ChiudiAsync(run, "Proposta", null, giri, tokenTotali, messaggi, ct);
         return new(testoProposta, new PropostaAzioneAurora(
             token, strumento.Descrittore.Nome, proposta.Titolo, proposta.Diff,
-            strumento.Descrittore.ResaUi, entita.ScadeUtc), true);
+            strumento.Descrittore.ResaUi, entita.ScadeUtc, entita.Id, confermabile), true);
     }
 
     private async Task ChiudiAsync(
@@ -402,16 +450,22 @@ public sealed class AuroraAgentRuntime(
         }
     }
 
-    private static bool ProvaNormalizzaArgomentiA2(
+    private static bool ProvaNormalizzaArgomenti(
         DescrittoreStrumento descrittore, string? json,
         out string canonico, out string motivo)
     {
         canonico = "";
         motivo = "Schema degli argomenti non valido.";
-        // Quando verrà aperto A3 servirà il validatore dello schema completo; fino ad allora
-        // ogni gate diverso da A2 resta negato per costruzione.
-        if (!string.Equals(descrittore.Gate, AiToolRegistry.GateAttivo, StringComparison.Ordinal))
+        // Gli strumenti A3 validano e canonizzano il proprio schema nel confine di dominio.
+        // Qui il validatore generico conserva il contratto object-vuoto dei soli strumenti A2.
+        if (!string.Equals(descrittore.Gate, "A2", StringComparison.Ordinal))
+        {
+            if (string.Equals(descrittore.Nome, "compila_presenze", StringComparison.Ordinal))
+                return CompilaPresenzeAuroraService.ProvaNormalizzaArgomentiModello(
+                    json, out canonico, out motivo);
+            motivo = "Strumento A3 non incluso nell'allowlist del runtime.";
             return false;
+        }
         if (string.IsNullOrWhiteSpace(json) || json.Length > MassimoCaratteriArgomentiStrumento)
         {
             motivo = $"Argomenti assenti o oltre {MassimoCaratteriArgomentiStrumento} caratteri.";

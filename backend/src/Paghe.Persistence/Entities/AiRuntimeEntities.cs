@@ -82,12 +82,26 @@ public class AiPropostaEntity
     public Guid? RunId { get; set; }
 
     public string Strumento { get; set; } = "";
+    public string VersioneStrumento { get; set; } = "";
+    public string Risorsa { get; set; } = "";
+    public string Operazione { get; set; } = "";
+    public Guid? AziendaId { get; set; }
+    public string? Periodo { get; set; }
 
     /// <summary>Argomenti JSON cifrati: sono l'unica fonte al momento dell'applicazione.</summary>
     public string ArgomentiProtetti { get; set; } = "";
 
     /// <summary>SHA-256 degli argomenti in chiaro: lega il token a ciò che l'utente ha visto.</summary>
     public string ArgomentiHash { get; set; } = "";
+
+    /// <summary>
+    /// Impronta di comando, scope, tool/versione, precondizione, undo, titolo, diff e scadenza.
+    /// È il valore firmato dal token v2 e viene ricalcolato dopo la decifratura.
+    /// </summary>
+    public string IntentoHash { get; set; } = "";
+
+    /// <summary>Hash dello stato autorevole letto dal server prima del diff.</summary>
+    public string PrecondizioneHash { get; set; } = "";
 
     /// <summary>Titolo cifrato tenant-bound; può contenere nominativi o riferimenti pratica.</summary>
     public string Titolo { get; set; } = "";
@@ -102,9 +116,28 @@ public class AiPropostaEntity
     public string Stato { get; set; } = "InAttesa";
 
     public DateTime? ApplicataUtc { get; set; }
+    public DateTime? AnnullataUtc { get; set; }
+    public DateTime? RipristinataUtc { get; set; }
+    public DateTime? UndoScadeUtc { get; set; }
 
     /// <summary>Esito dell'applicazione, cifrato (può citare dati del record creato).</summary>
     public string? EsitoProtetto { get; set; }
+
+    /// <summary>Snapshot minimo cifrato necessario alla compensazione (mai al modello).</summary>
+    public string? UndoProtetto { get; set; }
+
+    /// <summary>Hash/versione dello stato dopo l'effetto: l'undo vale solo se è ancora uguale.</summary>
+    public string? PostcondizioneHash { get; set; }
+    public string? EsitoUndoProtetto { get; set; }
+
+    /// <summary>DryRun non è mai promosso retroattivamente a proposta confermabile.</summary>
+    public bool Confermabile { get; set; }
+
+    /// <summary>
+    /// Vale ATTIVA soltanto per InAttesa/InApplicazione e poi torna null. L'indice univoco
+    /// garantisce una sola proposta pendente per grant senza dipendere da filtri provider-specifici.
+    /// </summary>
+    public string? SlotAttivo { get; set; }
 
     /// <summary>Token di concorrenza: una proposta non si applica mai due volte in parallelo.</summary>
     public int Versione { get; set; }

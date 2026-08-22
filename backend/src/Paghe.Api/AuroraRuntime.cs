@@ -20,11 +20,20 @@ public sealed record DescrittoreStrumento(
     string Operazione,       // read | search | draft
     string Gate,             // A2 (attivo oggi) | A3 | A4 (fasi future)
     bool Idempotente,
-    string Undo);
+    string Undo,
+    string? OperazioneConferma = null,
+    string VersioneStrumento = "v1",
+    IReadOnlyList<string>? PermessiRichiesti = null);
 
 /// <summary>Contesto server-side di un turno: identità dal token, mandato dal Governor.</summary>
 public sealed record ContestoAurora(
-    Guid TenantId, Guid UtenteId, string? Ruolo, string? Lease, ManifestGrant? Manifest);
+    Guid TenantId,
+    Guid UtenteId,
+    string? Ruolo,
+    string? Lease,
+    ManifestGrant? Manifest,
+    Guid? AziendaIdProposta = null,
+    string? PeriodoProposta = null);
 
 /// <summary>Risultato di una lettura: il JSON per il modello più i dati per il SessionLog.</summary>
 public sealed record RisultatoStrumentoAurora(
@@ -43,16 +52,25 @@ public interface IEsecutoreLettureAurora
 
 /// <summary>Proposta preparata da uno strumento di scrittura, prima della persistenza.</summary>
 public sealed record PropostaAurora(
-    string Titolo, IReadOnlyList<RigaDiffAurora> Diff, bool PuoProcedere, string? MotivoBlocco);
+    string Titolo,
+    IReadOnlyList<RigaDiffAurora> Diff,
+    bool PuoProcedere,
+    string? MotivoBlocco,
+    string? ComandoCanonicoJson = null,
+    string? UndoJson = null,
+    string? PrecondizioneHash = null,
+    string? PostcondizioneHash = null);
 
 /// <summary>Proposta firmata come arriva alla SPA: il browser rimanda soltanto il token.</summary>
 public sealed record PropostaAzioneAurora(
-    string Token,
+    string? Token,
     string Strumento,
     string Titolo,
     IReadOnlyList<RigaDiffAurora> Diff,
     string ResaUi,
-    DateTime ScadeUtc);
+    DateTime ScadeUtc,
+    Guid? PropostaId = null,
+    bool Confermabile = true);
 
 /// <summary>
 /// Uno strumento del runtime. Le letture dichiarano soltanto il descrittore e passano
@@ -71,6 +89,10 @@ public interface IStrumentoAurora
     Task<(bool Riuscita, string EsitoJson)> ApplicaAsync(
         ContestoAurora contesto, string argomentiJson, CancellationToken ct) =>
         throw new InvalidOperationException($"Lo strumento {Descrittore.Nome} non applica scritture.");
+
+    Task<(bool Riuscita, string EsitoJson)> RipristinaAsync(
+        ContestoAurora contesto, string undoJson, CancellationToken ct) =>
+        throw new InvalidOperationException($"Lo strumento {Descrittore.Nome} non supporta il ripristino.");
 }
 
 /// <summary>
@@ -79,22 +101,73 @@ public interface IStrumentoAurora
 /// gate di piano, ruolo dell'operatore e mandato attivo (risorse e operazioni del manifest):
 /// uno strumento fuori mandato non viene nemmeno dichiarato.
 /// </summary>
-public sealed class AiToolRegistry(IEnumerable<IStrumentoAurora> strumenti)
+public sealed class AiToolRegistry
 {
-    /// <summary>L'unico gate di strumenti attivo oggi: A3/A4 restano dichiarati ma spenti.</summary>
-    public const string GateAttivo = "A2";
+    private readonly AiRolloutPolicy _rollout;
 
-    public IReadOnlyList<IStrumentoAurora> Tutti { get; } = strumenti.ToArray();
+    public AiToolRegistry(IEnumerable<IStrumentoAurora> strumenti, AiRolloutPolicy rollout)
+    {
+        Tutti = strumenti.ToArray();
+        _rollout = rollout;
+    }
+
+    /// <summary>Costruttore compatibile per i test A2: nessun rollout A3 implicito.</summary>
+    public AiToolRegistry(IEnumerable<IStrumentoAurora> strumenti)
+        : this(strumenti, AiRolloutPolicy.SoloA2) { }
+
+    public IReadOnlyList<IStrumentoAurora> Tutti { get; }
 
     public IStrumentoAurora? Trova(string nome) =>
         Tutti.FirstOrDefault(s => string.Equals(s.Descrittore.Nome, nome, StringComparison.Ordinal));
 
+    public IReadOnlyList<IStrumentoAurora> PerMandato(ContestoAurora contesto)
+    {
+        var manifest = contesto.Manifest
+            ?? throw new ArgumentException("Il registro richiede il manifest del mandato.", nameof(contesto));
+        return [.. Tutti.Where(s =>
+            GateConsentito(s.Descrittore, contesto.TenantId, contesto.UtenteId)
+            && RuoloAmmesso(contesto.Ruolo, s.Descrittore)
+            && manifest.Permessi.Contains(
+                $"{s.Descrittore.Risorsa}|{s.Descrittore.Operazione}",
+                StringComparer.OrdinalIgnoreCase)
+            && (s.Descrittore.OperazioneConferma is null
+                || (string.Equals(s.Descrittore.Gate, "A3", StringComparison.Ordinal)
+                    && !_rollout.EffettiAbilitati(contesto.TenantId, contesto.UtenteId))
+                || manifest.Permessi.Contains(
+                    $"{s.Descrittore.Risorsa}|{s.Descrittore.OperazioneConferma}",
+                    StringComparer.OrdinalIgnoreCase))
+            && (s.Descrittore.PermessiRichiesti ?? []).All(p =>
+                (string.Equals(s.Descrittore.Gate, "A3", StringComparison.Ordinal)
+                    && !_rollout.EffettiAbilitati(contesto.TenantId, contesto.UtenteId)
+                    && p.EndsWith("|apply_reversible", StringComparison.OrdinalIgnoreCase))
+                || manifest.Permessi.Contains(p, StringComparer.OrdinalIgnoreCase))
+            && (!string.Equals(s.Descrittore.Gate, "A3", StringComparison.Ordinal)
+                || manifest.Strumenti.Contains(
+                    $"{s.Descrittore.Nome}@{s.Descrittore.VersioneStrumento}",
+                    StringComparer.Ordinal)))];
+    }
+
+    /// <summary>Compatibilità A2 per test e viste diagnostiche prive di identità.</summary>
     public IReadOnlyList<IStrumentoAurora> PerMandato(string? ruolo, ManifestGrant manifest) =>
         [.. Tutti.Where(s =>
-            string.Equals(s.Descrittore.Gate, GateAttivo, StringComparison.Ordinal)
+            string.Equals(s.Descrittore.Gate, "A2", StringComparison.Ordinal)
             && RuoloAmmesso(ruolo, s.Descrittore)
-            && manifest.Risorse.Contains(s.Descrittore.Risorsa, StringComparer.OrdinalIgnoreCase)
-            && manifest.Operazioni.Contains(s.Descrittore.Operazione, StringComparer.OrdinalIgnoreCase))];
+            && manifest.Permessi.Contains(
+                $"{s.Descrittore.Risorsa}|{s.Descrittore.Operazione}",
+                StringComparer.OrdinalIgnoreCase))];
+
+    public bool A3AbilitatoPer(Guid tenantId, Guid utenteId) =>
+        _rollout.ProposteAbilitate(tenantId, utenteId);
+
+    public bool A3ConfermaAbilitataPer(Guid tenantId, Guid utenteId) =>
+        _rollout.EffettiAbilitati(tenantId, utenteId);
+
+    private bool GateConsentito(
+        DescrittoreStrumento descrittore, Guid tenantId, Guid utenteId) =>
+        string.Equals(descrittore.Gate, "A2", StringComparison.Ordinal)
+        || (string.Equals(descrittore.Gate, "A3", StringComparison.Ordinal)
+            && string.Equals(descrittore.Nome, "compila_presenze", StringComparison.Ordinal)
+            && A3AbilitatoPer(tenantId, utenteId));
 
     /// <summary>Traduzione del descrittore nel formato function-calling del provider.</summary>
     public static StrumentoAi PerModello(DescrittoreStrumento d) =>

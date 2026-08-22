@@ -219,6 +219,7 @@ public class PagheDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.Stato });
+            e.HasIndex(x => new { x.TenantId, x.UtenteId, x.SlotA3Attivo }).IsUnique();
             // La quota non si aggira in parallelo: aggiornamento con token di concorrenza.
             e.Property(x => x.Versione).IsConcurrencyToken();
         });
@@ -246,6 +247,7 @@ public class PagheDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.Stato });
+            e.HasIndex(x => new { x.TenantId, x.GrantId, x.SlotAttivo }).IsUnique();
             // Una proposta non si applica due volte: reclamo con token di concorrenza.
             e.Property(x => x.Versione).IsConcurrencyToken();
         });

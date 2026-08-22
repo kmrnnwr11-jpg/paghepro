@@ -133,6 +133,8 @@ var aiOptions = new AiOptions();
 builder.Configuration.GetSection("Ai").Bind(aiOptions);
 aiOptions.ValidaProfiloLocale();
 builder.Services.AddSingleton(aiOptions);
+builder.Services.AddSingleton(new AiRolloutPolicy(
+    aiOptions.GateAurora, aiOptions.ModalitaA3, aiOptions.CoppieShadowA3));
 HttpMessageHandler CreaHandlerAi() => new SocketsHttpHandler
 {
     // Ogni profilo AI usa egress esplicito: proxy e redirect potrebbero aggirare la allowlist.

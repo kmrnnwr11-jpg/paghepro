@@ -164,6 +164,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("AnnullataUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("ApplicataUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -175,6 +178,12 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("AziendaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Confermabile")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("CreataUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -185,14 +194,45 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<string>("EsitoProtetto")
                         .HasColumnType("text");
 
+                    b.Property<string>("EsitoUndoProtetto")
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("GrantId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("IntentoHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Operazione")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Periodo")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PostcondizioneHash")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PrecondizioneHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("RipristinataUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Risorsa")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<Guid?>("RunId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("ScadeUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SlotAttivo")
+                        .HasColumnType("text");
 
                     b.Property<string>("Stato")
                         .IsRequired()
@@ -209,6 +249,12 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("UndoProtetto")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UndoScadeUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("UtenteId")
                         .HasColumnType("uuid");
 
@@ -216,9 +262,16 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .IsConcurrencyToken()
                         .HasColumnType("integer");
 
+                    b.Property<string>("VersioneStrumento")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "Stato");
+
+                    b.HasIndex("TenantId", "GrantId", "SlotAttivo")
+                        .IsUnique();
 
                     b.ToTable("AiProposte");
                 });
@@ -291,10 +344,19 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<DateTime>("CreatoUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("EffettiUsati")
+                        .HasColumnType("integer");
+
                     b.Property<int>("LettureUsate")
                         .HasColumnType("integer");
 
+                    b.Property<int>("MaxEffetti")
+                        .HasColumnType("integer");
+
                     b.Property<int>("MaxLetture")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxProposte")
                         .HasColumnType("integer");
 
                     b.Property<string>("Modalita")
@@ -312,9 +374,16 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<string>("Periodo")
                         .HasColumnType("text");
 
+                    b.Property<string>("PermessiAmmessi")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("PolicyVersione")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("ProposteUsate")
+                        .HasColumnType("integer");
 
                     b.Property<string>("PurposeCode")
                         .IsRequired()
@@ -334,7 +403,14 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("SlotA3Attivo")
+                        .HasColumnType("text");
+
                     b.Property<string>("Stato")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StrumentiAmmessi")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -357,6 +433,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "Stato");
+
+                    b.HasIndex("TenantId", "UtenteId", "SlotA3Attivo")
+                        .IsUnique();
 
                     b.ToTable("AiScopeGrants");
                 });

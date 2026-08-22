@@ -36,7 +36,7 @@ public sealed record RispostaChatEndpoint(
     string Testo, List<MessaggioChatAi> Storia, PropostaAzioneAurora? Azione, bool Ok);
 
 /// <summary>Conferma di una proposta: il browser rimanda soltanto il token firmato.</summary>
-public sealed record RichiestaConfermaAurora(string Token);
+public sealed record RichiestaConfermaAurora(string? Token);
 
 /// <summary>Esito dell'operazione confermata dall'utente.</summary>
 public sealed record EsitoAzioneChatEndpoint(
@@ -164,45 +164,119 @@ public static class AiChatEndpoints
                 errore = "Azioni Aurora sospese: serve una proposta governata e firmata dal server.",
             })).RequireAuthorization();
 
-        // Conferma di una proposta del runtime (A2): il browser rimanda soltanto il token
-        // firmato; argomenti e diff restano quelli registrati dal server, il ruolo e il gate
-        // dello strumento vengono ricontrollati adesso e le validazioni di dominio girano nei
-        // servizi normali. Ripetere la conferma non duplica l'effetto.
+        // Il browser rimanda soltanto token o ID opachi. Il gate è valutato DENTRO il ramo
+        // ancora pendente della transazione: il replay di un successo resta riconciliabile
+        // anche dopo revoca o kill-switch.
         app.MapPost("/api/ai/chat/conferma", async (
             RichiestaConfermaAurora richiesta, AiRuntimeStore store, AiToolRegistry registry,
-            ClaimsPrincipal user, CancellationToken ct) =>
+            AiGrantService governor, ClaimsPrincipal user, HttpContext http,
+            CancellationToken ct) =>
         {
-            if (!string.Equals(AiToolRegistry.GateAttivo, "A3", StringComparison.Ordinal))
-                return Results.Conflict(new
-                {
-                    errore = "Le scritture Aurora restano sospese finché il gate A3 non è approvato.",
-                });
-
+            http.Response.Headers.CacheControl = "no-store";
             var tenantId = Tenant(user);
             var utenteId = UtenteCorrente(user);
             string? ruolo = RuoloCorrente(user);
-            var esito = await store.ConfermaAsync(tenantId, utenteId, richiesta.Token,
-                async (strumentoNome, argomentiJson, c) =>
+            var esito = await store.ConfermaGovernataAsync(
+                tenantId,
+                utenteId,
+                richiesta.Token,
+                meta =>
                 {
-                    var strumento = registry.Trova(strumentoNome);
+                    var strumento = StrumentoPerMetadati(registry, meta);
+                    if (!registry.A3ConfermaAbilitataPer(tenantId, utenteId))
+                        return (false, "Le modifiche Aurora sono spente dal kill-switch A3.");
                     if (strumento is null)
-                        return (false, """{"errore":"Strumento della proposta non più disponibile."}""");
-                    if (!string.Equals(strumento.Descrittore.Gate, AiToolRegistry.GateAttivo, StringComparison.Ordinal))
-                        return (false, """{"errore":"Strumento non ancora attivo: fase di piano non aperta."}""");
-                    if (!AiToolRegistry.RuoloAmmesso(ruolo, strumento.Descrittore))
-                        return (false, """{"errore":"Il tuo ruolo non può applicare questa operazione."}""");
-                    var contesto = new ContestoAurora(tenantId, utenteId, ruolo, null, null);
-                    return await strumento.ApplicaAsync(contesto, argomentiJson, c);
-                }, ct);
-            return esito.Stato switch
-            {
-                "Applicata" or "GiaApplicata" => Results.Ok(esito),
-                "NonTrovata" => Results.NotFound(new { errore = esito.Messaggio }),
-                "Scaduta" => Results.Json(esito, statusCode: 410),
-                "InCorso" or "Fallita" => Results.Conflict(esito),
-                _ => Results.BadRequest(new { errore = esito.Messaggio }),
-            };
-        }).RequireAuthorization();
+                        return (false, "Strumento o versione della proposta non più disponibili.");
+                    return AiToolRegistry.RuoloAmmesso(ruolo, strumento.Descrittore)
+                        ? (true, (string?)null)
+                        : (false, "Il ruolo corrente non può applicare questa operazione.");
+                },
+                (meta, c) => governor.AutorizzaEffettoPropostaAsync(
+                    tenantId, utenteId, meta.GrantId, meta.AziendaId, meta.Periodo,
+                    meta.Risorsa, meta.Operazione, ruolo, c),
+                async (meta, comando, c) =>
+                {
+                    var strumento = StrumentoPerMetadati(registry, meta)
+                        ?? throw new OperazioneAuroraNonConsentitaException(
+                            "Strumento della proposta non più disponibile.");
+                    var contesto = new ContestoAurora(
+                        tenantId, utenteId, ruolo, null, null,
+                        meta.AziendaId, meta.Periodo);
+                    return await strumento.ApplicaAsync(contesto, comando, c);
+                },
+                (meta, c) => governor.RegistraEventoPropostaAsync(
+                    tenantId, utenteId, meta.GrantId, meta.PropostaId,
+                    "PropostaApplicata", null, c),
+                ct);
+            return MappaEsito(esito);
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
+
+        app.MapPost("/api/ai/chat/annulla", async (
+            RichiestaConfermaAurora richiesta, AiRuntimeStore store,
+            AiGrantService governor, ClaimsPrincipal user, HttpContext http,
+            CancellationToken ct) =>
+        {
+            http.Response.Headers.CacheControl = "no-store";
+            var tenantId = Tenant(user);
+            var utenteId = UtenteCorrente(user);
+            var esito = await store.AnnullaAsync(
+                tenantId, utenteId, richiesta.Token,
+                (meta, c) => governor.RegistraEventoPropostaAsync(
+                    tenantId, utenteId, meta.GrantId, meta.PropostaId,
+                    "PropostaAnnullata", null, c),
+                ct);
+            return MappaEsito(esito);
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
+
+        app.MapPost("/api/ai/chat/undo", async (
+            RichiestaConfermaAurora richiesta, AiRuntimeStore store, AiToolRegistry registry,
+            AiGrantService governor, ClaimsPrincipal user, HttpContext http,
+            CancellationToken ct) =>
+        {
+            http.Response.Headers.CacheControl = "no-store";
+            var tenantId = Tenant(user);
+            var utenteId = UtenteCorrente(user);
+            string? ruolo = RuoloCorrente(user);
+            var esito = await store.RipristinaAsync(
+                tenantId,
+                utenteId,
+                richiesta.Token,
+                meta =>
+                {
+                    var strumento = StrumentoPerMetadati(registry, meta);
+                    return strumento is not null
+                        && AiToolRegistry.RuoloAmmesso(ruolo, strumento.Descrittore)
+                        ? (true, (string?)null)
+                        : (false, "Il ruolo corrente non può ripristinare questa operazione.");
+                },
+                async (meta, undo, c) =>
+                {
+                    var strumento = StrumentoPerMetadati(registry, meta)
+                        ?? throw new OperazioneAuroraNonConsentitaException(
+                            "Strumento della proposta non più disponibile.");
+                    var contesto = new ContestoAurora(
+                        tenantId, utenteId, ruolo, null, null,
+                        meta.AziendaId, meta.Periodo);
+                    return await strumento.RipristinaAsync(contesto, undo, c);
+                },
+                (meta, c) => governor.RegistraEventoPropostaAsync(
+                    tenantId, utenteId, meta.GrantId, meta.PropostaId,
+                    "PropostaRipristinata", null, c),
+                ct);
+            return MappaEsito(esito);
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
+
+        app.MapGet("/api/ai/chat/proposte/{id:guid}", async (
+            Guid id, AiRuntimeStore store, ClaimsPrincipal user, HttpContext http,
+            CancellationToken ct) =>
+        {
+            http.Response.Headers.CacheControl = "no-store";
+            var stato = await store.StatoAsync(
+                Tenant(user), UtenteCorrente(user), id, ct);
+            return stato is null
+                ? Results.NotFound(new { errore = "Proposta non trovata." })
+                : Results.Ok(stato);
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
 
         return app;
     }
@@ -215,6 +289,31 @@ public static class AiChatEndpoints
 
     private static string? RuoloCorrente(ClaimsPrincipal user) =>
         user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+
+    private static IStrumentoAurora? StrumentoPerMetadati(
+        AiToolRegistry registry, MetadatiPropostaAurora meta)
+    {
+        var strumento = registry.Trova(meta.Strumento);
+        var d = strumento?.Descrittore;
+        return d is not null
+            && string.Equals(d.Gate, "A3", StringComparison.Ordinal)
+            && string.Equals(d.Nome, "compila_presenze", StringComparison.Ordinal)
+            && string.Equals(d.VersioneStrumento, meta.VersioneStrumento, StringComparison.Ordinal)
+            && string.Equals(d.Risorsa, meta.Risorsa, StringComparison.Ordinal)
+            && string.Equals(d.OperazioneConferma, meta.Operazione, StringComparison.Ordinal)
+            ? strumento
+            : null;
+    }
+
+    private static IResult MappaEsito(EsitoOperazionePropostaAurora esito) => esito.Stato switch
+    {
+        "Applicata" or "GiaApplicata" or "Ripristinata" or "GiaRipristinata"
+            or "Annullata" or "Shadow" => Results.Ok(esito),
+        "NonTrovata" => Results.NotFound(new { errore = esito.Messaggio }),
+        "Scaduta" => Results.Json(esito, statusCode: StatusCodes.Status410Gone),
+        "Negata" or "Conflitto" or "InCorso" => Results.Conflict(esito),
+        _ => Results.BadRequest(new { errore = esito.Messaggio }),
+    };
 
     /// <summary>
     /// Che cosa manca perché la chat parta, detto a chi deve metterci mano (non a un tecnico):

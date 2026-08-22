@@ -293,9 +293,10 @@ public sealed class AiGovernorTests : IDisposable
         Assert.False(fuoriRisorsa.Consentito);
         Assert.Contains("fuori dal mandato", fuoriRisorsa.Motivo);
 
+        // Le operazioni di scrittura non passano mai dall'accesso generico, nemmeno nel mandato.
         var fuoriOperazione = await servizio.AutorizzaAccessoAsync(tenant, utente, grant.Lease, "Cedolini", "draft");
         Assert.False(fuoriOperazione.Consentito);
-        Assert.Contains("fuori dal mandato", fuoriOperazione.Motivo);
+        Assert.Contains("protocollo firmato A3", fuoriOperazione.Motivo);
     }
 
     [Fact]

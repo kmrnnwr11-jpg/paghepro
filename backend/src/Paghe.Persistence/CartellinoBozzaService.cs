@@ -259,6 +259,44 @@ public sealed class CartellinoBozzaService
         e.RedditoAnnoPrecedente = c.RedditoAnnoPrecedente;
         e.Giornate = c.Giornate;
     }
+
+    /// <summary>
+    /// Ricostruzione interna completa usata dal patcher A3. Non è un DTO HTTP/AI: può
+    /// contenere dati sanitari e deve restare dentro il confine di persistenza.
+    /// </summary>
+    internal static Cartellino DaEntita(CartellinoEntity e) => new()
+    {
+        Anno = e.Anno,
+        Mese = e.Mese,
+        OreStraordinario = e.OreStraordinario,
+        OreStraordinarioNotturno = e.OreStraordinarioNotturno,
+        OreStraordinarioFestivo = e.OreStraordinarioFestivo,
+        GiorniFerie = e.GiorniFerie,
+        OrePermessi = e.OrePermessi,
+        OreExFestivita = e.OreExFestivita,
+        GiorniMalattia = e.GiorniMalattia,
+        NumeroEventoMalattiaAnno = Math.Max(1, e.NumeroEventoMalattiaAnno),
+        GiorniInfortunio = e.GiorniInfortunio,
+        OreAssenzaNonRetribuita = e.OreAssenzaNonRetribuita,
+        StatoAssegniFamiliari = Enum.TryParse<StatoAssegniFamiliari>(
+            e.StatoAssegniFamiliari, out var anf) ? anf : StatoAssegniFamiliari.DaVerificare,
+        ImportoAssegniFamiliari = e.ImportoAssegniFamiliari,
+        GiorniTrasfertaItalia = e.GiorniTrasfertaItalia,
+        GiorniTrasfertaEstero = e.GiorniTrasfertaEstero,
+        IndennitaTrasfertaGiornaliera = e.IndennitaTrasfertaGiornaliera,
+        RimborsoTrasferta = Enum.TryParse<TipoRimborsoTrasferta>(e.RimborsoTrasferta, out var rimborso)
+            ? rimborso : TipoRimborsoTrasferta.Forfettario,
+        RimborsiSpeseDocumentate = e.RimborsiSpeseDocumentate,
+        FringeBenefit = e.FringeBenefit,
+        FringeBenefitGiaErogatoAnno = e.FringeBenefitGiaErogatoAnno,
+        FigliACarico = e.FigliACarico,
+        GiorniBuonoPasto = e.GiorniBuonoPasto,
+        ValoreBuonoPasto = e.ValoreBuonoPasto,
+        BuonoPastoElettronico = e.BuonoPastoElettronico,
+        PremioRisultato = e.PremioRisultato,
+        RedditoAnnoPrecedente = e.RedditoAnnoPrecedente,
+        Giornate = [.. e.Giornate.OrderBy(g => g.Data)],
+    };
 }
 
 /// <summary>Regole condivise fra bozza presenze e calcolo del cedolino.</summary>

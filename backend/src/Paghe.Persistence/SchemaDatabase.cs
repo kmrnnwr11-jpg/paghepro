@@ -121,6 +121,9 @@ public static class SchemaDatabase
         db.AllineaColonneMancanti();
         AllineaVincoloTenantVociCedolino(db);
         AllineaVincoliTenantAnagrafiche(db);
+        // Gli indici arrivano per ultimi: possono citare colonne aggiunte da migrazioni successive
+        // alla CreateTable (es. AiProposte.SlotAttivo), che esistono solo dopo l'allineamento.
+        CompletaIndici(db);
 
         RegistraStoricoAdozioneAtomico(db, migrazioni);
 
@@ -1145,32 +1148,45 @@ public static class SchemaDatabase
     /// </summary>
     private static List<string> CompletaSchema(PagheDbContext db, List<string> tabelleMancanti)
     {
-        var assembly = db.Database.GetService<IMigrationsAssembly>();
-        if (assembly.Migrations.Count == 0) return [];
-
         var daCreare = new HashSet<string>(tabelleMancanti, StringComparer.OrdinalIgnoreCase);
-        var indiciPresenti = IndiciPresenti(db);
+        var operazioni = OperazioniMigrazioni(db, op =>
+            op is CreateTableOperation t && daCreare.Contains(t.Name));
+        EseguiOperazioni(db, operazioni);
+        return operazioni.OfType<CreateTableOperation>().Select(t => t.Name).ToList();
+    }
 
+    /// <summary>
+    /// Crea gli indici assenti: sia quelli delle tabelle appena completate sia quelli aggiunti al
+    /// modello dopo la creazione di una tabella già esistente. Va chiamato dopo l'allineamento
+    /// delle colonne, perché una migrazione può indicizzare colonne introdotte dopo la CreateTable.
+    /// </summary>
+    private static void CompletaIndici(PagheDbContext db)
+    {
+        var indiciPresenti = IndiciPresenti(db);
+        EseguiOperazioni(db, OperazioniMigrazioni(db, op =>
+            op is CreateIndexOperation i && !indiciPresenti.Contains(i.Name)));
+    }
+
+    /// <summary>Le operazioni di tutte le migrazioni, nell'ordine, filtrate dal predicato.</summary>
+    private static List<MigrationOperation> OperazioniMigrazioni(
+        PagheDbContext db, Func<MigrationOperation, bool> filtro)
+    {
+        var assembly = db.Database.GetService<IMigrationsAssembly>();
         var operazioni = new List<MigrationOperation>();
         foreach (var (_, tipo) in assembly.Migrations)
         {
             var migrazione = assembly.CreateMigration(tipo, db.Database.ProviderName!);
-            operazioni.AddRange(migrazione.UpOperations.Where(op => op switch
-            {
-                CreateTableOperation t => daCreare.Contains(t.Name),
-                // Copre sia gli indici delle tabelle nuove sia quelli aggiunti al modello dopo la
-                // creazione di una tabella già esistente.
-                CreateIndexOperation i => !indiciPresenti.Contains(i.Name),
-                _ => false,
-            }));
+            operazioni.AddRange(migrazione.UpOperations.Where(filtro));
         }
-        if (operazioni.Count == 0) return [];
+        return operazioni;
+    }
 
+    private static void EseguiOperazioni(PagheDbContext db, List<MigrationOperation> operazioni)
+    {
+        if (operazioni.Count == 0) return;
         var comandi = db.Database.GetService<IMigrationsSqlGenerator>().Generate(operazioni, db.Model);
         foreach (var comando in comandi)
             db.Database.ExecuteSqlRaw(comando.CommandText);
-
-        return operazioni.OfType<CreateTableOperation>().Select(t => t.Name).ToList();
     }
 
     /// <summary>Nomi delle tabelle presenti nel database (SQLite e PostgreSQL).</summary>

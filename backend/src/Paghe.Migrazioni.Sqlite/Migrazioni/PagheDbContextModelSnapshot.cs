@@ -159,6 +159,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("AnnullataUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("ApplicataUtc")
                         .HasColumnType("TEXT");
 
@@ -170,6 +173,12 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("AziendaId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Confermabile")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreataUtc")
                         .HasColumnType("TEXT");
 
@@ -180,13 +189,44 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<string>("EsitoProtetto")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("EsitoUndoProtetto")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("GrantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IntentoHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Operazione")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Periodo")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PostcondizioneHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PrecondizioneHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RipristinataUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Risorsa")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("RunId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("ScadeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SlotAttivo")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Stato")
@@ -204,6 +244,12 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("UndoProtetto")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UndoScadeUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("UtenteId")
                         .HasColumnType("TEXT");
 
@@ -211,9 +257,16 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("VersioneStrumento")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "Stato");
+
+                    b.HasIndex("TenantId", "GrantId", "SlotAttivo")
+                        .IsUnique();
 
                     b.ToTable("AiProposte");
                 });
@@ -286,10 +339,19 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<DateTime>("CreatoUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("EffettiUsati")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("LettureUsate")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("MaxEffetti")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("MaxLetture")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxProposte")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Modalita")
@@ -307,9 +369,16 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<string>("Periodo")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PermessiAmmessi")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PolicyVersione")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("ProposteUsate")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("PurposeCode")
                         .IsRequired()
@@ -329,7 +398,14 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SlotA3Attivo")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Stato")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StrumentiAmmessi")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -352,6 +428,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "Stato");
+
+                    b.HasIndex("TenantId", "UtenteId", "SlotA3Attivo")
+                        .IsUnique();
 
                     b.ToTable("AiScopeGrants");
                 });

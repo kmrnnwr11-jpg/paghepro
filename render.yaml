@@ -58,6 +58,10 @@ services:
         value: "false"
       - key: Ai__GateLocaleG1Verificato
         value: "false"
+      - key: Ai__GateAurora
+        value: A2
+      - key: Ai__ModalitaA3
+        value: Off
 
       # Riduce il consumo di memoria: il piano Free ha 512 MB.
       - key: DOTNET_gcServer

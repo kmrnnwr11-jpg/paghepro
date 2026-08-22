@@ -44,6 +44,24 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Aurora — fase A0 chiusa e runtime harness A2 (22 agosto 2026)**: su richiesta del
+  fondatore di proseguire il piano `docs/PIANO-AURORA-AGENTE.md`, la baseline è stata
+  confermata e i ~166 percorsi non committati sono diventati otto checkpoint funzionali
+  (pacchetti; workflow cedolino; chat fail-closed; Governor; frontend in due parti;
+  render.yaml; documenti), ciascuno compilante da solo. Poi è stato costruito il runtime
+  A2, con i provider ancora spenti: `AiToolRegistry` a plugin (effetto, resa UI, ruolo,
+  risorsa, operazione, gate; default DENY), turno chat che risolve la lease del mandato nel
+  Governor, letture solo dal `ProfessionalQueryBroker`, bozze vidimate come `draft` (oggi
+  rifiutate dalle policy: nessuna scrittura raggiungibile), SessionLog `AiRun`/`AiToolCall`
+  a digest senza payload, proposta cifrata con token HMAC e conferma idempotente su
+  `/api/ai/chat/conferma`, guardie del loop (giri, ripetizioni, timeout, revoca, quota).
+  Le sette capacità legacy sono riclassificate (5 letture attive, 3 scritture dichiarate al
+  gate A3, `elenco_aziende` esclusa per scope); `AiChatStrumenti` resta in quarantena coi
+  suoi test. Migrazioni `RuntimeAurora` per entrambi i provider. Kill switch riprovato dal
+  vivo (chat sospesa, azione 409, conferma contraffatta 400, moduli normali funzionanti) e
+  informativa di trasparenza nel pannello. Della fase A1 restano al fondatore: verifica
+  DPA, accensione in sviluppo e Render. Suite backend **868/868** e frontend **27/27**.
+
 - **Aurora — primo verticale governato sui cedolini, lotto 10 (verifica finale 22 agosto 2026)**:
   il pannello esegue un controllo deterministico e in sola lettura sui primi 10 rapporti del
   mese scelto. Prima mostra il preflight, poi emette un grant Guidata/S2 legato a utente,

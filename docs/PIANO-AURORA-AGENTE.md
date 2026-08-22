@@ -420,6 +420,30 @@ e «Arresta». Rimossi i dati salute dalla proiezione Cartellini; provider e str
 spenti. Non sono implementati calcolo batch, scritture, proposta firmata, replay protection delle
 proposte o runtime LLM. I gate G1 e A2 complessivo restano aperti.
 
+### Stato incrementale — 22 agosto 2026
+
+Costruito il runtime harness della fase A2, con i provider ancora spenti (i test lo esercitano
+con un provider finto in memoria): `AiToolRegistry` a plugin con `DescrittoreStrumento`
+(effetto, resa UI, ruolo minimo, risorsa, operazione, gate) e default DENY; il turno chat
+accetta la lease del mandato di sessione e la risolve nel Governor
+(`RisolviSessioneAsync`); ogni lettura passa dal `ProfessionalQueryBroker` e ogni bozza dal
+Governor con operazione `draft` (che le policy correnti rifiutano: nessuna scrittura è
+raggiungibile oggi); SessionLog `AiRunEntity`/`AiToolCallEntity` con digest SHA-256 dei
+messaggi model-visible, hash degli argomenti, esiti e durate — mai payload; proposta
+`AiPropostaEntity` con argomenti ed esito cifrati (AAD tenant+proposta), token HMAC a chiave
+derivata distinta dalla lease, conferma su `/api/ai/chat/conferma` con riverifica di firma,
+proprietario, hash, scadenza, gate e ruolo, reclamo atomico e replay idempotente; guardie del
+loop (massimo 4 giri, 5 chiamate per giro, anti-ripetizione, timeout per strumento,
+interruzione pulita su revoca e quota con messaggio di checkpoint). Le sette capacità legacy
+sono riclassificate nel registry: cinque letture attive via broker (`scheda_azienda`,
+`elenco_dipendenti`, `scadenze_studio`, `presenze_mese`, `stato_cedolini_mese`), tre
+scritture dichiarate al gate A3 e mai offerte al modello, `elenco_aziende` esclusa perché
+richiede scope S3 non concedibile in G2. Migrazioni `RuntimeAurora` per SQLite e PostgreSQL.
+Il vecchio `AiChatStrumenti` resta in quarantena coi suoi test finché A3 non ne sostituisce
+le scritture. Kill switch riprovato dal vivo il 22 agosto: con `Provider=Spento` la chat
+spiega la sospensione, `/api/ai/chat/azione` risponde 409, un token di conferma contraffatto
+riceve 400 e i moduli normali funzionano.
+
 Ogni fase: caselle → prova → approvazione del fondatore per la successiva. Nessuna fase
 parte senza richiesta esplicita. I criteri quantitativi di accettazione sono quelli del
 §13 del piano limiti (100% tool call con grant, zero bypass, revoca < 1 s, corpus
@@ -447,8 +471,12 @@ injection, calcoli identici con AI accesa/spenta), applicati a ogni onda.
 - [ ] verifica termini/DPA del provider scelto (bloccante, fondatore + legale);
 - [x] egress allowlist e conferma che l'handler AI resti senza proxy/redirect;
 - [x] `LimiteMensileChiamate` applicato alla chat; messaggio di limite raggiunto in UI;
-- [ ] informativa/trasparenza aggiornata; «Cosa vede l'AI» raggiungibile dal pannello;
-- [ ] prova kill switch e fallback manuale completo;
+- [x] informativa/trasparenza aggiornata (il pannello dichiara sempre dove va il testo:
+      provider spento = nulla lascia il server; provider acceso = nome del provider in
+      chiaro) e «Dati letti dal controllo»/manifest già raggiungibili dal pannello;
+- [x] prova kill switch e fallback manuale completo (22 agosto 2026, dal vivo su SQLite
+      temporaneo: chat sospesa con spiegazione, azione 409, conferma contraffatta 400,
+      registrazione/aziende funzionanti senza AI);
 - [ ] accensione **in sviluppo** col provider scelto; Render resta spento finché A2 non
       è provata.
 
@@ -456,24 +484,31 @@ injection, calcoli identici con AI accesa/spenta), applicati a ogni onda.
 
 ### Fase A2 — Il runtime harness: registry, Governor, sessione, conferme (il cuore)
 
-- [ ] `AiToolRegistry` dinamico a plugin (da proprietà statica a registro con
-      `ToolDescriptor`, filtro per ruolo/gate/grant);
-- [ ] **aggancio al Governor**: all'apertura del pannello si emette (o riusa) un grant
-      di sessione in modalità Guidata (S1/S2: azienda corrente + periodo); ogni tool
-      call passa da `/accesso` o dal broker; quota esaurita = checkpoint con
-      «Continua?» che rinnova il grant; revoca/«Arresta AI» interrompe il loop;
-- [ ] SessionLog persistito (`AiRunEntity`, `ToolCallEntity` del master): model-visible
-      ⟺ logged; niente payload sensibili duplicati (l'audit Governor resta la catena);
-- [ ] conferma non falsificabile (proposta persistita + token HMAC + riverifica, §3.2),
-      in sostituzione del rinvio argomenti dal browser;
-- [ ] guardie del loop: timeout per tool, anti-ripetizione, interruzione pulita;
-- [ ] proiezioni broker aggiuntive necessarie all'onda A;
+- [x] `AiToolRegistry` dinamico a plugin (registro con `DescrittoreStrumento`, filtro per
+      ruolo/gate/mandato, default DENY) — 22 agosto 2026;
+- [x] **aggancio al Governor**: il turno chat accetta la lease del mandato di sessione e la
+      risolve server-side; ogni lettura passa dal broker, ogni bozza dall'`/accesso` con
+      operazione `draft`; quota esaurita = interruzione con messaggio di checkpoint e invito
+      a rinnovare dal pannello; revoca/«Arresta AI» interrompe il loop alla tool call
+      successiva (l'emissione del grant di sessione dal pannello arriva con la UI di A3);
+- [x] SessionLog persistito (`AiRunEntity`, `AiToolCallEntity`): model-visible ⟺ logged per
+      digest, esiti, durate e quantità; nessun payload duplicato (la catena resta l'audit
+      Governor);
+- [x] conferma non falsificabile (proposta persistita con argomenti cifrati + token HMAC +
+      riverifica di firma/hash/scadenza/gate/ruolo + replay idempotente, §3.2) su
+      `/api/ai/chat/conferma`; il rinvio argomenti dal browser resta chiuso (409);
+- [x] guardie del loop: massimo giri, timeout per strumento, anti-ripetizione, interruzione
+      pulita;
+- [ ] proiezioni broker aggiuntive necessarie all'onda A (F24, fatture, pratiche: con A3);
 - [ ] (opzionale, decisione fondatore) adapter Claude per la chat;
-- [ ] test: matrice minima del master (cambio tenant, tool non consentito, conferma
-      contraffatta, replay, timeout) + corpus injection su ogni strumento nuovo.
+- [x] test: matrice minima del master (cambio tenant/utente, tool non offerto, strumento
+      inventato dal modello, conferma contraffatta, replay, timeout, revoca, quota) in
+      `AuroraRuntimeTests` — 23 test; corpus injection esteso a ogni strumento nuovo in A3.
 
 **Uscita:** le sette capacità legacy, riclassificate, dentro il runtime nuovo con Governor e
-conferme firmate; zero regressioni sui 52+18 test esistenti.
+conferme firmate; zero regressioni sui 52+18 test esistenti. **Raggiunta il 22 agosto 2026**
+(cinque letture attive, tre scritture dichiarate al gate A3, `elenco_aziende` esclusa per
+scope S3); il modello resta spento finché A1 non si chiude con la decisione del fondatore.
 
 ### Fase A3 — Onda A + Onda B del catalogo (Aurora opera davvero)
 

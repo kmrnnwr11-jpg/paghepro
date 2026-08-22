@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.Domain;
+using Paghe.Persistence.Cedolini;
 
 namespace Paghe.Persistence;
 
@@ -36,8 +38,9 @@ public sealed class IrapService
             .Where(s => s.TenantId == tenantId && s.AziendaId == aziendaId && s.Data.Year == anno)
             .SumAsync(s => (decimal?)s.Imponibile, ct) ?? 0m;
 
-        decimal costoLavoro = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno)
+        decimal costoLavoro = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId
+                && c.Anno == anno)
             .SumAsync(c => (decimal?)c.CostoAzienda, ct) ?? 0m;
 
         decimal baseImponibile = Math.Max(0m, ricavi - costiEsterni - costoLavoro);

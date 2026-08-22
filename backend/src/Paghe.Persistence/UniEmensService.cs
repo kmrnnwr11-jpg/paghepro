@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.AdeTelematico.UniEmens;
+using Paghe.Core.Domain;
+using Paghe.Persistence.Cedolini;
 
 namespace Paghe.Persistence;
 
@@ -27,11 +29,13 @@ public sealed class UniEmensService
             ?? throw new ArgumentException("Azienda non trovata per il tenant indicato.");
         AziendeService.VerificaProntaPerAdempimentiContributivi(azienda);
 
-        var cedolini = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno && c.Mese == mese)
+        var cedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId
+                && c.Anno == anno && c.Mese == mese)
             .ToListAsync(ct);
         if (cedolini.Count == 0)
-            throw new ArgumentException($"Nessun cedolino archiviato per il periodo {mese:00}/{anno}.");
+            throw new ArgumentException(
+                $"Nessun cedolino chiuso o storico pre-workflow per il periodo {mese:00}/{anno}.");
 
         // Anagrafica lavoratori: rapporto -> dipendente (codice fiscale, cognome, nome, qualifica).
         var rapportoIds = cedolini.Select(c => c.RapportoLavoroId).Distinct().ToList();

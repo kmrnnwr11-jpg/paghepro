@@ -1,0 +1,709 @@
+using System.Globalization;
+using Paghe.Core.Domain;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+
+namespace Paghe.Documenti;
+
+/// <summary>
+/// Cedolino A4 nello stile "Colori": sezioni numerate con testata blu, riquadro di sintesi in
+/// alto e calendario del mese su una fascia orizzontale. Stessi dati dello stile classico,
+/// impaginati per essere letti anche dal dipendente. Non esegue calcoli normativi e lascia
+/// vuote le caselle che il software non alimenta, senza sostituirle con zeri.
+/// </summary>
+internal static class CedolinoColoriPdf
+{
+    private static readonly CultureInfo It = CultureInfo.GetCultureInfo("it-IT");
+
+    private const string Blu = "#12395E";
+    private const string BluChiaro = "#8FB4D6";
+    private const string Testo = "#0F2338";
+    private const string Etichetta = "#6D8399";
+    private const string Bordo = "#D5E2EE";
+    private const string Fondo = "#F4F8FB";
+    private const string FondoGiorno = "#DCE8F2";
+    private const string Avviso = "#9A3412";
+    private const string Bianco = "#FFFFFF";
+
+    internal static byte[] Genera(CedolinoPresentazione dati) =>
+        Document.Create(documento => documento.Page(pagina => Pagina(pagina, dati))).GeneratePdf();
+
+    private static void Pagina(PageDescriptor pagina, CedolinoPresentazione dati)
+    {
+        pagina.Size(PageSizes.A4);
+        pagina.MarginHorizontal(0.9f, Unit.Centimetre);
+        pagina.MarginTop(0.8f, Unit.Centimetre);
+        pagina.MarginBottom(0.8f, Unit.Centimetre);
+        pagina.PageColor(Bianco);
+        pagina.DefaultTextStyle(stile => stile.FontFamily("Lato").FontSize(6.8f).FontColor(Testo));
+
+        pagina.Content().Column(colonna =>
+        {
+            colonna.Spacing(3);
+            colonna.Item().Element(c => Testata(c, dati));
+            colonna.Item().Element(c => DatiLavoratore(c, dati.Intestazione));
+            colonna.Item().Element(c => InBreve(c, dati));
+            colonna.Item().Element(c => ElementiRetribuzione(c, dati));
+            colonna.Item().Element(c => SviluppoVoci(c, dati));
+            colonna.Item().ShowEntire().Element(c => TreQuadri(c, dati.Cedolino));
+            colonna.Item().ShowEntire().Element(c => FeriePermessi(c, dati.Cedolino));
+            colonna.Item().ShowEntire().Element(c => Calendario(c, dati.Cartellino));
+            colonna.Item().ShowEntire().Element(c => BarraNetto(c, dati.Cedolino));
+            colonna.Item().ShowEntire().Element(c => Pagamento(c, dati));
+        });
+        pagina.Footer().Element(c => Piede(c, dati));
+    }
+
+    // ---- Testata ------------------------------------------------------------------------
+
+    private static void Testata(IContainer contenitore, CedolinoPresentazione dati)
+    {
+        var intestazione = dati.Intestazione;
+        contenitore.Border(0.8f).BorderColor(Blu).Row(riga =>
+        {
+            riga.RelativeItem().BorderRight(0.8f).BorderColor(Blu)
+                .PaddingVertical(4).PaddingHorizontal(5).Column(sinistra =>
+                {
+                    sinistra.Item().Row(testa =>
+                    {
+                        if (intestazione.Logo is { Length: > 0 } logo)
+                            testa.ConstantItem(52).Height(34).PaddingRight(7).Image(logo).FitArea();
+                        testa.RelativeItem().Column(nome =>
+                        {
+                            nome.Item().Text(Valore(intestazione.Azienda).ToUpperInvariant())
+                                .FontSize(11.5f).SemiBold().FontColor(Testo);
+                            nome.Item().PaddingTop(1.5f).Text(UnisciRiga(
+                                    intestazione.AziendaIndirizzo, intestazione.AziendaComune))
+                                .FontSize(6.2f).FontColor(Etichetta);
+                        });
+                    });
+                    sinistra.Item().PaddingTop(3.5f).Row(dettagli =>
+                    {
+                        MiniCampo(dettagli, "Codice fiscale", intestazione.CodiceFiscaleAzienda);
+                        MiniCampo(dettagli, "Partita IVA", intestazione.PartitaIva);
+                        MiniCampo(dettagli, "Matricola INPS", intestazione.MatricolaInps);
+                        MiniCampo(dettagli, "P.A.T. INAIL", intestazione.PatInail);
+                    });
+                });
+
+            riga.ConstantItem(175).PaddingVertical(4).PaddingHorizontal(5).Column(destra =>
+            {
+                destra.Item().Text("CEDOLINO PAGA")
+                    .FontSize(8.5f).SemiBold().FontColor(Testo).LetterSpacing(0.12f);
+                destra.Item().PaddingTop(2).BorderTop(1.4f).BorderBottom(0.5f).BorderColor(Blu)
+                    .PaddingVertical(1.5f)
+                    .Text("Prospetto retributivo mensile").FontSize(6.4f).FontColor(Testo);
+                destra.Item().PaddingTop(1.5f)
+                    .Text("NON COSTITUISCE LIBRO UNICO DEL LAVORO")
+                    .FontSize(5.9f).SemiBold().FontColor(Etichetta);
+                destra.Item().PaddingTop(3).Row(box =>
+                {
+                    box.RelativeItem().Border(0.7f).BorderColor(Blu).PaddingVertical(2).PaddingHorizontal(4)
+                        .Column(periodo =>
+                        {
+                            periodo.Item().Text("PERIODO DI PAGA")
+                                .FontSize(5.4f).SemiBold().FontColor(Etichetta);
+                            periodo.Item().Text(Capitalizza(dati.Periodo).ToUpperInvariant())
+                                .FontSize(10.5f).SemiBold().FontColor(Testo);
+                        });
+                    box.ConstantItem(4);
+                    box.ConstantItem(62).Border(0.7f).BorderColor(Blu).PaddingVertical(2).PaddingHorizontal(4)
+                        .Column(numero =>
+                        {
+                            numero.Item().Text("CEDOLINO N.")
+                                .FontSize(5.4f).SemiBold().FontColor(Etichetta);
+                            numero.Item().Text(Valore(dati.Emissione.RiferimentoDocumento))
+                                .FontSize(7.5f).SemiBold().FontColor(Testo);
+                        });
+                });
+            });
+        });
+    }
+
+    private static void MiniCampo(RowDescriptor riga, string etichetta, string? valore) =>
+        riga.RelativeItem().Column(colonna =>
+        {
+            colonna.Item().Text(etichetta.ToUpperInvariant())
+                .FontSize(5.4f).SemiBold().FontColor(Etichetta);
+            colonna.Item().Text(Valore(valore)).FontSize(6.6f).FontColor(Testo);
+        });
+
+    // ---- Sezioni ------------------------------------------------------------------------
+
+    private static void TitoloSezione(IContainer contenitore, string numero, string titolo) =>
+        contenitore.Background(Blu).PaddingVertical(2.5f).PaddingHorizontal(5).Text(testo =>
+        {
+            testo.Span($"{numero}   ").FontSize(6f).FontColor(BluChiaro);
+            testo.Span(titolo.ToUpperInvariant()).FontSize(6.2f).SemiBold().FontColor(Bianco)
+                .LetterSpacing(0.1f);
+        });
+
+    private static void DatiLavoratore(IContainer contenitore, IntestazioneCedolino intestazione)
+    {
+        var campi = new (string Etichetta, string? Valore, bool Evidenza)[]
+        {
+            ("Cognome e nome", intestazione.Dipendente, true),
+            ("Codice fiscale", intestazione.CodiceFiscaleDipendente, false),
+            ("Matricola", intestazione.Matricola, false),
+            ("Data assunzione", intestazione.DataAssunzione, false),
+            ("Data cessazione", intestazione.DataCessazione, false),
+            ("Data di nascita", intestazione.DataNascita, false),
+            ("Comune di residenza", intestazione.ComuneResidenza, false),
+            ("CCNL applicato", intestazione.Ccnl, false),
+            ("Codice CNEL", string.IsNullOrWhiteSpace(intestazione.CodiceCnel)
+                ? "NON CONFIGURATO" : intestazione.CodiceCnel, false),
+            ("Qualifica", intestazione.Qualifica, false),
+            ("Livello", intestazione.Livello, false),
+            ("Tipo contratto", intestazione.TipoContratto, false),
+            ("Orario", intestazione.Orario, false),
+            ("Mensilità", intestazione.Mensilita?.ToString(It), false),
+        };
+
+        contenitore.Border(0.8f).BorderColor(Blu).Column(colonna =>
+        {
+            colonna.Item().Element(c => TitoloSezione(c, "02", "Dati del lavoratore"));
+            for (int inizio = 0; inizio < campi.Length; inizio += 5)
+            {
+                var fascia = campi.Skip(inizio).Take(5).ToList();
+                var cella = colonna.Item();
+                if (inizio > 0) cella = cella.BorderTop(0.5f).BorderColor(Bordo);
+                cella.Row(riga =>
+                {
+                    for (int i = 0; i < 5; i++)
+                    {
+                        var box = riga.RelativeItem();
+                        if (i < 4) box = box.BorderRight(0.5f).BorderColor(Bordo);
+                        if (i >= fascia.Count) { box.Height(1); continue; }
+                        var campo = fascia[i];
+                        box.PaddingVertical(2.5f).PaddingHorizontal(5).Column(dato =>
+                        {
+                            dato.Item().Text(campo.Etichetta.ToUpperInvariant())
+                                .FontSize(5.4f).SemiBold().FontColor(Etichetta);
+                            dato.Item().Text(Valore(campo.Valore))
+                                .FontSize(7.4f).SemiBold().FontColor(Testo);
+                        });
+                    }
+                });
+            }
+        });
+    }
+
+    private static void InBreve(IContainer contenitore, CedolinoPresentazione dati)
+    {
+        var cedolino = dati.Cedolino;
+        var voci = new (string Titolo, string Valore, string Nota)[]
+        {
+            ("Netto in busta", Importo(cedolino.NettoInBusta), "euro di questo mese"),
+            ("Ferie che ti restano", Numero(cedolino.FerieResidue), "giorni"),
+            ("Permessi ROL residui", Numero(cedolino.PermessiResidui), "ore"),
+            ("Giorni lavorati", GiorniLavorati(dati.Cartellino) ?? "n.d.",
+                OreLavorate(dati.Cartellino) is { } ore ? $"{ore} ore ordinarie" : "calendario non compilato"),
+            ("Trattenute totali", Importo(cedolino.TotaleTrattenute), "contributi, IRPEF e addizionali"),
+        };
+
+        contenitore.Border(0.8f).BorderColor(Blu).Background(Fondo).Row(riga =>
+        {
+            for (int i = 0; i < voci.Length; i++)
+            {
+                var box = riga.RelativeItem();
+                if (i < voci.Length - 1) box = box.BorderRight(0.5f).BorderColor(Bordo);
+                var voce = voci[i];
+                box.PaddingVertical(3.5f).PaddingHorizontal(5).Column(colonna =>
+                {
+                    colonna.Item().Text(voce.Titolo.ToUpperInvariant())
+                        .FontSize(5.4f).SemiBold().FontColor(Etichetta);
+                    colonna.Item().PaddingTop(1).Text(voce.Valore)
+                        .FontSize(11.5f).SemiBold().FontColor(Blu);
+                    colonna.Item().Text(voce.Nota).FontSize(5.6f).FontColor(Etichetta);
+                });
+            }
+        });
+    }
+
+    private static void ElementiRetribuzione(IContainer contenitore, CedolinoPresentazione dati)
+    {
+        var righe = dati.Righe;
+        decimal? minimo = CompetenzaVoce(righe, "PAGA_BASE");
+        decimal? edr = CompetenzaVoce(righe, "EDR");
+        decimal? superminimo = CompetenzaVoce(righe, "SUPERMIN");
+        decimal? scatti = CompetenzaVoce(righe, "SCATTI");
+        decimal? totale = minimo is null && edr is null && superminimo is null && scatti is null
+            ? null
+            : (minimo ?? 0m) + (edr ?? 0m) + (superminimo ?? 0m) + (scatti ?? 0m);
+
+        var celle = new (string Etichetta, string Valore, bool Evidenza)[]
+        {
+            ("Minimo tabellare", Importo(minimo), false),
+            ("E.D.R.", Importo(edr), false),
+            ("Superminimo", Importo(superminimo), false),
+            ("Scatti anz.", Importo(scatti), false),
+            ("Totale mensile", Importo(totale), true),
+            ("Retr. oraria", Importo4(BaseVoce(righe, "ROL", "ASSENZA")), false),
+            ("Retr. giornaliera", Importo(BaseVoce(righe, "FERIE")), false),
+        };
+
+        contenitore.Border(0.8f).BorderColor(Blu).Column(colonna =>
+        {
+            colonna.Item().Element(c => TitoloSezione(c, "03", "Elementi della retribuzione"));
+            colonna.Item().Row(riga =>
+            {
+                for (int i = 0; i < celle.Length; i++)
+                {
+                    var box = riga.RelativeItem();
+                    if (i < celle.Length - 1) box = box.BorderRight(0.5f).BorderColor(Bordo);
+                    if (celle[i].Evidenza) box = box.Background(Fondo);
+                    box.PaddingVertical(2.5f).PaddingHorizontal(5).Column(dato =>
+                    {
+                        dato.Item().Text(celle[i].Etichetta.ToUpperInvariant())
+                            .FontSize(5.4f).SemiBold().FontColor(Etichetta);
+                        dato.Item().AlignRight().Text(celle[i].Valore)
+                            .FontSize(7.6f).SemiBold().FontColor(Testo);
+                    });
+                }
+            });
+        });
+    }
+
+    private static void SviluppoVoci(IContainer contenitore, CedolinoPresentazione dati)
+    {
+        var righe = dati.Righe;
+        contenitore.Border(0.8f).BorderColor(Blu).Column(colonna =>
+        {
+            colonna.Item().Element(c => TitoloSezione(c, "04", "Sviluppo delle voci"));
+            colonna.Item().Table(tabella =>
+            {
+                tabella.ColumnsDefinition(colonne =>
+                {
+                    colonne.RelativeColumn(1.4f);
+                    colonne.RelativeColumn(4.6f);
+                    colonne.RelativeColumn(1.1f);
+                    colonne.RelativeColumn(1.3f);
+                    colonne.RelativeColumn(1.5f);
+                    colonne.RelativeColumn(1.5f);
+                });
+                tabella.Header(header =>
+                {
+                    Intestazione(header, "Voce");
+                    Intestazione(header, "Descrizione");
+                    Intestazione(header, "Ore / GG", destra: true);
+                    Intestazione(header, "Base", destra: true);
+                    Intestazione(header, "Competenze", destra: true);
+                    Intestazione(header, "Trattenute", destra: true, ultimo: true);
+                });
+
+                if (righe.Count == 0)
+                    tabella.Cell().ColumnSpan(6).BorderBottom(0.4f).BorderColor(Bordo).Padding(8)
+                        .Text("Nessuna voce presente nel mese.").FontColor(Etichetta);
+
+                for (int indice = 0; indice < righe.Count; indice++)
+                {
+                    var voce = righe[indice];
+                    string sfondo = indice % 2 == 1 ? Fondo : Bianco;
+                    Cella(tabella, voce.Codice, sfondo, piccolo: true);
+                    Cella(tabella, voce.Descrizione, sfondo);
+                    Cella(tabella, Numero(voce.Quantita), sfondo, destra: true);
+                    Cella(tabella, Importo4Breve(voce.Base), sfondo, destra: true);
+                    Cella(tabella, ImportoEconomico(voce.Competenza), sfondo, destra: true,
+                        colore: voce.Competenza < 0m ? Avviso : Testo);
+                    Cella(tabella, ImportoEconomico(voce.Trattenuta), sfondo, destra: true, ultimo: true);
+                }
+
+                tabella.Cell().ColumnSpan(4).BorderTop(1.1f).BorderColor(Blu)
+                    .PaddingVertical(3).PaddingHorizontal(5)
+                    .Text("TOTALI DI COLONNA").FontSize(5.6f).SemiBold().FontColor(Blu);
+                tabella.Cell().BorderTop(1.1f).BorderColor(Blu).PaddingVertical(3).PaddingHorizontal(5)
+                    .AlignRight().Text(Importo(dati.Cedolino.TotaleCompetenze))
+                    .FontSize(7.6f).SemiBold().FontColor(Testo);
+                tabella.Cell().BorderTop(1.1f).BorderColor(Blu).PaddingVertical(3).PaddingHorizontal(5)
+                    .AlignRight().Text(Importo(dati.Cedolino.TotaleTrattenute))
+                    .FontSize(7.6f).SemiBold().FontColor(Testo);
+            });
+        });
+    }
+
+    private static void Intestazione(
+        TableCellDescriptor header, string testo, bool destra = false, bool ultimo = false)
+    {
+        var cella = header.Cell().BorderBottom(1.1f).BorderColor(Blu);
+        if (!ultimo) cella = cella.BorderRight(0.5f).BorderColor(Bordo);
+        var interno = cella.PaddingVertical(2.5f).PaddingHorizontal(5);
+        if (destra) interno = interno.AlignRight();
+        interno.Text(testo.ToUpperInvariant()).FontSize(5.4f).SemiBold().FontColor(Blu);
+    }
+
+    private static void Cella(
+        TableDescriptor tabella, string testo, string sfondo,
+        bool destra = false, bool piccolo = false, bool ultimo = false, string? colore = null)
+    {
+        var cella = tabella.Cell().Background(sfondo).BorderBottom(0.4f).BorderColor(Bordo);
+        if (!ultimo) cella = cella.BorderRight(0.4f).BorderColor(Bordo);
+        var interno = cella.PaddingVertical(2f).PaddingHorizontal(5);
+        if (destra) interno = interno.AlignRight();
+        interno.Text(testo).FontSize(piccolo ? 6f : 6.7f).FontColor(colore ?? Testo);
+    }
+
+    private static void TreQuadri(IContainer contenitore, Cedolino cedolino) =>
+        contenitore.Row(riga =>
+        {
+            riga.RelativeItem().Element(c => Quadro(c, "05", "Dati previdenziali INPS", new[]
+            {
+                ("Imponibile previdenziale", Importo(cedolino.ImponibileInps), false),
+                ("Contributi c/dipendente", Importo(cedolino.ContributiDipendente), true),
+                ("Contributi c/ditta *", Importo(cedolino.ContributiDatore), false),
+                ("Somme esenti", Importo(cedolino.TotaleEsenti), false),
+                ("Imponibile progressivo anno", "", false),
+            }));
+            riga.ConstantItem(4);
+            riga.RelativeItem().Element(c => Quadro(c, "06", "Dati fiscali", new[]
+            {
+                ("Imponibile IRPEF", Importo(cedolino.ImponibileIrpef), false),
+                ("IRPEF lorda", Importo(cedolino.IrpefLorda), false),
+                ("Detrazioni del mese", Importo(cedolino.DetrazioniLavoroDipendente), false),
+                ("IRPEF netta trattenuta", Importo(cedolino.IrpefNetta), true),
+                ("Addizionali reg. + com.", Importo(cedolino.AddizionaleRegionale + cedolino.AddizionaleComunale), false),
+            }));
+            riga.ConstantItem(4);
+            riga.RelativeItem().Element(c => Quadro(c, "07", "TFR e progressivi", new[]
+            {
+                ("Quota TFR del mese *", Importo(cedolino.QuotaTfr), false),
+                ("Premio agevolato", Importo(cedolino.PremioRisultatoAgevolato), false),
+                ("Imposta sostitutiva", Importo(cedolino.ImpostaSostitutivaPremio), false),
+                ("Costo azienda mese *", Importo(cedolino.CostoAzienda), false),
+                ("Fondo TFR complessivo", "", false),
+            }));
+        });
+
+    private static void Quadro(
+        IContainer contenitore, string numero, string titolo,
+        IReadOnlyList<(string Etichetta, string Valore, bool Evidenza)> valori) =>
+        contenitore.Border(0.8f).BorderColor(Blu).Column(colonna =>
+        {
+            colonna.Item().Element(c => TitoloSezione(c, numero, titolo));
+            for (int i = 0; i < valori.Count; i++)
+            {
+                var cella = colonna.Item();
+                if (i % 2 == 1) cella = cella.Background(Fondo);
+                cella.BorderBottom(0.4f).BorderColor(Bordo)
+                    .PaddingVertical(1.8f).PaddingHorizontal(5).Row(riga =>
+                    {
+                        var testo = riga.RelativeItem().Text(valori[i].Etichetta)
+                            .FontSize(6.4f).FontColor(valori[i].Evidenza ? Testo : Etichetta);
+                        if (valori[i].Evidenza) testo.SemiBold();
+                        var importo = riga.AutoItem().PaddingLeft(6).Text(valori[i].Valore)
+                            .FontSize(6.8f).FontColor(Testo);
+                        if (valori[i].Evidenza) importo.SemiBold();
+                    });
+            }
+        });
+
+    private static void FeriePermessi(IContainer contenitore, Cedolino cedolino) =>
+        contenitore.Border(0.8f).BorderColor(Blu).Column(colonna =>
+        {
+            colonna.Item().Element(c => TitoloSezione(c, "08", "Ferie e permessi — quanto ti resta"));
+            colonna.Item().BorderBottom(1.1f).BorderColor(Blu).Row(riga =>
+            {
+                TestataRateo(riga, 2.4f, "Istituto");
+                TestataRateo(riga, 1f, "Residuo anno prec.", destra: true);
+                TestataRateo(riga, 1f, "Maturato quest'anno", destra: true);
+                TestataRateo(riga, 1f, "Già usato", destra: true);
+                TestataRateo(riga, 1f, "Ti restano", destra: true, ultimo: true);
+            });
+            RigaRateo(colonna, "Ferie (giorni)", cedolino.FerieMaturate, cedolino.FerieGodute,
+                cedolino.FerieResidue, sfondo: false);
+            RigaRateo(colonna, "Permessi ROL / ex festività (ore)", cedolino.PermessiMaturati,
+                cedolino.PermessiGoduti, cedolino.PermessiResidui, sfondo: true);
+        });
+
+    private static void TestataRateo(
+        RowDescriptor riga, float peso, string testo, bool destra = false, bool ultimo = false)
+    {
+        var cella = riga.RelativeItem(peso);
+        if (!ultimo) cella = cella.BorderRight(0.5f).BorderColor(Bordo);
+        var interno = cella.PaddingVertical(2f).PaddingHorizontal(5);
+        if (destra) interno = interno.AlignRight();
+        interno.Text(testo.ToUpperInvariant()).FontSize(5.4f).SemiBold().FontColor(Blu);
+    }
+
+    private static void RigaRateo(
+        ColumnDescriptor colonna, string istituto,
+        decimal maturato, decimal goduto, decimal residuo, bool sfondo)
+    {
+        var cella = colonna.Item();
+        if (sfondo) cella = cella.Background(Fondo);
+        cella.BorderBottom(0.4f).BorderColor(Bordo).Row(riga =>
+        {
+            ValoreRateo(riga, 2.4f, istituto);
+            ValoreRateo(riga, 1f, "", destra: true);
+            ValoreRateo(riga, 1f, Numero(maturato), destra: true);
+            ValoreRateo(riga, 1f, Numero(goduto), destra: true);
+            ValoreRateo(riga, 1f, Numero(residuo), destra: true, evidenza: true, ultimo: true);
+        });
+    }
+
+    private static void ValoreRateo(
+        RowDescriptor riga, float peso, string testo,
+        bool destra = false, bool evidenza = false, bool ultimo = false)
+    {
+        var cella = riga.RelativeItem(peso);
+        if (!ultimo) cella = cella.BorderRight(0.4f).BorderColor(Bordo);
+        var interno = cella.PaddingVertical(2.2f).PaddingHorizontal(5);
+        if (destra) interno = interno.AlignRight();
+        var span = interno.Text(testo).FontSize(6.7f).FontColor(Testo);
+        if (evidenza) span.SemiBold();
+    }
+
+    private static void Calendario(IContainer contenitore, Cartellino? cartellino)
+    {
+        bool disponibile = cartellino is { Giornate.Count: > 0 };
+        contenitore.Border(0.8f).BorderColor(Blu).Column(colonna =>
+        {
+            colonna.Item().Background(Blu).PaddingVertical(2.5f).PaddingHorizontal(5).Row(titolo =>
+            {
+                titolo.RelativeItem().Text(testo =>
+                {
+                    testo.Span("09   ").FontSize(6f).FontColor(BluChiaro);
+                    testo.Span("CALENDARIO PRESENZE").FontSize(6.2f).SemiBold().FontColor(Bianco);
+                });
+                titolo.AutoItem().AlignMiddle().Text(
+                        "L lavorato · R riposo · F festività · E ferie · M malattia · " +
+                        "I infortunio · P permesso ROL · X ex festività · A assenza n.r.")
+                    .FontSize(5.2f).FontColor(BluChiaro);
+            });
+
+            if (!disponibile)
+            {
+                colonna.Item().Background(Fondo).Padding(6)
+                    .Text("CALENDARIO GIORNALIERO NON DISPONIBILE - il cartellino non è stato " +
+                          "compilato giorno per giorno.")
+                    .FontSize(6.2f).SemiBold().FontColor(Avviso);
+                return;
+            }
+
+            var perGiorno = cartellino!.Giornate.ToDictionary(giorno => giorno.Data.Day);
+            int giorniDelMese = DateTime.DaysInMonth(cartellino.Anno, cartellino.Mese);
+            colonna.Item().Table(tabella =>
+            {
+                tabella.ColumnsDefinition(colonne =>
+                {
+                    for (int giorno = 1; giorno <= giorniDelMese; giorno++)
+                        colonne.RelativeColumn();
+                });
+                for (int giorno = 1; giorno <= giorniDelMese; giorno++)
+                    tabella.Cell().Background(Fondo).BorderRight(0.4f).BorderBottom(0.4f)
+                        .BorderColor(Bordo).PaddingVertical(1.2f).AlignCenter()
+                        .Text(giorno.ToString(It)).FontSize(4.8f).FontColor(Etichetta);
+                for (int giorno = 1; giorno <= giorniDelMese; giorno++)
+                {
+                    bool trovato = perGiorno.TryGetValue(giorno, out var dato);
+                    string sigla = trovato ? Sigla(dato!.Causale) : "";
+                    string sfondo = !trovato ? Bianco
+                        : dato!.Causale == CausaleGiornata.Lavorata ? Bianco
+                        : dato.Causale == CausaleGiornata.RiposoSettimanale ? Fondo
+                        : FondoGiorno;
+                    tabella.Cell().Background(sfondo).BorderRight(0.4f).BorderColor(Bordo)
+                        .PaddingVertical(2.2f).AlignCenter()
+                        .Text(sigla).FontSize(6.6f).SemiBold().FontColor(Testo);
+                }
+            });
+
+            colonna.Item().BorderTop(0.5f).BorderColor(Bordo).Row(riepilogo =>
+            {
+                RiepilogoVoce(riepilogo, "Giorni lavorati", cartellino.GiornateLavorate.ToString(It));
+                RiepilogoVoce(riepilogo, "Ore lavorate",
+                    Numero(cartellino.Giornate.Sum(giorno => giorno.OreOrdinarie)));
+                RiepilogoVoce(riepilogo, "Straordinari",
+                    Numero(cartellino.Giornate.Sum(giorno => giorno.TotaleStraordinario)));
+                RiepilogoVoce(riepilogo, "Giorni ferie", Numero(cartellino.GiorniFerie));
+                RiepilogoVoce(riepilogo, "Ore permessi", Numero(cartellino.OrePermessi));
+                RiepilogoVoce(riepilogo, "Assenze n.r. (ore)",
+                    Numero(cartellino.OreAssenzaNonRetribuita), ultimo: true);
+            });
+        });
+    }
+
+    private static void RiepilogoVoce(RowDescriptor riga, string etichetta, string valore, bool ultimo = false)
+    {
+        var cella = riga.RelativeItem();
+        if (!ultimo) cella = cella.BorderRight(0.4f).BorderColor(Bordo);
+        cella.PaddingVertical(2.5f).PaddingHorizontal(5).Row(dato =>
+        {
+            dato.RelativeItem().Text(etichetta.ToUpperInvariant())
+                .FontSize(5.4f).SemiBold().FontColor(Etichetta);
+            dato.AutoItem().Text(valore).FontSize(6.8f).SemiBold().FontColor(Testo);
+        });
+    }
+
+    private static void BarraNetto(IContainer contenitore, Cedolino cedolino) =>
+        contenitore.Border(0.8f).BorderColor(Blu).Row(riga =>
+        {
+            TotaleBox(riga, "Totale competenze", Importo(cedolino.TotaleCompetenze));
+            TotaleBox(riga, "Totale trattenute", Importo(cedolino.TotaleTrattenute));
+            TotaleBox(riga, "Somme esenti", Importo(cedolino.TotaleEsenti));
+            riga.ConstantItem(175).Background(Blu).PaddingVertical(4).PaddingHorizontal(7)
+                .Row(netto =>
+                {
+                    netto.RelativeItem().AlignMiddle().Text("NETTO\nDEL MESE")
+                        .FontSize(6.2f).SemiBold().FontColor(Bianco).LetterSpacing(0.1f);
+                    netto.AutoItem().AlignMiddle().Text(Importo(cedolino.NettoInBusta))
+                        .FontSize(16f).SemiBold().FontColor(Bianco);
+                });
+        });
+
+    private static void TotaleBox(RowDescriptor riga, string etichetta, string valore) =>
+        riga.RelativeItem().BorderRight(0.5f).BorderColor(Bordo)
+            .PaddingVertical(3.5f).PaddingHorizontal(6).Column(colonna =>
+            {
+                colonna.Item().Text(etichetta.ToUpperInvariant())
+                    .FontSize(5.4f).SemiBold().FontColor(Etichetta);
+                colonna.Item().AlignRight().Text(valore).FontSize(9.5f).SemiBold().FontColor(Testo);
+            });
+
+    private static void Pagamento(IContainer contenitore, CedolinoPresentazione dati) =>
+        contenitore.Border(0.8f).BorderColor(Blu).Column(colonna =>
+        {
+            colonna.Item().Row(riga =>
+            {
+                CampoPagamento(riga, "IBAN accredito", dati.IbanMascherato);
+                CampoPagamento(riga, "ANF / assegni familiari", EtichettaAnf(dati.Cartellino));
+                CampoPagamento(riga, "Presenze", TestoDisponibilitaPresenze(dati.Cartellino), ultimo: true);
+            });
+            colonna.Item().BorderTop(0.5f).BorderColor(Bordo)
+                .PaddingVertical(2).PaddingHorizontal(5).Column(note =>
+                {
+                    if (!string.IsNullOrWhiteSpace(dati.Emissione.ValidazioneRegistrata))
+                        note.Item().Text(dati.Emissione.ValidazioneRegistrata!)
+                            .FontSize(5.8f).SemiBold().FontColor(Testo);
+                    note.Item().Text(
+                            "La firma attesta la sola ricezione del prospetto e non costituisce prova " +
+                            "dell'avvenuto pagamento. Data o prova del pagamento: non disponibile nel documento.")
+                        .FontSize(5.6f).FontColor(Etichetta);
+                    note.Item().Text(
+                            "* Dato informativo a carico del datore o accantonato: non riduce il netto. " +
+                            "Le caselle senza valore non sono azzerate: il dato non è stato calcolato.")
+                        .FontSize(5.6f).FontColor(Etichetta);
+                });
+            colonna.Item().BorderTop(0.5f).BorderColor(Bordo).Row(riga =>
+            {
+                Firma(riga, "Firma del lavoratore");
+                Firma(riga, "Firma del datore di lavoro", dati.Emissione.FirmaSiglaTimbro, ultimo: true);
+            });
+        });
+
+    private static void CampoPagamento(RowDescriptor riga, string etichetta, string? valore, bool ultimo = false)
+    {
+        var cella = riga.RelativeItem();
+        if (!ultimo) cella = cella.BorderRight(0.5f).BorderColor(Bordo);
+        cella.PaddingVertical(2.5f).PaddingHorizontal(5).Column(colonna =>
+        {
+            colonna.Item().Text(etichetta.ToUpperInvariant())
+                .FontSize(5.4f).SemiBold().FontColor(Etichetta);
+            colonna.Item().Text(Valore(valore)).FontSize(6.8f).FontColor(Testo);
+        });
+    }
+
+    private static void Firma(RowDescriptor riga, string etichetta, byte[]? immagine = null, bool ultimo = false)
+    {
+        var cella = riga.RelativeItem();
+        if (!ultimo) cella = cella.BorderRight(0.5f).BorderColor(Bordo);
+        cella.PaddingVertical(2.5f).PaddingHorizontal(5).Column(colonna =>
+        {
+            if (immagine is { Length: > 0 })
+                colonna.Item().Height(20).Image(immagine).FitArea();
+            else
+                colonna.Item().PaddingTop(14).BorderBottom(0.5f).BorderColor(Etichetta);
+            colonna.Item().PaddingTop(1).Text(etichetta.ToUpperInvariant())
+                .FontSize(5.4f).SemiBold().FontColor(Etichetta);
+        });
+    }
+
+    private static void Piede(IContainer contenitore, CedolinoPresentazione dati) =>
+        contenitore.PaddingTop(3).BorderTop(0.5f).BorderColor(Bordo).Row(riga =>
+        {
+            riga.RelativeItem().Text(NotaStato(dati.Emissione.Stato))
+                .FontSize(5.3f).SemiBold().FontColor(Avviso);
+            riga.ConstantItem(70).AlignRight().Text(testo =>
+            {
+                testo.DefaultTextStyle(stile => stile.FontSize(5.4f).FontColor(Etichetta));
+                testo.Span("Pagina ");
+                testo.CurrentPageNumber();
+                testo.Span(" / ");
+                testo.TotalPages();
+            });
+        });
+
+    private static string NotaStato(string? stato) => stato?.Trim().ToLowerInvariant() switch
+    {
+        "preworkflow" => "RICOSTRUZIONE DA ARCHIVIO PRE-WORKFLOW NON DEFINITIVA - importi archiviati, dati accessori e impaginazione correnti; nessuna attestazione retroattiva.",
+        "validata" => "VALIDAZIONE REGISTRATA - Documento ancora da chiudere.",
+        "chiusa" => "CEDOLINO CHIUSO - Consegna e pagamento restano operazioni separate.",
+        "controllata" => "DATI CONGELATI - Validazione professionale ancora da registrare.",
+        _ => "BOZZA DA VALIDARE - Documento non certificato.",
+    };
+
+    // ---- Lettura dei dati e formattazione ------------------------------------------------
+
+    private static decimal? CompetenzaVoce(IReadOnlyList<RigaCedolinoPresentata> righe, string codice) =>
+        righe.FirstOrDefault(riga => riga.Codice == codice)?.Competenza;
+
+    private static decimal? BaseVoce(IReadOnlyList<RigaCedolinoPresentata> righe, params string[] codici) =>
+        righe.FirstOrDefault(riga => codici.Contains(riga.Codice) && riga.Base is not null)?.Base;
+
+    private static string? GiorniLavorati(Cartellino? cartellino) =>
+        cartellino is { Giornate.Count: > 0 } ? cartellino.GiornateLavorate.ToString(It) : null;
+
+    private static string? OreLavorate(Cartellino? cartellino) =>
+        cartellino is { Giornate.Count: > 0 }
+            ? Numero(cartellino.Giornate.Sum(giorno => giorno.OreOrdinarie))
+            : null;
+
+    private static string Sigla(CausaleGiornata causale) => causale switch
+    {
+        CausaleGiornata.Ferie => "E",
+        CausaleGiornata.Malattia => "M",
+        CausaleGiornata.Infortunio => "I",
+        CausaleGiornata.PermessoRetribuito => "P",
+        CausaleGiornata.ExFestivita => "X",
+        CausaleGiornata.AssenzaNonRetribuita => "A",
+        CausaleGiornata.RiposoSettimanale => "R",
+        CausaleGiornata.Festivita => "F",
+        _ => "L",
+    };
+
+    private static string TestoDisponibilitaPresenze(Cartellino? cartellino) => cartellino switch
+    {
+        null => "Dati presenze non disponibili in questo documento",
+        { Giornate.Count: > 0 } => "Calendario giornaliero riportato nella sezione 09",
+        _ => "Cartellino acquisito a totali mensili",
+    };
+
+    private static string EtichettaAnf(Cartellino? cartellino) => cartellino?.StatoAssegniFamiliari switch
+    {
+        StatoAssegniFamiliari.NonSpettanti => "Non spettanti nel mese",
+        StatoAssegniFamiliari.Spettanti => Importo(cartellino!.ImportoAssegniFamiliari),
+        null => "Dato non disponibile in questo documento",
+        _ => "Da verificare prima della chiusura",
+    };
+
+    private static string Importo(decimal valore) => valore.ToString("N2", It);
+    private static string Importo(decimal? valore) => valore is decimal v ? Importo(v) : "";
+    private static string Importo4(decimal? valore) => valore is decimal v ? v.ToString("N4", It) : "";
+    private static string Importo4Breve(decimal? valore) => valore is decimal v
+        ? v.ToString(v != 0m && Math.Abs(v) < 100m ? "N4" : "N2", It)
+        : "";
+    private static string ImportoEconomico(decimal? valore) => valore is decimal v && v != 0m
+        ? v.ToString("N2", It)
+        : "";
+    private static string Numero(decimal valore) => valore.ToString("0.##", It);
+    private static string Numero(decimal? valore) => valore is decimal v ? Numero(v) : "";
+    private static string Valore(string? valore) => string.IsNullOrWhiteSpace(valore) ? "" : valore;
+    private static string Capitalizza(string valore) => string.IsNullOrWhiteSpace(valore)
+        ? valore
+        : char.ToUpper(valore[0], It) + valore[1..];
+
+    private static string UnisciRiga(params string?[] valori)
+    {
+        string testo = string.Join(" · ", valori.Where(v => !string.IsNullOrWhiteSpace(v)));
+        return string.IsNullOrWhiteSpace(testo) ? "" : testo;
+    }
+}

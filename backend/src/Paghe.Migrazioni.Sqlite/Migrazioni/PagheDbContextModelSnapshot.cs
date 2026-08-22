@@ -491,6 +491,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<string>("Email")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("FirmaSiglaTimbroProtetta")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("HaDipendenti")
                         .HasColumnType("INTEGER");
 
@@ -729,6 +732,10 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<decimal>("GiorniTrasfertaItalia")
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("ImportoAssegniFamiliari")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("IndennitaTrasfertaGiornaliera")
                         .HasColumnType("TEXT");
 
@@ -771,6 +778,10 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT");
 
                     b.Property<string>("RimborsoTrasferta")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StatoAssegniFamiliari")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -896,6 +907,75 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.ToTable("CcnlLivelli");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.CcnlVersioneEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CcnlCodice")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CodiceCnel")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Fonte")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CcnlCodice", "Anno")
+                        .IsUnique();
+
+                    b.ToTable("CcnlVersioni");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.CedolinoDocumentoEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CedolinoId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatoDa")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatoIl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HashFirmaSiglaTimbroSha256")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HashPdfSha256")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PdfProtetto")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VersioneRenderer")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CedolinoId")
+                        .IsUnique();
+
+                    b.ToTable("CedoliniDocumenti", (string)null);
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.CedolinoEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -919,6 +999,15 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<DateTime>("CalcolatoIl")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ChiusoDa")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ChiusoIl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CodiceCnel")
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("ConguaglioIrpef")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
@@ -931,7 +1020,24 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ControllatoDa")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ControllatoIl")
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("CostoAzienda")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DatiValidazioneProtetti")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DescrizioneCcnl")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("DetrazioniLavoroDipendente")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
@@ -944,11 +1050,26 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<decimal>("FerieResidue")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("FonteCcnl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HashParametriSha256")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("ImponibileInps")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("ImponibileIrpef")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ImpostaSostitutivaPremio")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("IrpefLorda")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
@@ -963,6 +1084,10 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ParametriApplicatiProtetti")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("PermessiGoduti")
                         .HasColumnType("TEXT");
 
@@ -972,11 +1097,19 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<decimal>("PermessiResidui")
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("PremioRisultatoAgevolato")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("QuotaTfr")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("RapportoLavoroId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Stato")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("TenantId")
@@ -986,9 +1119,23 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("TotaleEsenti")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("TotaleTrattenute")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ValidatoDa")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ValidatoIl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Versione")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -996,6 +1143,43 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsUnique();
 
                     b.ToTable("Cedolini");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.CedolinoSnapshotEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CedolinoId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatoDa")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatoIl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DatiProtetti")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HashDatiSha256")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VersioneSchema")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CedolinoId")
+                        .IsUnique();
+
+                    b.ToTable("CedoliniSnapshot", (string)null);
                 });
 
             modelBuilder.Entity("Paghe.Persistence.Entities.CedolinoVoceEntity", b =>
@@ -1011,12 +1195,13 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Ordine")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CedolinoId");
 
                     b.HasIndex("TenantId", "CedolinoId");
 
@@ -1252,8 +1437,6 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("AziendaId");
 
                     b.HasIndex("TenantId", "AziendaId", "DataScadenza");
 
@@ -2182,7 +2365,7 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AziendaId");
+                    b.HasIndex("TenantId", "AziendaId");
 
                     b.HasIndex("TenantId", "DataScadenza");
 
@@ -2220,6 +2403,12 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<Guid>("DipendenteId")
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("FerieResidueIniziali")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue(0m);
+
                     b.Property<decimal?>("FondoTfrIniziale")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
@@ -2247,6 +2436,12 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(6, 3)
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("PermessiResiduiIniziali")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue(0m);
+
                     b.Property<string>("Qualifica")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -2271,9 +2466,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DipendenteId");
-
                     b.HasIndex("TenantId", "AziendaId");
+
+                    b.HasIndex("TenantId", "DipendenteId");
 
                     b.ToTable("Rapporti");
                 });
@@ -2737,11 +2932,41 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Navigation("Azienda");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.CcnlVersioneEntity", b =>
+                {
+                    b.HasOne("Paghe.Persistence.Entities.CcnlEntity", null)
+                        .WithMany()
+                        .HasForeignKey("CcnlCodice")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.CedolinoDocumentoEntity", b =>
+                {
+                    b.HasOne("Paghe.Persistence.Entities.CedolinoEntity", null)
+                        .WithOne("Documento")
+                        .HasForeignKey("Paghe.Persistence.Entities.CedolinoDocumentoEntity", "TenantId", "CedolinoId")
+                        .HasPrincipalKey("Paghe.Persistence.Entities.CedolinoEntity", "TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.CedolinoSnapshotEntity", b =>
+                {
+                    b.HasOne("Paghe.Persistence.Entities.CedolinoEntity", null)
+                        .WithOne("Snapshot")
+                        .HasForeignKey("Paghe.Persistence.Entities.CedolinoSnapshotEntity", "TenantId", "CedolinoId")
+                        .HasPrincipalKey("Paghe.Persistence.Entities.CedolinoEntity", "TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.CedolinoVoceEntity", b =>
                 {
                     b.HasOne("Paghe.Persistence.Entities.CedolinoEntity", null)
                         .WithMany("Voci")
-                        .HasForeignKey("CedolinoId")
+                        .HasForeignKey("TenantId", "CedolinoId")
+                        .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -2761,7 +2986,8 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                 {
                     b.HasOne("Paghe.Persistence.Entities.AziendaEntity", null)
                         .WithMany()
-                        .HasForeignKey("AziendaId")
+                        .HasForeignKey("TenantId", "AziendaId")
+                        .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -2810,15 +3036,17 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                 {
                     b.HasOne("Paghe.Persistence.Entities.AziendaEntity", null)
                         .WithMany()
-                        .HasForeignKey("AziendaId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("TenantId", "AziendaId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Paghe.Persistence.Entities.RapportoLavoroEntity", b =>
                 {
                     b.HasOne("Paghe.Persistence.Entities.DipendenteEntity", "Dipendente")
                         .WithMany("Rapporti")
-                        .HasForeignKey("DipendenteId")
+                        .HasForeignKey("TenantId", "DipendenteId")
+                        .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -2915,6 +3143,10 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
 
             modelBuilder.Entity("Paghe.Persistence.Entities.CedolinoEntity", b =>
                 {
+                    b.Navigation("Documento");
+
+                    b.Navigation("Snapshot");
+
                     b.Navigation("Voci");
                 });
 

@@ -137,6 +137,9 @@ public static class CalendarioCartellino
             GiorniInfortunio = Conta(CausaleGiornata.Infortunio),
             OreAssenzaNonRetribuita = giornate.Sum(g => g.OreAssenzaNonRetribuita),
 
+            StatoAssegniFamiliari = altriDati.StatoAssegniFamiliari,
+            ImportoAssegniFamiliari = altriDati.ImportoAssegniFamiliari,
+
             // Dati del mese che non nascono dal calendario: restano come li ha indicati l'utente.
             GiorniTrasfertaItalia = altriDati.GiorniTrasfertaItalia,
             GiorniTrasfertaEstero = altriDati.GiorniTrasfertaEstero,

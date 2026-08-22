@@ -125,12 +125,21 @@ public sealed class MotoreCalcoloCedolino
         // retribuzione ordinaria a tutti gli effetti.
         var agevolati = AggiungiElementiAgevolati(cedolino, cartellino, _parametri);
 
+        // Gli ANF, quando ancora spettanti, sono esposti come competenza ma non formano imponibile
+        // previdenziale/fiscale e sono recuperati dal datore: non aumentano il costo aziendale.
+        decimal assegniFamiliari = cartellino.StatoAssegniFamiliari == StatoAssegniFamiliari.Spettanti
+            ? cartellino.ImportoAssegniFamiliari
+            : 0m;
+        if (assegniFamiliari > 0m)
+            AggiungiRiga(cedolino, "ANF", "Assegni per il nucleo familiare",
+                TipoVoce.Competenza, importo: assegniFamiliari);
+
         decimal totaleCompetenze = SommaCompetenze(cedolino);
 
         // ---- 3. Contributi previdenziali ---------------------------------------------
         // Le somme esenti sono escluse dalla base contributiva; il premio di risultato NO:
         // l'agevolazione sostituisce la sola IRPEF, i contributi restano dovuti per intero.
-        decimal imponibileInps = totaleCompetenze - agevolati.TotaleEsenti;
+        decimal imponibileInps = totaleCompetenze - agevolati.TotaleEsenti - assegniFamiliari;
         var aliquotaBase = _parametri.AliquotaInps(rapporto.Qualifica);
         // Quota c/dipendente effettiva: base + 0,30% CIG (>15 dip) + fondi di settore (FIS, FSBS...).
         var quotaDip = CalcoloContributi.QuotaInpsDipendente(
@@ -217,7 +226,8 @@ public sealed class MotoreCalcoloCedolino
         cedolino.PremioRisultatoAgevolato = agevolati.PremioAgevolato;
         cedolino.ImpostaSostitutivaPremio = impostaSostitutivaPremio;
         cedolino.QuotaTfr = quotaTfr;
-        cedolino.CostoAzienda = Arrotondamento.Euro(totaleCompetenze + contributiDatore + quotaTfr);
+        cedolino.CostoAzienda = Arrotondamento.Euro(
+            totaleCompetenze - assegniFamiliari + contributiDatore + quotaTfr);
 
         // Saldi Ferie: quanti giorni al mese lo dice il contratto (regole del CCNL).
         // Il residuo può andare sotto zero (ferie anticipate): è un'informazione vera,

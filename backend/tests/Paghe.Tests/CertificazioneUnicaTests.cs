@@ -65,6 +65,8 @@ public sealed class CertificazioneUnicaTests : IDisposable
             var svc = new CedoliniService(db, new ParametriNormativiService(db));
             await svc.CalcolaEArchiviaAsync(tenant, conCedolini, new Cartellino { Anno = 2026, Mese = 1 });
             await svc.CalcolaEArchiviaAsync(tenant, conCedolini, new Cartellino { Anno = 2026, Mese = 2 });
+            foreach (var cedolino in db.Cedolini.Local)
+                await db.ClassificaPreWorkflowAsync(tenant, cedolino.Id);
         }
 
         await using (var db = NuovoContesto())

@@ -203,7 +203,9 @@ public sealed class BloccoPeriodiFuturiTests : IDisposable
         await using (var db = NuovoContesto())
         {
             var svc = new CedoliniService(db, new ParametriNormativiService(db), Oggi15Luglio2026);
-            await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino { Anno = 2026, Mese = 5 });
+            var cedolino = await svc.CalcolaEArchiviaAsync(
+                tenant, rapportoId, new Cartellino { Anno = 2026, Mese = 5 });
+            await db.ClassificaPreWorkflowAsync(tenant, cedolino.Id);
             await new AnagraficheLavoroService(db).CorreggiRapportoAsync(tenant, rapportoId,
                 new AnagraficheLavoroService.CorrezioneRapporto(
                     DataCessazione: new DateOnly(2026, 5, 20)));

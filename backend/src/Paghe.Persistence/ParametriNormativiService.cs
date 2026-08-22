@@ -76,6 +76,11 @@ public sealed class ParametriNormativiService
         foreach (var ccnl in Seed.TuttiICcnl2026())
         {
             _db.Ccnl.Add(new CcnlEntity { Codice = ccnl.Codice, Descrizione = ccnl.Descrizione });
+            _db.CcnlVersioni.Add(new CcnlVersioneEntity
+            {
+                Id = Guid.NewGuid(), CcnlCodice = ccnl.Codice, Anno = p.Anno,
+                CodiceCnel = ccnl.CodiceCnel, Fonte = ccnl.Fonte,
+            });
             foreach (var liv in ccnl.Livelli)
                 _db.CcnlLivelli.Add(new CcnlLivelloEntity
                 {
@@ -178,8 +183,13 @@ public sealed class ParametriNormativiService
         if (livelli.Count == 0)
             throw new ArgumentException($"Nessun livello per il CCNL '{codice}' nell'anno {anno}.");
 
+        var versione = await _db.CcnlVersioni
+            .FirstOrDefaultAsync(v => v.CcnlCodice == codice && v.Anno == anno, ct);
+
         return new Ccnl(ccnl.Codice, ccnl.Descrizione,
             livelli.Select(l => new LivelloCcnl(
-                l.Livello, l.Descrizione, l.MinimoTabellare, l.Edr, l.ImportoScatto)));
+                l.Livello, l.Descrizione, l.MinimoTabellare, l.Edr, l.ImportoScatto)),
+            versione?.CodiceCnel,
+            versione?.Fonte);
     }
 }

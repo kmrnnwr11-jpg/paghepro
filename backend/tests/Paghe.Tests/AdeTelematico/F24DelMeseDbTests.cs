@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.AdeTelematico;
+using Paghe.Core.Domain;
 using Paghe.Persistence;
 using Paghe.Persistence.Entities;
 
@@ -57,6 +58,8 @@ public sealed class F24DelMeseDbTests : IDisposable
                 Cedolino(tenant, aziendaId, rapporto1, irpef: 300m, addReg: 20m, addCom: 10m, inpsDip: 150m, inpsDat: 450m),
                 Cedolino(tenant, aziendaId, rapporto2, irpef: 200m, addReg: 15m, addCom: 5m, inpsDip: 100m, inpsDat: 300m));
             await db.SaveChangesAsync();
+            foreach (var cedolino in db.Cedolini.Local)
+                await db.ClassificaPreWorkflowAsync(tenant, cedolino.Id);
         }
 
         await using (var db = NuovoContesto())
@@ -97,6 +100,35 @@ public sealed class F24DelMeseDbTests : IDisposable
             await Assert.ThrowsAsync<ArgumentException>(() =>
                 svc.GeneraF24DelMeseAsync(tenant, aziendaId, 2026, 6, "1234567890"));
         }
+    }
+
+    [Fact]
+    public async Task CedolinoInBozza_NonAlimentaF24()
+    {
+        var tenant = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        await using var db = NuovoContesto();
+        db.Aziende.Add(new AziendaEntity
+        {
+            Id = aziendaId, TenantId = tenant, RagioneSociale = "Acme Srl",
+            PartitaIva = "01234560017", CodiceFiscale = "01234560017",
+            Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
+            Settore = "COMMERCIO_SERVIZI", CodiceAteco = "47.91.10",
+            MatricolaInps = "1234567890", CodiceSedeInps = "7100", CscInps = "10101",
+            PatInail = "12345678/90", CcnlDefault = "COMMERCIO_TERZIARIO", LivelloDefault = "3",
+        });
+        db.Cedolini.Add(new CedolinoEntity
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, AziendaId = aziendaId,
+            RapportoLavoroId = Guid.NewGuid(), Anno = 2026, Mese = 6,
+            Stato = nameof(StatoCedolino.Bozza), IrpefNetta = 999m,
+        });
+        await db.SaveChangesAsync();
+
+        var errore = await Assert.ThrowsAsync<ArgumentException>(() =>
+            new CedoliniService(db, new ParametriNormativiService(db))
+                .GeneraF24DelMeseAsync(tenant, aziendaId, 2026, 6, "1234567890"));
+        Assert.Contains("cedolino chiuso", errore.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -164,6 +196,7 @@ public sealed class F24DelMeseDbTests : IDisposable
         Anno = 2026, Mese = 6,
         IrpefNetta = irpef, AddizionaleRegionale = addReg, AddizionaleComunale = addCom,
         ContributiDipendente = inpsDip, ContributiDatore = inpsDat, CalcolatoIl = DateTime.UtcNow,
+        Stato = nameof(StatoCedolino.Bozza), Versione = 1,
     };
 
     public void Dispose() => _connection.Dispose();

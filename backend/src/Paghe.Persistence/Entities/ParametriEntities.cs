@@ -79,6 +79,19 @@ public class CcnlEntity
 }
 
 /// <summary>
+/// Identità ufficiale di una versione annuale del contratto. Il codice CNEL non è ricavato
+/// dal nome del CCNL: arriva esplicitamente dalla fonte e resta storicizzato con l'anno.
+/// </summary>
+public class CcnlVersioneEntity
+{
+    public Guid Id { get; set; }
+    public string CcnlCodice { get; set; } = "";
+    public int Anno { get; set; }
+    public string? CodiceCnel { get; set; }
+    public string? Fonte { get; set; }
+}
+
+/// <summary>
 /// Regole di calcolo di un CCNL per un anno: divisori, maggiorazioni dello straordinario e
 /// maturazione di ferie e permessi. Le colonne facoltative restano nulle quando il dato del
 /// contratto non lo abbiamo: in quel caso vale il default generale dell'anno, dichiarato in

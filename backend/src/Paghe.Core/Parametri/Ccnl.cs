@@ -16,12 +16,23 @@ public sealed class Ccnl
 {
     public string Codice { get; }
     public string Descrizione { get; }
+    /// <summary>Codice alfanumerico unico dell'Archivio nazionale CNEL, versionato per anno.</summary>
+    public string? CodiceCnel { get; }
+    /// <summary>Riferimento alla fonte usata per identificare contratto e versione.</summary>
+    public string? Fonte { get; }
     private readonly Dictionary<string, LivelloCcnl> _livelli;
 
-    public Ccnl(string codice, string descrizione, IEnumerable<LivelloCcnl> livelli)
+    public Ccnl(
+        string codice,
+        string descrizione,
+        IEnumerable<LivelloCcnl> livelli,
+        string? codiceCnel = null,
+        string? fonte = null)
     {
         Codice = codice;
         Descrizione = descrizione;
+        CodiceCnel = string.IsNullOrWhiteSpace(codiceCnel) ? null : codiceCnel.Trim().ToUpperInvariant();
+        Fonte = string.IsNullOrWhiteSpace(fonte) ? null : fonte.Trim();
         _livelli = livelli.ToDictionary(l => l.Codice);
     }
 

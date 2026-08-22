@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.Domain;
+using Paghe.Persistence.Cedolini;
 
 namespace Paghe.Persistence;
 
@@ -35,8 +37,9 @@ public sealed class Modello770Service
     public async Task<Mod770Bozza> CostruisciAsync(
         Guid tenantId, Guid aziendaId, int anno, CancellationToken ct = default)
     {
-        var cedolini = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno)
+        var cedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId
+                && c.Anno == anno)
             .ToListAsync(ct);
 
         var rapporti = await _db.Rapporti

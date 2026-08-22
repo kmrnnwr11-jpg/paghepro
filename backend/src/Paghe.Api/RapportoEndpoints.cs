@@ -10,6 +10,7 @@ public sealed record RapportoDettaglioDto(
     string CodiceCcnl, string Livello, string Qualifica,
     int NumeroMensilita, bool PartTime, decimal PercentualePartTime,
     int ScattiAnzianita, decimal Superminimo, string Regione, string DataAssunzione,
+    decimal FerieResidueIniziali, decimal PermessiResiduiIniziali,
     string? DataCessazione);
 
 /// <summary>Correzione della scheda dipendente: solo i campi presenti (non null) vengono cambiati.</summary>
@@ -20,6 +21,7 @@ public sealed record CorreggiRapportoRequest(
     int? ScattiAnzianita, decimal? Superminimo,
     string? Regione, string? CodiceCatastaleComune, string? DataAssunzione,
     decimal? FondoTfrIniziale,
+    decimal? FerieResidueIniziali, decimal? PermessiResiduiIniziali,
     string? DataCessazione, bool? RimuoviDataCessazione);
 
 /// <summary>
@@ -58,6 +60,8 @@ public static class RapportoEndpoints
                 Superminimo: r.Superminimo,
                 Regione: r.Regione,
                 DataAssunzione: r.DataAssunzione.ToString("dd/MM/yyyy"),
+                FerieResidueIniziali: r.FerieResidueIniziali,
+                PermessiResiduiIniziali: r.PermessiResiduiIniziali,
                 DataCessazione: r.DataCessazione?.ToString("dd/MM/yyyy")));
         }).RequireAuthorization();
 
@@ -91,6 +95,7 @@ public static class RapportoEndpoints
                         req.ScattiAnzianita, req.Superminimo,
                         req.Regione, req.CodiceCatastaleComune, dataAssunzione,
                         req.FondoTfrIniziale,
+                        req.FerieResidueIniziali, req.PermessiResiduiIniziali,
                         dataCessazione, req.RimuoviDataCessazione));
                 return r is null
                     ? Results.NotFound(new { errore = "Rapporto non trovato per il tenant indicato." })

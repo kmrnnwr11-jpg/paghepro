@@ -86,7 +86,9 @@ public sealed record CreaDipendenteRequest(
     int GiorniDetrazioneAnno = 365,
     DateOnly? DataAssunzione = null,
     int OreSettimanali = 40,
-    string TipoContratto = "Tempo indeterminato");
+    string TipoContratto = "Tempo indeterminato",
+    decimal FerieResidueIniziali = 0m,
+    decimal PermessiResiduiIniziali = 0m);
 
 /// <summary>Richiesta di riclassificazione bilancio: piano dei conti + saldi.</summary>
 public sealed record RiclassificaRequest(

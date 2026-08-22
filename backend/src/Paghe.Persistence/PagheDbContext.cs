@@ -37,6 +37,7 @@ public class PagheDbContext : DbContext
     public DbSet<AddizionaleRegionaleEntity> AddizionaliRegionali => Set<AddizionaleRegionaleEntity>();
     public DbSet<AddizionaleComunaleEntity> AddizionaliComunali => Set<AddizionaleComunaleEntity>();
     public DbSet<CcnlEntity> Ccnl => Set<CcnlEntity>();
+    public DbSet<CcnlVersioneEntity> CcnlVersioni => Set<CcnlVersioneEntity>();
     public DbSet<CcnlLivelloEntity> CcnlLivelli => Set<CcnlLivelloEntity>();
     public DbSet<RegoleCcnlEntity> RegoleCcnl => Set<RegoleCcnlEntity>();
 
@@ -50,6 +51,8 @@ public class PagheDbContext : DbContext
     public DbSet<RapportoLavoroEntity> Rapporti => Set<RapportoLavoroEntity>();
     public DbSet<CartellinoEntity> Cartellini => Set<CartellinoEntity>();
     public DbSet<CedolinoEntity> Cedolini => Set<CedolinoEntity>();
+    public DbSet<CedolinoSnapshotEntity> CedoliniSnapshot => Set<CedolinoSnapshotEntity>();
+    public DbSet<CedolinoDocumentoEntity> CedoliniDocumenti => Set<CedolinoDocumentoEntity>();
     public DbSet<PraticaAperturaPartitaIvaEntity> PraticheAperturaPartitaIva => Set<PraticaAperturaPartitaIvaEntity>();
     public DbSet<SpesaEntity> Spese => Set<SpesaEntity>();
     public DbSet<LiquidazioneIvaEntity> LiquidazioniIva => Set<LiquidazioneIvaEntity>();
@@ -128,6 +131,7 @@ public class PagheDbContext : DbContext
 
         var conn = Database.GetDbConnection();
         if (conn.State != ConnectionState.Open) conn.Open();
+        var auditLogPresente = false;
 
         foreach (var entita in Model.GetEntityTypes())
         {
@@ -146,6 +150,8 @@ public class PagheDbContext : DbContext
                 while (reader.Read()) esistenti.Add(reader.GetString(0));
             }
             if (esistenti.Count == 0) continue;
+            if (tabella.Equals("AuditLog", StringComparison.OrdinalIgnoreCase))
+                auditLogPresente = true;
 
             var idTabella = Microsoft.EntityFrameworkCore.Metadata.StoreObjectIdentifier
                 .Table(tabella, entita.GetSchema());
@@ -167,9 +173,13 @@ public class PagheDbContext : DbContext
             }
         }
 
-        // Le righe create prima dell'introduzione delle categorie sono tutte modifiche dati.
-        Database.ExecuteSqlRaw(
-            "UPDATE \"AuditLog\" SET \"Categoria\" = 'ModificaDati' WHERE \"Categoria\" = '';");
+        // Le righe create prima dell'introduzione delle categorie sono tutte modifiche dati. Uno
+        // schema parziale può però non avere ancora AuditLog: in quel caso CompletaSchema creerà
+        // la tabella e il secondo passaggio di allineamento potrà raggiungerla senza anticiparne
+        // l'UPDATE.
+        if (auditLogPresente)
+            Database.ExecuteSqlRaw(
+                "UPDATE \"AuditLog\" SET \"Categoria\" = 'ModificaDati' WHERE \"Categoria\" = '';");
     }
 
     /// <summary>Letterale SQL di riempimento per le colonne NOT NULL aggiunte a posteriori.</summary>
@@ -208,10 +218,13 @@ public class PagheDbContext : DbContext
         mb.Entity<AziendaEntity>(e =>
         {
             e.HasKey(x => x.Id);
+            e.HasAlternateKey(x => new { x.TenantId, x.Id });
             e.HasIndex(x => new { x.TenantId, x.CodiceFiscale });
             e.Property(x => x.RagioneSociale).IsRequired();
             e.Ignore(x => x.Iban);
             e.Property(x => x.IbanProtetto);
+            e.Ignore(x => x.FirmaSiglaTimbro);
+            e.Property(x => x.FirmaSiglaTimbroProtetta);
             e.HasMany(x => x.Fatture)
                 .WithOne(f => f.Azienda!)
                 .HasForeignKey(f => f.AziendaId);
@@ -280,6 +293,13 @@ public class PagheDbContext : DbContext
             e.Property(x => x.Aliquota).HasPrecision(8, 5);
         });
         mb.Entity<CcnlEntity>(e => e.HasKey(x => x.Codice));
+        mb.Entity<CcnlVersioneEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.CcnlCodice, x.Anno }).IsUnique();
+            e.HasOne<CcnlEntity>().WithMany().HasForeignKey(x => x.CcnlCodice)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
         mb.Entity<CcnlLivelloEntity>(e =>
         {
             e.HasKey(x => x.Id);
@@ -349,18 +369,27 @@ public class PagheDbContext : DbContext
         mb.Entity<DipendenteEntity>(e =>
         {
             e.HasKey(x => x.Id);
+            e.HasAlternateKey(x => new { x.TenantId, x.Id });
             e.HasIndex(x => new { x.TenantId, x.CodiceFiscale }).IsUnique();
             e.Ignore(x => x.Iban);
             e.Property(x => x.IbanProtetto);
-            e.HasMany(x => x.Rapporti).WithOne(r => r.Dipendente!).HasForeignKey(r => r.DipendenteId);
         });
         mb.Entity<RapportoLavoroEntity>(e =>
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.AziendaId });
+            // Il solo DipendenteId permetteva a un rapporto di riferire l'anagrafica di un altro
+            // tenant. Il TenantId fa parte sia della FK sia della chiave candidata: il confine
+            // organizzativo viene quindi verificato dal database, non soltanto dalle query.
+            e.HasOne(x => x.Dipendente).WithMany(d => d.Rapporti)
+                .HasForeignKey(x => new { x.TenantId, x.DipendenteId })
+                .HasPrincipalKey(d => new { d.TenantId, d.Id })
+                .OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.PercentualePartTime).HasPrecision(6, 3);
             e.Property(x => x.Superminimo).HasPrecision(15, 2);
             e.Property(x => x.FondoTfrIniziale).HasPrecision(15, 2);
+            e.Property(x => x.FerieResidueIniziali).HasPrecision(15, 2).HasDefaultValue(0m);
+            e.Property(x => x.PermessiResiduiIniziali).HasPrecision(15, 2).HasDefaultValue(0m);
         });
         mb.Entity<CartellinoEntity>(e =>
         {
@@ -379,6 +408,8 @@ public class PagheDbContext : DbContext
             e.Ignore(x => x.NumeroEventoMalattiaAnno);
             e.Ignore(x => x.GiorniInfortunio);
             e.Property(x => x.DatiSaluteProtetti).IsRequired();
+            e.Property(x => x.StatoAssegniFamiliari).IsRequired();
+            e.Property(x => x.ImportoAssegniFamiliari).HasPrecision(15, 2);
 
             // Il calendario dice quali giorni sono stati malattia: stessa protezione della terna.
             // Non è obbligatorio: i cartellini compilati a totali hanno la colonna vuota.
@@ -388,16 +419,50 @@ public class PagheDbContext : DbContext
         mb.Entity<CedolinoEntity>(e =>
         {
             e.HasKey(x => x.Id);
+            e.HasAlternateKey(x => new { x.TenantId, x.Id });
             e.HasIndex(x => new { x.TenantId, x.RapportoLavoroId, x.Anno, x.Mese }).IsUnique();
+            e.Property(x => x.Versione).IsConcurrencyToken();
+            e.Property(x => x.Stato).IsRequired();
+            e.Property(x => x.ParametriApplicatiProtetti).IsRequired();
             foreach (var p in new[] { nameof(CedolinoEntity.TotaleCompetenze),
                 nameof(CedolinoEntity.TotaleTrattenute), nameof(CedolinoEntity.ImponibileInps),
                 nameof(CedolinoEntity.ContributiDipendente), nameof(CedolinoEntity.ContributiDatore),
-                nameof(CedolinoEntity.ImponibileIrpef), nameof(CedolinoEntity.IrpefNetta),
+                nameof(CedolinoEntity.ImponibileIrpef), nameof(CedolinoEntity.IrpefLorda),
+                nameof(CedolinoEntity.DetrazioniLavoroDipendente), nameof(CedolinoEntity.IrpefNetta),
                 nameof(CedolinoEntity.AddizionaleRegionale), nameof(CedolinoEntity.AddizionaleComunale),
-                nameof(CedolinoEntity.NettoInBusta), nameof(CedolinoEntity.QuotaTfr),
+                nameof(CedolinoEntity.NettoInBusta), nameof(CedolinoEntity.TotaleEsenti),
+                nameof(CedolinoEntity.PremioRisultatoAgevolato),
+                nameof(CedolinoEntity.ImpostaSostitutivaPremio), nameof(CedolinoEntity.QuotaTfr),
                 nameof(CedolinoEntity.CostoAzienda), nameof(CedolinoEntity.ConguaglioIrpef) })
                 e.Property(p).HasPrecision(15, 2);
-            e.HasMany(x => x.Voci).WithOne().HasForeignKey(v => v.CedolinoId).OnDelete(DeleteBehavior.Cascade);
+            // Anche la relazione padre/righe include il tenant: il solo CedolinoId consentirebbe
+            // a una riga corrotta/importata di puntare a un cedolino appartenente a un altro tenant.
+            e.HasMany(x => x.Voci).WithOne()
+                .HasForeignKey(v => new { v.TenantId, v.CedolinoId })
+                .HasPrincipalKey(x => new { x.TenantId, x.Id })
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        mb.Entity<CedolinoSnapshotEntity>(e =>
+        {
+            e.ToTable("CedoliniSnapshot");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.CedolinoId }).IsUnique();
+            e.Property(x => x.DatiProtetti).IsRequired();
+            e.HasOne<CedolinoEntity>().WithOne(x => x.Snapshot)
+                .HasForeignKey<CedolinoSnapshotEntity>(x => new { x.TenantId, x.CedolinoId })
+                .HasPrincipalKey<CedolinoEntity>(x => new { x.TenantId, x.Id })
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        mb.Entity<CedolinoDocumentoEntity>(e =>
+        {
+            e.ToTable("CedoliniDocumenti");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.CedolinoId }).IsUnique();
+            e.Property(x => x.PdfProtetto).IsRequired();
+            e.HasOne<CedolinoEntity>().WithOne(x => x.Documento)
+                .HasForeignKey<CedolinoDocumentoEntity>(x => new { x.TenantId, x.CedolinoId })
+                .HasPrincipalKey<CedolinoEntity>(x => new { x.TenantId, x.Id })
+                .OnDelete(DeleteBehavior.Restrict);
         });
         mb.Entity<CedolinoVoceEntity>(e =>
         {
@@ -494,7 +559,10 @@ public class PagheDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.AziendaId, x.DataScadenza });
-            e.HasOne<AziendaEntity>().WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<AziendaEntity>().WithMany()
+                .HasForeignKey(x => new { x.TenantId, x.AziendaId })
+                .HasPrincipalKey(x => new { x.TenantId, x.Id })
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         mb.Entity<PosizioneInailEntity>(e =>
@@ -509,7 +577,13 @@ public class PagheDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.DataScadenza });
             e.HasIndex(x => new { x.TenantId, x.Tipo, x.RiferimentoId });
-            e.HasOne<AziendaEntity>().WithMany().HasForeignKey(x => x.AziendaId).OnDelete(DeleteBehavior.SetNull);
+            // SET NULL su una FK composita tenterebbe di azzerare anche TenantId. Lo scollegamento
+            // viene eseguito esplicitamente e tenant-scoped dal servizio prima di eliminare
+            // l'azienda; Restrict rende impossibile una cancellazione trasversale accidentale.
+            e.HasOne<AziendaEntity>().WithMany()
+                .HasForeignKey(x => new { x.TenantId, x.AziendaId })
+                .HasPrincipalKey(x => new { x.TenantId, x.Id })
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // --- Pratiche F24 (telematico) ---

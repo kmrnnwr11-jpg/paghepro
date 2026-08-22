@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.Domain;
 using Paghe.Core.Calcolo;
+using Paghe.Persistence.Cedolini;
 using Paghe.Persistence.Entities;
 
 namespace Paghe.Persistence;
@@ -68,8 +70,9 @@ public sealed class RedditiPfService
             .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct);
         if (rapporto is null) return null;
 
-        var cedolini = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId && c.Anno == anno)
+        var cedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId
+                && c.Anno == anno)
             .ToListAsync(ct);
 
         var input = await _db.DichiarazioniRedditiPf

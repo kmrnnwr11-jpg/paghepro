@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.Domain;
 using Paghe.Persistence;
 using Paghe.Persistence.Entities;
 using Xunit;
@@ -40,13 +41,16 @@ public sealed class InailPersistenzaTests : IDisposable
     private async Task InserisciCedolinoAsync(Guid tenant, Guid aziendaId, int anno, int mese, decimal imponibileInps)
     {
         await using var db = NuovoContesto();
-        db.Cedolini.Add(new CedolinoEntity
+        var cedolino = new CedolinoEntity
         {
             Id = Guid.NewGuid(), TenantId = tenant, AziendaId = aziendaId,
             RapportoLavoroId = Guid.NewGuid(), Anno = anno, Mese = mese,
             ImponibileInps = imponibileInps, CalcolatoIl = DateTime.UtcNow,
-        });
+            Stato = nameof(StatoCedolino.Bozza), Versione = 1,
+        };
+        db.Cedolini.Add(cedolino);
         await db.SaveChangesAsync();
+        await db.ClassificaPreWorkflowAsync(tenant, cedolino.Id);
     }
 
     [Fact]

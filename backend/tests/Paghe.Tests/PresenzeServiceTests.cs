@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.Domain;
 using Paghe.Persistence;
 using Paghe.Persistence.Entities;
 
@@ -88,6 +89,8 @@ public sealed class PresenzeServiceTests : IDisposable
         var aziendaId = Guid.NewGuid();
         var dipendenteId = Guid.NewGuid();
         var rapportoId = Guid.NewGuid();
+        var cedolinoAprileId = Guid.NewGuid();
+        var cedolinoMaggioId = Guid.NewGuid();
 
         await using (var db = NuovoContesto())
         {
@@ -110,17 +113,21 @@ public sealed class PresenzeServiceTests : IDisposable
             db.Cedolini.AddRange(
                 new CedolinoEntity
                 {
-                    Id = Guid.NewGuid(), TenantId = tenant, AziendaId = aziendaId,
+                    Id = cedolinoAprileId, TenantId = tenant, AziendaId = aziendaId,
                     RapportoLavoroId = rapportoId, Anno = 2026, Mese = 4,
                     FerieResidue = 8.67m, PermessiResidui = 24m,
+                    Stato = nameof(StatoCedolino.Bozza), Versione = 1,
                 },
                 new CedolinoEntity
                 {
-                    Id = Guid.NewGuid(), TenantId = tenant, AziendaId = aziendaId,
+                    Id = cedolinoMaggioId, TenantId = tenant, AziendaId = aziendaId,
                     RapportoLavoroId = rapportoId, Anno = 2026, Mese = 5,
                     FerieResidue = 10.83m, PermessiResidui = 30m,
+                    Stato = nameof(StatoCedolino.Bozza), Versione = 1,
                 });
             await db.SaveChangesAsync();
+            await db.ClassificaPreWorkflowAsync(tenant, cedolinoAprileId);
+            await db.ClassificaPreWorkflowAsync(tenant, cedolinoMaggioId);
         }
 
         await using (var db = NuovoContesto())

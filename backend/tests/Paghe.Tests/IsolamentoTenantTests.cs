@@ -69,6 +69,7 @@ public sealed class IsolamentoTenantTests : IDisposable
         await using var db = NuovoContesto();
         var c = await new CedoliniService(db, new ParametriNormativiService(db))
             .CalcolaEArchiviaAsync(_vittima, rapportoId, new Cartellino { Anno = 2026, Mese = 6 });
+        await db.ClassificaPreWorkflowAsync(_vittima, c.Id);
         return (rapportoId, c.Id);
     }
 

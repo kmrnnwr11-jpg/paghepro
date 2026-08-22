@@ -330,17 +330,25 @@ public sealed class GdprCifraturaCompletaTests : IDisposable
     public async Task VoceConTenantDiscordante_AnnullaIlCutover()
     {
         var dati = await InserisciDatasetCompletoAsync();
-        await EseguiAsync(
-            "UPDATE CedolinoVoceEntity SET TenantId = $altro WHERE Id = $id",
-            dati.TenantId,
-            dati.VoceId,
-            null,
-            Guid.NewGuid());
+        await EseguiSempliceAsync("PRAGMA foreign_keys = OFF;");
+        try
+        {
+            await EseguiAsync(
+                "UPDATE CedolinoVoceEntity SET TenantId = $altro WHERE Id = $id",
+                dati.TenantId,
+                dati.VoceId,
+                null,
+                Guid.NewGuid());
 
-        await using var db = NuovoContesto();
-        var errore = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            new MigrazioneDatiSensibili(db, _protettore).EseguiTuttiAsync());
-        Assert.Contains("tenant diverso", errore.Message, StringComparison.OrdinalIgnoreCase);
+            await using var db = NuovoContesto();
+            var errore = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new MigrazioneDatiSensibili(db, _protettore).EseguiTuttiAsync());
+            Assert.Contains("tenant diverso", errore.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            await EseguiSempliceAsync("PRAGMA foreign_keys = ON;");
+        }
     }
 
     [Fact]

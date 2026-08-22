@@ -3,7 +3,9 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.AdeTelematico;
 using Paghe.Core.Calcolo;
+using Paghe.Core.Domain;
 using Paghe.Core.Parametri;
+using Paghe.Persistence.Cedolini;
 
 namespace Paghe.Persistence;
 
@@ -38,8 +40,9 @@ public sealed class CertificazioneUnicaService
             .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct);
         if (rapporto is null) return null;
 
-        var cedolini = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId && c.Anno == anno)
+        var cedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId
+                && c.Anno == anno)
             .ToListAsync(ct);
 
         var dip = rapporto.Dipendente;
@@ -75,8 +78,9 @@ public sealed class CertificazioneUnicaService
         var azienda = await _db.Aziende
             .FirstOrDefaultAsync(a => a.Id == rapporto.AziendaId && a.TenantId == tenantId, ct);
 
-        var cedolini = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId && c.Anno == anno)
+        var cedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId
+                && c.Anno == anno)
             .ToListAsync(ct);
         if (cedolini.Count == 0)
             throw new ArgumentException($"Nessun cedolino archiviato per l'anno {anno}.");
@@ -184,8 +188,9 @@ public sealed class CertificazioneUnicaService
             .Where(r => r.TenantId == tenantId && r.AziendaId == aziendaId)
             .ToListAsync(ct);
 
-        var cedolini = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno)
+        var cedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId
+                && c.Anno == anno)
             .ToListAsync(ct);
         var perRapporto = cedolini.GroupBy(c => c.RapportoLavoroId)
             .ToDictionary(g => g.Key, g => g.ToList());

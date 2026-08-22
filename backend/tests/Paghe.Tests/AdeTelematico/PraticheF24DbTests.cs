@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.AdeTelematico;
+using Paghe.Core.Domain;
 using Paghe.Persistence;
 using Paghe.Persistence.Entities;
 
@@ -125,6 +126,8 @@ public sealed class PraticheF24DbTests : IDisposable
             Cedolino(rap1, irpef: 300m, addReg: 20m, addCom: 10m, inpsDip: 150m, inpsDat: 450m),
             Cedolino(rap2, irpef: 200m, addReg: 15m, addCom: 5m, inpsDip: 100m, inpsDat: 300m));
         db.SaveChanges();
+        foreach (var cedolino in db.Cedolini.Local)
+            db.ClassificaPreWorkflow(_tenant, cedolino.Id);
     }
 
     private RapportoLavoroEntity Rapporto(Guid id, Guid dipendenteId) => new()
@@ -141,6 +144,7 @@ public sealed class PraticheF24DbTests : IDisposable
         Anno = 2026, Mese = 6,
         IrpefNetta = irpef, AddizionaleRegionale = addReg, AddizionaleComunale = addCom,
         ContributiDipendente = inpsDip, ContributiDatore = inpsDat, CalcolatoIl = DateTime.UtcNow,
+        Stato = nameof(StatoCedolino.Bozza), Versione = 1,
     };
 
     public void Dispose() => _connection.Dispose();

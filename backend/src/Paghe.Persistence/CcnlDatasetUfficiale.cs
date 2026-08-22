@@ -12,7 +12,8 @@ public static class CcnlDatasetUfficiale
     private sealed record LivelloJson(
         string Livello, string? Descrizione, decimal? MinimoTabellare, decimal? Edr, decimal? ImportoScatto);
     private sealed record CcnlJson(
-        string Codice, string? Descrizione, int Anno, string? Fonte, List<LivelloJson> Livelli);
+        string Codice, string? Descrizione, int Anno, string? CodiceCnel,
+        string? Fonte, List<LivelloJson> Livelli);
 
     /// <summary>Tutti i CCNL del dataset incorporato (tutti gli anni disponibili).</summary>
     public static List<CcnlInput> Carica()
@@ -38,7 +39,9 @@ public static class CcnlDatasetUfficiale
                     .Select(l => new LivelloCcnlInput(
                         l.Livello, l.Descrizione ?? l.Livello,
                         l.MinimoTabellare!.Value, l.Edr ?? 0m, l.ImportoScatto ?? 0m))
-                    .ToList())));
+                    .ToList(),
+                c.CodiceCnel,
+                c.Fonte)));
         }
 
         return risultato;

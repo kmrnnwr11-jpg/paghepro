@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.Domain;
+using Paghe.Persistence.Cedolini;
 
 namespace Paghe.Persistence;
 
@@ -19,6 +20,8 @@ public sealed record PresenzaRiga(
     int NumeroEventoMalattiaAnno,
     decimal GiorniInfortunio,
     decimal OreAssenzaNonRetribuita,
+    string StatoAssegniFamiliari,
+    decimal ImportoAssegniFamiliari,
     bool Elaborato,
     decimal Netto,
     decimal? FerieResidue,
@@ -63,7 +66,7 @@ public sealed class PresenzeService
         var cartellini = await _db.Cartellini
             .Where(c => c.TenantId == tenantId && c.Anno == anno && c.Mese == mese && rapportoIds.Contains(c.RapportoLavoroId))
             .ToListAsync(ct);
-        var cedoliniPrecedenti = await _db.Cedolini
+        var cedoliniPrecedenti = await _db.Cedolini.UtilizzabiliAValle()
             .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId
                 && rapportoIds.Contains(c.RapportoLavoroId)
                 && (c.Anno < anno || (c.Anno == anno && c.Mese < mese)))
@@ -92,6 +95,9 @@ public sealed class PresenzeService
                     NumeroEventoMalattiaAnno: Math.Max(1, cart?.NumeroEventoMalattiaAnno ?? 1),
                     GiorniInfortunio: cart?.GiorniInfortunio ?? 0m,
                     OreAssenzaNonRetribuita: cart?.OreAssenzaNonRetribuita ?? 0m,
+                    StatoAssegniFamiliari: cart?.StatoAssegniFamiliari
+                        ?? nameof(StatoAssegniFamiliari.DaVerificare),
+                    ImportoAssegniFamiliari: cart?.ImportoAssegniFamiliari ?? 0m,
                     Elaborato: ced is not null,
                     Netto: ced?.NettoInBusta ?? 0m,
                     FerieResidue: precedente?.FerieResidue,

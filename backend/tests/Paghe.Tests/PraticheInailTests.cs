@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.AdeTelematico;
+using Paghe.Core.Domain;
 using Paghe.Persistence;
 using Paghe.Persistence.Entities;
 using Xunit;
@@ -38,14 +39,17 @@ public sealed class PraticheInailTests : IDisposable
                 Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             });
             aziendaId = az.Id;
-            db.Cedolini.Add(new CedolinoEntity
+            var cedolino = new CedolinoEntity
             {
                 Id = Guid.NewGuid(), TenantId = tenant, AziendaId = aziendaId,
                 RapportoLavoroId = Guid.NewGuid(), Anno = 2026, Mese = 1,
                 ImponibileInps = retribuzioni, CalcolatoIl = DateTime.UtcNow,
-            });
-            await new InailService(db).SalvaPosizioneAsync(tenant, aziendaId, 2026, "12345678/90", "0722", 12.5m);
+                Stato = nameof(StatoCedolino.Bozza), Versione = 1,
+            };
+            db.Cedolini.Add(cedolino);
             await db.SaveChangesAsync();
+            await db.ClassificaPreWorkflowAsync(tenant, cedolino.Id);
+            await new InailService(db).SalvaPosizioneAsync(tenant, aziendaId, 2026, "12345678/90", "0722", 12.5m);
         }
         return (tenant, aziendaId);
     }

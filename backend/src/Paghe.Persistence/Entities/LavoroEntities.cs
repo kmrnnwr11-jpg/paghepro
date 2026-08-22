@@ -75,6 +75,12 @@ public class RapportoLavoroEntity
 
     /// <summary>Fondo TFR maturato prima dell'uso di questo software (per la rivalutazione).</summary>
     public decimal? FondoTfrIniziale { get; set; }
+
+    /// <summary>Riporto ferie disponibile al 1° gennaio, in giorni.</summary>
+    public decimal FerieResidueIniziali { get; set; }
+
+    /// <summary>Riporto ROL/ex festività disponibile al 1° gennaio, in ore.</summary>
+    public decimal PermessiResiduiIniziali { get; set; }
 }
 
 /// <summary>Cartellino presenze mensile persistito.</summary>
@@ -185,6 +191,13 @@ public class CartellinoEntity
 
     public decimal OreAssenzaNonRetribuita { get; set; }
 
+    /// <summary>Esito esplicito della verifica ANF del mese.</summary>
+    public string StatoAssegniFamiliari { get; set; } =
+        nameof(Paghe.Core.Domain.StatoAssegniFamiliari.DaVerificare);
+
+    /// <summary>Importo ANF erogato nel mese; zero quando non spettante.</summary>
+    public decimal ImportoAssegniFamiliari { get; set; }
+
     // ---- Elementi retributivi agevolati del mese ------------------------------------
     // Vanno archiviati con il resto del cartellino: il PDF della busta si rigenera
     // ricalcolando da qui, e senza questi campi mostrerebbe una busta priva di trasferta,
@@ -220,10 +233,15 @@ public class CedolinoEntity
     public decimal ContributiDipendente { get; set; }
     public decimal ContributiDatore { get; set; }
     public decimal ImponibileIrpef { get; set; }
+    public decimal IrpefLorda { get; set; }
+    public decimal DetrazioniLavoroDipendente { get; set; }
     public decimal IrpefNetta { get; set; }
     public decimal AddizionaleRegionale { get; set; }
     public decimal AddizionaleComunale { get; set; }
     public decimal NettoInBusta { get; set; }
+    public decimal TotaleEsenti { get; set; }
+    public decimal PremioRisultatoAgevolato { get; set; }
+    public decimal ImpostaSostitutivaPremio { get; set; }
     public decimal QuotaTfr { get; set; }
     public decimal CostoAzienda { get; set; }
 
@@ -238,8 +256,40 @@ public class CedolinoEntity
     /// <summary>Conguaglio IRPEF applicato in busta (solo dicembre; >0 a debito, &lt;0 a credito).</summary>
     public decimal ConguaglioIrpef { get; set; }
 
+    /// <summary>Identità ufficiale del CCNL applicato nel mese, congelata al calcolo.</summary>
+    public string? CodiceCnel { get; set; }
+    public string DescrizioneCcnl { get; set; } = "";
+    public string? FonteCcnl { get; set; }
+
+    /// <summary>
+    /// Stato della macchina a stati. Le nuove elaborazioni nascono come Bozza; i record anteriori
+    /// al workflow sono marcati PreWorkflow e restano immutabili, senza snapshot sintetici.
+    /// </summary>
+    public string Stato { get; set; } = nameof(StatoCedolino.Bozza);
+
+    /// <summary>Token di concorrenza incrementato a ogni transizione.</summary>
+    public int Versione { get; set; } = 1;
+
+    /// <summary>Parametri effettivamente applicati, in JSON canonico cifrato tenant-bound.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string ParametriApplicatiProtetti { get; set; } = "";
+    public string HashParametriSha256 { get; set; } = "";
+
+    public DateTime? ControllatoIl { get; set; }
+    public Guid? ControllatoDa { get; set; }
+    public DateTime? ValidatoIl { get; set; }
+    public Guid? ValidatoDa { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? DatiValidazioneProtetti { get; set; }
+    public DateTime? ChiusoIl { get; set; }
+    public Guid? ChiusoDa { get; set; }
+
     public DateTime CalcolatoIl { get; set; }
     public List<CedolinoVoceEntity> Voci { get; set; } = new();
+    [System.Text.Json.Serialization.JsonIgnore]
+    public CedolinoSnapshotEntity? Snapshot { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public CedolinoDocumentoEntity? Documento { get; set; }
 }
 
 /// <summary>Riga (voce) di un cedolino archiviato.</summary>
@@ -255,6 +305,12 @@ public class CedolinoVoceEntity
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid CedolinoId { get; set; }
+
+    /// <summary>
+    /// Posizione della voce nel cedolino. Serve a ristampare la busta nello stesso ordine in cui
+    /// è stata calcolata: senza, il database restituirebbe le righe in un ordine qualsiasi.
+    /// </summary>
+    public int Ordine { get; set; }
 
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string Codice { get => _codice; set { _codice = value; DatiVoceModificati = true; } }

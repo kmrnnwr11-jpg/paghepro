@@ -25,6 +25,12 @@ public sealed class RuoloPolicyTests
     [InlineData("operatore", "DELETE", "/api/posta/caselle/abc", false)]
     [InlineData("operatore", "GET", "/api/posta/caselle", true)]
     [InlineData("operatore", "POST", "/api/posta/messaggi/abc/conferma", true)]
+    // Validazione, chiusura e immagine autentica del datore sono riservate all'admin.
+    [InlineData("admin", "POST", "/api/cedolini/abc/valida", true)]
+    [InlineData("operatore", "POST", "/api/cedolini/abc/valida", false)]
+    [InlineData("operatore", "POST", "/api/cedolini/abc/chiudi", false)]
+    [InlineData("operatore", "POST", "/api/aziende/abc/firma-timbro", false)]
+    [InlineData("superadmin", "DELETE", "/api/aziende/abc/firma-timbro", true)]
     // Il registro attività contiene informazioni di sicurezza: anche in lettura è solo admin.
     [InlineData("admin", "GET", "/api/audit", true)]
     [InlineData("superadmin", "GET", "/api/audit", true)]

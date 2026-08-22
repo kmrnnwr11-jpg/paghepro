@@ -80,6 +80,7 @@ public sealed class AnagraficheLavoroService
         int? ScattiAnzianita = null, decimal? Superminimo = null,
         string? Regione = null, string? CodiceCatastaleComune = null, DateOnly? DataAssunzione = null,
         decimal? FondoTfrIniziale = null,
+        decimal? FerieResidueIniziali = null, decimal? PermessiResiduiIniziali = null,
         DateOnly? DataCessazione = null, bool? RimuoviDataCessazione = null);
 
     /// <summary>
@@ -114,6 +115,8 @@ public sealed class AnagraficheLavoroService
         if (c.CodiceCatastaleComune is not null) r.CodiceCatastaleComune = c.CodiceCatastaleComune.Trim().ToUpperInvariant();
         if (c.DataAssunzione is { } da) r.DataAssunzione = da;
         if (c.FondoTfrIniziale is { } ft) r.FondoTfrIniziale = ft;
+        if (c.FerieResidueIniziali is { } ferie) r.FerieResidueIniziali = ferie;
+        if (c.PermessiResiduiIniziali is { } permessi) r.PermessiResiduiIniziali = permessi;
         if (c.RimuoviDataCessazione == true) r.DataCessazione = null;
         else if (c.DataCessazione is { } dc) r.DataCessazione = dc;
 

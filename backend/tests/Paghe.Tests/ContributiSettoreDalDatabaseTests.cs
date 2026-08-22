@@ -166,14 +166,14 @@ public sealed class ContributiSettoreDalDatabaseTests : IDisposable
     [Fact]
     public async Task IlPdfRicalcolatoUsaGliStessiContributiDellArchivio()
     {
-        // Il PDF passa da RicalcolaPerPdfAsync: se lì l'azienda non arrivasse al motore, il
+        // Il PDF passa da LeggiPerPdfAsync: se lì l'azienda non arrivasse al motore, il
         // documento consegnato al dipendente mostrerebbe numeri diversi da quelli archiviati.
         var (tenant, rapportoId) = await PreparaAsync(oltreQuindici: true, fondiSettore: 0.002667m);
         var archiviato = await ArchiviaAsync(tenant, rapportoId);
 
         await using var db = NuovoContesto();
         var perPdf = await new CedoliniService(db, new ParametriNormativiService(db))
-            .RicalcolaPerPdfAsync(tenant, archiviato.Id);
+            .LeggiPerPdfAsync(tenant, archiviato.Id);
 
         Assert.NotNull(perPdf);
         Assert.Equal(archiviato.ContributiDipendente, perPdf.Cedolino.ContributiDipendente);

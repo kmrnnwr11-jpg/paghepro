@@ -12,11 +12,12 @@ namespace Paghe.Documenti;
 /// modello ufficiale, non un fac-simile. Compila le pagine del lavoro dipendente: dati
 /// anagrafici, parte B dati fiscali, dati previdenziali INPS e annotazioni. Coordinate
 /// calibrate sulle caselle del modello (origine in alto a sinistra).
-/// Nota: il modello 2026 certifica i redditi 2025; per anni successivi la stampa è una bozza
-/// in attesa del modello definitivo dell'anno.
+/// Il modello 2026 certifica esclusivamente i redditi 2025: altri anni vengono rifiutati per
+/// evitare di sovrapporre dati corretti a una modulistica annuale errata.
 /// </summary>
 public static class CuPdfUfficiale
 {
+    public const int AnnoRedditiSupportato = 2025;
     private const string RisorsaModello = "Paghe.Documenti.Modelli.CU_sintetico_2026.pdf";
     private const double AltezzaPagina = 841.89;
 
@@ -26,6 +27,12 @@ public static class CuPdfUfficiale
 
     public static byte[] Compila(CertificazioneUnica cu)
     {
+        if (cu.AnnoRedditi != AnnoRedditiSupportato)
+            throw new ArgumentException(
+                $"Il PDF ufficiale CU 2026 può certificare soltanto i redditi {AnnoRedditiSupportato}. "
+                + $"Il modello ufficiale per i redditi {cu.AnnoRedditi} non è disponibile.",
+                nameof(cu));
+
         var errori = cu.Valida();
         if (errori.Count > 0)
             throw new InvalidOperationException("CU non compilabile: " + string.Join(" ", errori));

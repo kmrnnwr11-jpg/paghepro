@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.Domain;
 using Paghe.Core.Contabilita;
+using Paghe.Persistence.Cedolini;
 using Paghe.Persistence.Entities;
 
 namespace Paghe.Persistence;
@@ -112,8 +114,9 @@ public sealed class BilancioService
                 s.Data >= inizioAnno && s.Data <= fineAnno)
             .SumAsync(s => (decimal?)s.Imponibile, ct) ?? 0m;
 
-        decimal costoPersonale = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno)
+        decimal costoPersonale = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId
+                && c.Anno == anno)
             .SumAsync(c => (decimal?)c.CostoAzienda, ct) ?? 0m;
 
         var voci = new List<VoceBilancioInput>();

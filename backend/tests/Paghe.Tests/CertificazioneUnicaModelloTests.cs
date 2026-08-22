@@ -122,6 +122,15 @@ public sealed class CertificazioneUnicaModelloTests : IDisposable
             var svc = new CedoliniService(db, new ParametriNormativiService(db));
             await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino { Anno = 2026, Mese = 1 });
             await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino { Anno = 2026, Mese = 2 });
+
+            // Questa fixture verifica l'aggregazione CU, non il workflow. Simula quindi cedolini
+            // realmente anteriori al workflow senza forgiare una chiusura priva di snapshot/PDF.
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE Cedolini
+                SET Stato = {nameof(StatoCedolino.PreWorkflow)}, Versione = 1,
+                    ParametriApplicatiProtetti = '', HashParametriSha256 = ''
+                WHERE TenantId = {tenant} AND RapportoLavoroId = {rapportoId} AND Anno = 2026
+                """);
         }
         return (aziendaId, rapportoId);
     }
@@ -260,6 +269,20 @@ public sealed class CertificazioneUnicaModelloTests : IDisposable
         };
         var ex = Assert.Throws<InvalidOperationException>(() => CuPdfUfficiale.Compila(senzaCf));
         Assert.Contains("Codice fiscale", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(2022)]
+    [InlineData(2026)]
+    public void CompilaPdf_RifiutaUnAnnoNonCompatibileConIlModelloCu2026(int annoRedditi)
+    {
+        var cu = CuEsempio() with { AnnoRedditi = annoRedditi };
+
+        var ex = Assert.Throws<ArgumentException>(() => CuPdfUfficiale.Compila(cu));
+
+        Assert.Contains("CU 2026", ex.Message);
+        Assert.Contains("redditi 2025", ex.Message);
+        Assert.Contains(annoRedditi.ToString(), ex.Message);
     }
 
     public void Dispose() => _connection.Dispose();

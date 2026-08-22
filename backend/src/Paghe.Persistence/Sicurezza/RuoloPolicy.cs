@@ -15,7 +15,8 @@ public static class RuoloPolicy
         new(StringComparer.OrdinalIgnoreCase) { "GET", "HEAD", "OPTIONS" };
 
     /// <summary>Frammenti di path la cui <b>scrittura</b> è riservata all'admin (azioni sensibili/distruttive).</summary>
-    private static readonly string[] RiservatiAdmin = { "/anonimizza", "/posta/caselle" };
+    private static readonly string[] RiservatiAdmin =
+        { "/anonimizza", "/posta/caselle", "/valida", "/chiudi", "/firma-timbro" };
 
     private static readonly string[] RiservatiSempreAdmin = { "/api/audit", "/api/retention" };
 
@@ -30,22 +31,22 @@ public static class RuoloPolicy
     public static bool PuoEseguire(string? ruolo, string metodoHttp, string path)
     {
         var sicuro = MetodiSicuri.Contains(metodoHttp);
+        var amministratore = string.Equals(ruolo, Admin, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ruolo, AuthServiceRuoloSuperAdmin, StringComparison.OrdinalIgnoreCase);
 
         if (RiservatiSempreAdmin.Any(r =>
                 path.Equals(r, StringComparison.OrdinalIgnoreCase)
                 || path.StartsWith(r + "/", StringComparison.OrdinalIgnoreCase)))
-            return string.Equals(ruolo, Admin, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(ruolo, AuthServiceRuoloSuperAdmin, StringComparison.OrdinalIgnoreCase);
+            return amministratore;
 
         if (string.Equals(ruolo, SolaLettura, StringComparison.OrdinalIgnoreCase))
             return sicuro;
 
         if (!sicuro && RiservatiAdmin.Any(r => path.Contains(r, StringComparison.OrdinalIgnoreCase)))
-            return string.Equals(ruolo, Admin, StringComparison.OrdinalIgnoreCase);
+            return amministratore;
 
-        return string.Equals(ruolo, Admin, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(ruolo, Operatore, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(ruolo, AuthServiceRuoloSuperAdmin, StringComparison.OrdinalIgnoreCase);
+        return amministratore
+            || string.Equals(ruolo, Operatore, StringComparison.OrdinalIgnoreCase);
     }
 
     private const string AuthServiceRuoloSuperAdmin = "superadmin";

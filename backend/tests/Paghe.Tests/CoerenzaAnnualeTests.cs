@@ -80,11 +80,17 @@ public sealed class CoerenzaAnnualeTests : IDisposable
 
         var cedolini = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
         for (int mese = 1; mese <= 12; mese++)
-            await cedolini.CalcolaEArchiviaAsync(_tenant, _rapportoFullTimeId,
+        {
+            var cedolino = await cedolini.CalcolaEArchiviaAsync(_tenant, _rapportoFullTimeId,
                 new Cartellino { Anno = Anno, Mese = mese });
+            await db.ClassificaPreWorkflowAsync(_tenant, cedolino.Id);
+        }
         for (int mese = 7; mese <= 12; mese++)
-            await cedolini.CalcolaEArchiviaAsync(_tenant, _rapportoPartTimeId,
+        {
+            var cedolino = await cedolini.CalcolaEArchiviaAsync(_tenant, _rapportoPartTimeId,
                 new Cartellino { Anno = Anno, Mese = mese });
+            await db.ClassificaPreWorkflowAsync(_tenant, cedolino.Id);
+        }
     }
 
     private async Task<List<CedolinoEntity>> CedoliniDellAnno()

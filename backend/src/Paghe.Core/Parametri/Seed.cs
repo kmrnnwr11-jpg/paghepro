@@ -27,7 +27,9 @@ public static class Seed
             new LivelloCcnl("5",      "Quinto livello",  1141.24m, 10.33m, 21.95m),
             new LivelloCcnl("6",      "Sesto livello",   1062.39m, 10.33m, 21.01m),
             new LivelloCcnl("7",      "Settimo livello",  909.78m, 10.33m, 19.92m),
-        });
+        },
+        codiceCnel: "H011",
+        fonte: "Archivio nazionale CNEL — CCNL Terziario, Distribuzione e Servizi (Confcommercio)");
 
     // --- Altri CCNL (minimi tabellari di ESEMPIO, da validare con il Consulente del Lavoro) ---
     // Servono come destinazione della mappatura dei CCNL letti dagli UNILAV dei vari settori.

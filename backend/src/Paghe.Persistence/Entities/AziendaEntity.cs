@@ -4,6 +4,7 @@ namespace Paghe.Persistence.Entities;
 public class AziendaEntity
 {
     private string? _iban;
+    private byte[]? _firmaSiglaTimbro;
 
     public Guid Id { get; set; }
 
@@ -70,6 +71,39 @@ public class AziendaEntity
     /// <summary>Logo aziendale (PNG o JPEG) mostrato sui documenti, es. la busta paga. Facoltativo.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public byte[]? Logo { get; set; }
+
+    /// <summary>
+    /// Immagine autentica caricata dal datore per apporre firma, sigla o timbro sul prospetto.
+    /// Non è una firma digitale qualificata e non viene mai creata automaticamente dal software.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    [System.Text.Json.Serialization.JsonIgnore]
+    public byte[]? FirmaSiglaTimbro
+    {
+        get => _firmaSiglaTimbro;
+        set
+        {
+            _firmaSiglaTimbro = value;
+            FirmaSiglaTimbroModificata = true;
+        }
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? FirmaSiglaTimbroProtetta { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool FirmaSiglaTimbroModificata { get; private set; }
+
+    internal void CaricaFirmaSiglaTimbroDecifrata(byte[]? valore)
+    {
+        _firmaSiglaTimbro = valore;
+        FirmaSiglaTimbroModificata = false;
+    }
+
+    internal void ConfermaProtezioneFirmaSiglaTimbro() => FirmaSiglaTimbroModificata = false;
+
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool HaFirmaSiglaTimbro => _firmaSiglaTimbro is { Length: > 0 };
 
     public bool HaDipendenti { get; set; }
 

@@ -93,6 +93,7 @@
     "codice": "COMMERCIO_TERZIARIO",
     "descrizione": "CCNL Terziario Distribuzione e Servizi (Confcommercio)",
     "anno": 2026,
+    "codiceCnel": "H011",
     "fonte": "CNEL CCNL 242377, minimi 01/11/2025, art.209 scatti; Contingenza+EDR inclusa nel minimoTabellare.",
     "livelli": [
       { "livello": "Quadri", "descrizione": "Quadri", "minimoTabellare": 2723.46, "edr": 0.00, "importoScatto": 25.46 },
@@ -125,6 +126,7 @@
     "codice": "TURISMO_PUBBLICI_ESERCIZI",
     "descrizione": "CCNL Turismo / Pubblici Esercizi",
     "anno": 2026,
+    "codiceCnel": "H05Y",
     "fonte": "CNEL rinnovo H05Y 192253 art.161 paga base; CCNL 103827 art.163 contingenza e art.182 scatti.",
     "livelli": [
       { "livello": "Qa", "descrizione": "Quadro A", "minimoTabellare": 2462.96, "edr": 0.00, "importoScatto": 40.80 },

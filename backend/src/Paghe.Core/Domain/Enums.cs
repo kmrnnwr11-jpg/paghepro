@@ -58,6 +58,18 @@ public enum TipoVoce
 }
 
 /// <summary>
+/// Esito della verifica mensile sugli assegni per il nucleo familiare. Il valore predefinito
+/// resta volutamente non confermato: una busta non può essere chiusa finché l'ufficio non ha
+/// indicato se non spettano oppure quale importo deve essere erogato.
+/// </summary>
+public enum StatoAssegniFamiliari
+{
+    DaVerificare,
+    NonSpettanti,
+    Spettanti
+}
+
+/// <summary>
 /// Come sono trattate vitto e alloggio durante la trasferta. Con il rimborso misto la soglia
 /// esente della diaria si riduce: di un terzo se è rimborsato uno dei due, di due terzi se
 /// sono rimborsati entrambi (art. 51 c.5 TUIR).

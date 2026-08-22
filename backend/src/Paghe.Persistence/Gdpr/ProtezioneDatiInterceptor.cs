@@ -21,6 +21,10 @@ internal sealed class ProtezioneDatiInterceptor : SaveChangesInterceptor, IMater
                 azienda.CaricaIbanDecifrato(DecifraIban(protettore,
                     azienda.IbanProtetto,
                     ContestoDatiProtetti.IbanAzienda(azienda.TenantId, azienda.Id)));
+                azienda.CaricaFirmaSiglaTimbroDecifrata(DecifraBytes(
+                    protettore,
+                    azienda.FirmaSiglaTimbroProtetta,
+                    ContestoDatiProtetti.FirmaSiglaTimbroAzienda(azienda.TenantId, azienda.Id)));
                 break;
             case DipendenteEntity dipendente:
                 dipendente.CaricaIbanDecifrato(DecifraIban(protettore,
@@ -118,13 +122,26 @@ internal sealed class ProtezioneDatiInterceptor : SaveChangesInterceptor, IMater
 
             switch (entry.Entity)
             {
-                case AziendaEntity a when entry.State == EntityState.Added || a.IbanModificato:
+                case AziendaEntity a when entry.State == EntityState.Added
+                        || a.IbanModificato || a.FirmaSiglaTimbroModificata:
                     ValidaIdentita(a.TenantId, a.Id, nameof(AziendaEntity));
-                    a.IbanProtetto = CifraIban(protettore,
-                        a.Iban,
-                        ContestoDatiProtetti.IbanAzienda(a.TenantId, a.Id));
-                    entry.Property(nameof(AziendaEntity.IbanProtetto)).IsModified =
-                        entry.State != EntityState.Added;
+                    if (entry.State == EntityState.Added || a.IbanModificato)
+                    {
+                        a.IbanProtetto = CifraIban(protettore,
+                            a.Iban,
+                            ContestoDatiProtetti.IbanAzienda(a.TenantId, a.Id));
+                        entry.Property(nameof(AziendaEntity.IbanProtetto)).IsModified =
+                            entry.State != EntityState.Added;
+                    }
+                    if (entry.State == EntityState.Added || a.FirmaSiglaTimbroModificata)
+                    {
+                        a.FirmaSiglaTimbroProtetta = CifraBytes(
+                            protettore,
+                            a.FirmaSiglaTimbro,
+                            ContestoDatiProtetti.FirmaSiglaTimbroAzienda(a.TenantId, a.Id));
+                        entry.Property(nameof(AziendaEntity.FirmaSiglaTimbroProtetta)).IsModified =
+                            entry.State != EntityState.Added;
+                    }
                     break;
                 case DipendenteEntity d when entry.State == EntityState.Added || d.IbanModificato:
                     ValidaIdentita(d.TenantId, d.Id, nameof(DipendenteEntity));
@@ -186,6 +203,16 @@ internal sealed class ProtezioneDatiInterceptor : SaveChangesInterceptor, IMater
             ? null
             : protettore.SvelaConContesto(ibanProtetto, contesto);
 
+    private static string? CifraBytes(ProtettoreDati protettore, byte[]? dati, string contesto) =>
+        dati is null || dati.Length == 0
+            ? null
+            : protettore.ProteggiConContesto(Convert.ToBase64String(dati), contesto);
+
+    private static byte[]? DecifraBytes(ProtettoreDati protettore, string? datiProtetti, string contesto) =>
+        string.IsNullOrWhiteSpace(datiProtetti)
+            ? null
+            : Convert.FromBase64String(protettore.SvelaConContesto(datiProtetti, contesto)!);
+
     private static ProtettoreDati OttieniProtettore(DbContext? context) =>
         context is PagheDbContext paghe
             ? paghe.Protettore
@@ -199,7 +226,10 @@ internal sealed class ProtezioneDatiInterceptor : SaveChangesInterceptor, IMater
         {
             switch (entry.Entity)
             {
-                case AziendaEntity a: a.ConfermaProtezioneIban(); break;
+                case AziendaEntity a:
+                    a.ConfermaProtezioneIban();
+                    a.ConfermaProtezioneFirmaSiglaTimbro();
+                    break;
                 case DipendenteEntity d: d.ConfermaProtezioneIban(); break;
                 case AvvisoPagamentoEntity a: a.ConfermaProtezioneIban(); break;
                 case CartellinoEntity c:
@@ -227,6 +257,9 @@ internal static class ContestoDatiProtetti
     public static string IbanAzienda(Guid tenantId, Guid id) =>
         Crea(tenantId, "Aziende", id, "IbanProtetto");
 
+    public static string FirmaSiglaTimbroAzienda(Guid tenantId, Guid id) =>
+        Crea(tenantId, "Aziende", id, "FirmaSiglaTimbroProtetta");
+
     public static string IbanDipendente(Guid tenantId, Guid id) =>
         Crea(tenantId, "Dipendenti", id, "IbanProtetto");
 
@@ -241,6 +274,18 @@ internal static class ContestoDatiProtetti
 
     public static string VoceCedolino(Guid tenantId, Guid id) =>
         Crea(tenantId, "CedolinoVoceEntity", id, "DatiVoceProtetti");
+
+    public static string ParametriCedolino(Guid tenantId, Guid id) =>
+        Crea(tenantId, "Cedolini", id, "ParametriApplicatiProtetti");
+
+    public static string ValidazioneCedolino(Guid tenantId, Guid id) =>
+        Crea(tenantId, "Cedolini", id, "DatiValidazioneProtetti");
+
+    public static string DatiSnapshotCedolino(Guid tenantId, Guid id, Guid cedolinoId) =>
+        $"{Crea(tenantId, "CedoliniSnapshot", id, "DatiProtetti")}|cedolino:{cedolinoId:D}";
+
+    public static string PdfSnapshotCedolino(Guid tenantId, Guid id, Guid cedolinoId) =>
+        $"{Crea(tenantId, "CedoliniDocumenti", id, "PdfProtetto")}|cedolino:{cedolinoId:D}";
 
     private static string Crea(Guid tenantId, string tabella, Guid id, string campo) =>
         $"{Versione}|{tenantId:D}|{tabella}|{id:D}|{campo}";

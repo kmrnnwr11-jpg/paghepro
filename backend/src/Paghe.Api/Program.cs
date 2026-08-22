@@ -22,6 +22,7 @@ using Paghe.Documenti;
 using Paghe.Firma;
 using Paghe.Persistence;
 using Paghe.Persistence.Ai;
+using Paghe.Persistence.Cedolini;
 using Paghe.Persistence.Gdpr;
 using Paghe.Persistence.Gdpr.Retention;
 using Paghe.Persistence.Sicurezza;
@@ -77,6 +78,7 @@ builder.Services.AddScoped<AvvisiPagamentoService>();
 builder.Services.AddScoped<ParametriNormativiService>();
 builder.Services.AddScoped<AnagraficheLavoroService>();
 builder.Services.AddScoped<CedoliniService>();
+builder.Services.AddScoped<CedolinoWorkflowService>();
 builder.Services.AddScoped<PraticheF24Service>();
 builder.Services.AddScoped<PraticheInailService>();
 builder.Services.AddScoped<PraticheAperturaPartitaIvaService>();
@@ -1847,6 +1849,8 @@ secured.MapPost("/api/aziende/{aziendaId:guid}/dipendenti",
             DataAssunzione = req.DataAssunzione ?? DateOnly.FromDateTime(DateTime.UtcNow),
             OreSettimanali = req.OreSettimanali,
             TipoContratto = req.TipoContratto,
+            FerieResidueIniziali = req.FerieResidueIniziali,
+            PermessiResiduiIniziali = req.PermessiResiduiIniziali,
         };
         var creato = await svc.CreaDipendenteERapportoAsync(TenantCorrente(user), aziendaId, dipendente, rapporto);
         return Results.Created($"/api/rapporti/{creato.Id}",
@@ -2018,7 +2022,10 @@ secured.MapPost("/api/rapporti/{rapportoId:guid}/cedolini",
                 c.NettoInBusta,
                 c.CostoAzienda,
                 c.FerieResidue,
-                c.PermessiResidui
+                c.PermessiResidui,
+                c.Stato,
+                c.Versione,
+                c.CodiceCnel
             });
     }
     catch (ArgumentException ex)
@@ -2037,14 +2044,26 @@ secured.MapGet("/api/cedolini/{id:guid}", async (Guid id, CedoliniService svc, C
     return c is null ? Results.NotFound(new { errore = "Cedolino non trovato." }) : Results.Ok(c);
 });
 
-// PDF di un cedolino archiviato: rigenerato dal backend (ricalcolo read-only), isolato per tenant.
-secured.MapGet("/api/cedolini/{id:guid}/pdf", async (Guid id, CedoliniService svc, ClaimsPrincipal user) =>
+// Prima della chiusura restituisce un'anteprima marcata; dopo la chiusura restituisce soltanto
+// i byte cifrati e verificati del documento archiviato, senza ricalcolare o rileggere anagrafiche.
+secured.MapGet("/api/cedolini/{id:guid}/pdf", async (
+    Guid id, CedolinoWorkflowService workflow, ClaimsPrincipal user, HttpResponse response) =>
 {
-    var dati = await svc.RicalcolaPerPdfAsync(TenantCorrente(user), id);
-    if (dati is null) return Results.NotFound(new { errore = "Cedolino non trovato." });
-    byte[] pdf = CedolinoPdf.Genera(dati.Cedolino, dati.Intestazione, dati.Cartellino);
-    return Results.File(pdf, "application/pdf",
-        $"cedolino-{dati.Cedolino.Anno}-{dati.Cedolino.Mese:00}.pdf");
+    try
+    {
+        var documento = await workflow.LeggiPdfAsync(TenantCorrente(user), id);
+        if (documento is null)
+            return Results.NotFound(new { errore = "Cedolino non trovato." });
+        response.Headers.CacheControl = "private, no-store";
+        response.Headers["X-Content-Type-Options"] = "nosniff";
+        response.Headers["X-PaghePro-Stato"] = documento.Stato.ToString();
+        response.Headers["X-PaghePro-SHA256"] = documento.HashSha256;
+        return Results.File(documento.Dati, "application/pdf", documento.NomeFile);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { errore = ex.Message });
+    }
 });
 
 // Genera l'F24 del mese pescando in automatico i cedolini archiviati dell'azienda.
@@ -2646,6 +2665,7 @@ app.MapImportUnilavTesto(); // UNILAV: incolla il testo → stessi dati registra
 app.MapImportVisuraPdf(); // Visura camerale: carica il PDF → estrae i dati azienda (da confermare)
 app.MapModuli();          // archivio Persone + modello ufficiale AA7/10 compilato (PDF AdE)
 app.MapCcnl();            // elenco dei CCNL configurati (menu busta paga)
+app.MapCedoliniWorkflow();// controllo, validazione, chiusura e snapshot immutabile cedolini
 app.MapRegistroAttivita(); // registro GDPR: accessi e modifiche, consultabile solo dall'admin
 app.MapRetention();        // policy, blocchi, anteprime e ricevute di conservazione GDPR
 app.MapAiGovernor();       // Governor AI (G2): mandati, preflight, revoca, catena audit

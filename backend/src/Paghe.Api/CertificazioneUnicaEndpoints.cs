@@ -31,6 +31,12 @@ public static class CertificazioneUnicaEndpoints
         {
             try
             {
+                if (anno != CuPdfUfficiale.AnnoRedditiSupportato)
+                    return Results.BadRequest(new
+                    {
+                        errore = $"Il PDF ufficiale CU 2026 è disponibile soltanto per i redditi {CuPdfUfficiale.AnnoRedditiSupportato}. "
+                            + $"Il modello ufficiale per i redditi {anno} non è disponibile.",
+                    });
                 var cu = await svc.CostruisciModelloAsync(Tenant(user), rapportoId, anno);
                 if (cu is null)
                     return Results.NotFound(new { errore = "Rapporto non trovato per il tenant indicato." });

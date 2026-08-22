@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.Domain;
 using Paghe.Persistence;
 using Paghe.Persistence.Entities;
 using Xunit;
@@ -53,13 +54,16 @@ public sealed class RivalutazioneTfrPersistenzaTests : IDisposable
         Guid tenant, Guid aziendaId, Guid rapportoId, int anno, int mese, decimal quotaTfr)
     {
         await using var db = NuovoContesto();
-        db.Cedolini.Add(new CedolinoEntity
+        var cedolino = new CedolinoEntity
         {
             Id = Guid.NewGuid(), TenantId = tenant, AziendaId = aziendaId,
             RapportoLavoroId = rapportoId, Anno = anno, Mese = mese,
             QuotaTfr = quotaTfr, CalcolatoIl = DateTime.UtcNow,
-        });
+            Stato = nameof(StatoCedolino.Bozza), Versione = 1,
+        };
+        db.Cedolini.Add(cedolino);
         await db.SaveChangesAsync();
+        await db.ClassificaPreWorkflowAsync(tenant, cedolino.Id);
     }
 
     [Fact]

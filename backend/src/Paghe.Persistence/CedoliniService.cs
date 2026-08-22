@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Paghe.Core.AdeTelematico;
 using Paghe.Core.Calcolo;
 using Paghe.Core.Domain;
+using Paghe.Persistence.Cedolini;
 using Paghe.Persistence.Entities;
+using Paghe.Persistence.Gdpr;
 
 namespace Paghe.Persistence;
 
@@ -89,13 +91,34 @@ public sealed class CedoliniService
         var ccnl = await _parametri.CaricaCcnlAsync(rapporto.CodiceCcnl, cartellino.Anno, ct);
         var cedolino = new MotoreCalcoloCedolino(parametri, ccnl).Calcola(dominio, cartellino);
 
+        // Il motore calcola la maturazione teorica da gennaio. Per ottenere il saldo realmente
+        // leggibile dal dipendente aggiungiamo i riporti iniziali e tutti gli utilizzi dei soli
+        // mesi precedenti chiusi o storici pre-workflow; le versioni in lavorazione non alterano
+        // progressivi che finiranno sul prospetto paga.
+        var mesiPrecedentiUtilizzabili = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId
+                && c.Anno == cartellino.Anno && c.Mese < cartellino.Mese)
+            .Select(c => c.Mese)
+            .ToListAsync(ct);
+        var cartelliniPrecedenti = await _db.Cartellini
+            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId
+                && c.Anno == cartellino.Anno && mesiPrecedentiUtilizzabili.Contains(c.Mese))
+            .ToListAsync(ct);
+        cedolino.FerieGodute = cartelliniPrecedenti.Sum(c => c.GiorniFerie) + cartellino.GiorniFerie;
+        cedolino.FerieResidue = rapporto.FerieResidueIniziali
+            + cedolino.FerieMaturate - cedolino.FerieGodute;
+        cedolino.PermessiGoduti = cartelliniPrecedenti.Sum(c => c.OrePermessi + c.OreExFestivita)
+            + cartellino.OrePermessi + cartellino.OreExFestivita;
+        cedolino.PermessiResidui = rapporto.PermessiResiduiIniziali
+            + cedolino.PermessiMaturati - cedolino.PermessiGoduti;
+
         // Dicembre: conguaglio fiscale di fine anno applicato in busta (IRPEF annua effettiva vs
         // presuntiva trattenuta nei mesi 1-11 archiviati + dicembre corrente). Riarchiviare dicembre
         // è idempotente; se si rifà un mese precedente DOPO dicembre, va riarchiviato anche dicembre.
         decimal conguaglioDicembre = 0m;
         if (cartellino.Mese == 12)
         {
-            var precedenti = await _db.Cedolini
+            var precedenti = await _db.Cedolini.UtilizzabiliAValle()
                 .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId
                          && c.Anno == cartellino.Anno && c.Mese < 12)
                 .ToListAsync(ct);
@@ -126,6 +149,8 @@ public sealed class CedoliniService
             NumeroEventoMalattiaAnno = cartellino.NumeroEventoMalattiaAnno,
             GiorniInfortunio = cartellino.GiorniInfortunio,
             OreAssenzaNonRetribuita = cartellino.OreAssenzaNonRetribuita,
+            StatoAssegniFamiliari = cartellino.StatoAssegniFamiliari.ToString(),
+            ImportoAssegniFamiliari = cartellino.ImportoAssegniFamiliari,
             GiorniTrasfertaItalia = cartellino.GiorniTrasfertaItalia,
             GiorniTrasfertaEstero = cartellino.GiorniTrasfertaEstero,
             IndennitaTrasfertaGiornaliera = cartellino.IndennitaTrasfertaGiornaliera,
@@ -142,9 +167,12 @@ public sealed class CedoliniService
             Giornate = cartellino.Giornate,
         });
 
+        var cedolinoId = Guid.NewGuid();
+        var parametriJson = CedolinoSnapshotCodec.SerializzaParametri(
+            parametri, ccnl, rapporto, aziendaDelRapporto);
         var entity = new CedolinoEntity
         {
-            Id = Guid.NewGuid(), TenantId = tenantId, AziendaId = rapporto.AziendaId,
+            Id = cedolinoId, TenantId = tenantId, AziendaId = rapporto.AziendaId,
             RapportoLavoroId = rapportoId, Anno = cedolino.Anno, Mese = cedolino.Mese,
             TotaleCompetenze = cedolino.TotaleCompetenze,
             TotaleTrattenute = cedolino.TotaleTrattenute,
@@ -152,10 +180,15 @@ public sealed class CedoliniService
             ContributiDipendente = cedolino.ContributiDipendente,
             ContributiDatore = cedolino.ContributiDatore,
             ImponibileIrpef = cedolino.ImponibileIrpef,
+            IrpefLorda = cedolino.IrpefLorda,
+            DetrazioniLavoroDipendente = cedolino.DetrazioniLavoroDipendente,
             IrpefNetta = cedolino.IrpefNetta,
             AddizionaleRegionale = cedolino.AddizionaleRegionale,
             AddizionaleComunale = cedolino.AddizionaleComunale,
             NettoInBusta = cedolino.NettoInBusta,
+            TotaleEsenti = cedolino.TotaleEsenti,
+            PremioRisultatoAgevolato = cedolino.PremioRisultatoAgevolato,
+            ImpostaSostitutivaPremio = cedolino.ImpostaSostitutivaPremio,
             QuotaTfr = cedolino.QuotaTfr,
             CostoAzienda = cedolino.CostoAzienda,
             FerieMaturate = cedolino.FerieMaturate,
@@ -165,10 +198,19 @@ public sealed class CedoliniService
             PermessiGoduti = cedolino.PermessiGoduti,
             PermessiResidui = cedolino.PermessiResidui,
             ConguaglioIrpef = conguaglioDicembre,
-            CalcolatoIl = DateTime.UtcNow,
-            Voci = cedolino.Righe.Select(r => new CedolinoVoceEntity
+            CodiceCnel = ccnl.CodiceCnel,
+            DescrizioneCcnl = ccnl.Descrizione,
+            FonteCcnl = ccnl.Fonte,
+            Stato = nameof(StatoCedolino.Bozza),
+            Versione = 1,
+            ParametriApplicatiProtetti = _db.Protettore.ProteggiConContesto(
+                parametriJson,
+                ContestoDatiProtetti.ParametriCedolino(tenantId, cedolinoId))!,
+            HashParametriSha256 = CedolinoSnapshotCodec.HashTesto(parametriJson),
+            CalcolatoIl = _clock.GetUtcNow().UtcDateTime,
+            Voci = cedolino.Righe.Select((r, i) => new CedolinoVoceEntity
             {
-                Id = Guid.NewGuid(), TenantId = tenantId,
+                Id = Guid.NewGuid(), TenantId = tenantId, Ordine = i,
                 Codice = r.Codice, Descrizione = r.Descrizione,
                 Tipo = r.Tipo.ToString(), Quantita = r.Quantita, Base = r.Base, Importo = r.Importo,
             }).ToList(),
@@ -193,11 +235,13 @@ public sealed class CedoliniService
             ?? throw new ArgumentException("Azienda non trovata per il tenant indicato.");
         AziendeService.VerificaProntaPerAdempimentiContributivi(azienda);
 
-        var cedolini = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno && c.Mese == mese)
+        var cedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId
+                && c.Anno == anno && c.Mese == mese)
             .ToListAsync(ct);
         if (cedolini.Count == 0)
-            throw new ArgumentException($"Nessun cedolino archiviato per il periodo {mese:00}/{anno}.");
+            throw new ArgumentException(
+                $"Nessun cedolino chiuso o storico pre-workflow per il periodo {mese:00}/{anno}.");
 
         var rapportoIds = cedolini.Select(c => c.RapportoLavoroId).Distinct().ToList();
         var rapporti = await _db.Rapporti
@@ -233,11 +277,13 @@ public sealed class CedoliniService
             .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct)
             ?? throw new ArgumentException("Rapporto di lavoro non trovato per il tenant indicato.");
 
-        var cedolini = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId && c.Anno == anno)
+        var cedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId
+                && c.Anno == anno)
             .ToListAsync(ct);
         if (cedolini.Count == 0)
-            throw new ArgumentException($"Nessun cedolino archiviato per l'anno {anno}.");
+            throw new ArgumentException(
+                $"Nessun cedolino chiuso o storico pre-workflow per l'anno {anno}.");
 
         decimal imponibileAnnuo = cedolini.Sum(c => c.ImponibileIrpef);
         decimal irpefTrattenuta = cedolini.Sum(c => c.IrpefNetta);
@@ -269,8 +315,9 @@ public sealed class CedoliniService
                 $"Variazione ISTAT non disponibile per il {anno}: passarla nella richiesta "
                 + "o inserirla nei parametri dell'anno.");
 
-        var cedolini = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId && c.Anno <= anno)
+        var cedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId
+                && c.Anno <= anno)
             .ToListAsync(ct);
         decimal fondo = (rapporto.FondoTfrIniziale ?? 0m)
             + cedolini.Where(c => c.Anno < anno).Sum(c => c.QuotaTfr);
@@ -293,15 +340,18 @@ public sealed class CedoliniService
             .OrderBy(c => c.Anno).ThenBy(c => c.Mese).ToListAsync(ct);
 
     /// <summary>
-    /// Ricalcola (senza persistere) un cedolino già archiviato a partire dal rapporto e dal
-    /// cartellino salvati, e ne restituisce il dominio con i nomi di azienda e dipendente,
-    /// pronto per generare il PDF. Il ricalcolo garantisce l'ordine deterministico delle voci.
-    /// Null se il cedolino, il rapporto o il cartellino non esistono per il tenant.
+    /// Rilegge dall'archivio un cedolino già elaborato e lo prepara per il PDF. <b>Non ricalcola
+    /// nulla</b>: importi e voci sono quelli archiviati il giorno dell'elaborazione, nell'ordine
+    /// in cui sono stati calcolati. È la fotografia della busta: se domani cambiano un minimo
+    /// tabellare, un'aliquota o le regole del CCNL, la busta già consegnata resta quella.
+    /// Per Bozza usa l'anagrafica corrente; dal controllo in avanti il workflow congela anche
+    /// l'intestazione e il download usa lo snapshot, senza tornare a queste anagrafiche.
+    /// Null se il cedolino o il rapporto non esistono per il tenant.
     /// </summary>
-    public async Task<CedolinoPerPdf?> RicalcolaPerPdfAsync(
+    public async Task<CedolinoPerPdf?> LeggiPerPdfAsync(
         Guid tenantId, Guid cedolinoId, CancellationToken ct = default)
     {
-        var archiviato = await _db.Cedolini
+        var archiviato = await _db.Cedolini.Include(c => c.Voci)
             .FirstOrDefaultAsync(c => c.Id == cedolinoId && c.TenantId == tenantId, ct);
         if (archiviato is null) return null;
 
@@ -312,21 +362,10 @@ public sealed class CedoliniService
         var cartellino = await _db.Cartellini.FirstOrDefaultAsync(
             c => c.TenantId == tenantId && c.RapportoLavoroId == archiviato.RapportoLavoroId
                  && c.Anno == archiviato.Anno && c.Mese == archiviato.Mese, ct);
-        if (cartellino is null) return null;
 
-        // L'azienda serve prima del calcolo: porta i due dati contributivi (0,30% CIG oltre i 15
-        // dipendenti e fondi di settore) senza i quali il PDF non coinciderebbe con l'archivio.
         var azienda = await _db.Aziende
             .FirstOrDefaultAsync(a => a.Id == archiviato.AziendaId && a.TenantId == tenantId, ct);
-
-        var parametri = await _parametri.CaricaParametriAsync(archiviato.Anno, ct);
-        var ccnl = await _parametri.CaricaCcnlAsync(rapporto.CodiceCcnl, archiviato.Anno, ct);
-        var cedolino = new MotoreCalcoloCedolino(parametri, ccnl)
-            .Calcola(ToDominio(rapporto, azienda), ToDominio(cartellino));
-
-        // Riapplica il conguaglio archiviato (dicembre): il PDF deve coincidere con l'archivio.
-        if (archiviato.ConguaglioIrpef != 0m)
-            ConguaglioFiscale.ApplicaACedolino(cedolino, archiviato.ConguaglioIrpef);
+        var cedolino = DaArchivio(archiviato);
 
         var dipendente = await _db.Dipendenti
             .FirstOrDefaultAsync(d => d.Id == rapporto.DipendenteId && d.TenantId == tenantId, ct);
@@ -354,9 +393,19 @@ public sealed class CedoliniService
             DataAssunzione = rapporto.DataAssunzione == default
                 ? null
                 : rapporto.DataAssunzione.ToString("dd/MM/yyyy"),
+            DataCessazione = rapporto.DataCessazione?.ToString("dd/MM/yyyy"),
+            DataNascita = Paghe.Core.AdeTelematico.AnagraficaCodiceFiscale
+                .Decodifica(dipendente?.CodiceFiscale, archiviato.Anno)?.DataNascita.ToString("dd/MM/yyyy"),
+            ComuneResidenza = Paghe.Core.Parametri.ComuniCatastali
+                .Trova(rapporto.CodiceCatastaleComune) is { } residenza
+                ? $"{residenza.Nome} ({residenza.Provincia})"
+                : null,
             Qualifica = rapporto.Qualifica,
             Livello = rapporto.Livello,
-            Ccnl = ccnl.Descrizione,
+            Ccnl = string.IsNullOrWhiteSpace(archiviato.DescrizioneCcnl)
+                ? rapporto.CodiceCcnl
+                : archiviato.DescrizioneCcnl,
+            CodiceCnel = archiviato.CodiceCnel,
             TipoContratto = rapporto.TipoContratto,
             Mensilita = rapporto.NumeroMensilita,
             Orario = rapporto.PartTime
@@ -364,7 +413,67 @@ public sealed class CedoliniService
                 : $"{rapporto.OreSettimanali:0.#} ore/sett.",
         };
 
-        return new CedolinoPerPdf(cedolino, intestazione, ToDominio(cartellino));
+        return new CedolinoPerPdf(
+            cedolino,
+            intestazione,
+            cartellino is null
+                ? new Cartellino { Anno = archiviato.Anno, Mese = archiviato.Mese }
+                : ToDominio(cartellino));
+    }
+
+    /// <summary>Alias storico: il metodo non ricalcola più alcun importo.</summary>
+    [Obsolete("Usare LeggiPerPdfAsync: il PDF viene ricostruito dai valori archiviati.")]
+    public Task<CedolinoPerPdf?> RicalcolaPerPdfAsync(
+        Guid tenantId, Guid cedolinoId, CancellationToken ct = default) =>
+        LeggiPerPdfAsync(tenantId, cedolinoId, ct);
+
+    /// <summary>
+    /// Ricostruisce il cedolino di dominio dai dati archiviati: totali e voci sono quelli del
+    /// giorno dell'elaborazione, nell'ordine in cui il motore li aveva prodotti.
+    /// </summary>
+    private static Cedolino DaArchivio(CedolinoEntity e)
+    {
+        var cedolino = new Cedolino
+        {
+            Anno = e.Anno,
+            Mese = e.Mese,
+            TotaleCompetenze = e.TotaleCompetenze,
+            TotaleTrattenute = e.TotaleTrattenute,
+            ImponibileInps = e.ImponibileInps,
+            ContributiDipendente = e.ContributiDipendente,
+            ContributiDatore = e.ContributiDatore,
+            ImponibileIrpef = e.ImponibileIrpef,
+            IrpefLorda = e.IrpefLorda,
+            DetrazioniLavoroDipendente = e.DetrazioniLavoroDipendente,
+            IrpefNetta = e.IrpefNetta,
+            AddizionaleRegionale = e.AddizionaleRegionale,
+            AddizionaleComunale = e.AddizionaleComunale,
+            NettoInBusta = e.NettoInBusta,
+            TotaleEsenti = e.TotaleEsenti,
+            PremioRisultatoAgevolato = e.PremioRisultatoAgevolato,
+            ImpostaSostitutivaPremio = e.ImpostaSostitutivaPremio,
+            QuotaTfr = e.QuotaTfr,
+            CostoAzienda = e.CostoAzienda,
+            FerieMaturate = e.FerieMaturate,
+            FerieGodute = e.FerieGodute,
+            FerieResidue = e.FerieResidue,
+            PermessiMaturati = e.PermessiMaturati,
+            PermessiGoduti = e.PermessiGoduti,
+            PermessiResidui = e.PermessiResidui,
+        };
+
+        foreach (var v in e.Voci.OrderBy(v => v.Ordine))
+            cedolino.Righe.Add(new CedolinoRiga
+            {
+                Codice = v.Codice,
+                Descrizione = v.Descrizione,
+                Tipo = Enum.TryParse<TipoVoce>(v.Tipo, out var tipo) ? tipo : TipoVoce.Competenza,
+                Quantita = v.Quantita,
+                Base = v.Base,
+                Importo = v.Importo,
+            });
+
+        return cedolino;
     }
 
     /// <summary>
@@ -399,6 +508,7 @@ public sealed class CedoliniService
             ("giorni di malattia", c.GiorniMalattia),
             ("giorni di infortunio", c.GiorniInfortunio),
             ("ore di assenza non retribuita", c.OreAssenzaNonRetribuita),
+            ("assegni familiari", c.ImportoAssegniFamiliari),
         };
         var negativa = quantita.FirstOrDefault(x => x.Valore < 0m);
         if (negativa.Valore < 0m)
@@ -412,6 +522,14 @@ public sealed class CedoliniService
                 + $"ma il mese ne contiene {giorniMese}.");
         if (c.GiorniMalattia > 0m && c.NumeroEventoMalattiaAnno < 1)
             throw new ArgumentException("Indicare il numero progressivo dell'evento di malattia nell'anno.");
+        if (c.StatoAssegniFamiliari == StatoAssegniFamiliari.NonSpettanti
+            && c.ImportoAssegniFamiliari != 0m)
+            throw new ArgumentException(
+                "Gli assegni familiari sono non spettanti: l'importo deve essere zero.");
+        if (c.StatoAssegniFamiliari == StatoAssegniFamiliari.Spettanti
+            && c.ImportoAssegniFamiliari <= 0m)
+            throw new ArgumentException(
+                "Per gli assegni familiari spettanti indica un importo maggiore di zero.");
     }
 
     private async Task RimuoviEsistenti(Guid tenantId, Guid rapportoId, int anno, int mese, CancellationToken ct)
@@ -419,6 +537,13 @@ public sealed class CedoliniService
         var cedolini = await _db.Cedolini
             .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId && c.Anno == anno && c.Mese == mese)
             .ToListAsync(ct);
+        var nonBozza = cedolini.FirstOrDefault(c =>
+            !string.IsNullOrWhiteSpace(c.Stato)
+            && !string.Equals(c.Stato, nameof(StatoCedolino.Bozza), StringComparison.OrdinalIgnoreCase));
+        if (nonBozza is not null)
+            throw new ArgumentException(
+                $"Il cedolino {mese:00}/{anno} è '{nonBozza.Stato}' e non può essere sostituito. " +
+                "Per correggerlo serve una rettifica separata.");
         _db.Cedolini.RemoveRange(cedolini);
 
         var cartellini = await _db.Cartellini
@@ -426,8 +551,9 @@ public sealed class CedoliniService
             .ToListAsync(ct);
         _db.Cartellini.RemoveRange(cartellini);
 
-        if (cedolini.Count > 0 || cartellini.Count > 0)
-            await _db.SaveChangesAsync(ct);
+        // Nessun SaveChanges intermedio: cancellazione della vecchia bozza e inserimento della
+        // nuova vengono confermati insieme dal chiamante. Se il nuovo salvataggio fallisce, il
+        // database conserva la versione precedente invece di lasciare il mese vuoto.
     }
 
     /// <param name="azienda">
@@ -451,6 +577,8 @@ public sealed class CedoliniService
         GiorniDetrazioneAnno = e.GiorniDetrazioneAnno,
         AziendaOltre15Dipendenti = azienda?.OltreQuindiciDipendenti ?? false,
         ContributiFondiSettore = azienda?.ContributiFondiSettore ?? 0m,
+        FerieResidueIniziali = e.FerieResidueIniziali,
+        PermessiResiduiIniziali = e.PermessiResiduiIniziali,
     };
 
     private static Cartellino ToDominio(CartellinoEntity e) => new()
@@ -467,6 +595,11 @@ public sealed class CedoliniService
         NumeroEventoMalattiaAnno = e.NumeroEventoMalattiaAnno > 0 ? e.NumeroEventoMalattiaAnno : 1,
         GiorniInfortunio = e.GiorniInfortunio,
         OreAssenzaNonRetribuita = e.OreAssenzaNonRetribuita,
+        StatoAssegniFamiliari = Enum.TryParse<StatoAssegniFamiliari>(
+            e.StatoAssegniFamiliari, out var statoAnf)
+            ? statoAnf
+            : StatoAssegniFamiliari.DaVerificare,
+        ImportoAssegniFamiliari = e.ImportoAssegniFamiliari,
         GiorniTrasfertaItalia = e.GiorniTrasfertaItalia,
         GiorniTrasfertaEstero = e.GiorniTrasfertaEstero,
         IndennitaTrasfertaGiornaliera = e.IndennitaTrasfertaGiornaliera,

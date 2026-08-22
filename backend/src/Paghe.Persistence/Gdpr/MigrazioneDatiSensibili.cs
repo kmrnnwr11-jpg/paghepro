@@ -160,8 +160,75 @@ public sealed class MigrazioneDatiSensibili
             ContestoDatiProtetti.IbanAvviso, cancellationToken);
         migrati += await MigraSaluteAsync(tenantId, cancellationToken);
         migrati += await MigraVociCedolinoAsync(tenantId, cancellationToken);
+        migrati += await MigraConContestoAsync(
+            "Aziende", "FirmaSiglaTimbroProtetta", tenantId,
+            ContestoDatiProtetti.FirmaSiglaTimbroAzienda, cancellationToken);
+        migrati += await MigraConContestoAsync(
+            "Cedolini", "ParametriApplicatiProtetti", tenantId,
+            ContestoDatiProtetti.ParametriCedolino, cancellationToken);
+        migrati += await MigraConContestoAsync(
+            "Cedolini", "DatiValidazioneProtetti", tenantId,
+            ContestoDatiProtetti.ValidazioneCedolino, cancellationToken);
+        migrati += await MigraSnapshotCedolinoAsync(
+            "CedoliniSnapshot", "DatiProtetti", tenantId,
+            ContestoDatiProtetti.DatiSnapshotCedolino, cancellationToken);
+        migrati += await MigraSnapshotCedolinoAsync(
+            "CedoliniDocumenti", "PdfProtetto", tenantId,
+            ContestoDatiProtetti.PdfSnapshotCedolino, cancellationToken);
         migrati += await MigraInPlaceAsync("Utenti", "SegretoTotp", tenantId, cancellationToken);
         migrati += await MigraInPlaceAsync("ConfigurazioniSdi", "ApiKey", tenantId, cancellationToken);
+        return migrati;
+    }
+
+    private async Task<int> MigraConContestoAsync(
+        string tabella,
+        string colonna,
+        Guid tenantId,
+        Func<Guid, Guid, string> creaContesto,
+        CancellationToken cancellationToken)
+    {
+        var migrati = 0;
+        await PerOgniBatchTenantAsync(tabella, [colonna], tenantId, async (righe, tx) =>
+        {
+            foreach (var riga in righe)
+            {
+                var corrente = Stringa(riga.Valori[0]);
+                if (string.IsNullOrWhiteSpace(corrente)) continue;
+                var nuovo = _protettore.RicifraConContesto(
+                    corrente, creaContesto(tenantId, riga.Id))!;
+                if (string.Equals(corrente, nuovo, StringComparison.Ordinal)) continue;
+                await AggiornaCampoAsync(
+                    tabella, colonna, riga.Id, tenantId, nuovo, tx, cancellationToken);
+                migrati++;
+            }
+        }, cancellationToken);
+        return migrati;
+    }
+
+    private async Task<int> MigraSnapshotCedolinoAsync(
+        string tabella,
+        string colonna,
+        Guid tenantId,
+        Func<Guid, Guid, Guid, string> creaContesto,
+        CancellationToken cancellationToken)
+    {
+        var migrati = 0;
+        await PerOgniBatchTenantAsync(tabella, [colonna, "CedolinoId"], tenantId, async (righe, tx) =>
+        {
+            foreach (var riga in righe)
+            {
+                var corrente = Stringa(riga.Valori[0]);
+                if (string.IsNullOrWhiteSpace(corrente)) continue;
+                var cedolinoId = GuidDaDb(riga.Valori[1]
+                    ?? throw new InvalidOperationException($"{tabella} {riga.Id} senza CedolinoId."));
+                var nuovo = _protettore.RicifraConContesto(
+                    corrente, creaContesto(tenantId, riga.Id, cedolinoId))!;
+                if (string.Equals(corrente, nuovo, StringComparison.Ordinal)) continue;
+                await AggiornaCampoAsync(
+                    tabella, colonna, riga.Id, tenantId, nuovo, tx, cancellationToken);
+                migrati++;
+            }
+        }, cancellationToken);
         return migrati;
     }
 
@@ -551,7 +618,8 @@ public sealed class MigrazioneDatiSensibili
             await EseguiNonQueryAsync(
                 "LOCK TABLE \"Tenants\", \"Aziende\", \"Dipendenti\", \"AvvisiPagamento\", " +
                 "\"Cartellini\", \"Cedolini\", \"CedolinoVoceEntity\", \"Utenti\", " +
-                "\"ConfigurazioniSdi\" IN ACCESS EXCLUSIVE MODE;",
+                "\"ConfigurazioniSdi\", \"CedoliniSnapshot\", \"CedoliniDocumenti\" " +
+                "IN ACCESS EXCLUSIVE MODE;",
                 cancellationToken);
             return;
         }
@@ -578,7 +646,10 @@ public sealed class MigrazioneDatiSensibili
             UNION SELECT "TenantId" FROM "Utenti"
             UNION SELECT "TenantId" FROM "ConfigurazioniSdi"
             UNION SELECT "TenantId" FROM "Cartellini"
+            UNION SELECT "TenantId" FROM "Cedolini"
             UNION SELECT "TenantId" FROM "CedolinoVoceEntity"
+            UNION SELECT "TenantId" FROM "CedoliniSnapshot"
+            UNION SELECT "TenantId" FROM "CedoliniDocumenti"
             """;
         var ids = new List<Guid>();
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
@@ -602,6 +673,11 @@ public sealed class MigrazioneDatiSensibili
             new ColonnaLegacy("Cartellini", "DatiSaluteProtetti"),
             new ColonnaLegacy("CedolinoVoceEntity", "TenantId"),
             new ColonnaLegacy("CedolinoVoceEntity", "DatiVoceProtetti"),
+            new ColonnaLegacy("Aziende", "FirmaSiglaTimbroProtetta"),
+            new ColonnaLegacy("Cedolini", "ParametriApplicatiProtetti"),
+            new ColonnaLegacy("Cedolini", "DatiValidazioneProtetti"),
+            new ColonnaLegacy("CedoliniSnapshot", "DatiProtetti"),
+            new ColonnaLegacy("CedoliniDocumenti", "PdfProtetto"),
         })
             if (!await ColonnaEsisteAsync(richiesta.Tabella, richiesta.Colonna, cancellationToken))
                 throw new InvalidOperationException(
@@ -619,6 +695,12 @@ public sealed class MigrazioneDatiSensibili
             // Facoltativo: i cartellini compilati a totali non hanno calendario.
             new CampoCorrente("Cartellini", "GiornateProtette", false),
             new CampoCorrente("CedolinoVoceEntity", "DatiVoceProtetti", true),
+            new CampoCorrente("Aziende", "FirmaSiglaTimbroProtetta", false),
+            // I cedolini storici antecedenti al workflow possono non avere i nuovi payload.
+            new CampoCorrente("Cedolini", "ParametriApplicatiProtetti", false),
+            new CampoCorrente("Cedolini", "DatiValidazioneProtetti", false),
+            new CampoCorrente("CedoliniSnapshot", "DatiProtetti", true),
+            new CampoCorrente("CedoliniDocumenti", "PdfProtetto", true),
             new CampoCorrente("Utenti", "SegretoTotp", false),
             new CampoCorrente("ConfigurazioniSdi", "ApiKey", false),
         })
@@ -744,7 +826,7 @@ public sealed class MigrazioneDatiSensibili
         foreach (var tabella in new[]
         {
             "Aziende", "Dipendenti", "AvvisiPagamento", "Cartellini", "CedolinoVoceEntity",
-            "Utenti", "ConfigurazioniSdi",
+            "Cedolini", "CedoliniSnapshot", "CedoliniDocumenti", "Utenti", "ConfigurazioniSdi",
         })
             if (await ContaAsync($"SELECT COUNT(*) FROM \"{tabella}\";", cancellationToken) > 0)
                 return false;

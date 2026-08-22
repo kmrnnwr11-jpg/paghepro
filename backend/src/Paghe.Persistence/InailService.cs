@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.AdeTelematico;
+using Paghe.Core.Domain;
+using Paghe.Persistence.Cedolini;
 using Paghe.Persistence.Entities;
 
 namespace Paghe.Persistence;
@@ -81,11 +83,13 @@ public sealed class InailService
             ?? throw new ArgumentException(
                 $"Posizione INAIL non registrata per l'anno {anno}: salvare prima PAT e tasso.");
 
-        var cedolini = await _db.Cedolini
-            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno)
+        var cedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId
+                && c.Anno == anno)
             .ToListAsync(ct);
         if (cedolini.Count == 0)
-            throw new ArgumentException($"Nessun cedolino archiviato per l'anno {anno}.");
+            throw new ArgumentException(
+                $"Nessun cedolino chiuso o storico pre-workflow per l'anno {anno}.");
 
         decimal retribuzioni = cedolini.Sum(c => c.ImponibileInps);
         var r = AutoliquidazioneInail.Calcola(retribuzioni, posizione.TassoPerMille, rataGiaVersata);

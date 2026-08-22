@@ -63,6 +63,7 @@ public sealed class AziendeService
     {
         var a = await _db.Aziende.FirstOrDefaultAsync(x => x.Id == id && x.TenantId == tenantId, ct);
         if (a is null) return false;
+        await ScollegaPromemoriaAsync(tenantId, [id], ct);
         _db.Aziende.Remove(a);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -74,6 +75,7 @@ public sealed class AziendeService
         var aziende = await _db.Aziende
             .Where(a => a.TenantId == tenantId && lista.Contains(a.Id))
             .ToListAsync(ct);
+        await ScollegaPromemoriaAsync(tenantId, aziende.Select(a => a.Id).ToList(), ct);
         _db.Aziende.RemoveRange(aziende);
         await _db.SaveChangesAsync(ct);
         return aziende.Count;
@@ -81,6 +83,18 @@ public sealed class AziendeService
 
     public Task<AziendaEntity?> GetAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         _db.Aziende.FirstOrDefaultAsync(a => a.Id == id && a.TenantId == tenantId, ct);
+
+    private async Task ScollegaPromemoriaAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> aziendeIds, CancellationToken ct)
+    {
+        if (aziendeIds.Count == 0) return;
+        var promemoria = await _db.Promemoria
+            .Where(p => p.TenantId == tenantId
+                && p.AziendaId.HasValue
+                && aziendeIds.Contains(p.AziendaId.Value))
+            .ToListAsync(ct);
+        foreach (var voce in promemoria) voce.AziendaId = null;
+    }
 
     /// <summary>Campi correggibili dell'anagrafica azienda (es. dopo una visura letta male). Null = non cambiare.</summary>
     /// <summary>Campi correggibili dell'anagrafica azienda (es. dopo una visura letta male). Null = non cambiare.</summary>
@@ -155,6 +169,20 @@ public sealed class AziendeService
         var a = await GetAsync(tenantId, id, ct);
         if (a is null) return false;
         a.Logo = logo;
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    /// <summary>
+    /// Salva l'immagine autentica di firma/sigla/timbro del datore. La proprietà viene cifrata
+    /// tenant-bound dall'interceptor; il file grezzo non viene esposto da alcun endpoint GET.
+    /// </summary>
+    public async Task<bool> SalvaFirmaSiglaTimbroAsync(
+        Guid tenantId, Guid id, byte[]? immagine, CancellationToken ct = default)
+    {
+        var a = await GetAsync(tenantId, id, ct);
+        if (a is null) return false;
+        a.FirmaSiglaTimbro = immagine;
         await _db.SaveChangesAsync(ct);
         return true;
     }

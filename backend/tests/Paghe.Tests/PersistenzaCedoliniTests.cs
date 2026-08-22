@@ -159,7 +159,7 @@ public sealed class PersistenzaCedoliniTests : IDisposable
         await using (var db = NuovoContesto())
         {
             var dati = await new CedoliniService(db, new ParametriNormativiService(db))
-                .RicalcolaPerPdfAsync(tenant, cedolinoId);
+                .LeggiPerPdfAsync(tenant, cedolinoId);
             Assert.NotNull(dati);
             Assert.Equal("Alfa Srl", dati!.Intestazione.Azienda);
             Assert.Equal("Rossi Mario", dati.Intestazione.Dipendente);
@@ -189,7 +189,7 @@ public sealed class PersistenzaCedoliniTests : IDisposable
         await using (var db = NuovoContesto())
         {
             var dati = await new CedoliniService(db, new ParametriNormativiService(db))
-                .RicalcolaPerPdfAsync(Guid.NewGuid(), cedolinoId); // tenant estraneo
+                .LeggiPerPdfAsync(Guid.NewGuid(), cedolinoId); // tenant estraneo
             Assert.Null(dati);
         }
     }
@@ -225,7 +225,7 @@ public sealed class PersistenzaCedoliniTests : IDisposable
         await using (var db = NuovoContesto())
         {
             var dati = await new CedoliniService(db, new ParametriNormativiService(db))
-                .RicalcolaPerPdfAsync(tenant, cedolinoId);
+                .LeggiPerPdfAsync(tenant, cedolinoId);
 
             Assert.NotNull(dati);
             // Il netto ricalcolato per il PDF deve coincidere con quello archiviato.
@@ -242,6 +242,119 @@ public sealed class PersistenzaCedoliniTests : IDisposable
 
             Assert.True(dati.Cedolino.TotaleEsenti > 0m);
             Assert.Equal(1000m, dati.Cedolino.PremioRisultatoAgevolato);
+        }
+    }
+
+    [Fact]
+    public async Task AssegniFamiliariSpettanti_SonoPersistitiERestanoFuoriDaImponibiliECosto()
+    {
+        var (tenant, aziendaId) = await CreaAziendaAsync();
+        var rapportoId = await CreaRapportoAsync(tenant, aziendaId);
+
+        Guid cedolinoId;
+        decimal imponibileInps;
+        decimal imponibileIrpef;
+        decimal costoAzienda;
+        await using (var db = NuovoContesto())
+        {
+            var servizio = new CedoliniService(db, new ParametriNormativiService(db));
+            var senzaAnf = await servizio.CalcolaEArchiviaAsync(
+                tenant, rapportoId, new Cartellino { Anno = 2026, Mese = 5 });
+            imponibileInps = senzaAnf.ImponibileInps;
+            imponibileIrpef = senzaAnf.ImponibileIrpef;
+            costoAzienda = senzaAnf.CostoAzienda;
+
+            var conAnf = await servizio.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino
+            {
+                Anno = 2026,
+                Mese = 6,
+                StatoAssegniFamiliari = StatoAssegniFamiliari.Spettanti,
+                ImportoAssegniFamiliari = 123.45m,
+            });
+            cedolinoId = conAnf.Id;
+
+            var rigaAnf = Assert.Single(conAnf.Voci, v => v.Codice == "ANF");
+            Assert.Equal(123.45m, rigaAnf.Importo);
+            Assert.Equal(imponibileInps, conAnf.ImponibileInps);
+            Assert.Equal(imponibileIrpef, conAnf.ImponibileIrpef);
+            Assert.Equal(costoAzienda, conAnf.CostoAzienda);
+            Assert.Equal(123.45m, conAnf.NettoInBusta - senzaAnf.NettoInBusta);
+        }
+
+        await using (var db = NuovoContesto())
+        {
+            var cartellino = await db.Cartellini.SingleAsync(c =>
+                c.TenantId == tenant && c.RapportoLavoroId == rapportoId
+                    && c.Anno == 2026 && c.Mese == 6);
+            Assert.Equal(nameof(StatoAssegniFamiliari.Spettanti), cartellino.StatoAssegniFamiliari);
+            Assert.Equal(123.45m, cartellino.ImportoAssegniFamiliari);
+
+            var datiPdf = await new CedoliniService(db, new ParametriNormativiService(db))
+                .LeggiPerPdfAsync(tenant, cedolinoId);
+            Assert.NotNull(datiPdf);
+            Assert.Equal(StatoAssegniFamiliari.Spettanti, datiPdf!.Cartellino.StatoAssegniFamiliari);
+            Assert.Equal(123.45m, datiPdf.Cartellino.ImportoAssegniFamiliari);
+            Assert.Contains(datiPdf.Cedolino.Righe, r => r.Codice == "ANF" && r.Importo == 123.45m);
+        }
+    }
+
+    [Fact]
+    public async Task ResiduiInizialiESaldiDeiMesiContabilizzati_SiCumulanoSenzaUsareBozze()
+    {
+        var (tenant, aziendaId) = await CreaAziendaAsync();
+        var rapportoId = await CreaRapportoAsync(tenant, aziendaId);
+
+        await using (var db = NuovoContesto())
+        {
+            var rapporto = await db.Rapporti.SingleAsync(r =>
+                r.TenantId == tenant && r.Id == rapportoId);
+            rapporto.FerieResidueIniziali = 10m;
+            rapporto.PermessiResiduiIniziali = 20m;
+            await db.SaveChangesAsync();
+
+            var servizio = new CedoliniService(db, new ParametriNormativiService(db));
+            var gennaio = await servizio.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino
+            {
+                Anno = 2026,
+                Mese = 1,
+                GiorniFerie = 2m,
+                OrePermessi = 3m,
+            });
+
+            Assert.Equal(10m + gennaio.FerieMaturate - 2m, gennaio.FerieResidue);
+            Assert.Equal(20m + gennaio.PermessiMaturati - 3m, gennaio.PermessiResidui);
+
+            // Fixture downstream: gennaio rappresenta un mese già contabilizzato. La macchina a
+            // stati completa è verificata separatamente in CedolinoWorkflowTests.
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE Cedolini SET Stato = {nameof(StatoCedolino.Chiusa)} WHERE Id = {gennaio.Id} AND TenantId = {tenant}");
+
+            var febbraio = await servizio.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino
+            {
+                Anno = 2026,
+                Mese = 2,
+                GiorniFerie = 1m,
+                OrePermessi = 2m,
+                OreExFestivita = 1m,
+            });
+
+            Assert.Equal(3m, febbraio.FerieGodute);
+            Assert.Equal(10m + febbraio.FerieMaturate - 3m, febbraio.FerieResidue);
+            Assert.Equal(6m, febbraio.PermessiGoduti);
+            Assert.Equal(20m + febbraio.PermessiMaturati - 6m, febbraio.PermessiResidui);
+
+            // Febbraio resta Bozza: marzo non deve usarne le assenze nei progressivi.
+            var marzo = await servizio.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino
+            {
+                Anno = 2026,
+                Mese = 3,
+                GiorniFerie = 1m,
+                OrePermessi = 2m,
+            });
+            Assert.Equal(3m, marzo.FerieGodute); // gennaio 2 + marzo 1; febbraio escluso
+            Assert.Equal(10m + marzo.FerieMaturate - 3m, marzo.FerieResidue);
+            Assert.Equal(5m, marzo.PermessiGoduti); // gennaio 3 + marzo 2; febbraio escluso
+            Assert.Equal(20m + marzo.PermessiMaturati - 5m, marzo.PermessiResidui);
         }
     }
 

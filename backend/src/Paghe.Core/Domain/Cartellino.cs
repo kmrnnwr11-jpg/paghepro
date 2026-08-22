@@ -28,6 +28,12 @@ public sealed class Cartellino
     /// <summary>Ore di assenza non retribuita (decurtano la retribuzione mensile).</summary>
     public decimal OreAssenzaNonRetribuita { get; init; }
 
+    /// <summary>Esito della verifica ANF del mese; DaVerificare impedisce la chiusura.</summary>
+    public StatoAssegniFamiliari StatoAssegniFamiliari { get; init; }
+
+    /// <summary>Importo ANF del mese, valorizzato solo quando gli assegni spettano.</summary>
+    public decimal ImportoAssegniFamiliari { get; init; }
+
     // ---- Elementi retributivi agevolati del mese ------------------------------------
     // Esenti entro i limiti di legge dell'anno (vedi ParametriNormativi).
     // Vanno indicati solo se realmente spettanti: l'esenzione presuppone il presupposto.

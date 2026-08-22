@@ -25,9 +25,20 @@ public sealed record IntestazioneCedolino
     public string? IbanDipendente { get; init; }
     /// <summary>Data assunzione già formattata (gg/mm/aaaa).</summary>
     public string? DataAssunzione { get; init; }
+    /// <summary>Data di cessazione già formattata; null = rapporto ancora in forza.</summary>
+    public string? DataCessazione { get; init; }
+    /// <summary>Data di nascita già formattata, ricavata dal codice fiscale.</summary>
+    public string? DataNascita { get; init; }
+    /// <summary>Comune di residenza/domicilio fiscale, nella forma "Comune (PR)".</summary>
+    public string? ComuneResidenza { get; init; }
     public string? Qualifica { get; init; }
     public string? Livello { get; init; }
     public string? Ccnl { get; init; }
+    /// <summary>
+    /// Codice alfanumerico unico del CCNL depositato al CNEL. Non va dedotto dal codice
+    /// interno: se manca, il PDF dichiara che la bozza non è validabile.
+    /// </summary>
+    public string? CodiceCnel { get; init; }
     public string? TipoContratto { get; init; }
     public int? Mensilita { get; init; }
     /// <summary>Es. "40 ore/sett." oppure "Part-time 50%".</summary>

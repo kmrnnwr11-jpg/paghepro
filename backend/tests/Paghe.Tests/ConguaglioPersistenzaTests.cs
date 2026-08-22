@@ -65,7 +65,11 @@ public sealed class ConguaglioPersistenzaTests : IDisposable
         {
             var svc = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
             foreach (var mese in new[] { 1, 2, 3 })
-                await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino { Anno = 2026, Mese = mese });
+            {
+                var cedolino = await svc.CalcolaEArchiviaAsync(
+                    tenant, rapportoId, new Cartellino { Anno = 2026, Mese = mese });
+                await db.ClassificaPreWorkflowAsync(tenant, cedolino.Id);
+            }
         }
 
         await using (var db = NuovoContesto())
@@ -101,7 +105,11 @@ public sealed class ConguaglioPersistenzaTests : IDisposable
         {
             var svc = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
             for (int mese = 1; mese <= 12; mese++)
-                await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino { Anno = 2026, Mese = mese });
+            {
+                var cedolino = await svc.CalcolaEArchiviaAsync(
+                    tenant, rapportoId, new Cartellino { Anno = 2026, Mese = mese });
+                await db.ClassificaPreWorkflowAsync(tenant, cedolino.Id);
+            }
         }
 
         await using (var db = NuovoContesto())
@@ -132,7 +140,7 @@ public sealed class ConguaglioPersistenzaTests : IDisposable
 
             // Il PDF (ricalcolo dal motore) riapplica il conguaglio archiviato: stesso netto.
             var svc = new CedoliniService(db, new ParametriNormativiService(db), ClockFineAnno);
-            var perPdf = await svc.RicalcolaPerPdfAsync(tenant, dicembre.Id);
+            var perPdf = await svc.LeggiPerPdfAsync(tenant, dicembre.Id);
             Assert.NotNull(perPdf);
             Assert.Contains(perPdf!.Cedolino.Righe, r => r.Codice == "CONGUAGLIO_IRPEF");
             Assert.Equal(dicembre.NettoInBusta, perPdf.Cedolino.NettoInBusta);

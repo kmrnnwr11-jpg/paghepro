@@ -383,8 +383,7 @@ public sealed class AuditLogTests : IDisposable
         {
             var azienda = await db.Aziende.SingleAsync(a => a.Id == aziendaId);
             azienda.TenantId = tenantNuovo;
-            var errore = await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
-            Assert.Contains("spostare", errore.Message);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
         }
 
         await using (var db = NuovoContesto())

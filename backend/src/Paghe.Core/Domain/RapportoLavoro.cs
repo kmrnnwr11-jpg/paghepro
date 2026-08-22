@@ -54,6 +54,12 @@ public sealed class RapportoLavoro
     /// </summary>
     public decimal ContributiFondiSettore { get; init; }
 
+    /// <summary>Ferie disponibili all'inizio dell'anno, riportate dall'anno precedente.</summary>
+    public decimal FerieResidueIniziali { get; init; }
+
+    /// <summary>ROL/ex festività disponibili all'inizio dell'anno, in ore.</summary>
+    public decimal PermessiResiduiIniziali { get; init; }
+
     /// <summary>
     /// Copia del rapporto con un diverso superminimo. Serve al calcolo inverso netto → lordo,
     /// che cerca per tentativi il superminimo corrispondente al netto voluto.
@@ -74,5 +80,7 @@ public sealed class RapportoLavoro
         GiorniDetrazioneAnno = GiorniDetrazioneAnno,
         AziendaOltre15Dipendenti = AziendaOltre15Dipendenti,
         ContributiFondiSettore = ContributiFondiSettore,
+        FerieResidueIniziali = FerieResidueIniziali,
+        PermessiResiduiIniziali = PermessiResiduiIniziali,
     };
 }

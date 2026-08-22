@@ -268,6 +268,40 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
         return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Conflitto di concorrenza persistente.", ct), null);
     }
 
+    /// <summary>
+    /// Risolve la lease di una sessione chat nel manifest del mandato: stesse verifiche di
+    /// integrità di <see cref="AutorizzaAccessoAsync"/> (firma, proprietario, nonce, stato,
+    /// scadenza, inattività) ma senza risorsa/operazione, senza quota e senza righe di audit:
+    /// ogni accesso reale ai dati passa comunque dal broker, che vidima e appende alla catena.
+    /// </summary>
+    public async Task<(ManifestGrant? Manifest, string? Motivo)> RisolviSessioneAsync(
+        Guid tenantId, Guid utenteId, string? lease, CancellationToken ct = default)
+    {
+        var adesso = orologio.GetUtcNow().UtcDateTime;
+        var decodificata = AiLeaseCodec.Prova(lease, opzioni.ChiaveLease);
+        if (decodificata is null)
+            return (null, "Lease assente o firma non valida.");
+        if (adesso >= decodificata.ExpiresAtUtc)
+            return (null, "Lease scaduta.");
+
+        var grant = await db.AiScopeGrants.AsNoTracking()
+            .FirstOrDefaultAsync(g => g.Id == decodificata.GrantId, ct);
+        if (grant is null || grant.TenantId != tenantId || grant.UtenteId != utenteId)
+            return (null, "Mandato non trovato per questo utente.");
+        if (!string.Equals(grant.Nonce, decodificata.Nonce, StringComparison.Ordinal))
+            return (null, "Nonce non valido (possibile replay).");
+        if (grant.Stato != "Attivo")
+            return (null, $"Mandato {grant.Stato.ToLowerInvariant()}.");
+        if (adesso >= grant.ScadeUtc)
+            return (null, "Mandato scaduto.");
+        if (adesso - grant.UltimoUsoUtc > TimeSpan.FromMinutes(grant.TimeoutInattivitaMinuti))
+            return (null, "Mandato inattivo oltre il limite.");
+        if (grant.PolicyVersione != AiUsagePolicyStore.Versione)
+            return (null, "Policy del mandato superata: serve un nuovo grant.");
+
+        return (Manifest(grant), null);
+    }
+
     // ---------- Revoca ----------
 
     public async Task<bool> RevocaAsync(Guid tenantId, Guid utenteId, Guid grantId, CancellationToken ct = default)

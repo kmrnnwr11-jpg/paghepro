@@ -35,7 +35,8 @@ public sealed class ChiamataStrumentoAi
 public sealed record StrumentoAi(string Nome, string Descrizione, object Parametri, bool Scrittura);
 
 /// <summary>Risposta di un turno: testo per l'utente e/o strumenti da eseguire.</summary>
-public sealed record RispostaChatAi(string? Testo, IReadOnlyList<ChiamataStrumentoAi> Chiamate);
+public sealed record RispostaChatAi(
+    string? Testo, IReadOnlyList<ChiamataStrumentoAi> Chiamate, int? TokenTotali = null);
 
 /// <summary>
 /// Chat con un modello linguistico su endpoint OpenAI-compatibile (DeepSeek di default),
@@ -176,15 +177,22 @@ public sealed class AiChatClient
     {
         var chiamate = new List<ChiamataStrumentoAi>();
         string? testo = null;
+        int? tokenTotali = null;
         try
         {
             using var doc = JsonDocument.Parse(rispostaJson);
+            // Consumo dichiarato dal provider: alimenta il SessionLog, non è mai obbligatorio.
+            if (doc.RootElement.TryGetProperty("usage", out var uso)
+                && uso.TryGetProperty("total_tokens", out var totale)
+                && totale.TryGetInt32(out var interi))
+                tokenTotali = interi;
+
             if (!doc.RootElement.TryGetProperty("choices", out var scelte)
                 || scelte.ValueKind != JsonValueKind.Array || scelte.GetArrayLength() == 0)
-                return new RispostaChatAi(null, chiamate);
+                return new RispostaChatAi(null, chiamate, tokenTotali);
 
             if (!scelte[0].TryGetProperty("message", out var messaggio))
-                return new RispostaChatAi(null, chiamate);
+                return new RispostaChatAi(null, chiamate, tokenTotali);
 
             if (messaggio.TryGetProperty("content", out var contenuto)
                 && contenuto.ValueKind == JsonValueKind.String)
@@ -208,8 +216,8 @@ public sealed class AiChatClient
         }
         catch (JsonException)
         {
-            return new RispostaChatAi(null, chiamate);
+            return new RispostaChatAi(null, chiamate, tokenTotali);
         }
-        return new RispostaChatAi(string.IsNullOrWhiteSpace(testo) ? null : testo, chiamate);
+        return new RispostaChatAi(string.IsNullOrWhiteSpace(testo) ? null : testo, chiamate, tokenTotali);
     }
 }

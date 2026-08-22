@@ -96,6 +96,11 @@ public class PagheDbContext : DbContext
     public DbSet<AiScopeGrantEntity> AiScopeGrants => Set<AiScopeGrantEntity>();
     public DbSet<AiAuditEntity> AiAudit => Set<AiAuditEntity>();
 
+    // Runtime Aurora (A2): log di sessione a digest e proposte firmate in attesa di conferma
+    public DbSet<AiRunEntity> AiRuns => Set<AiRunEntity>();
+    public DbSet<AiToolCallEntity> AiToolCalls => Set<AiToolCallEntity>();
+    public DbSet<AiPropostaEntity> AiProposte => Set<AiPropostaEntity>();
+
     // Archivio persone fisiche (rappresentanti, soci): riusate per compilare i moduli ufficiali
     public DbSet<PersonaEntity> Persone => Set<PersonaEntity>();
     public DbSet<ConsumoAiEntity> ConsumiAi => Set<ConsumoAiEntity>();
@@ -213,6 +218,27 @@ public class PagheDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.Sequenza }).IsUnique();
+        });
+
+        // --- Runtime Aurora (A2): log di sessione e proposte firmate ---
+        mb.Entity<AiRunEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.InizioUtc });
+        });
+
+        mb.Entity<AiToolCallEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.RunId, x.Ordine }).IsUnique();
+        });
+
+        mb.Entity<AiPropostaEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.Stato });
+            // Una proposta non si applica due volte: reclamo con token di concorrenza.
+            e.Property(x => x.Versione).IsConcurrencyToken();
         });
 
         mb.Entity<AziendaEntity>(e =>

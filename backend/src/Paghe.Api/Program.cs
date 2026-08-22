@@ -105,6 +105,7 @@ builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddScoped<RetentionService>();
 builder.Services.AddScoped<AiGrantService>();
 builder.Services.AddScoped<ProfessionalQueryBroker>();
+builder.Services.AddAurora(); // runtime A2: registry a plugin, SessionLog, proposte firmate
 builder.Services.AddSingleton(TimeProvider.System);
 
 // Trasmissione fattura elettronica (SdI) e deleghe intermediario.
@@ -211,6 +212,8 @@ var chiaveJwt = Encoding.UTF8.GetBytes(TokenService.ChiaveJwt(builder.Configurat
 
 // Chiave delle lease del Governor AI: derivata dalla chiave JWT (stessa protezione in produzione).
 builder.Services.AddSingleton(new AiGovernorOptions(AiLeaseCodec.DerivaChiave(chiaveJwt)));
+// Chiave dei token di conferma delle proposte Aurora: etichetta distinta, mai spendibile come lease.
+builder.Services.AddSingleton(new AiPropostaOptions(AiPropostaCodec.DerivaChiave(chiaveJwt)));
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

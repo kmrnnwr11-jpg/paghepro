@@ -153,6 +153,123 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.ToTable("AiAudit");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.AiPropostaEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ApplicataUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ArgomentiHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ArgomentiProtetti")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreataUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DiffJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EsitoProtetto")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("GrantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ScadeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Stato")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Strumento")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Titolo")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Versione")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Stato");
+
+                    b.ToTable("AiProposte");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.AiRunEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DigestMessaggi")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Esito")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("FineUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Giri")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("GrantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("InizioUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Modello")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Motivo")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SezioneUi")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TokenTotali")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "InizioUtc");
+
+                    b.ToTable("AiRuns");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.AiScopeGrantEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -237,6 +354,50 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.HasIndex("TenantId", "Stato");
 
                     b.ToTable("AiScopeGrants");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.AiToolCallEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ArgomentiHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DurataMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Esito")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Motivo")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Ordine")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Righe")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Strumento")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "RunId", "Ordine")
+                        .IsUnique();
+
+                    b.ToTable("AiToolCalls");
                 });
 
             modelBuilder.Entity("Paghe.Persistence.Entities.AnteprimaRetentionEntity", b =>

@@ -2,16 +2,20 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using Paghe.Persistence;
+using Paghe.Persistence.Ai;
 
 namespace Paghe.Api;
 
-/// <summary>Un turno di conversazione: il messaggio dell'utente più la storia precedente.</summary>
+/// <summary>Un turno di conversazione: il messaggio dell'utente più la storia precedente.
+/// <c>Lease</c> è il mandato di sessione emesso dal pannello: con una lease valida il turno
+/// passa dal runtime governato (strumenti filtrati dal mandato), senza resta spiegazione pura.</summary>
 public sealed record RichiestaChatAi(
     string Messaggio,
     List<MessaggioChatAi>? Storia = null,
     Guid? AziendaId = null,
     ContestoSelezionatoAi? ContestoSelezionato = null,
-    string? SezioneUi = null);
+    string? SezioneUi = null,
+    string? Lease = null);
 
 /// <summary>
 /// Testo scelto esplicitamente dall'utente nell'interfaccia. È un dato non fidato: non concede
@@ -26,9 +30,12 @@ public sealed record RichiestaAzioneChatAi(
     List<MessaggioChatAi>? Storia = null,
     Guid? AziendaId = null);
 
-/// <summary>Risposta di un turno: testo, storia aggiornata e l'eventuale operazione da confermare.</summary>
+/// <summary>Risposta di un turno: testo, storia aggiornata e l'eventuale proposta da confermare.</summary>
 public sealed record RispostaChatEndpoint(
-    string Testo, List<MessaggioChatAi> Storia, AzionePropostaAi? Azione, bool Ok);
+    string Testo, List<MessaggioChatAi> Storia, PropostaAzioneAurora? Azione, bool Ok);
+
+/// <summary>Conferma di una proposta: il browser rimanda soltanto il token firmato.</summary>
+public sealed record RichiestaConfermaAurora(string Token);
 
 /// <summary>Esito dell'operazione confermata dall'utente.</summary>
 public sealed record EsitoAzioneChatEndpoint(
@@ -61,6 +68,7 @@ public static class AiChatEndpoints
         app.MapPost("/api/ai/chat", async (
             RichiestaChatAi richiesta, AiChatClient chat,
             ConsumoAiService consumi, AiOptions opzioni,
+            AiGrantService governor, AuroraAgentRuntime runtime,
             ClaimsPrincipal user, CancellationToken ct) =>
         {
             var selezione = NormalizzaContesto(richiesta.ContestoSelezionato);
@@ -95,12 +103,14 @@ public static class AiChatEndpoints
                     + "all'amministratore di rinnovare il checkpoint.",
                     selezione is null ? storiaRipulita : [], null, false));
 
+            string? sezione = NormalizzaSezione(richiesta.SezioneUi);
+            bool conMandato = !string.IsNullOrWhiteSpace(richiesta.Lease);
             var messaggi = new List<MessaggioChatAi>
             {
                 new()
                 {
                     Ruolo = "system",
-                    Contenuto = Istruzioni(NormalizzaSezione(richiesta.SezioneUi)),
+                    Contenuto = Istruzioni(sezione, conMandato),
                 },
             };
             // La selezione è monouso: in quel turno non ritrasmettiamo la storia precedente,
@@ -117,8 +127,31 @@ public static class AiChatEndpoints
 
             try
             {
-                // Finché G1 e il runtime A2 non sono chiusi, il modello non riceve alcun tool.
-                // Anche una tool-call spontanea viene ignorata: nessun percorso arriva ai servizi.
+                if (conMandato)
+                {
+                    // Runtime governato (A2): il mandato del pannello decide gli strumenti;
+                    // ogni lettura passa dal broker, ogni bozza dal Governor.
+                    var (manifest, motivo) = await governor.RisolviSessioneAsync(
+                        tenantId, UtenteCorrente(user), richiesta.Lease, ct);
+                    if (manifest is null)
+                        return Results.Ok(new RispostaChatEndpoint(
+                            $"Il mandato della sessione non è utilizzabile: {motivo} "
+                            + "Rinnovalo dal pannello Aurora.",
+                            selezione is null ? storiaRipulita : [], null, false));
+
+                    var contesto = new ContestoAurora(
+                        tenantId, UtenteCorrente(user), RuoloCorrente(user), richiesta.Lease, manifest);
+                    var turno = await runtime.TurnoAsync(contesto, messaggi, sezione, ct);
+                    return Results.Ok(new RispostaChatEndpoint(
+                        turno.Testo,
+                        selezione is null
+                            ? StoriaPubblica(richiesta.Storia, messaggio, turno.Testo)
+                            : [],
+                        turno.Proposta, turno.Ok));
+                }
+
+                // Senza mandato il modello non riceve alcun tool. Anche una tool-call
+                // spontanea viene ignorata: nessun percorso arriva ai servizi.
                 var risposta = await chat.ParlaAsync(messaggi, [], ct);
                 testo = risposta.Chiamate.Count == 0
                     ? risposta.Testo
@@ -149,8 +182,51 @@ public static class AiChatEndpoints
                 errore = "Azioni Aurora sospese: serve una proposta governata e firmata dal server.",
             })).RequireAuthorization();
 
+        // Conferma di una proposta del runtime (A2): il browser rimanda soltanto il token
+        // firmato; argomenti e diff restano quelli registrati dal server, il ruolo e il gate
+        // dello strumento vengono ricontrollati adesso e le validazioni di dominio girano nei
+        // servizi normali. Ripetere la conferma non duplica l'effetto.
+        app.MapPost("/api/ai/chat/conferma", async (
+            RichiestaConfermaAurora richiesta, AiRuntimeStore store, AiToolRegistry registry,
+            ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            var tenantId = Tenant(user);
+            var utenteId = UtenteCorrente(user);
+            string? ruolo = RuoloCorrente(user);
+            var esito = await store.ConfermaAsync(tenantId, utenteId, richiesta.Token,
+                async (strumentoNome, argomentiJson, c) =>
+                {
+                    var strumento = registry.Trova(strumentoNome);
+                    if (strumento is null)
+                        return (false, """{"errore":"Strumento della proposta non più disponibile."}""");
+                    if (!string.Equals(strumento.Descrittore.Gate, AiToolRegistry.GateAttivo, StringComparison.Ordinal))
+                        return (false, """{"errore":"Strumento non ancora attivo: fase di piano non aperta."}""");
+                    if (!AiToolRegistry.RuoloAmmesso(ruolo, strumento.Descrittore))
+                        return (false, """{"errore":"Il tuo ruolo non può applicare questa operazione."}""");
+                    var contesto = new ContestoAurora(tenantId, utenteId, ruolo, null, null);
+                    return await strumento.ApplicaAsync(contesto, argomentiJson, c);
+                }, ct);
+            return esito.Stato switch
+            {
+                "Applicata" or "GiaApplicata" => Results.Ok(esito),
+                "NonTrovata" => Results.NotFound(new { errore = esito.Messaggio }),
+                "Scaduta" => Results.Json(esito, statusCode: 410),
+                "InCorso" or "Fallita" => Results.Conflict(esito),
+                _ => Results.BadRequest(new { errore = esito.Messaggio }),
+            };
+        }).RequireAuthorization();
+
         return app;
     }
+
+    private static Guid UtenteCorrente(ClaimsPrincipal user) =>
+        Guid.TryParse(user.FindFirst("sub")?.Value
+            ?? user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id)
+            ? id
+            : Guid.Empty;
+
+    private static string? RuoloCorrente(ClaimsPrincipal user) =>
+        user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
 
     /// <summary>
     /// Che cosa manca perché la chat parta, detto a chi deve metterci mano (non a un tecnico):
@@ -178,12 +254,24 @@ public static class AiChatEndpoints
     /// Istruzioni di sistema: chi è l'assistente, cosa può fare e — soprattutto — cosa non
     /// deve inventare. Il contesto (data, azienda scelta) arriva dal server, non dal client.
     /// </summary>
-    private static string Istruzioni(string? sezioneUi)
+    private static string Istruzioni(string? sezioneUi, bool conStrumenti = false)
     {
         string oggi = DateTime.UtcNow.ToString("dddd d MMMM yyyy", new CultureInfo("it-IT"));
         string contesto = sezioneUi is null
             ? "La schermata corrente non è indicata."
             : $"La schermata corrente è «{sezioneUi}»: è solo un'etichetta descrittiva.";
+        string strumenti = conStrumenti
+            ? """
+              - Hai alcuni strumenti di lettura, limitati al mandato che l'utente ha concesso
+                (azienda e periodo scelti da lui): usali quando servono dati veri, senza chiedere
+                permesso a ogni lettura. Se uno strumento viene negato, il mandato è finito o
+                revocato: fermati e dillo. Non puoi allargare il mandato da solo.
+              """
+            : """
+              - Non ricevi strumenti: stai solo spiegando. Non promettere di leggere o registrare
+                dati e indica il modulo PaghePro da aprire. I controlli d'archivio sono eseguiti
+                separatamente dal Governor, solo dopo una conferma visibile dell'utente.
+              """;
 
         return $"""
             Sei Aurora, l'assistente dello studio dentro PaghePro, il software italiano di paghe,
@@ -194,9 +282,7 @@ public static class AiChatEndpoints
 
             Come lavori:
             - Spiega in parole semplici il testo o la schermata indicata dall'utente.
-            - Non ricevi strumenti: stai solo spiegando. Non promettere di leggere o registrare
-              dati e indica il modulo PaghePro da aprire. I controlli d'archivio sono eseguiti
-              separatamente dal Governor, solo dopo una conferma visibile dell'utente.
+            {strumenti}
             - Non inventare MAI dati: partite IVA, codici fiscali, matricole INPS, codici sede,
               CSC, P.A.T. INAIL, ATECO, IBAN, codici catastali, CCNL, livelli, settore, regime
               fiscale e tipo contribuente non si deducono. Se un dato non c'è, chiedilo. Vale anche

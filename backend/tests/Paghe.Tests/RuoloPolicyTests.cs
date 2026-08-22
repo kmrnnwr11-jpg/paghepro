@@ -21,6 +21,9 @@ public sealed class RuoloPolicyTests
     [InlineData("sola_lettura", "POST", "/api/ai/governor/query", true)]
     [InlineData("sola_lettura", "POST", "/api/ai/governor/grants/abc/revoca", true)]
     [InlineData("sola_lettura", "POST", "/api/ai/chat/azione", false)]
+    // La conferma di una proposta applica una scrittura: mai al ruolo sola_lettura.
+    [InlineData("sola_lettura", "POST", "/api/ai/chat/conferma", false)]
+    [InlineData("operatore", "POST", "/api/ai/chat/conferma", true)]
     // anonimizzazione GDPR: scrittura riservata all'admin
     [InlineData("admin", "POST", "/api/dipendenti/abc/anonimizza", true)]
     [InlineData("operatore", "POST", "/api/dipendenti/abc/anonimizza", false)]

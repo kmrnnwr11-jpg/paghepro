@@ -281,6 +281,12 @@ internal static class ContestoDatiProtetti
     public static string ValidazioneCedolino(Guid tenantId, Guid id) =>
         Crea(tenantId, "Cedolini", id, "DatiValidazioneProtetti");
 
+    public static string ArgomentiProposta(Guid tenantId, Guid id) =>
+        Crea(tenantId, "AiProposte", id, "ArgomentiProtetti");
+
+    public static string EsitoProposta(Guid tenantId, Guid id) =>
+        Crea(tenantId, "AiProposte", id, "EsitoProtetto");
+
     public static string DatiSnapshotCedolino(Guid tenantId, Guid id, Guid cedolinoId) =>
         $"{Crea(tenantId, "CedoliniSnapshot", id, "DatiProtetti")}|cedolino:{cedolinoId:D}";
 

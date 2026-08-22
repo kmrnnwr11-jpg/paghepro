@@ -524,11 +524,11 @@ public sealed class MigrazioniSchemaTests : IDisposable
             InserisciCedolinoDopoWorkflow(cedolini[1], tenantA, 2, stato: "", versione: 0);
             InserisciCedolinoDopoWorkflow(cedolini[2], tenantB, 3, stato: "", versione: 0);
 
-            Assert.Equal(4, db.Database.GetPendingMigrations().Count());
+            Assert.Equal(5, db.Database.GetPendingMigrations().Count());
             Assert.Equal(3L, ContaCartelliniConStatoAnf(""));
 
             var esito = SchemaDatabase.Applica(db);
-            Assert.Contains("applicate 4 migrazioni", esito);
+            Assert.Contains("applicate 5 migrazioni", esito);
         }
 
         Assert.Equal(3L, ContaCartelliniConStatoAnf("DaVerificare"));

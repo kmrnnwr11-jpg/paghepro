@@ -158,6 +158,123 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.ToTable("AiAudit");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.AiPropostaEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ApplicataUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ArgomentiHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ArgomentiProtetti")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreataUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DiffJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EsitoProtetto")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("GrantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ScadeUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Stato")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Strumento")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Titolo")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Versione")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Stato");
+
+                    b.ToTable("AiProposte");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.AiRunEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DigestMessaggi")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Esito")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("FineUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Giri")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("GrantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("InizioUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Modello")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Motivo")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SezioneUi")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("TokenTotali")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "InizioUtc");
+
+                    b.ToTable("AiRuns");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.AiScopeGrantEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -242,6 +359,50 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.HasIndex("TenantId", "Stato");
 
                     b.ToTable("AiScopeGrants");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.AiToolCallEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ArgomentiHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("DurataMs")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Esito")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Motivo")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Ordine")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Righe")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Strumento")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "RunId", "Ordine")
+                        .IsUnique();
+
+                    b.ToTable("AiToolCalls");
                 });
 
             modelBuilder.Entity("Paghe.Persistence.Entities.AnteprimaRetentionEntity", b =>

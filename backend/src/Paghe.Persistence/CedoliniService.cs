@@ -32,8 +32,8 @@ public sealed class CedoliniService
         Guid tenantId, Guid rapportoId, Cartellino cartellino, CancellationToken ct = default,
         bool forzaRicalcolo = false)
     {
-        ValidaCartellino(cartellino);
-        BloccaPeriodiFuturi(cartellino);
+        RegoleCartellino.Valida(cartellino);
+        RegoleCartellino.BloccaPeriodoFuturo(cartellino, _clock);
 
         var rapporto = await _db.Rapporti
             .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct)
@@ -47,23 +47,11 @@ public sealed class CedoliniService
             cartellino = CalendarioCartellino.Compila(
                 cartellino, cartellino.Giornate, rapporto.OreSettimanali / 5m);
 
-        // Regola: niente busta paga per mesi interamente precedenti all'assunzione.
-        if (rapporto.DataAssunzione != default)
-        {
-            var fineMese = new DateOnly(cartellino.Anno, cartellino.Mese,
-                DateTime.DaysInMonth(cartellino.Anno, cartellino.Mese));
-            if (fineMese < rapporto.DataAssunzione)
-                throw new ArgumentException(
-                    $"Il periodo {cartellino.Mese:00}/{cartellino.Anno} precede la data di assunzione "
-                    + $"({rapporto.DataAssunzione:dd/MM/yyyy}): busta paga non elaborabile.");
-        }
+        // Il calendario può derivare totali (incluse le giornate di malattia) diversi dai
+        // campi mensili ricevuti: le invarianti che dipendono da quei totali vanno rieseguite.
+        RegoleCartellino.Valida(cartellino);
 
-        // Regola: niente busta paga per mesi interamente successivi alla cessazione del rapporto.
-        if (rapporto.DataCessazione is { } cessazione
-            && new DateOnly(cartellino.Anno, cartellino.Mese, 1) > cessazione)
-            throw new ArgumentException(
-                $"Il periodo {cartellino.Mese:00}/{cartellino.Anno} è successivo alla cessazione "
-                + $"del rapporto ({cessazione:dd/MM/yyyy}): busta paga non elaborabile.");
+        RegoleCartellino.VerificaPeriodoRapporto(rapporto, cartellino);
 
         // Regola: un mese il cui F24 risulta già inviato o quietanzato non si ricalcola —
         // cambierebbe ritenute e contributi già versati. Se il commercialista deve correggere
@@ -474,62 +462,6 @@ public sealed class CedoliniService
             });
 
         return cedolino;
-    }
-
-    /// <summary>
-    /// Regola di chiusura periodi: la busta paga si elabora al massimo per il mese corrente.
-    /// I mesi futuri sono bloccati (il simulatore stateless resta libero: qui si blocca solo
-    /// l'archiviazione, che alimenta F24, CU e 770).
-    /// </summary>
-    private void BloccaPeriodiFuturi(Cartellino c)
-    {
-        var oggi = DateOnly.FromDateTime(_clock.GetLocalNow().DateTime);
-        if (c.Anno > oggi.Year || (c.Anno == oggi.Year && c.Mese > oggi.Month))
-            throw new ArgumentException(
-                $"Il periodo {c.Mese:00}/{c.Anno} è nel futuro: la busta paga si può elaborare "
-                + $"al massimo per il mese corrente ({oggi.Month:00}/{oggi.Year}).");
-    }
-
-    private static void ValidaCartellino(Cartellino c)
-    {
-        if (c.Anno is < 2000 or > 2100)
-            throw new ArgumentException("L'anno del cartellino deve essere compreso tra 2000 e 2100.");
-        if (c.Mese is < 1 or > 12)
-            throw new ArgumentException("Il mese del cartellino deve essere compreso tra 1 e 12.");
-
-        var quantita = new (string Nome, decimal Valore)[]
-        {
-            ("ore di straordinario", c.OreStraordinario),
-            ("ore di straordinario notturno", c.OreStraordinarioNotturno),
-            ("ore di straordinario festivo", c.OreStraordinarioFestivo),
-            ("giorni di ferie", c.GiorniFerie),
-            ("ore di permesso", c.OrePermessi),
-            ("ore di ex-festivita", c.OreExFestivita),
-            ("giorni di malattia", c.GiorniMalattia),
-            ("giorni di infortunio", c.GiorniInfortunio),
-            ("ore di assenza non retribuita", c.OreAssenzaNonRetribuita),
-            ("assegni familiari", c.ImportoAssegniFamiliari),
-        };
-        var negativa = quantita.FirstOrDefault(x => x.Valore < 0m);
-        if (negativa.Valore < 0m)
-            throw new ArgumentException($"Il valore '{negativa.Nome}' non puo essere negativo.");
-
-        int giorniMese = DateTime.DaysInMonth(c.Anno, c.Mese);
-        decimal giorniConCausale = c.GiorniFerie + c.GiorniMalattia + c.GiorniInfortunio;
-        if (giorniConCausale > giorniMese)
-            throw new ArgumentException(
-                $"Ferie, malattia e infortunio totalizzano {giorniConCausale:0.##} giorni, "
-                + $"ma il mese ne contiene {giorniMese}.");
-        if (c.GiorniMalattia > 0m && c.NumeroEventoMalattiaAnno < 1)
-            throw new ArgumentException("Indicare il numero progressivo dell'evento di malattia nell'anno.");
-        if (c.StatoAssegniFamiliari == StatoAssegniFamiliari.NonSpettanti
-            && c.ImportoAssegniFamiliari != 0m)
-            throw new ArgumentException(
-                "Gli assegni familiari sono non spettanti: l'importo deve essere zero.");
-        if (c.StatoAssegniFamiliari == StatoAssegniFamiliari.Spettanti
-            && c.ImportoAssegniFamiliari <= 0m)
-            throw new ArgumentException(
-                "Per gli assegni familiari spettanti indica un importo maggiore di zero.");
     }
 
     private async Task RimuoviEsistenti(Guid tenantId, Guid rapportoId, int anno, int mese, CancellationToken ct)

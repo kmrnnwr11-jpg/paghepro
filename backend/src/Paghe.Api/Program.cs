@@ -92,6 +92,7 @@ builder.Services.AddScoped<CertificazioneUnicaService>();
 builder.Services.AddScoped<LipeService>();
 builder.Services.AddScoped<Modello770Service>();
 builder.Services.AddScoped<PresenzeService>();
+builder.Services.AddScoped<CartellinoBozzaService>();
 builder.Services.AddScoped<RedditiPfService>();
 builder.Services.AddScoped<IrapService>();
 builder.Services.AddScoped<IresService>();

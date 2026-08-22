@@ -18,8 +18,11 @@
 > un budget di mandato esplicitato dal preflight. La SPA blocca grant concorrenti/orfani e
 > invalida ogni risposta al cambio azienda, periodo o pagina. G1 resta aperto e il provider resta
 > spento; le tre scritture A3 non sono offerte e gli endpoint di applicazione restano `409`.
-> Verifica tecnica: **888/888 backend**, **35/35 frontend**, build Release/SPA verdi, modelli EF
-> SQLite/PostgreSQL allineati e smoke Production fail-closed su copia isolata del database.
+> La fondazione del primo effetto A3 è pronta ma non attiva: il cartellino può essere salvato
+> come bozza autonoma con versione ottimistica, senza generare il cedolino, e si blocca davanti a
+> cedolini già esistenti o F24 finali. Verifica tecnica del checkpoint: **901/901 backend**
+> (suite senza il fuzz lungo da 10.000 tentativi), **35/35 frontend**, build Release/SPA verdi,
+> modelli EF SQLite/PostgreSQL allineati e smoke Production fail-closed su copia isolata del database.
 
 ---
 

@@ -36,6 +36,13 @@ public static class CalendarioCartellino
         {
             string quando = g.Data.ToString("dd/MM");
 
+            if (!Enum.IsDefined(g.Causale))
+            {
+                problemi.Add(new ProblemaCartellino(
+                    $"Il giorno {quando} ha una causale non riconosciuta.", true));
+                continue;
+            }
+
             if (g.Data.Year != anno || g.Data.Month != mese)
             {
                 problemi.Add(new ProblemaCartellino(

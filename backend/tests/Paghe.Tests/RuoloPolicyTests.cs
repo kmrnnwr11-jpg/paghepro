@@ -21,6 +21,7 @@ public sealed class RuoloPolicyTests
     [InlineData("sola_lettura", "POST", "/api/ai/governor/query", true)]
     [InlineData("sola_lettura", "POST", "/api/ai/governor/grants/abc/revoca", true)]
     [InlineData("sola_lettura", "POST", "/api/ai/chat/azione", false)]
+    [InlineData("sola_lettura", "PUT", "/api/rapporti/abc/cartellino-bozza", false)]
     // La conferma di una proposta applica una scrittura: mai al ruolo sola_lettura.
     [InlineData("sola_lettura", "POST", "/api/ai/chat/conferma", false)]
     [InlineData("operatore", "POST", "/api/ai/chat/conferma", true)]

@@ -44,6 +44,18 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Fondazione cartellino-bozza per Aurora A3 (22 agosto 2026)**: il calendario presenze può
+  essere creato o aggiornato separatamente dal cedolino attraverso un servizio tenant-scoped e
+  una API autenticata/rate-limited. Ogni riga ha ID e versione ottimistica; una copia obsoleta
+  riceve `409` senza sovrascrivere dati. Il salvataggio ricalcola i totali dalle giornate, rilegge
+  il risultato autorevole e rifiuta calendario incompleto, periodo futuro, enum/importi non
+  validi, rapporto estraneo, qualunque cedolino già presente e F24 inviato o acquisito. Le
+  migrazioni SQLite/PostgreSQL inizializzano anche gli storici a versione 1 e l'adozione senza
+  history usa lo stesso default. La capability A3 non è ancora esposta al modello: servono ancora
+  patch allowlisted, proposta/conferma/effetto/audit atomici, riverifica del grant e undo sicuro.
+  Verifiche del checkpoint: build Release 0 errori e **901/901 test backend** escluso soltanto il
+  fuzz lungo da 10.000 tentativi, che resta nel collaudo finale.
+
 - **Aurora — fase A0 chiusa e runtime read-only A2 verificato (22 agosto 2026)**: il
   runtime C# usa `AiToolRegistry` a plugin e default DENY; la SPA invia la lease soltanto
   per lo stesso utente/tenant/azienda/mese e ogni lettura passa dal

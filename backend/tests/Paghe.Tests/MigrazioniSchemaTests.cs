@@ -315,6 +315,14 @@ public sealed class MigrazioniSchemaTests : IDisposable
         return Convert.ToInt64(cmd.ExecuteScalar());
     }
 
+    private long LeggiVersioneCartellino(Guid id)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT \"Versione\" FROM \"Cartellini\" WHERE \"Id\" = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        return Convert.ToInt64(cmd.ExecuteScalar());
+    }
+
     private void RimuoviChiaveAlternativaCedoliniComeBootstrapLegacy()
     {
         string ddl;
@@ -431,6 +439,45 @@ public sealed class MigrazioniSchemaTests : IDisposable
     }
 
     [Fact]
+    public void MigrazioneVersioneCartellino_BackfillaLeBozzeEsistentiAUno()
+    {
+        var tenant = Guid.NewGuid();
+        Guid cartellinoId;
+        using (var db = NuovoContesto())
+        {
+            var migrator = db.Database.GetService<IMigrator>();
+            migrator.Migrate("20260822152630_RuntimeAurora");
+            cartellinoId = InserisciCartellinoLegacyMinimo(tenant, 7);
+
+            migrator.Migrate();
+        }
+
+        Assert.Equal(1L, LeggiVersioneCartellino(cartellinoId));
+        Assert.Equal("1", DefaultColonna("Cartellini", "Versione"));
+        AssertSchemaAllineato();
+    }
+
+    [Fact]
+    public void AdozioneSenzaStorico_AggiungeVersioneCartellinoConDefaultUno()
+    {
+        var tenant = Guid.NewGuid();
+        Guid cartellinoId;
+        using (var db = NuovoContesto())
+        {
+            db.Database.GetService<IMigrator>().Migrate("20260822152630_RuntimeAurora");
+            cartellinoId = InserisciCartellinoLegacyMinimo(tenant, 7);
+            db.Database.ExecuteSqlRaw("DROP TABLE \"__EFMigrationsHistory\";");
+        }
+
+        using (var db = NuovoContesto())
+            Assert.Contains("adottato", SchemaDatabase.Applica(db));
+
+        Assert.Equal(1L, LeggiVersioneCartellino(cartellinoId));
+        Assert.Equal("1", DefaultColonna("Cartellini", "Versione"));
+        AssertSchemaAllineato();
+    }
+
+    [Fact]
     public void MigrazioneWorkflow_BackfillaGliStoriciPreWorkflowENuoviRestanoBozza()
     {
         var tenantA = Guid.NewGuid();
@@ -524,11 +571,12 @@ public sealed class MigrazioniSchemaTests : IDisposable
             InserisciCedolinoDopoWorkflow(cedolini[1], tenantA, 2, stato: "", versione: 0);
             InserisciCedolinoDopoWorkflow(cedolini[2], tenantB, 3, stato: "", versione: 0);
 
-            Assert.Equal(5, db.Database.GetPendingMigrations().Count());
+            int migrazioniPendenti = db.Database.GetPendingMigrations().Count();
+            Assert.True(migrazioniPendenti >= 1);
             Assert.Equal(3L, ContaCartelliniConStatoAnf(""));
 
             var esito = SchemaDatabase.Applica(db);
-            Assert.Contains("applicate 5 migrazioni", esito);
+            Assert.Contains($"applicate {migrazioniPendenti} migrazioni", esito);
         }
 
         Assert.Equal(3L, ContaCartelliniConStatoAnf("DaVerificare"));

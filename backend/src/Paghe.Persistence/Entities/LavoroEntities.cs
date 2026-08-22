@@ -95,6 +95,13 @@ public class CartellinoEntity
     public Guid RapportoLavoroId { get; set; }
     public int Anno { get; set; }
     public int Mese { get; set; }
+
+    /// <summary>
+    /// Versione ottimistica della bozza: una proposta Aurora non può sovrascrivere un
+    /// cartellino corretto nel frattempo dalla pagina Presenze.
+    /// </summary>
+    public int Versione { get; set; } = 1;
+
     public decimal OreStraordinario { get; set; }
     public decimal OreStraordinarioNotturno { get; set; }
     public decimal OreStraordinarioFestivo { get; set; }

@@ -168,7 +168,16 @@ public class PagheDbContext : DbContext
                 string tipo = prop.GetColumnType();
                 string sql = $"ALTER TABLE \"{tabella}\" ADD COLUMN \"{colonna}\" {tipo}";
                 if (!prop.IsColumnNullable(idTabella))
-                    sql += $" NOT NULL DEFAULT {DefaultNeutro(prop.ClrType, postgres)}";
+                {
+                    // Versione=0 non rappresenta mai una bozza valida. Nei database adottati
+                    // senza storico migrazioni la colonna deve quindi nascere con lo stesso
+                    // valore iniziale del modello/migrazione, non col neutro numerico generico.
+                    var valoreDefault = entita.ClrType == typeof(CartellinoEntity)
+                        && prop.Name == nameof(CartellinoEntity.Versione)
+                            ? "1"
+                            : DefaultNeutro(prop.ClrType, postgres);
+                    sql += $" NOT NULL DEFAULT {valoreDefault}";
+                }
                 // Tabella/colonna/tipo provengono esclusivamente dai metadata EF, non da input.
                 // Il comando diretto evita che l'analizzatore interpreti gli identificatori
                 // generati dal modello come concatenazione SQL di dati utente.
@@ -421,6 +430,7 @@ public class PagheDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.RapportoLavoroId, x.Anno, x.Mese }).IsUnique();
+            e.Property(x => x.Versione).HasDefaultValue(1).IsConcurrencyToken();
             foreach (var p in new[] { nameof(CartellinoEntity.OreStraordinario),
                 nameof(CartellinoEntity.OreStraordinarioNotturno),
                 nameof(CartellinoEntity.OreStraordinarioFestivo),

@@ -85,6 +85,22 @@ public sealed class CalendarioCartellinoTests
     }
 
     [Fact]
+    public void CausaleNumericaSconosciuta_EBloccante()
+    {
+        var giornate = MeseCompleto();
+        giornate[0] = new GiornataCartellino
+        {
+            Data = new DateOnly(Anno, Mese, 1),
+            Causale = (CausaleGiornata)99,
+        };
+
+        var problemi = CalendarioCartellino.Verifica(Anno, Mese, giornate, OreGiorno);
+
+        Assert.Contains(problemi, p =>
+            p.Bloccante && p.Messaggio.Contains("non riconosciuta", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void GiornataDiUnAltroMese_EBloccante()
     {
         var giornate = MeseCompleto();

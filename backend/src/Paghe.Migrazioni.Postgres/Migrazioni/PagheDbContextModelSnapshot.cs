@@ -957,6 +957,12 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<decimal>("ValoreBuonoPasto")
                         .HasColumnType("numeric");
 
+                    b.Property<int>("Versione")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "RapportoLavoroId", "Anno", "Mese")

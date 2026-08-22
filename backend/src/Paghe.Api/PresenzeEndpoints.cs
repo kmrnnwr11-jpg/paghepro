@@ -46,6 +46,31 @@ public static class PresenzeEndpoints
             });
         }).RequireAuthorization();
 
+        // Salva soltanto la bozza del calendario. Non calcola il cedolino e rifiuta il mese
+        // quando un cedolino esiste già; ID+versione impediscono sovrascritture silenziose.
+        app.MapPut("/api/rapporti/{rapportoId:guid}/cartellino-bozza", async (
+            Guid rapportoId, SalvaCartellinoBozza richiesta, ClaimsPrincipal user,
+            CartellinoBozzaService servizio, CancellationToken ct) =>
+        {
+            try
+            {
+                return Results.Ok(await servizio.SalvaAsync(
+                    Tenant(user), rapportoId, richiesta, ct));
+            }
+            catch (ConflittoCartellinoException ex)
+            {
+                return Results.Conflict(new { errore = ex.Message });
+            }
+            catch (RapportoCartellinoNonTrovatoException ex)
+            {
+                return Results.NotFound(new { errore = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { errore = ex.Message });
+            }
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
+
         return app;
     }
 }

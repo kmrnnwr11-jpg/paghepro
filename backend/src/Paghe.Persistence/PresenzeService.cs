@@ -9,6 +9,8 @@ namespace Paghe.Persistence;
 /// e guidano l'inserimento; sono null quando non esiste ancora uno storico.</summary>
 public sealed record PresenzaRiga(
     string RapportoId,
+    string? CartellinoId,
+    int? VersioneCartellino,
     string Nominativo,
     decimal OreStraordinario,
     decimal OreStraordinarioNotturno,
@@ -84,6 +86,8 @@ public sealed class PresenzeService
                     .FirstOrDefault();
                 return new PresenzaRiga(
                     RapportoId: r.Id.ToString(),
+                    CartellinoId: cart?.Id.ToString(),
+                    VersioneCartellino: cart?.Versione,
                     Nominativo: $"{r.Dipendente?.Cognome} {r.Dipendente?.Nome}".Trim(),
                     OreStraordinario: cart?.OreStraordinario ?? 0m,
                     OreStraordinarioNotturno: cart?.OreStraordinarioNotturno ?? 0m,

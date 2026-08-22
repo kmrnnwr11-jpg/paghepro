@@ -952,6 +952,12 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<decimal>("ValoreBuonoPasto")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Versione")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "RapportoLavoroId", "Anno", "Mese")

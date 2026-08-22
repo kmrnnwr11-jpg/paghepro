@@ -1204,6 +1204,13 @@ export const api = {
       method: "POST", signal, body: JSON.stringify({ token }),
     }),
 
+  // Verifiche di integrità Aurora, riservate all'amministratore dello studio.
+  aiAuditVerifica: (signal?: AbortSignal) =>
+    req<EsitoCatenaAudit>("/api/ai/governor/audit/verifica", { signal }),
+
+  aiProposteRiconciliazione: (signal?: AbortSignal) =>
+    req<EsitoRiconciliazioneAurora>("/api/ai/governor/proposte/riconciliazione", { signal }),
+
   // --- Posta (email/PEC): caselle collegate self-service, il triage AI resta sempre da confermare ---
   caselleEmail: () => req<CasellaEmail[]>("/api/posta/caselle"),
   creaCasellaEmail: (c: NuovaCasellaEmail) =>
@@ -1368,6 +1375,29 @@ export interface EsitoPropostaAurora {
   messaggio: string;
   esitoJson: string | null;
   tokenUndo: string | null;
+}
+
+/** Verifica tamper-evident della catena audit del tenant (solo amministratore). */
+export interface EsitoCatenaAudit {
+  integra: boolean;
+  righe: number;
+  primaSequenzaAnomala: number | null;
+}
+
+export interface AnomaliaRiconciliazioneAurora {
+  tipo: string;
+  propostaId: string | null;
+  grantId: string | null;
+  dettaglio: string;
+}
+
+/** Riconciliazione fra proposte Aurora, effetti applicati e audit (solo amministratore). */
+export interface EsitoRiconciliazioneAurora {
+  proposteTotali: number;
+  propostePerStato: Record<string, number>;
+  eventiLifecycle: number;
+  integra: boolean;
+  anomalie: AnomaliaRiconciliazioneAurora[];
 }
 
 export interface RispostaChatAi {

@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCw, ShieldCheck } from "lucide-react";
-import { api, ApiError, type PaginaRegistroAudit, type VoceRegistroAudit } from "../api";
+import { RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  api,
+  ApiError,
+  type EsitoCatenaAudit,
+  type EsitoRiconciliazioneAurora,
+  type PaginaRegistroAudit,
+  type VoceRegistroAudit,
+} from "../api";
 
 const DIMENSIONE = 50;
 
@@ -42,6 +49,30 @@ export function RegistroAttivita() {
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState("");
   const [aggiornamento, setAggiornamento] = useState(0);
+  const [verificaAurora, setVerificaAurora] = useState<{
+    inCorso: boolean;
+    catena?: EsitoCatenaAudit;
+    proposte?: EsitoRiconciliazioneAurora;
+    errore?: string;
+  } | null>(null);
+
+  const verificaIntegritaAurora = async () => {
+    setVerificaAurora({ inCorso: true });
+    try {
+      const [catena, proposte] = await Promise.all([
+        api.aiAuditVerifica(),
+        api.aiProposteRiconciliazione(),
+      ]);
+      setVerificaAurora({ inCorso: false, catena, proposte });
+    } catch (e) {
+      setVerificaAurora({
+        inCorso: false,
+        errore: e instanceof ApiError && e.status === 403
+          ? "La verifica di integrità è riservata all'amministratore dello studio."
+          : "Verifica non riuscita. Riprova tra poco.",
+      });
+    }
+  };
 
   useEffect(() => {
     let vivo = true;
@@ -92,6 +123,49 @@ export function RegistroAttivita() {
         <ShieldCheck size={18} aria-hidden="true" />
         <span>Registro in sola lettura. Conserva i metadati necessari — utente, risorsa ed esito — ma non registra contenuti, password o valori dei campi.</span>
       </div>
+
+      <div className="audit-notice audit-aurora" role="group" aria-label="Verifiche di integrità Aurora">
+        <Sparkles size={18} aria-hidden="true" />
+        <span>
+          <strong>Verifiche di integrità Aurora.</strong> Controlla che la catena dell'audit AI
+          non sia stata alterata e che ogni proposta applicata, annullata o ripristinata abbia
+          la sua traccia. Sola lettura: non ripara nulla, mostra le discordanze.
+        </span>
+        <button
+          className="btn secondary"
+          type="button"
+          disabled={verificaAurora?.inCorso}
+          onClick={() => void verificaIntegritaAurora()}
+        >
+          {verificaAurora?.inCorso ? "Verifica in corso…" : "Verifica adesso"}
+        </button>
+      </div>
+
+      {verificaAurora && !verificaAurora.inCorso && (
+        <div className="audit-summary" aria-live="polite">
+          {verificaAurora.errore ? verificaAurora.errore : (
+            <>
+              <span className={`status-pill ${verificaAurora.catena!.integra ? "green" : "red"}`}>
+                Catena audit: {verificaAurora.catena!.integra
+                  ? `integra (${verificaAurora.catena!.righe} righe)`
+                  : `anomalia dalla riga ${verificaAurora.catena!.primaSequenzaAnomala}`}
+              </span>{" "}
+              <span className={`status-pill ${verificaAurora.proposte!.integra ? "green" : "red"}`}>
+                Proposte Aurora: {verificaAurora.proposte!.integra
+                  ? `riconciliate (${verificaAurora.proposte!.proposteTotali} proposte, ${verificaAurora.proposte!.eventiLifecycle} eventi)`
+                  : `${verificaAurora.proposte!.anomalie.length} discordanze`}
+              </span>
+              {!verificaAurora.proposte!.integra && (
+                <ul className="audit-anomalie">
+                  {verificaAurora.proposte!.anomalie.map((a, i) => (
+                    <li key={i}><strong>{a.tipo}</strong> — {a.dettaglio}</li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <div className="audit-filters" role="group" aria-label="Filtri del registro">
         <label>

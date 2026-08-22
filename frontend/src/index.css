@@ -1520,6 +1520,25 @@ kbd {
   font-weight: 750;
 }
 
+.audit-aurora {
+  flex-wrap: wrap;
+}
+
+.audit-aurora span {
+  flex: 1 1 260px;
+  font-weight: 550;
+}
+
+.audit-aurora .btn {
+  flex-shrink: 0;
+}
+
+.audit-anomalie {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-weight: 500;
+}
+
 .audit-filters {
   display: grid;
   grid-template-columns: repeat(4, minmax(140px, 1fr));

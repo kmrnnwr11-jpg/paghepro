@@ -48,7 +48,7 @@ public sealed record EsitoCatena(bool Integra, int Righe, long? PrimaSequenzaAno
 /// l'audit concatenato. Regole del piano §6: il grant nasce da UI e policy (mai dal prompt),
 /// ogni accesso ricontrolla firma, tenant, finalità, scope, operazione, quota, scadenza e
 /// revoca; un diniego prevale; i contatori sono atomici (token di concorrenza + retry).
-/// In G2 non esistono scritture: solo read/search/draft su classi D0-D2.
+/// Nel verticale G2 corrente non esistono scritture: solo read/search su classi D0-D2.
 /// </summary>
 public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni, TimeProvider orologio)
 {
@@ -63,11 +63,21 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
     public async Task<EsitoPreflight> PreflightAsync(
         Guid tenantId, Guid utenteId, RichiestaGrant richiesta, CancellationToken ct = default)
     {
+        if (tenantId == Guid.Empty || utenteId == Guid.Empty)
+            return new EsitoPreflight(false, "Tenant e utente sono obbligatori.", null);
+
         var (valida, errore) = Valida(richiesta);
         if (valida is null)
         {
             await AppendiAuditAsync(tenantId, null, utenteId, "Preflight", Riassunto(richiesta), errore, ct);
             return new EsitoPreflight(false, errore, null);
+        }
+
+        if (!await AziendaNelTenantAsync(tenantId, valida.Value.AziendaId, ct))
+        {
+            const string motivo = "Azienda del mandato non trovata nel tenant corrente.";
+            await AppendiAuditAsync(tenantId, null, utenteId, "Preflight", Riassunto(richiesta), motivo, ct);
+            return new EsitoPreflight(false, motivo, null);
         }
 
         await AppendiAuditAsync(tenantId, null, utenteId, "Preflight", Riassunto(richiesta), null, ct);
@@ -88,6 +98,12 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
         }
 
         var v = valida.Value;
+        if (!await AziendaNelTenantAsync(tenantId, v.AziendaId, ct))
+        {
+            const string motivo = "Azienda del mandato non trovata nel tenant corrente.";
+            await AppendiAuditAsync(tenantId, null, utenteId, "Diniego", Riassunto(richiesta), motivo, ct);
+            return (null, motivo);
+        }
         var adesso = orologio.GetUtcNow().UtcDateTime;
         var grant = new AiScopeGrantEntity
         {
@@ -141,6 +157,22 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
     public async Task<(EsitoAccessoAi Esito, ManifestGrant? Manifest)> AutorizzaAccessoConManifestAsync(
         Guid tenantId, Guid utenteId, string? lease, string risorsa, string operazione,
         int quantita = 1, CancellationToken ct = default)
+        => await ValidaAccessoConManifestAsync(
+            tenantId, utenteId, lease, risorsa, operazione, quantita, consumaQuota: true, ct);
+
+    /// <summary>
+    /// Verifica firma, proprietario, scope e policy senza consumare quota. Il broker la usa prima
+    /// della query e consuma poi esattamente il numero di record che sta per restituire.
+    /// </summary>
+    public async Task<(EsitoAccessoAi Esito, ManifestGrant? Manifest)> VerificaAccessoConManifestAsync(
+        Guid tenantId, Guid utenteId, string? lease, string risorsa, string operazione,
+        CancellationToken ct = default)
+        => await ValidaAccessoConManifestAsync(
+            tenantId, utenteId, lease, risorsa, operazione, 1, consumaQuota: false, ct);
+
+    private async Task<(EsitoAccessoAi Esito, ManifestGrant? Manifest)> ValidaAccessoConManifestAsync(
+        Guid tenantId, Guid utenteId, string? lease, string risorsa, string operazione,
+        int quantita, bool consumaQuota, CancellationToken ct)
     {
         var adesso = orologio.GetUtcNow().UtcDateTime;
 
@@ -155,6 +187,8 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
             return (await NegaAsync(tenantId, decodificata.GrantId, utenteId, risorsa, operazione, "Mandato inesistente.", ct), null);
         if (grant.TenantId != tenantId)
             return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Tenant non corrispondente al mandato.", ct), null);
+        if (grant.UtenteId != utenteId)
+            return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Utente non corrispondente al mandato.", ct), null);
         if (!string.Equals(grant.Nonce, decodificata.Nonce, StringComparison.Ordinal))
             return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Nonce non valido (possibile replay).", ct), null);
         if (grant.Stato != "Attivo")
@@ -182,13 +216,35 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
         if (catalogata is null || !ProfessionalResourceCatalog.ConcedibileInG2(catalogata.Classe))
             return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, $"Risorsa '{risorsa}' non concedibile ({catalogata?.Classe.ToString() ?? "non a catalogo"}).", ct), null);
 
-        if (quantita < 1)
+        // Una lease resta valida solo entro la policy versionata della finalità. Questo impedisce
+        // di usare un purpose innocuo per ottenere risorse non previste (purpose laundering).
+        var policy = AiUsagePolicyStore.Trova(grant.PurposeCode);
+        if (grant.PolicyVersione != AiUsagePolicyStore.Versione)
+            return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione,
+                "Policy del mandato superata: serve un nuovo grant.", ct), null);
+        if (policy is null || !policy.RisorseAmmesse.Contains(risorsaNorm, StringComparer.OrdinalIgnoreCase))
+            return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, $"Risorsa '{risorsa}' non ammessa dalla finalità '{grant.PurposeCode}'.", ct), null);
+        if (!policy.OperazioniAmmesse.Contains(operazioneNorm, StringComparer.OrdinalIgnoreCase))
+            return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione,
+                $"Operazione '{operazioneNorm}' non ammessa dalla finalità '{grant.PurposeCode}'.", ct), null);
+        var capability = AiCapabilityRegistry.VerificaUsoG2(
+            grant.PurposeCode, grant.Modalita, [risorsaNorm]);
+        if (!capability.Consentito)
+            return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione,
+                capability.Motivo ?? "Capability non disponibile.", ct), null);
+
+        if (!consumaQuota)
+            return (new EsitoAccessoAi(true, null, grant.MaxLetture - grant.LettureUsate), Manifest(grant));
+
+        if (quantita < 0)
             return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Quantità non valida.", ct), null);
 
         // Contatore atomico: token di concorrenza + retry; la quota non si aggira in parallelo.
         for (var tentativo = 0; tentativo < TentativiConcorrenza; tentativo++)
         {
-            if (grant.LettureUsate + quantita > grant.MaxLetture)
+            // Sottrazione invece della somma: evita l'overflow di int con quantità ostili.
+            if (grant.LettureUsate < 0 || grant.LettureUsate > grant.MaxLetture
+                || quantita > grant.MaxLetture - grant.LettureUsate)
                 return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Quota del mandato esaurita: checkpoint, serve un nuovo grant.", ct), null);
 
             grant.LettureUsate += quantita;
@@ -205,6 +261,8 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
                 await db.Entry(grant).ReloadAsync(ct);
                 if (grant.Stato != "Attivo")
                     return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Mandato revocato durante l'accesso.", ct), null);
+                if (grant.UtenteId != utenteId)
+                    return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Utente non corrispondente al mandato.", ct), null);
             }
         }
         return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Conflitto di concorrenza persistente.", ct), null);
@@ -214,17 +272,22 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
 
     public async Task<bool> RevocaAsync(Guid tenantId, Guid utenteId, Guid grantId, CancellationToken ct = default)
     {
-        var grant = await db.AiScopeGrants
-            .FirstOrDefaultAsync(g => g.Id == grantId && g.TenantId == tenantId, ct);
+        var grant = await db.AiScopeGrants.AsNoTracking()
+            .FirstOrDefaultAsync(g => g.Id == grantId && g.TenantId == tenantId && g.UtenteId == utenteId, ct);
         if (grant is null) return false;
 
         if (grant.Stato == "Attivo")
         {
-            grant.Stato = "Revocato";
-            grant.RevocatoUtc = orologio.GetUtcNow().UtcDateTime;
-            grant.Versione++;
-            await db.SaveChangesAsync(ct);
-            await AppendiAuditAsync(tenantId, grant.Id, utenteId, "Revoca", grant.PurposeCode, null, ct);
+            var aggiornati = await db.AiScopeGrants
+                .Where(g => g.Id == grantId && g.TenantId == tenantId
+                    && g.UtenteId == utenteId && g.Stato == "Attivo")
+                .ExecuteUpdateAsync(setter => setter
+                    .SetProperty(g => g.Stato, "Revocato")
+                    .SetProperty(g => g.RevocatoUtc, orologio.GetUtcNow().UtcDateTime)
+                    .SetProperty(g => g.Versione, g => g.Versione + 1), ct);
+            StaccaGrantLocale(grantId);
+            if (aggiornati > 0)
+                await AppendiAuditAsync(tenantId, grant.Id, utenteId, "Revoca", grant.PurposeCode, null, ct);
         }
         return true;
     }
@@ -232,22 +295,21 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
     /// <summary>«Arresta AI»: revoca immediata di tutti i mandati attivi dell'utente sul tenant.</summary>
     public async Task<int> ArrestaTuttoAsync(Guid tenantId, Guid utenteId, CancellationToken ct = default)
     {
-        var attivi = await db.AiScopeGrants
-            .Where(g => g.TenantId == tenantId && g.UtenteId == utenteId && g.Stato == "Attivo")
-            .ToListAsync(ct);
         var adesso = orologio.GetUtcNow().UtcDateTime;
-        foreach (var grant in attivi)
+        var revocati = await db.AiScopeGrants
+            .Where(g => g.TenantId == tenantId && g.UtenteId == utenteId && g.Stato == "Attivo")
+            .ExecuteUpdateAsync(setter => setter
+                .SetProperty(g => g.Stato, "Revocato")
+                .SetProperty(g => g.RevocatoUtc, adesso)
+                .SetProperty(g => g.Versione, g => g.Versione + 1), ct);
+        foreach (var locale in db.AiScopeGrants.Local
+            .Where(g => g.TenantId == tenantId && g.UtenteId == utenteId).ToArray())
+            db.Entry(locale).State = EntityState.Detached;
+        if (revocati > 0)
         {
-            grant.Stato = "Revocato";
-            grant.RevocatoUtc = adesso;
-            grant.Versione++;
+            await AppendiAuditAsync(tenantId, null, utenteId, "ArrestoTotale", $"revocati={revocati}", null, ct);
         }
-        if (attivi.Count > 0)
-        {
-            await db.SaveChangesAsync(ct);
-            await AppendiAuditAsync(tenantId, null, utenteId, "ArrestoTotale", $"revocati={attivi.Count}", null, ct);
-        }
-        return attivi.Count;
+        return revocati;
     }
 
     // ---------- Trasparenza («Cosa vede l'AI») ----------
@@ -263,14 +325,14 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
         .ToArray();
 
     public async Task<(ManifestGrant Manifest, IReadOnlyList<AiAuditEntity> Eventi)?> CosaVedeAsync(
-        Guid tenantId, Guid grantId, CancellationToken ct = default)
+        Guid tenantId, Guid utenteId, Guid grantId, CancellationToken ct = default)
     {
         var grant = await db.AiScopeGrants.AsNoTracking()
-            .FirstOrDefaultAsync(g => g.Id == grantId && g.TenantId == tenantId, ct);
+            .FirstOrDefaultAsync(g => g.Id == grantId && g.TenantId == tenantId && g.UtenteId == utenteId, ct);
         if (grant is null) return null;
 
         var eventi = await db.AiAudit.AsNoTracking()
-            .Where(a => a.TenantId == tenantId && a.GrantId == grantId)
+            .Where(a => a.TenantId == tenantId && a.GrantId == grantId && a.UtenteId == utenteId)
             .OrderByDescending(a => a.Sequenza)
             .Take(100)
             .ToListAsync(ct);
@@ -317,10 +379,14 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
 
         if (!AiUsagePolicyStore.ScopeConsentito(r.ScopeLevel, policy.ScopeMassimo))
             return (null, $"Scope '{r.ScopeLevel}' oltre il massimo '{policy.ScopeMassimo}' della finalità.");
+        if (r.ScopeLevel == "S0")
+            return (null, "Scope S0 sospeso finché il mandato non include selettori di record verificabili.");
         if (modalita == "Stretta" && !AiUsagePolicyStore.ScopeConsentito(r.ScopeLevel, "S1"))
             return (null, "La modalità Stretta ammette al massimo lo scope S1.");
         if (r.ScopeLevel is "S1" or "S2" && r.AziendaId is null)
             return (null, "Scope S1/S2 richiede l'azienda del mandato.");
+        if (r.ScopeLevel == "S1" && !string.IsNullOrWhiteSpace(r.Periodo))
+            return (null, "Lo scope S1 non può includere un periodo: usare S2.");
         if (r.ScopeLevel == "S2" && (string.IsNullOrWhiteSpace(r.Periodo)
             || !System.Text.RegularExpressions.Regex.IsMatch(r.Periodo!, @"^\d{4}-(0[1-9]|1[0-2])$")))
             return (null, "Scope S2 richiede il periodo nel formato AAAA-MM.");
@@ -336,7 +402,17 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
                 return (null, $"Risorsa '{nome}' non a catalogo: negata per costruzione.");
             if (!ProfessionalResourceCatalog.ConcedibileInG2(voce.Classe))
                 return (null, $"Risorsa '{nome}' di classe {voce.Classe}: non concedibile in G2.");
+            if (!policy.RisorseAmmesse.Contains(nome, StringComparer.OrdinalIgnoreCase))
+                return (null, $"Risorsa '{nome}' non ammessa dalla finalità '{policy.PurposeCode}'.");
         }
+        if (risorse.Any(nome => nome.Equals("Cartellini", StringComparison.OrdinalIgnoreCase)
+                || nome.Equals("Cedolini", StringComparison.OrdinalIgnoreCase))
+            && r.ScopeLevel != "S2")
+            return (null, "Cartellini e cedolini richiedono scope S2 con azienda e periodo.");
+
+        var capability = AiCapabilityRegistry.VerificaUsoG2(policy.PurposeCode, modalita, risorse);
+        if (!capability.Consentito)
+            return (null, capability.Motivo);
 
         if (r.Operazioni is null || r.Operazioni.Count == 0)
             return (null, "Il mandato deve elencare almeno un'operazione.");
@@ -367,7 +443,7 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
         string motivo, CancellationToken ct)
     {
         await AppendiAuditAsync(tenantId, grantId, utenteId, "Diniego",
-            $"{(risorsa ?? "?").Trim()}:{(operazione ?? "?").Trim()}", motivo, ct);
+            $"{RisorsaPerAudit(risorsa)}:{OperazionePerAudit(operazione)}", motivo, ct);
         return new EsitoAccessoAi(false, motivo, 0);
     }
 
@@ -462,6 +538,32 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
     }
 
     private static string Riassunto(RichiestaGrant r) =>
-        $"{r.PurposeCode} {r.ScopeLevel}/{r.Modalita} risorse=[{string.Join(",", r.Risorse ?? [])}] " +
-        $"op=[{string.Join(",", r.Operazioni ?? [])}]";
+        $"{(AiUsagePolicyStore.Trova(r.PurposeCode) is null ? "PURPOSE_NEGATO" : r.PurposeCode.Trim())} " +
+        $"{(r.ScopeLevel is "S0" or "S1" or "S2" ? r.ScopeLevel : "SCOPE_NEGATO")}/" +
+        $"{(r.Modalita is "Stretta" or "Guidata" ? r.Modalita : "MODALITA_NEGATA")} " +
+        $"risorse=[{string.Join(",", (r.Risorse ?? []).Select(RisorsaPerAudit))}] " +
+        $"op=[{string.Join(",", (r.Operazioni ?? []).Select(OperazionePerAudit))}]";
+
+    private static string RisorsaPerAudit(string? risorsa)
+    {
+        string nome = (risorsa ?? "").Trim();
+        return ProfessionalResourceCatalog.Classifica(nome)?.Nome ?? "RISORSA_NEGATA";
+    }
+
+    private static string OperazionePerAudit(string? operazione)
+    {
+        string nome = (operazione ?? "").Trim().ToLowerInvariant();
+        return nome is "read" or "search" or "draft" ? nome : "OPERAZIONE_NEGATA";
+    }
+
+    private async Task<bool> AziendaNelTenantAsync(
+        Guid tenantId, Guid? aziendaId, CancellationToken ct) =>
+        aziendaId is null || await db.Aziende.AsNoTracking()
+            .AnyAsync(a => a.Id == aziendaId && a.TenantId == tenantId, ct);
+
+    private void StaccaGrantLocale(Guid grantId)
+    {
+        var locale = db.AiScopeGrants.Local.FirstOrDefault(g => g.Id == grantId);
+        if (locale is not null) db.Entry(locale).State = EntityState.Detached;
+    }
 }

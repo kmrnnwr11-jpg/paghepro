@@ -26,6 +26,7 @@ public static class AiGovernorEndpoints
                 p.Descrizione,
                 p.ScopeMassimo,
                 p.AutonomiaMassima,
+                risorse = p.RisorseAmmesse,
                 operazioni = p.OperazioniAmmesse,
                 p.TtlMassimoMinuti,
                 p.QuotaLettureDefault,
@@ -71,7 +72,8 @@ public static class AiGovernorEndpoints
         gruppo.MapGet("/grants/{id:guid}", async (
             ClaimsPrincipal user, AiGrantService servizio, Guid id, CancellationToken ct) =>
         {
-            var esito = await servizio.CosaVedeAsync(TenantCorrente(user), id, ct);
+            var esito = await servizio.CosaVedeAsync(
+                TenantCorrente(user), UtenteCorrente(user), id, ct);
             return esito is null
                 ? Results.NotFound(new { errore = "Mandato non trovato." })
                 : Results.Ok(new
@@ -108,13 +110,14 @@ public static class AiGovernorEndpoints
             return esito.Consentito ? Results.Ok(esito) : Results.Json(esito, statusCode: 403);
         });
 
-        // Seam di enforcement per i futuri tool: ogni retrieval passa da qui con la lease.
+        // Seam diagnostico: una richiesta HTTP consuma sempre una sola unità. La quantità reale
+        // dei risultati è calcolata esclusivamente dal broker e non è dichiarabile dal browser.
         gruppo.MapPost("/accesso", async (
             ClaimsPrincipal user, AiGrantService servizio, RichiestaAccesso richiesta, CancellationToken ct) =>
         {
             var esito = await servizio.AutorizzaAccessoAsync(
                 TenantCorrente(user), UtenteCorrente(user), richiesta.Lease,
-                richiesta.Risorsa, richiesta.Operazione, richiesta.Quantita ?? 1, ct);
+                richiesta.Risorsa, richiesta.Operazione, quantita: 1, ct);
             return esito.Consentito ? Results.Ok(esito) : Results.Json(esito, statusCode: 403);
         });
 
@@ -132,7 +135,7 @@ public static class AiGovernorEndpoints
         return app;
     }
 
-    public sealed record RichiestaAccesso(string Lease, string Risorsa, string Operazione, int? Quantita);
+    public sealed record RichiestaAccesso(string Lease, string Risorsa, string Operazione);
 
     public sealed record RichiestaQuery(string Lease, string Risorsa);
 

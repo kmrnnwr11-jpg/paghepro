@@ -15,6 +15,12 @@ public sealed class RuoloPolicyTests
     [InlineData("sola_lettura", "GET", "/api/dipendenti", true)]
     [InlineData("sola_lettura", "POST", "/api/dipendenti", false)]
     [InlineData("sola_lettura", "DELETE", "/api/aziende/1", false)]
+    // Il Governor usa POST con manifest/lease, ma il percorso G2 non modifica dati di dominio.
+    [InlineData("sola_lettura", "POST", "/api/ai/governor/preflight", true)]
+    [InlineData("sola_lettura", "POST", "/api/ai/governor/grants", true)]
+    [InlineData("sola_lettura", "POST", "/api/ai/governor/query", true)]
+    [InlineData("sola_lettura", "POST", "/api/ai/governor/grants/abc/revoca", true)]
+    [InlineData("sola_lettura", "POST", "/api/ai/chat/azione", false)]
     // anonimizzazione GDPR: scrittura riservata all'admin
     [InlineData("admin", "POST", "/api/dipendenti/abc/anonimizza", true)]
     [InlineData("operatore", "POST", "/api/dipendenti/abc/anonimizza", false)]

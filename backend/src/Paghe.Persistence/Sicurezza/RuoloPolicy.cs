@@ -20,6 +20,17 @@ public static class RuoloPolicy
 
     private static readonly string[] RiservatiSempreAdmin = { "/api/audit", "/api/retention" };
 
+    // Sono POST perché contengono un manifest/lease nel body, ma non modificano dati di dominio:
+    // creano o consumano soltanto il mandato personale e leggono proiezioni minimizzate.
+    private static readonly string[] PostGovernorSolaLettura =
+    {
+        "/api/ai/governor/preflight",
+        "/api/ai/governor/grants",
+        "/api/ai/governor/query",
+        "/api/ai/governor/accesso",
+        "/api/ai/governor/arresta",
+    };
+
     /// <summary>
     /// True se un utente con questo ruolo può eseguire la richiesta. Regole:
     /// <list type="bullet">
@@ -40,7 +51,10 @@ public static class RuoloPolicy
             return amministratore;
 
         if (string.Equals(ruolo, SolaLettura, StringComparison.OrdinalIgnoreCase))
-            return sicuro;
+            return sicuro || (metodoHttp.Equals("POST", StringComparison.OrdinalIgnoreCase)
+                && (PostGovernorSolaLettura.Any(p => path.Equals(p, StringComparison.OrdinalIgnoreCase))
+                    || path.StartsWith("/api/ai/governor/grants/", StringComparison.OrdinalIgnoreCase)
+                        && path.EndsWith("/revoca", StringComparison.OrdinalIgnoreCase)));
 
         if (!sicuro && RiservatiAdmin.Any(r => path.Contains(r, StringComparison.OrdinalIgnoreCase)))
             return amministratore;

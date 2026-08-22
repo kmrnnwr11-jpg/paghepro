@@ -1,7 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Paghe.Core.Domain;
 using Paghe.Persistence;
 using Paghe.Persistence.Ai;
 using Paghe.Persistence.Entities;
@@ -45,8 +48,7 @@ public sealed class AiQueryBrokerTests : IDisposable
         var governor = new AiGrantService(db, _opzioni, _orologio);
         var broker = new ProfessionalQueryBroker(
             db, governor,
-            new ScadenzarioService(db), new PresenzeService(db), new AnagraficheLavoroService(db),
-            _orologio);
+            new ScadenzarioService(db), _orologio);
         return (broker, governor);
     }
 
@@ -73,7 +75,7 @@ public sealed class AiQueryBrokerTests : IDisposable
     }
 
     private static RichiestaGrant MandatoSu(Guid azienda, params string[] risorse) => new(
-        PurposeCode: "CONTROLLO_ANOMALIE",
+        PurposeCode: "CONTROLLO_ANOMALIE_PAGHE",
         Modalita: "Guidata",
         ScopeLevel: "S2",
         AziendaId: azienda,
@@ -91,6 +93,22 @@ public sealed class AiQueryBrokerTests : IDisposable
             using var _ = Paghe.Persistence.Gdpr.AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
             aziendaA = await CreaAziendaConDipendenteAsync(db, tenant, "Alfa Srl", "DiAlfa");
             aziendaB = await CreaAziendaConDipendenteAsync(db, tenant, "Beta Srl", "DiBeta");
+            var rapportoA = await db.Rapporti.SingleAsync(r =>
+                r.TenantId == tenant && r.AziendaId == aziendaA);
+            var cartellinoId = Guid.NewGuid();
+            db.Cartellini.Add(new CartellinoEntity
+            {
+                Id = cartellinoId,
+                TenantId = tenant,
+                RapportoLavoroId = rapportoA.Id,
+                Anno = 2026,
+                Mese = 7,
+            });
+            await db.SaveChangesAsync();
+            // Payload volutamente illeggibile: la proiezione G2 deve leggere solo scalari e
+            // non materializzare/decifrare mai CartellinoEntity (D3A).
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE Cartellini SET DatiSaluteProtetti = '' WHERE Id = {cartellinoId}");
         }
 
         await using var contesto = NuovoContesto();
@@ -103,6 +121,83 @@ public sealed class AiQueryBrokerTests : IDisposable
         Assert.True(esito.Consentito);
         var riga = Assert.Single(esito.Righe.Cast<RigaCartellino>());
         Assert.Contains("DiAlfa", riga.Nominativo); // solo l'azienda del mandato, mai la B
+        Assert.True(riga.Elaborato);
+        var json = JsonSerializer.Serialize(riga);
+        Assert.DoesNotContain("Malattia", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Infortunio", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Evento", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RapportoLegacyCrossTenant_NonEsponeIlDipendenteInNessunaProiezionePaghe()
+    {
+        var tenantMandato = Guid.NewGuid();
+        var tenantPersona = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        var dipendenteId = Guid.NewGuid();
+        await using (var db = NuovoContesto())
+        {
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenantMandato,
+                RagioneSociale = "Azienda del mandato",
+            });
+            db.Dipendenti.Add(new DipendenteEntity
+            {
+                Id = dipendenteId,
+                TenantId = tenantPersona,
+                CodiceFiscale = "CROSSS80A01F205X",
+                Nome = "NomeSegreto",
+                Cognome = "PersonaAltroTenant",
+            });
+            await db.SaveChangesAsync();
+
+            // Riproduce un archivio legacy corrotto prima della migrazione. Il modello corrente
+            // lo vieta; disabilitiamo il controllo solo per provare la difesa in profondità del
+            // broker davanti a dati già presenti, poi lo riattiviamo immediatamente.
+            await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = 0;");
+            try
+            {
+                db.Rapporti.Add(new RapportoLavoroEntity
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantMandato,
+                    AziendaId = aziendaId,
+                    DipendenteId = dipendenteId,
+                    CodiceCcnl = "COMMERCIO",
+                    Livello = "IV",
+                    DataAssunzione = new DateOnly(2026, 1, 1),
+                });
+                await db.SaveChangesAsync();
+            }
+            finally
+            {
+                await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = 1;");
+            }
+        }
+
+        await using var contesto = NuovoContesto();
+        var (broker, governor) = NuoviServizi(contesto);
+        var utente = Guid.NewGuid();
+        var (grant, errore) = await governor.EmettiAsync(
+            tenantMandato,
+            utente,
+            MandatoSu(aziendaId, "Dipendenti", "Cartellini", "Cedolini"));
+        Assert.Null(errore);
+
+        foreach (var risorsa in new[] { "Dipendenti", "Cartellini", "Cedolini" })
+        {
+            var esito = await broker.LeggiAsync(
+                tenantMandato, utente, grant!.Lease, risorsa);
+            Assert.True(esito.Consentito);
+            Assert.Empty(esito.Righe);
+            Assert.Equal(0, esito.Totale);
+            Assert.DoesNotContain(
+                "PersonaAltroTenant",
+                JsonSerializer.Serialize(esito),
+                StringComparison.Ordinal);
+        }
     }
 
     [Fact]
@@ -150,12 +245,284 @@ public sealed class AiQueryBrokerTests : IDisposable
         await using var contesto = NuovoContesto();
         var (broker, governor) = NuoviServizi(contesto);
         var utente = Guid.NewGuid();
-        var (grant, _) = await governor.EmettiAsync(tenant, utente, MandatoSu(aziendaId, "Cedolini"));
+        var (grant, _) = await governor.EmettiAsync(tenant, utente, MandatoSu(aziendaId, "Rapporti"));
 
-        var esito = await broker.LeggiAsync(tenant, utente, grant!.Lease, "Cedolini");
+        var esito = await broker.LeggiAsync(tenant, utente, grant!.Lease, "Rapporti");
         Assert.False(esito.Consentito);
         Assert.Contains("proiezione", esito.Motivo);
         Assert.Empty(esito.Righe);
+    }
+
+    [Fact]
+    public async Task ControlloCedoliniRestituisceUnLottoDiDieciESenzaImportiOSalute()
+    {
+        var tenant = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        var chiusaCedolinoId = Guid.NewGuid();
+        var validataCedolinoId = Guid.NewGuid();
+        var preWorkflowCedolinoId = Guid.NewGuid();
+        var controllataCedolinoId = Guid.NewGuid();
+        await using (var db = NuovoContesto())
+        {
+            using var _ = Paghe.Persistence.Gdpr.AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Lotto Dieci Srl",
+                MatricolaInps = "1234567890",
+                CodiceSedeInps = "0001",
+                PatInail = "PAT-TEST",
+                CcnlDefault = "COMMERCIO",
+            });
+            Guid primoRapportoId = Guid.Empty;
+            Guid secondoRapportoId = Guid.Empty;
+            Guid terzoRapportoId = Guid.Empty;
+            Guid quartoRapportoId = Guid.Empty;
+            Guid quintoRapportoId = Guid.Empty;
+            for (var i = 0; i < 12; i++)
+            {
+                var dipendenteId = Guid.NewGuid();
+                var rapportoId = Guid.NewGuid();
+                if (i == 0) primoRapportoId = rapportoId;
+                if (i == 1) secondoRapportoId = rapportoId;
+                if (i == 2) terzoRapportoId = rapportoId;
+                if (i == 3) quartoRapportoId = rapportoId;
+                if (i == 4) quintoRapportoId = rapportoId;
+                db.Dipendenti.Add(new DipendenteEntity
+                {
+                    Id = dipendenteId,
+                    TenantId = tenant,
+                    CodiceFiscale = $"TEST{i:000000000000}",
+                    Nome = $"Nome{i:00}",
+                    Cognome = $"Cognome{i:00}",
+                });
+                db.Rapporti.Add(new RapportoLavoroEntity
+                {
+                    Id = rapportoId,
+                    TenantId = tenant,
+                    AziendaId = aziendaId,
+                    DipendenteId = dipendenteId,
+                    CodiceCcnl = "COMMERCIO",
+                    Livello = "IV",
+                    DataAssunzione = new DateOnly(2026, 1, 1),
+                });
+            }
+            db.Cedolini.Add(new CedolinoEntity
+            {
+                Id = chiusaCedolinoId,
+                TenantId = tenant,
+                AziendaId = aziendaId,
+                RapportoLavoroId = primoRapportoId,
+                Anno = 2026,
+                Mese = 7,
+                Stato = nameof(StatoCedolino.Bozza),
+                CalcolatoIl = new DateTime(2026, 7, 31, 12, 0, 0, DateTimeKind.Utc),
+            });
+            db.Cedolini.Add(new CedolinoEntity
+            {
+                Id = validataCedolinoId,
+                TenantId = tenant,
+                AziendaId = aziendaId,
+                RapportoLavoroId = secondoRapportoId,
+                Anno = 2026,
+                Mese = 7,
+                Stato = nameof(StatoCedolino.Bozza),
+                CalcolatoIl = new DateTime(2026, 7, 31, 12, 0, 0, DateTimeKind.Utc),
+            });
+            db.Cedolini.Add(new CedolinoEntity
+            {
+                Id = preWorkflowCedolinoId,
+                TenantId = tenant,
+                AziendaId = aziendaId,
+                RapportoLavoroId = terzoRapportoId,
+                Anno = 2026,
+                Mese = 7,
+                Stato = nameof(StatoCedolino.Bozza),
+                CalcolatoIl = new DateTime(2026, 7, 31, 12, 0, 0, DateTimeKind.Utc),
+            });
+            db.Cedolini.Add(new CedolinoEntity
+            {
+                Id = controllataCedolinoId,
+                TenantId = tenant,
+                AziendaId = aziendaId,
+                RapportoLavoroId = quartoRapportoId,
+                Anno = 2026,
+                Mese = 7,
+                Stato = nameof(StatoCedolino.Bozza),
+                CalcolatoIl = new DateTime(2026, 7, 31, 12, 0, 0, DateTimeKind.Utc),
+            });
+            db.Cedolini.Add(new CedolinoEntity
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenant,
+                AziendaId = aziendaId,
+                RapportoLavoroId = quintoRapportoId,
+                Anno = 2026,
+                Mese = 7,
+                Stato = nameof(StatoCedolino.Bozza),
+                CalcolatoIl = new DateTime(2026, 7, 31, 12, 0, 0, DateTimeKind.Utc),
+            });
+            await db.SaveChangesAsync();
+
+            // Il test isola la classificazione read-only del broker: gli stati persistiti
+            // vengono preparati direttamente senza simulare qui l'intero workflow documentale.
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE Cedolini SET Stato = {nameof(StatoCedolino.Chiusa)} WHERE TenantId = {tenant} AND Id = {chiusaCedolinoId}");
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE Cedolini SET Stato = {nameof(StatoCedolino.Validata)} WHERE TenantId = {tenant} AND Id = {validataCedolinoId}");
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE Cedolini SET Stato = {nameof(StatoCedolino.PreWorkflow)} WHERE TenantId = {tenant} AND Id = {preWorkflowCedolinoId}");
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE Cedolini SET Stato = {nameof(StatoCedolino.Controllata)} WHERE TenantId = {tenant} AND Id = {controllataCedolinoId}");
+        }
+
+        await using var contesto = NuovoContesto();
+        var (broker, governor) = NuoviServizi(contesto);
+        var utente = Guid.NewGuid();
+        var (grant, errore) = await governor.EmettiAsync(
+            tenant, utente, MandatoSu(aziendaId, "Cedolini") with
+            {
+                PurposeCode = "PREPARAZIONE_MESE_PAGHE",
+                MaxLetture = 10,
+            });
+        Assert.Null(errore);
+
+        var esito = await broker.LeggiAsync(tenant, utente, grant!.Lease, "Cedolini");
+        Assert.True(esito.Consentito);
+        Assert.Equal(10, esito.Righe.Count);
+        Assert.Equal(12, esito.Totale);
+        Assert.Equal(0, esito.LettureRimanenti);
+        var righe = esito.Righe.Cast<RigaCedolinoMese>().ToList();
+        Assert.Equal(4, righe.Count(r => r.Stato == "protetto"));
+        Assert.Equal(5, righe.Count(r => r.Stato == "da_compilare"));
+        var controllato = Assert.Single(righe, r =>
+            r.StatoCedolino == nameof(StatoCedolino.Controllata));
+        Assert.Equal("protetto", controllato.Stato);
+        Assert.Contains("controllato", controllato.Motivo, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("sola lettura", controllato.Motivo, StringComparison.OrdinalIgnoreCase);
+        var bozza = Assert.Single(righe, r =>
+            r.StatoCedolino == nameof(StatoCedolino.Bozza));
+        Assert.Equal("gia_elaborato", bozza.Stato);
+        Assert.Contains("bozza", bozza.Motivo, StringComparison.OrdinalIgnoreCase);
+        var storico = Assert.Single(righe, r =>
+            r.StatoCedolino == nameof(StatoCedolino.PreWorkflow));
+        Assert.Equal("protetto", storico.Stato);
+        Assert.Contains("storico", storico.Motivo, StringComparison.OrdinalIgnoreCase);
+
+        var json = JsonSerializer.Serialize(esito.Righe);
+        Assert.DoesNotContain("Malattia", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Infortunio", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Netto", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CodiceFiscale", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ControlloCedoliniSenzaRapporti_RestituisceZeroSenzaConsumareQuota()
+    {
+        var tenant = Guid.NewGuid();
+        var utente = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        await using (var db = NuovoContesto())
+        {
+            using var _ = Paghe.Persistence.Gdpr.AmbientContestoAudit.Imposta(tenant, utente);
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Nessun Rapporto Srl",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var contesto = NuovoContesto();
+        var (broker, governor) = NuoviServizi(contesto);
+        var (grant, errore) = await governor.EmettiAsync(
+            tenant, utente, MandatoSu(aziendaId, "Cedolini") with
+            {
+                PurposeCode = "PREPARAZIONE_MESE_PAGHE",
+                MaxLetture = 10,
+            });
+        Assert.Null(errore);
+
+        var esito = await broker.LeggiAsync(tenant, utente, grant!.Lease, "Cedolini");
+
+        Assert.True(esito.Consentito);
+        Assert.Empty(esito.Righe);
+        Assert.Equal(0, esito.Totale);
+        Assert.Equal(10, esito.LettureRimanenti);
+    }
+
+    [Fact]
+    public async Task RevocaTraProiezioneEConsumo_NegaENonRestituisceRighe()
+    {
+        var tenant = Guid.NewGuid();
+        var utente = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        var stringaConnessione =
+            $"Data Source=revoca-broker-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
+
+        // L'ancora mantiene vivo il database in-memory, mentre broker e revoca usano
+        // connessioni/DbContext distinti come accade tra due richieste concorrenti reali.
+        await using var ancora = new SqliteConnection(stringaConnessione);
+        await ancora.OpenAsync();
+        var opzioniBase = new DbContextOptionsBuilder<PagheDbContext>()
+            .UseSqlite(stringaConnessione)
+            .Options;
+
+        await using (var preparazione = new PagheDbContext(opzioniBase))
+        {
+            await preparazione.Database.EnsureCreatedAsync();
+            preparazione.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Revoca Concorrente Srl",
+            });
+            await preparazione.SaveChangesAsync();
+        }
+
+        GrantEmesso grant;
+        await using (var emissione = new PagheDbContext(opzioniBase))
+        {
+            var governor = new AiGrantService(emissione, _opzioni, _orologio);
+            var (emesso, errore) = await governor.EmettiAsync(
+                tenant, utente, MandatoSu(aziendaId, "Aziende"));
+            Assert.Null(errore);
+            grant = Assert.IsType<GrantEmesso>(emesso);
+        }
+
+        var revocaRiuscita = false;
+        var intercettore = new RevocaPrimaDelConsumoInterceptor(async ct =>
+        {
+            await using var contestoRevoca = new PagheDbContext(opzioniBase);
+            var governorRevoca = new AiGrantService(contestoRevoca, _opzioni, _orologio);
+            revocaRiuscita = await governorRevoca.RevocaAsync(
+                tenant, utente, grant.Manifest.GrantId, ct);
+        });
+        var opzioniBroker = new DbContextOptionsBuilder<PagheDbContext>()
+            .UseSqlite(stringaConnessione)
+            .AddInterceptors(intercettore)
+            .Options;
+
+        await using var contestoBroker = new PagheDbContext(opzioniBroker);
+        var (broker, _) = NuoviServizi(contestoBroker);
+
+        var esito = await broker.LeggiAsync(
+            tenant, utente, grant.Lease, "Aziende");
+
+        Assert.True(intercettore.Intercettato);
+        Assert.True(revocaRiuscita);
+        Assert.False(esito.Consentito);
+        Assert.Contains("revocato", esito.Motivo, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(esito.Righe);
+        Assert.Equal(0, esito.Totale);
+
+        await using var verifica = new PagheDbContext(opzioniBase);
+        var persistito = await verifica.AiScopeGrants.AsNoTracking()
+            .SingleAsync(g => g.Id == grant.Manifest.GrantId && g.TenantId == tenant);
+        Assert.Equal("Revocato", persistito.Stato);
+        Assert.Equal(0, persistito.LettureUsate);
     }
 
     [Fact]
@@ -249,6 +616,31 @@ public sealed class AiQueryBrokerTests : IDisposable
         var i = casuale.Next(3, caratteri.Length); // oltre il prefisso "v1."
         caratteri[i] = caratteri[i] == 'A' ? 'B' : 'A';
         return new string(caratteri);
+    }
+
+    private sealed class RevocaPrimaDelConsumoInterceptor(
+        Func<CancellationToken, Task> revoca) : SaveChangesInterceptor
+    {
+        private int _intercettato;
+
+        public bool Intercettato => Volatile.Read(ref _intercettato) == 1;
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            var staConsumandoQuota = eventData.Context?.ChangeTracker
+                .Entries<AiScopeGrantEntity>()
+                .Any(e => e.State == EntityState.Modified
+                    && e.Property(g => g.LettureUsate).IsModified) == true;
+
+            if (staConsumandoQuota
+                && Interlocked.CompareExchange(ref _intercettato, 1, 0) == 0)
+                await revoca(cancellationToken);
+
+            return result;
+        }
     }
 
     private sealed class OrologioRegolabile(DateTimeOffset iniziale) : TimeProvider

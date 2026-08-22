@@ -2,6 +2,8 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Persistence;
 using Paghe.Persistence.Ai;
+using Paghe.Persistence.Entities;
+using Paghe.Persistence.Gdpr;
 using Xunit;
 
 namespace Paghe.Tests;
@@ -45,13 +47,27 @@ public sealed class AiGovernorTests : IDisposable
     private AiGrantService NuovoServizio(PagheDbContext db) => new(db, _opzioni, _orologio);
 
     private static RichiestaGrant RichiestaTipo(Guid azienda) => new(
-        PurposeCode: "CONTROLLO_ANOMALIE",
+        PurposeCode: "CONTROLLO_ANOMALIE_PAGHE",
         Modalita: "Guidata",
         ScopeLevel: "S2",
         AziendaId: azienda,
         Periodo: "2026-07",
         Risorse: ["Cartellini", "Rapporti", "Cedolini"],
-        Operazioni: ["read", "search", "draft"]);
+        Operazioni: ["read", "search"]);
+
+    private static async Task<Guid> CreaAziendaAsync(PagheDbContext db, Guid tenant)
+    {
+        var id = Guid.NewGuid();
+        using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+        db.Aziende.Add(new AziendaEntity
+        {
+            Id = id,
+            TenantId = tenant,
+            RagioneSociale = "Azienda Governor",
+        });
+        await db.SaveChangesAsync();
+        return id;
+    }
 
     // ---------- Emissione: policy e catalogo (default DENY) ----------
 
@@ -77,6 +93,62 @@ public sealed class AiGovernorTests : IDisposable
         Assert.Contains("non a catalogo", errore);
     }
 
+    [Fact]
+    public async Task FinalitaNonPuoConcedereUnaRisorsaDiUnAltroPurpose()
+    {
+        await using var db = NuovoContesto();
+        var (grant, errore) = await NuovoServizio(db).EmettiAsync(
+            Guid.NewGuid(), Guid.NewGuid(), RichiestaTipo(Guid.NewGuid()) with
+            {
+                PurposeCode = "SPIEGAZIONE_CALCOLO",
+                ScopeLevel = "S1",
+                Periodo = null,
+                Risorse = ["Aziende"],
+                Operazioni = ["read"],
+            });
+        Assert.Null(grant);
+        Assert.Contains("non ammessa dalla finalità", errore);
+    }
+
+    [Fact]
+    public async Task CapabilityDiGateSuccessivoRestaNonDisponibileInG2()
+    {
+        var tenant = Guid.NewGuid();
+        await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
+        var (grant, errore) = await NuovoServizio(db).EmettiAsync(
+            tenant, Guid.NewGuid(), RichiestaTipo(azienda) with
+            {
+                PurposeCode = "SPIEGAZIONE_CALCOLO",
+                ScopeLevel = "S1",
+                Periodo = null,
+                Risorse = ["Ccnl"],
+                Operazioni = ["read"],
+            });
+
+        Assert.Null(grant);
+        Assert.Contains("non è disponibile", errore);
+        Assert.Contains("G2", errore);
+    }
+
+    [Fact]
+    public async Task ScopeS0SenzaSelettoreVerificabileENegato()
+    {
+        await using var db = NuovoContesto();
+        var (grant, errore) = await NuovoServizio(db).EmettiAsync(
+            Guid.NewGuid(), Guid.NewGuid(), RichiestaTipo(Guid.NewGuid()) with
+            {
+                PurposeCode = "SPIEGAZIONE_CALCOLO",
+                ScopeLevel = "S0",
+                AziendaId = null,
+                Periodo = null,
+                Risorse = ["Cedolini"],
+                Operazioni = ["read"],
+            });
+        Assert.Null(grant);
+        Assert.Contains("Scope S0 sospeso", errore);
+    }
+
     [Theory]
     [InlineData("Cartellini.Malattia")] // D3A: serve grant GS, non in G2
     [InlineData("Utenti")]              // D4: mai al modello
@@ -94,9 +166,11 @@ public sealed class AiGovernorTests : IDisposable
     [Fact]
     public async Task PreflightSpiegaCosaFaraInItaliano()
     {
+        var tenant = Guid.NewGuid();
         await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
         var esito = await NuovoServizio(db).PreflightAsync(
-            Guid.NewGuid(), Guid.NewGuid(), RichiestaTipo(Guid.NewGuid()));
+            tenant, Guid.NewGuid(), RichiestaTipo(azienda));
         Assert.True(esito.Consentito);
         Assert.Contains("Leggerò:", esito.Descrizione);
         Assert.Contains("Non farò: invii, pagamenti o modifiche", esito.Descrizione);
@@ -123,8 +197,9 @@ public sealed class AiGovernorTests : IDisposable
         var tenant = Guid.NewGuid();
         var utente = Guid.NewGuid();
         await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
         var servizio = NuovoServizio(db);
-        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(Guid.NewGuid()));
+        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(azienda));
 
         // Alterare un carattere del payload invalida la firma HMAC.
         var parti = grant!.Lease.Split('.');
@@ -142,12 +217,40 @@ public sealed class AiGovernorTests : IDisposable
         var tenantA = Guid.NewGuid();
         var utente = Guid.NewGuid();
         await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenantA);
         var servizio = NuovoServizio(db);
-        var (grant, _) = await servizio.EmettiAsync(tenantA, utente, RichiestaTipo(Guid.NewGuid()));
+        var (grant, _) = await servizio.EmettiAsync(tenantA, utente, RichiestaTipo(azienda));
 
         var esito = await servizio.AutorizzaAccessoAsync(Guid.NewGuid(), utente, grant!.Lease, "Cedolini", "read");
         Assert.False(esito.Consentito);
         Assert.Contains("Tenant non corrispondente", esito.Motivo);
+    }
+
+    [Fact]
+    public async Task UtenteDiversoDelloStessoTenantNonPuoUsareORevocareOVedereIlMandato()
+    {
+        var tenant = Guid.NewGuid();
+        var proprietario = Guid.NewGuid();
+        var altroUtente = Guid.NewGuid();
+        await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
+        var servizio = NuovoServizio(db);
+        var (grant, _) = await servizio.EmettiAsync(
+            tenant, proprietario, RichiestaTipo(azienda));
+
+        var accesso = await servizio.AutorizzaAccessoAsync(
+            tenant, altroUtente, grant!.Lease, "Cedolini", "read");
+        Assert.False(accesso.Consentito);
+        Assert.Contains("Utente non corrispondente", accesso.Motivo);
+        Assert.False(await servizio.RevocaAsync(
+            tenant, altroUtente, grant.Manifest.GrantId));
+        Assert.Null(await servizio.CosaVedeAsync(
+            tenant, altroUtente, grant.Manifest.GrantId));
+
+        Assert.NotNull(await servizio.CosaVedeAsync(
+            tenant, proprietario, grant.Manifest.GrantId));
+        Assert.True((await servizio.AutorizzaAccessoAsync(
+            tenant, proprietario, grant.Lease, "Cedolini", "read")).Consentito);
     }
 
     [Fact]
@@ -156,10 +259,10 @@ public sealed class AiGovernorTests : IDisposable
         var tenant = Guid.NewGuid();
         var utente = Guid.NewGuid();
         await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
         var servizio = NuovoServizio(db);
-        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(Guid.NewGuid()) with
+        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(azienda) with
         {
-            PurposeCode = "SPIEGAZIONE_CALCOLO", ScopeLevel = "S1", Periodo = null,
             Risorse = ["Cedolini"], Operazioni = ["read"],
         });
 
@@ -178,8 +281,9 @@ public sealed class AiGovernorTests : IDisposable
         var tenant = Guid.NewGuid();
         var utente = Guid.NewGuid();
         await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
         var servizio = NuovoServizio(db);
-        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(Guid.NewGuid()));
+        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(azienda));
 
         // Dentro il TTL ma oltre i 30 minuti di inattività della modalità Guidata.
         _orologio.Avanza(TimeSpan.FromMinutes(31));
@@ -187,7 +291,7 @@ public sealed class AiGovernorTests : IDisposable
         Assert.False(inattivo.Consentito);
         Assert.Contains("inattivo", inattivo.Motivo);
 
-        // Oltre il TTL assoluto (120 minuti per CONTROLLO_ANOMALIE): la lease stessa è scaduta.
+        // Oltre il TTL assoluto (120 minuti): la lease stessa è scaduta.
         _orologio.Avanza(TimeSpan.FromMinutes(120));
         var scaduto = await servizio.AutorizzaAccessoAsync(tenant, utente, grant.Lease, "Cedolini", "read");
         Assert.False(scaduto.Consentito);
@@ -200,8 +304,9 @@ public sealed class AiGovernorTests : IDisposable
         var tenant = Guid.NewGuid();
         var utente = Guid.NewGuid();
         await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
         var servizio = NuovoServizio(db);
-        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(Guid.NewGuid()));
+        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(azienda));
 
         Assert.True((await servizio.AutorizzaAccessoAsync(tenant, utente, grant!.Lease, "Cedolini", "read")).Consentito);
         await servizio.RevocaAsync(tenant, utente, grant.Manifest.GrantId);
@@ -211,8 +316,8 @@ public sealed class AiGovernorTests : IDisposable
         Assert.Contains("revocato", dopoRevoca.Motivo);
 
         // «Arresta AI»: due nuovi mandati attivi, un colpo li revoca entrambi.
-        var (g1, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(Guid.NewGuid()));
-        var (g2, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(Guid.NewGuid()));
+        var (g1, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(azienda));
+        var (g2, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(azienda));
         Assert.Equal(2, await servizio.ArrestaTuttoAsync(tenant, utente));
         Assert.False((await servizio.AutorizzaAccessoAsync(tenant, utente, g1!.Lease, "Cedolini", "read")).Consentito);
         Assert.False((await servizio.AutorizzaAccessoAsync(tenant, utente, g2!.Lease, "Cedolini", "read")).Consentito);
@@ -229,8 +334,9 @@ public sealed class AiGovernorTests : IDisposable
         Guid grantId;
         await using (var db = NuovoContesto())
         {
+            var azienda = await CreaAziendaAsync(db, tenant);
             var (grant, errore) = await NuovoServizio(db).EmettiAsync(
-                tenant, utente, RichiestaTipo(Guid.NewGuid()) with { MaxLetture = 10 });
+                tenant, utente, RichiestaTipo(azienda) with { MaxLetture = 10 });
             Assert.Null(errore);
             lease = grant!.Lease;
             grantId = grant.Manifest.GrantId;
@@ -251,6 +357,30 @@ public sealed class AiGovernorTests : IDisposable
         Assert.Equal(10, salvato.LettureUsate); // mai oltre il massimo, mai doppi conteggi
     }
 
+    [Fact]
+    public async Task QuotaNonSiAggiraConOverflowInt()
+    {
+        var tenant = Guid.NewGuid();
+        var utente = Guid.NewGuid();
+        await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
+        var servizio = NuovoServizio(db);
+        var (grant, errore) = await servizio.EmettiAsync(
+            tenant, utente, RichiestaTipo(azienda) with { MaxLetture = 10 });
+        Assert.Null(errore);
+
+        Assert.True((await servizio.AutorizzaAccessoAsync(
+            tenant, utente, grant!.Lease, "Cedolini", "read")).Consentito);
+        var ostile = await servizio.AutorizzaAccessoAsync(
+            tenant, utente, grant.Lease, "Cedolini", "read", int.MaxValue);
+
+        Assert.False(ostile.Consentito);
+        Assert.Contains("Quota", ostile.Motivo);
+        var salvato = await db.AiScopeGrants.AsNoTracking()
+            .SingleAsync(g => g.Id == grant.Manifest.GrantId);
+        Assert.Equal(1, salvato.LettureUsate);
+    }
+
     // ---------- Audit: catena tamper-evident e niente rumore nel registro GDPR ----------
 
     [Fact]
@@ -259,8 +389,9 @@ public sealed class AiGovernorTests : IDisposable
         var tenant = Guid.NewGuid();
         var utente = Guid.NewGuid();
         await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
         var servizio = NuovoServizio(db);
-        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(Guid.NewGuid()));
+        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(azienda));
         await servizio.AutorizzaAccessoAsync(tenant, utente, grant!.Lease, "Cedolini", "read");
         await servizio.AutorizzaAccessoAsync(tenant, utente, grant.Lease, "Fatture", "read"); // diniego
         await servizio.RevocaAsync(tenant, utente, grant.Manifest.GrantId);
@@ -283,12 +414,16 @@ public sealed class AiGovernorTests : IDisposable
         var tenant = Guid.NewGuid();
         var utente = Guid.NewGuid();
         await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
+        var righePrimaDelGovernor = await db.AuditLog.CountAsync(a => a.TenantId == tenant);
         var servizio = NuovoServizio(db);
-        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(Guid.NewGuid()));
+        var (grant, _) = await servizio.EmettiAsync(tenant, utente, RichiestaTipo(azienda));
         await servizio.AutorizzaAccessoAsync(tenant, utente, grant!.Lease, "Cedolini", "read");
 
-        // Mandati e audit AI sono control plane: nessuna riga nel registro attività GDPR.
-        Assert.Empty(db.AuditLog.Where(a => a.TenantId == tenant));
+        // La creazione dell'azienda di setup è auditata; il control plane del Governor non deve
+        // aggiungere altro rumore al registro GDPR.
+        Assert.Equal(righePrimaDelGovernor,
+            await db.AuditLog.CountAsync(a => a.TenantId == tenant));
     }
 
     private sealed class OrologioRegolabile(DateTimeOffset iniziale) : TimeProvider

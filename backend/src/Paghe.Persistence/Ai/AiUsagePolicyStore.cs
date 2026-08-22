@@ -2,14 +2,15 @@ namespace Paghe.Persistence.Ai;
 
 /// <summary>
 /// Policy d'uso per una finalità (AiUsagePolicy del piano §6.2, sottoinsieme G2): stabilisce il
-/// massimo concedibile; un grant può soltanto restringerla. In G2 il massimo assoluto è
-/// S0-S2 / A1-A2, operazioni read/search/draft, nessuna scrittura.
+/// massimo concedibile; un grant può soltanto restringerla. Nel verticale G2 corrente il massimo
+/// effettivo è S1-S2 / A1, operazioni read/search, nessuna scrittura.
 /// </summary>
 public sealed record AiUsagePolicy(
     string PurposeCode,
     string Descrizione,
     string ScopeMassimo,          // S0 | S1 | S2
     string AutonomiaMassima,      // A1 | A2
+    IReadOnlyList<string> RisorseAmmesse,
     IReadOnlyList<string> OperazioniAmmesse,
     int TtlMassimoMinuti,
     int QuotaLettureDefault,
@@ -22,9 +23,8 @@ public sealed record AiUsagePolicy(
 /// </summary>
 public static class AiUsagePolicyStore
 {
-    public const string Versione = "2026-07-16.1";
+    public const string Versione = "2026-08-17.2";
 
-    private static readonly string[] LetturaEBozza = ["read", "search", "draft"];
     private static readonly string[] SolaLettura = ["read", "search"];
 
     private static readonly Dictionary<string, AiUsagePolicy> Policies =
@@ -33,31 +33,37 @@ public static class AiUsagePolicyStore
             ["SPIEGAZIONE_CALCOLO"] = new(
                 "SPIEGAZIONE_CALCOLO",
                 "Spiegare un risultato del motore deterministico citando fonti e periodo.",
-                ScopeMassimo: "S1", AutonomiaMassima: "A1", SolaLettura,
+                ScopeMassimo: "S1", AutonomiaMassima: "A1",
+                ["Cedolini", "Rapporti", "Ccnl", "ParametriNormativi"], SolaLettura,
                 TtlMassimoMinuti: 30, QuotaLettureDefault: 25, QuotaLettureMassima: 100),
 
-            ["CONTROLLO_ANOMALIE"] = new(
-                "CONTROLLO_ANOMALIE",
+            ["CONTROLLO_ANOMALIE_PAGHE"] = new(
+                "CONTROLLO_ANOMALIE_PAGHE",
                 "Controllare completezza e incoerenze dei dati di un'azienda/periodo.",
-                ScopeMassimo: "S2", AutonomiaMassima: "A2", LetturaEBozza,
+                ScopeMassimo: "S2", AutonomiaMassima: "A1",
+                ["Aziende", "Dipendenti", "Rapporti", "Cartellini", "Cedolini",
+                    "Scadenzario", "Durc", "PraticheF24"], SolaLettura,
                 TtlMassimoMinuti: 120, QuotaLettureDefault: 250, QuotaLettureMassima: 1000),
 
             ["PREPARAZIONE_MESE_PAGHE"] = new(
                 "PREPARAZIONE_MESE_PAGHE",
-                "Preparare la pratica mensile paghe: presenze, variabili, bozze cedolino.",
-                ScopeMassimo: "S2", AutonomiaMassima: "A2", LetturaEBozza,
+                "Controllare la preparazione mensile paghe senza calcolare né salvare cedolini.",
+                ScopeMassimo: "S2", AutonomiaMassima: "A1",
+                ["Aziende", "Dipendenti", "Rapporti", "Cartellini", "Cedolini",
+                    "ParametriNormativi", "Ccnl"], SolaLettura,
                 TtlMassimoMinuti: 120, QuotaLettureDefault: 250, QuotaLettureMassima: 1000),
 
-            ["LETTURA_DOCUMENTO_IMPORTATO"] = new(
-                "LETTURA_DOCUMENTO_IMPORTATO",
+            ["LETTURA_DOCUMENTO"] = new(
+                "LETTURA_DOCUMENTO",
                 "Leggere un documento importato e proporre i campi (l'euristica vince).",
-                ScopeMassimo: "S1", AutonomiaMassima: "A2", LetturaEBozza,
+                ScopeMassimo: "S1", AutonomiaMassima: "A1", [], SolaLettura,
                 TtlMassimoMinuti: 30, QuotaLettureDefault: 25, QuotaLettureMassima: 100),
 
-            ["RIEPILOGO_SCADENZE"] = new(
-                "RIEPILOGO_SCADENZE",
+            ["SCADENZE_PROMEMORIA"] = new(
+                "SCADENZE_PROMEMORIA",
                 "Riepilogare scadenze e adempimenti dell'azienda con bozze di promemoria.",
-                ScopeMassimo: "S2", AutonomiaMassima: "A2", LetturaEBozza,
+                ScopeMassimo: "S2", AutonomiaMassima: "A1",
+                ["Scadenzario", "Durc", "PraticheF24"], SolaLettura,
                 TtlMassimoMinuti: 60, QuotaLettureDefault: 100, QuotaLettureMassima: 500),
         };
 

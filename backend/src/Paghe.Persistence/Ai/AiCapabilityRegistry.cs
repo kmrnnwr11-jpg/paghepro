@@ -22,19 +22,27 @@ public static class AiCapabilityRegistry
     private static readonly AiCapability[] Capabilities =
     [
         new("controllo.scadenze", "Adempimenti", "read",
-            ["strict", "guided"], ["Scadenzario"], ["RIEPILOGO_SCADENZE", "CONTROLLO_ANOMALIE"],
+            ["strict", "guided"], ["Scadenzario"], ["SCADENZE_PROMEMORIA", "CONTROLLO_ANOMALIE_PAGHE"],
+            EffettiEsterni: false, GateRichiesto: "G2"),
+
+        new("controllo.durc_f24", "Adempimenti", "read",
+            ["strict", "guided"], ["Durc", "PraticheF24"],
+            ["SCADENZE_PROMEMORIA", "CONTROLLO_ANOMALIE_PAGHE"],
             EffettiEsterni: false, GateRichiesto: "G2"),
 
         new("controllo.anagrafica.azienda", "Anagrafiche", "read",
-            ["strict", "guided"], ["Aziende"], ["CONTROLLO_ANOMALIE"],
+            ["strict", "guided"], ["Aziende"],
+            ["CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE"],
             EffettiEsterni: false, GateRichiesto: "G2"),
 
         new("controllo.dipendenti.inquadramento", "Paghe", "read",
-            ["strict", "guided"], ["Dipendenti"], ["CONTROLLO_ANOMALIE"],
+            ["strict", "guided"], ["Dipendenti"],
+            ["CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE"],
             EffettiEsterni: false, GateRichiesto: "G2"),
 
         new("controllo.presenze.mese", "Paghe", "read",
-            ["guided"], ["Cartellini", "Rapporti", "Cedolini"], ["CONTROLLO_ANOMALIE", "PREPARAZIONE_MESE_PAGHE"],
+            ["guided"], ["Cartellini", "Rapporti", "Cedolini", "Ccnl", "ParametriNormativi"],
+            ["CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE"],
             EffettiEsterni: false, GateRichiesto: "G2"),
 
         // Richiedono un modello: restano spente finché l'isolamento G1 e il gate G3 non sono provati.
@@ -43,7 +51,7 @@ public static class AiCapabilityRegistry
             EffettiEsterni: false, GateRichiesto: "G3"),
 
         new("lettura.documento.importato", "Documenti", "unavailable",
-            ["strict", "guided"], [], ["LETTURA_DOCUMENTO_IMPORTATO"],
+            ["strict", "guided"], [], ["LETTURA_DOCUMENTO"],
             EffettiEsterni: false, GateRichiesto: "G4"),
     ];
 
@@ -52,4 +60,37 @@ public static class AiCapabilityRegistry
     public static AiCapability? Trova(string capabilityId) =>
         Capabilities.FirstOrDefault(c =>
             string.Equals(c.CapabilityId, capabilityId, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Verifica che ogni risorsa richiesta sia coperta da una capability realmente disponibile
+    /// per finalità, modalità e gate correnti. La policy da sola non può quindi elevare una
+    /// capability G3/G4 o ancora marcata «unavailable».
+    /// </summary>
+    public static (bool Consentito, string? Motivo) VerificaUsoG2(
+        string purposeCode, string modalita, IEnumerable<string> risorse)
+    {
+        string modo = modalita switch
+        {
+            "Stretta" => "strict",
+            "Guidata" => "guided",
+            _ => "",
+        };
+
+        foreach (var risorsa in risorse)
+        {
+            var candidate = Capabilities.Where(c =>
+                c.PurposeCode.Contains(purposeCode, StringComparer.OrdinalIgnoreCase)
+                && c.RisorseUsate.Contains(risorsa, StringComparer.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (candidate.Length == 0)
+                return (false, $"Nessuna capability collega la finalità '{purposeCode}' alla risorsa '{risorsa}'.");
+            if (!candidate.Any(c => c.StatoLocale != "unavailable"
+                && c.GateRichiesto == "G2"
+                && c.ModalitaSupportate.Contains(modo, StringComparer.OrdinalIgnoreCase)))
+                return (false, $"La capability per '{risorsa}' non è disponibile in modalità {modalita} al gate G2.");
+        }
+
+        return (true, null);
+    }
 }

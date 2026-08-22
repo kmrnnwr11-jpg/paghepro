@@ -978,6 +978,135 @@ public sealed class AuroraRuntimeTests : IDisposable
         Assert.Equal(0, ripristini);
     }
 
+    // ---------- Riconciliazione G5: proposta, applicazione e audit devono coincidere ----------
+
+    private AiGrantService GovernorA3(PagheDbContext db) => new(
+        db, _opzioniGovernor, _orologio,
+        new AiRolloutPolicy("A3", "Confirmed", [$"{_tenant}:{_utente}"]));
+
+    private async Task<(AiGrantService Governor, Guid GrantId, AiRuntimeStore Store, Guid Azienda)>
+        ScenarioGovernatoA3Async(PagheDbContext db)
+    {
+        var azienda = await CreaAziendaConDipendentiAsync(db);
+        var governor = GovernorA3(db);
+        var (grant, errore) = await governor.EmettiAsync(_tenant, _utente, new RichiestaGrant(
+            "PREPARAZIONE_MESE_PAGHE", "Guidata", "S2", azienda, "2026-07",
+            ["Cartellini"], ["draft", "apply_reversible"],
+            Permessi:
+            [
+                new("Cartellini", "draft"),
+                new("Cartellini", "apply_reversible"),
+            ]), ruolo: "operatore");
+        Assert.Null(errore);
+        return (governor, grant!.Manifest.GrantId, new AiRuntimeStore(db, _opzioniProposta, _orologio), azienda);
+    }
+
+    private async Task<(AiPropostaEntity Proposta, string Token)> PropostaGovernataAsync(
+        AiRuntimeStore store, AiGrantService governor, Guid grantId, Guid azienda)
+    {
+        var (proposta, token) = await store.CreaPropostaGovernataAsync(
+            new NuovaPropostaAurora(
+                _tenant, _utente, grantId, null,
+                "compila_presenze", CompilaPresenzeAuroraService.VersioneStrumento,
+                "Cartellini", "apply_reversible", azienda, "2026-07",
+                ArgomentiProva, UndoProva, "PRE-HASH", "POST-HASH",
+                "Registra assenze non retribuite",
+                [new RigaDiffAurora("01/07/2026", "8 ore lavorate", "8 ore di assenza")],
+                Confermabile: true),
+            c => governor.AutorizzaPropostaAsync(
+                _tenant, _utente, grantId, azienda, "2026-07", "Cartellini", "operatore", c));
+        return (proposta, token!);
+    }
+
+    private Task<EsitoOperazionePropostaAurora> ConfermaGovernataComeEndpointAsync(
+        AiRuntimeStore store, AiGrantService governor, string? token) =>
+        store.ConfermaGovernataAsync(_tenant, _utente, token,
+            _ => (true, null),
+            (meta, c) => governor.AutorizzaEffettoPropostaAsync(
+                _tenant, _utente, meta.GrantId, meta.AziendaId, meta.Periodo,
+                meta.Risorsa, meta.Operazione, "operatore", c),
+            (_, _, _) => Task.FromResult((true, """{"ok":true}""")),
+            (meta, c) => governor.RegistraEventoPropostaAsync(
+                _tenant, _utente, meta.GrantId, meta.PropostaId, "PropostaApplicata", null, c));
+
+    [Fact]
+    public async Task Riconciliazione_LifecycleCompletoGovernato_Integra()
+    {
+        await using var db = NuovoContesto();
+        var (governor, grantId, store, azienda) = await ScenarioGovernatoA3Async(db);
+
+        // Prima proposta: applicata e poi ripristinata con il token di undo.
+        var (_, token) = await PropostaGovernataAsync(store, governor, grantId, azienda);
+        var applicata = await ConfermaGovernataComeEndpointAsync(store, governor, token);
+        Assert.Equal("Applicata", applicata.Stato);
+        var ripristino = await store.RipristinaAsync(_tenant, _utente, applicata.TokenUndo,
+            _ => (true, null),
+            (_, _, _) => Task.FromResult((true, "{}")),
+            (meta, c) => governor.RegistraEventoPropostaAsync(
+                _tenant, _utente, meta.GrantId, meta.PropostaId, "PropostaRipristinata", null, c));
+        Assert.Equal("Ripristinata", ripristino.Stato);
+
+        // Seconda proposta: annullata prima della conferma.
+        var (_, token2) = await PropostaGovernataAsync(store, governor, grantId, azienda);
+        var annullo = await store.AnnullaAsync(_tenant, _utente, token2,
+            (meta, c) => governor.RegistraEventoPropostaAsync(
+                _tenant, _utente, meta.GrantId, meta.PropostaId, "PropostaAnnullata", null, c));
+        Assert.Equal("Annullata", annullo.Stato);
+
+        var esito = await new RiconciliazioneProposteAurora(db).VerificaAsync(_tenant);
+
+        Assert.True(esito.Integra, string.Join("; ", esito.Anomalie.Select(a => $"{a.Tipo}: {a.Dettaglio}")));
+        Assert.Equal(2, esito.ProposteTotali);
+        Assert.Equal(1, esito.PropostePerStato["Ripristinata"]);
+        Assert.Equal(1, esito.PropostePerStato["Annullata"]);
+        Assert.Equal(3, esito.EventiLifecycle);
+    }
+
+    [Fact]
+    public async Task Riconciliazione_Manomissioni_RilevateSenzaRipararle()
+    {
+        await using var db = NuovoContesto();
+        var (governor, grantId, store, azienda) = await ScenarioGovernatoA3Async(db);
+        var (proposta, token) = await PropostaGovernataAsync(store, governor, grantId, azienda);
+        var applicata = await ConfermaGovernataComeEndpointAsync(store, governor, token);
+        Assert.Equal("Applicata", applicata.Stato);
+
+        // Manomissioni simulate con SQL diretto (l'audit applicativo è append-only e la
+        // riconciliazione deve accorgersi proprio di chi lo aggira): audit dell'effetto
+        // rimosso, contatore gonfiato, evento orfano e stato intermedio persistito.
+        await db.Database.ExecuteSqlAsync(
+            $"""DELETE FROM "AiAudit" WHERE "TenantId" = {_tenant} AND "Evento" = 'PropostaApplicata'""");
+        await db.Database.ExecuteSqlAsync(
+            $"""UPDATE "AiScopeGrants" SET "EffettiUsati" = "EffettiUsati" + 1 WHERE "Id" = {grantId}""");
+        var sequenza = await db.AiAudit.AsNoTracking()
+            .Where(a => a.TenantId == _tenant).MaxAsync(a => a.Sequenza) + 1;
+        string dettaglioOrfano = $"proposta={Guid.NewGuid():N}";
+        await db.Database.ExecuteSqlAsync(
+            $"""
+             INSERT INTO "AiAudit"
+                 ("Id", "TenantId", "Sequenza", "GrantId", "UtenteId", "Evento",
+                  "Dettaglio", "Motivo", "QuandoUtc", "HashPrecedente", "Hash")
+             VALUES ({Guid.NewGuid()}, {_tenant}, {sequenza}, {grantId}, {_utente},
+                 'PropostaRipristinata', {dettaglioOrfano}, NULL,
+                 {_orologio.GetUtcNow().UtcDateTime}, '', 'MANOMESSO')
+             """);
+        var (seconda, _) = await PropostaGovernataAsync(store, governor, grantId, azienda);
+        await db.AiProposte.Where(p => p.Id == seconda.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.Stato, "InApplicazione"));
+
+        var esito = await new RiconciliazioneProposteAurora(db).VerificaAsync(_tenant);
+
+        Assert.False(esito.Integra);
+        var tipi = esito.Anomalie.Select(a => a.Tipo).ToArray();
+        Assert.Contains("EffettoSenzaAudit", tipi);
+        Assert.Contains("QuotaEffettiDiscordante", tipi);
+        Assert.Contains("AuditOrfano", tipi);
+        Assert.Contains("StatoIntermedioPersistito", tipi);
+        // La verifica è di sola lettura: la proposta manomessa resta come l'abbiamo lasciata.
+        Assert.Equal("InApplicazione",
+            (await db.AiProposte.AsNoTracking().SingleAsync(p => p.Id == seconda.Id)).Stato);
+    }
+
     [Fact]
     public void Codec_Proposta_FirmaERoundTrip()
     {

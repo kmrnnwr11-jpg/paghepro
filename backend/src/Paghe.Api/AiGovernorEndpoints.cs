@@ -156,6 +156,17 @@ public static class AiGovernorEndpoints
             return Results.Ok(await servizio.VerificaCatenaAsync(TenantCorrente(user), ct));
         });
 
+        // Riconciliazione G5 fra proposta, applicazione e audit (solo admin/super-admin).
+        gruppo.MapGet("/proposte/riconciliazione", async (
+            ClaimsPrincipal user, RiconciliazioneProposteAurora servizio, CancellationToken ct) =>
+        {
+            var ruolo = user.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.Equals(ruolo, RuoloPolicy.Admin, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(ruolo, AuthService.RuoloSuperAdmin, StringComparison.OrdinalIgnoreCase))
+                return Results.Forbid();
+            return Results.Ok(await servizio.VerificaAsync(TenantCorrente(user), ct));
+        });
+
         return app;
     }
 

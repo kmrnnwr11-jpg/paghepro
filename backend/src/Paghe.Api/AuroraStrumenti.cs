@@ -313,6 +313,7 @@ public static class AuroraStrumentiCatalogo
         services.AddScoped<AiToolRegistry>();
         services.AddScoped<IEsecutoreLettureAurora, EsecutoreLettureAurora>();
         services.AddScoped<AiRuntimeStore>();
+        services.AddScoped<RiconciliazioneProposteAurora>();
         // Factory esplicita: il timeout per strumento resta il default di produzione.
         services.AddScoped(sp => new AuroraAgentRuntime(
             sp.GetRequiredService<AiChatClient>(),

@@ -17,6 +17,9 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile.railway
     dockerContext: .
+    # Modalità personale locale: il servizio cloud non deve ripartire da un commit.
+    # La sospensione effettiva dell'istanza già creata va confermata una volta nel dashboard.
+    autoDeployTrigger: off
     plan: free
     region: frankfurt
     healthCheckPath: /health
@@ -44,16 +47,17 @@ services:
       - key: Sdi__Provider
         value: Simulato
 
-      # Assistente a chat (Aurora) e lettura documenti. "DeepSeek" richiede la chiave qui
-      # sotto; "Spento" ferma tutto. Con provider acceso ma chiave vuota la chat resta
-      # spenta da sola e lo dice, invece di provarci e prendere 401.
+      # Fail-closed: il modello resta spento finché il profilo G1 non è approvato; A2 resta
+      # comunque un gate di rollout. Il controllo deterministico dei cedolini non usa provider.
       - key: Ai__Provider
-        value: DeepSeek
-
-      # Chiave del provider AI (platform.deepseek.com → API keys). Si incolla nel pannello
-      # Render, non nel repository: qui finirebbe su GitHub.
-      - key: Ai__ApiKey
-        sync: false
+        value: Spento
+      # Difesa in profondità: vieta provider remoti anche in caso di configurazione parziale.
+      - key: Ai__SoloLocale
+        value: "true"
+      - key: Ai__ProviderCloudApprovato
+        value: "false"
+      - key: Ai__GateLocaleG1Verificato
+        value: "false"
 
       # Riduce il consumo di memoria: il piano Free ha 512 MB.
       - key: DOTNET_gcServer

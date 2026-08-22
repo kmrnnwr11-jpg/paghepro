@@ -940,17 +940,30 @@ uguale all'audit e cancellazione completa di tutti i derivati.
 
 ### Fase G5 — Scritture reversibili
 
-- [ ] proposta strutturata e validazione schema;
-- [ ] diff leggibile;
-- [ ] conferma per lotto o standing approval `A4` limitata e a scadenza;
-- [ ] transazione, idempotenza e undo;
-- [ ] restrizione da Workspace a `S1/S2`;
-- [ ] limiti e checkpoint batch;
-- [ ] riconciliazione fra proposta, applicazione e audit.
+- [x] proposta strutturata e validazione schema;
+- [x] diff leggibile;
+- [x] conferma per lotto (solo lotto singolo confermato; standing approval `A4` non costruita);
+- [x] transazione, idempotenza e undo;
+- [ ] restrizione da Workspace a `S1/S2` (Workspace non esiste ancora: nulla da restringere);
+- [ ] limiti e checkpoint batch (il lotto singolo è limitato per costruzione; batch multi-lotto
+      rinviato a G6);
+- [x] riconciliazione fra proposta, applicazione e audit.
 
 **Gate G5:** 100% delle scritture AI ha diff, transazione e undo ed è coperta da conferma del lotto
 o standing approval `A4` valida; zero scritture globali o fuori scope; ripetere la stessa richiesta
 non duplica effetti.
+
+**Stato verificato 23 agosto 2026:** il protocollo A3 del primo verticale (`compila_presenze`)
+soddisfa proposta firmata cifrata con pre/postcondizioni, diff, conferma-effetto-audit nella
+stessa transazione serializable, replay senza duplicati, annullo e undo con token dedicato
+(finestra 24 ore). La riconciliazione proposta-applicazione-audit è esposta ad admin via
+`/api/ai/governor/proposte/riconciliazione` e nella pagina Registro attività. Rollout
+fail-closed: default `A2`/`Off` ovunque (Render compreso); il collaudo richiede coppie esatte
+tenant:utente. Verifiche: backend 907/907 + fuzz 10.000, frontend 40/40, smoke Production su
+copia isolata del database reale (7 migrazioni applicate, rotazione chiavi, endpoint fail-closed,
+originale intatto). Il gate resta APERTO: mancano i tre cicli shadow con modello vero (bloccati
+dalla verifica DPA del fondatore) e il lotto batch multi-cartellino. Il completamento parziale
+non accende alcun provider.
 
 ### Fase G6 — Lavori programmati interni
 

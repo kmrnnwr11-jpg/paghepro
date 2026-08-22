@@ -347,7 +347,14 @@ export function AuroraPanel({
         <p className="cp-scope">
           Pagina: <b>{sezione}</b>{azienda ? <> · Azienda: <b>{azienda.ragioneSociale}</b></> : null}<br />
           La chat spiega soltanto. Il controllo cedolini legge un lotto massimo di 10 righe
-          solo dopo il preflight e non modifica nulla.
+          solo dopo il preflight e non modifica nulla.<br />
+          {stato?.attiva ? (
+            <>Le domande scritte qui vengono inviate al provider <b>{stato.provider}</b> per
+            generare la risposta: non incollare dati che non vuoi condividere.</>
+          ) : (
+            <>Nessun testo lascia il server: i provider AI sono spenti e il controllo
+            cedolini resta interamente dentro PaghePro.</>
+          )}
         </p>
       </header>
 

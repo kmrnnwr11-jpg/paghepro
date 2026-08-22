@@ -105,13 +105,16 @@ public sealed class AiRuntimeStore(PagheDbContext db, AiPropostaOptions opzioni,
             RunId = runId,
             Strumento = strumento,
             ArgomentiHash = Hash(argomentiJson),
-            Titolo = titolo,
-            DiffJson = JsonSerializer.Serialize(diff, Json),
             CreataUtc = adesso,
             ScadeUtc = adesso.Add(DurataProposta),
         };
         proposta.ArgomentiProtetti = db.Protettore.ProteggiConContesto(
             argomentiJson, ContestoDatiProtetti.ArgomentiProposta(tenantId, proposta.Id))!;
+        proposta.Titolo = db.Protettore.ProteggiConContesto(
+            titolo, ContestoDatiProtetti.TitoloProposta(tenantId, proposta.Id))!;
+        proposta.DiffJson = db.Protettore.ProteggiConContesto(
+            JsonSerializer.Serialize(diff, Json),
+            ContestoDatiProtetti.DiffProposta(tenantId, proposta.Id))!;
         db.AiProposte.Add(proposta);
         await db.SaveChangesAsync(ct);
 
@@ -137,9 +140,11 @@ public sealed class AiRuntimeStore(PagheDbContext db, AiPropostaOptions opzioni,
 
         var adesso = orologio.GetUtcNow().UtcDateTime;
         var proposta = await db.AiProposte
-            .FirstOrDefaultAsync(p => p.Id == decodificato.PropostaId, ct);
+            .FirstOrDefaultAsync(p => p.Id == decodificato.PropostaId
+                && p.TenantId == tenantId
+                && p.UtenteId == utenteId, ct);
         // Risposta identica per proposta inesistente o di un altro utente/tenant: nessun indizio.
-        if (proposta is null || proposta.TenantId != tenantId || proposta.UtenteId != utenteId)
+        if (proposta is null)
             return new("NonTrovata", "Proposta non trovata.", null);
         if (!string.Equals(proposta.ArgomentiHash, decodificato.ArgomentiHash, StringComparison.Ordinal))
             return new("NonValida", "Il token non corrisponde alla proposta registrata.", null);
@@ -173,9 +178,17 @@ public sealed class AiRuntimeStore(PagheDbContext db, AiPropostaOptions opzioni,
         }
         catch (DbUpdateConcurrencyException)
         {
-            await db.Entry(proposta).ReloadAsync(ct);
-            return proposta.Stato == "Applicata"
-                ? new("GiaApplicata", "Operazione già applicata.", Svela(proposta))
+            // Anche il percorso di concorrenza mantiene il tenant/owner nel predicato SQL:
+            // ReloadAsync per sola PK potrebbe materializzare una riga fuori contesto.
+            db.Entry(proposta).State = EntityState.Detached;
+            var aggiornata = await db.AiProposte.AsNoTracking().FirstOrDefaultAsync(p =>
+                p.Id == decodificato.PropostaId
+                && p.TenantId == tenantId
+                && p.UtenteId == utenteId, ct);
+            if (aggiornata is null)
+                return new("NonTrovata", "Proposta non trovata.", null);
+            return aggiornata.Stato == "Applicata"
+                ? new("GiaApplicata", "Operazione già applicata.", Svela(aggiornata))
                 : new("InCorso", "Applicazione già in corso: attendi l'esito.", null);
         }
 

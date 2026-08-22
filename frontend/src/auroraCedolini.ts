@@ -37,7 +37,6 @@ export function richiestaControlloCedolini(
     risorse: ["Cedolini"],
     operazioni: ["read"],
     durataMinuti: 30,
-    maxLetture: DIMENSIONE_LOTTO_CEDOLINI_AURORA,
   };
 }
 

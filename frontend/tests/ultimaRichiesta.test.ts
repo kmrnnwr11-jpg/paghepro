@@ -32,8 +32,21 @@ test("una risposta vecchia non può sostituire i dati dello scope più recente",
 });
 
 test("la pulizia dello scope invalida anche l'ultima richiesta ancora pendente", () => {
-  const richiesta = creaSequenziatoreRichieste().apri();
+  const sequenza = creaSequenziatoreRichieste();
+  const richiesta = sequenza.apri();
   assert.equal(richiesta.attiva(), true);
-  richiesta.invalida();
+  sequenza.invalida();
   assert.equal(richiesta.attiva(), false);
+  assert.equal(richiesta.signal.aborted, true);
+});
+
+test("aprire una richiesta nuova annulla anche la fetch precedente", () => {
+  const sequenza = creaSequenziatoreRichieste();
+  const prima = sequenza.apri();
+  const seconda = sequenza.apri();
+
+  assert.equal(prima.signal.aborted, true);
+  assert.equal(prima.attiva(), false);
+  assert.equal(seconda.signal.aborted, false);
+  assert.equal(seconda.attiva(), true);
 });

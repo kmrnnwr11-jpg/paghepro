@@ -284,6 +284,12 @@ internal static class ContestoDatiProtetti
     public static string ArgomentiProposta(Guid tenantId, Guid id) =>
         Crea(tenantId, "AiProposte", id, "ArgomentiProtetti");
 
+    public static string TitoloProposta(Guid tenantId, Guid id) =>
+        Crea(tenantId, "AiProposte", id, "Titolo");
+
+    public static string DiffProposta(Guid tenantId, Guid id) =>
+        Crea(tenantId, "AiProposte", id, "DiffJson");
+
     public static string EsitoProposta(Guid tenantId, Guid id) =>
         Crea(tenantId, "AiProposte", id, "EsitoProtetto");
 

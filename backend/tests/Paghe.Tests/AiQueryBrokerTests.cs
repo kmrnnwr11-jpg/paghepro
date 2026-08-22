@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -46,9 +47,7 @@ public sealed class AiQueryBrokerTests : IDisposable
     private (ProfessionalQueryBroker Broker, AiGrantService Governor) NuoviServizi(PagheDbContext db)
     {
         var governor = new AiGrantService(db, _opzioni, _orologio);
-        var broker = new ProfessionalQueryBroker(
-            db, governor,
-            new ScadenzarioService(db), _orologio);
+        var broker = new ProfessionalQueryBroker(db, governor, _orologio);
         return (broker, governor);
     }
 
@@ -526,6 +525,72 @@ public sealed class AiQueryBrokerTests : IDisposable
     }
 
     [Fact]
+    public async Task RevocaDopoPrenotazioneEPrimaDellaProiezione_NegaAncheConGrantGiaTracciato()
+    {
+        var tenant = Guid.NewGuid();
+        var utente = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        var stringaConnessione =
+            $"Data Source=revoca-finale-broker-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
+
+        await using var ancora = new SqliteConnection(stringaConnessione);
+        await ancora.OpenAsync();
+        var opzioniBase = new DbContextOptionsBuilder<PagheDbContext>()
+            .UseSqlite(stringaConnessione)
+            .Options;
+        await using (var preparazione = new PagheDbContext(opzioniBase))
+        {
+            await preparazione.Database.EnsureCreatedAsync();
+            preparazione.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Revoca dopo prenotazione Srl",
+            });
+            await preparazione.SaveChangesAsync();
+        }
+
+        GrantEmesso grant;
+        await using (var emissione = new PagheDbContext(opzioniBase))
+        {
+            var governor = new AiGrantService(emissione, _opzioni, _orologio);
+            var (emesso, errore) = await governor.EmettiAsync(
+                tenant, utente, MandatoSu(aziendaId, "Aziende"));
+            Assert.Null(errore);
+            grant = Assert.IsType<GrantEmesso>(emesso);
+        }
+
+        var pausa = new PausaPrimaDellaProiezioneAziendaInterceptor();
+        var opzioniBroker = new DbContextOptionsBuilder<PagheDbContext>()
+            .UseSqlite(stringaConnessione)
+            .AddInterceptors(pausa)
+            .Options;
+        await using var contestoBroker = new PagheDbContext(opzioniBroker);
+        var (broker, _) = NuoviServizi(contestoBroker);
+
+        var lettura = broker.LeggiAsync(tenant, utente, grant.Lease, "Aziende");
+        await pausa.AttendiAsync();
+        await using (var contestoRevoca = new PagheDbContext(opzioniBase))
+        {
+            var governorRevoca = new AiGrantService(contestoRevoca, _opzioni, _orologio);
+            Assert.True(await governorRevoca.RevocaAsync(
+                tenant, utente, grant.Manifest.GrantId));
+        }
+        pausa.Riprendi();
+
+        var esito = await lettura;
+        Assert.False(esito.Consentito);
+        Assert.Contains("revocato", esito.Motivo, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(esito.Righe);
+
+        await using var verifica = new PagheDbContext(opzioniBase);
+        var persistito = await verifica.AiScopeGrants.AsNoTracking()
+            .SingleAsync(g => g.Id == grant.Manifest.GrantId && g.TenantId == tenant);
+        Assert.Equal("Revocato", persistito.Stato);
+        Assert.Equal(0, persistito.LettureUsate);
+    }
+
+    [Fact]
     public async Task RisorsaFuoriMandatoNegataDalGovernor()
     {
         var tenant = Guid.NewGuid();
@@ -639,6 +704,37 @@ public sealed class AiQueryBrokerTests : IDisposable
                 && Interlocked.CompareExchange(ref _intercettato, 1, 0) == 0)
                 await revoca(cancellationToken);
 
+            return result;
+        }
+    }
+
+    private sealed class PausaPrimaDellaProiezioneAziendaInterceptor : DbCommandInterceptor
+    {
+        private readonly TaskCompletionSource _raggiunta = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _riprendi = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _intercettato;
+
+        public Task AttendiAsync() => _raggiunta.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        public void Riprendi() => _riprendi.TrySetResult();
+
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            var proiezioneAzienda = command.CommandText.Contains("RagioneSociale", StringComparison.Ordinal)
+                && command.CommandText.Contains("IbanProtetto", StringComparison.Ordinal)
+                && command.CommandText.Contains("FROM \"Aziende\"", StringComparison.Ordinal);
+            if (proiezioneAzienda
+                && Interlocked.CompareExchange(ref _intercettato, 1, 0) == 0)
+            {
+                _raggiunta.TrySetResult();
+                await _riprendi.Task.WaitAsync(cancellationToken);
+            }
             return result;
         }
     }

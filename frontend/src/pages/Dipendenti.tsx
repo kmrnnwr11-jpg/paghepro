@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Building2, FileUp, Plus, Search, UserPlus, Users, X } from "lucide-react";
 import { api, type Azienda, type Cedolino, type DipendenteRapporto, type Livello } from "../api";
 import { CaricaUnilav } from "./CaricaUnilav";
 import { ComuneAutocomplete } from "../ComuneAutocomplete";
 import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
+import { creaSequenziatoreRichieste } from "../ultimaRichiesta";
 
 const DEFAULT_CCNL = "COMMERCIO_TERZIARIO";
 const DEFAULT_LIVELLO = "3";
@@ -13,9 +14,12 @@ type DipendenteConAzienda = DipendenteRapporto & {
   aziendaNome: string;
 };
 
-async function caricaDipendentiAziende(aziende: Azienda[]): Promise<DipendenteConAzienda[]> {
+async function caricaDipendentiAziende(
+  aziende: Azienda[],
+  signal?: AbortSignal,
+): Promise<DipendenteConAzienda[]> {
   const gruppi = await Promise.all(aziende.map(async (azienda) => {
-    const dipendenti = await api.dipendenti(azienda.id);
+    const dipendenti = await api.dipendenti(azienda.id, signal);
     return dipendenti.map((dipendente) => ({
       ...dipendente,
       aziendaId: azienda.id,
@@ -70,60 +74,116 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
   const [caricamento, setCaricamento] = useState(true);
   const [salvataggio, setSalvataggio] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
+  const richiesteAziende = useRef(creaSequenziatoreRichieste());
+  const richiesteLista = useRef(creaSequenziatoreRichieste());
+  const richiesteLivelli = useRef(creaSequenziatoreRichieste());
+  const montato = useRef(true);
+  const aziendaCorrenteRef = useRef<string | null>(null);
+  const [scopeLista, setScopeLista] = useState<string | null>(null);
+  aziendaCorrenteRef.current = azienda?.id ?? null;
+  const listaCorrente = useMemo(
+    () => scopeLista === (azienda?.id ?? null) ? lista : [],
+    [azienda?.id, lista, scopeLista],
+  );
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const aziende = await api.aziende();
-        setTutteAziende(aziende);
-        const a = scegliAziendaPreferita(aziende);
-        setAzienda(a);
-        setFiltroAziendaId(a?.id ?? "");
-        setLista(a ? await caricaDipendentiAziende([a]) : []);
-      } catch (e) {
-        setErrore(e instanceof Error ? e.message : "Errore di caricamento");
-      } finally {
-        setCaricamento(false);
-      }
-    })();
+  const caricaLista = useCallback(async (aziendaRichiesta: Azienda) => {
+    const richiesta = richiesteLista.current.apri();
+    const aziendaId = aziendaRichiesta.id;
+    setLista([]);
+    setScopeLista(null);
+    setCaricamento(true);
+    try {
+      const dipendenti = await caricaDipendentiAziende([aziendaRichiesta], richiesta.signal);
+      if (!richiesta.attiva() || aziendaCorrenteRef.current !== aziendaId) return;
+      setLista(dipendenti);
+      setScopeLista(aziendaId);
+    } finally {
+      if (richiesta.attiva()) setCaricamento(false);
+    }
   }, []);
 
   useEffect(() => {
+    const richiesta = richiesteAziende.current.apri();
+    (async () => {
+      try {
+        const aziende = await api.aziende(richiesta.signal);
+        if (!richiesta.attiva()) return;
+        setTutteAziende(aziende);
+        const a = scegliAziendaPreferita(aziende);
+        aziendaCorrenteRef.current = a?.id ?? null;
+        setAzienda(a);
+        setFiltroAziendaId(a?.id ?? "");
+        if (a) await caricaLista(a);
+        else {
+          setLista([]);
+          setScopeLista(null);
+          setCaricamento(false);
+        }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        if (richiesta.attiva()) {
+          setErrore(e instanceof Error ? e.message : "Errore di caricamento");
+          setCaricamento(false);
+        }
+      }
+    })();
+    return () => richiesta.invalida();
+  }, [caricaLista]);
+
+  useEffect(() => {
     if (!azienda) return;
-    let vivo = true;
+    const richiesta = richiesteLivelli.current.apri();
     const codice = codiceCcnlAzienda(azienda);
     const livelloDefault = livelloAzienda(azienda);
     setForm((f) => ({ ...f, livello: livelloDefault }));
     setLivelli([]);
-    api.livelli(codice)
+    api.livelli(codice, richiesta.signal)
       .then((r) => {
-        if (!vivo) return;
+        if (!richiesta.attiva() || aziendaCorrenteRef.current !== azienda.id) return;
         setLivelli(r.livelli);
         setForm((f) => {
           const livelloOk = r.livelli.some(l => l.codice === f.livello);
           return { ...f, livello: livelloOk ? f.livello : (r.livelli[0]?.codice ?? livelloDefault) };
         });
       })
-      .catch(() => { if (vivo) setLivelli([]); });
-    return () => { vivo = false; };
+      .catch((e) => {
+        if (!(e instanceof DOMException && e.name === "AbortError") && richiesta.attiva())
+          setLivelli([]);
+      });
+    return () => richiesta.invalida();
   }, [azienda]);
+
+  useEffect(() => {
+    montato.current = true;
+    const sequenzaAziende = richiesteAziende.current;
+    const sequenzaLista = richiesteLista.current;
+    const sequenzaLivelli = richiesteLivelli.current;
+    return () => {
+      montato.current = false;
+      sequenzaAziende.invalida();
+      sequenzaLista.invalida();
+      sequenzaLivelli.invalida();
+    };
+  }, []);
 
   async function cambiaAzienda(id: string) {
     const a = tutteAziende.find(x => x.id === id) ?? null;
     if (!a) return;
+    richiesteLista.current.invalida();
+    aziendaCorrenteRef.current = a.id;
     setFiltroAziendaId(id);
     setAzienda(a);
     salvaAziendaCorrenteId(a.id);
     setErrore(null);
     setVista("archivio");
-    setLista([]);
-    setCaricamento(true);
     try {
-      setLista(await caricaDipendentiAziende([a]));
+      await caricaLista(a);
     } catch (e) {
-      setErrore(e instanceof Error ? e.message : "Errore di caricamento");
-    } finally {
-      setCaricamento(false);
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      if (aziendaCorrenteRef.current === a.id) {
+        setErrore(e instanceof Error ? e.message : "Errore di caricamento");
+        setCaricamento(false);
+      }
     }
   }
 
@@ -157,12 +217,15 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
         ferieResidueIniziali: Number(form.ferieResidueIniziali) || 0,
         permessiResiduiIniziali: Number(form.permessiResiduiIniziali) || 0,
       });
-      setLista(await caricaDipendentiAziende([azienda]));
+      if (aziendaCorrenteRef.current !== azienda.id) return;
+      await caricaLista(azienda);
+      if (aziendaCorrenteRef.current !== azienda.id) return;
       setForm(formVuoto);
       setPartTime(false);
       setVista("archivio");
     } catch (e) {
-      setErrore(e instanceof Error ? e.message : "Errore nel salvataggio");
+      if (aziendaCorrenteRef.current === azienda.id)
+        setErrore(e instanceof Error ? e.message : "Errore nel salvataggio");
     } finally {
       setSalvataggio(false);
     }
@@ -174,39 +237,36 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
 
   // Dopo l'import UNILAV: porta la lista sull'azienda (datore) creata/trovata dal PDF.
   const dopoImport = async (az: { id: string; ragioneSociale: string }) => {
+    richiesteLista.current.invalida();
+    aziendaCorrenteRef.current = az.id;
     setAzienda(az);
     setFiltroAziendaId(az.id);
     setErrore(null);
+    setLista([]);
+    setScopeLista(null);
+    setCaricamento(true);
     salvaAziendaCorrenteId(az.id);
     setTutteAziende((correnti) =>
       correnti.some((a) => a.id === az.id) ? correnti : [...correnti, az]);
     try {
-      const [aziende, dipendenti] = await Promise.all([
-        api.aziende(),
-        api.dipendenti(az.id),
-      ]);
-      setTutteAziende(aziende);
-      setLista(dipendenti.map((dipendente) => ({
-        ...dipendente,
-        aziendaId: az.id,
-        aziendaNome: az.ragioneSociale,
-      })));
-    } catch {
+      const richiestaAziende = richiesteAziende.current.apri();
+      const aggiornamentoAziende = api.aziende(richiestaAziende.signal)
+        .then((aziende) => {
+          if (richiestaAziende.attiva()) setTutteAziende(aziende);
+        });
+      await Promise.all([aggiornamentoAziende, caricaLista(az)]);
+    } catch (e) {
+      if (!montato.current || (e instanceof DOMException && e.name === "AbortError")) return;
       try {
-        const dipendenti = await api.dipendenti(az.id);
-        setLista(dipendenti.map((dipendente) => ({
-          ...dipendente,
-          aziendaId: az.id,
-          aziendaNome: az.ragioneSociale,
-        })));
+        if (aziendaCorrenteRef.current === az.id) await caricaLista(az);
       } catch { /* ignora */ }
     }
   };
 
   const listaFiltrata = useMemo(() => {
     const testo = ricerca.trim().toLocaleLowerCase("it");
-    if (!testo) return lista;
-    return lista.filter((dipendente) => [
+    if (!testo) return listaCorrente;
+    return listaCorrente.filter((dipendente) => [
       dipendente.nominativo,
       dipendente.qualifica,
       dipendente.livello,
@@ -214,9 +274,9 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
       dipendente.aziendaNome,
       dipendente.dipendenteId,
     ].some((valore) => String(valore).toLocaleLowerCase("it").includes(testo)));
-  }, [lista, ricerca]);
+  }, [listaCorrente, ricerca]);
 
-  const ccnlPresenti = new Set(lista.map((dipendente) => dipendente.codiceCcnl)).size;
+  const ccnlPresenti = new Set(listaCorrente.map((dipendente) => dipendente.codiceCcnl)).size;
 
   function apriNuovo() {
     if (!azienda) {
@@ -265,8 +325,8 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
       {vista === "archivio" && (
         <div className="employee-pane">
           <div className="employee-stats" aria-label="Riepilogo dipendenti">
-            <div><span>Dipendenti</span><strong>{lista.length}</strong><small>nell'azienda scelta</small></div>
-            <div><span>Qualifiche</span><strong>{new Set(lista.map((d) => d.qualifica)).size}</strong><small>profili presenti</small></div>
+            <div><span>Dipendenti</span><strong>{listaCorrente.length}</strong><small>nell'azienda scelta</small></div>
+            <div><span>Qualifiche</span><strong>{new Set(listaCorrente.map((d) => d.qualifica)).size}</strong><small>profili presenti</small></div>
             <div><span>CCNL</span><strong>{ccnlPresenti}</strong><small>contratti applicati</small></div>
           </div>
 
@@ -281,7 +341,7 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
 
           {caricamento ? (
             <div className="empty-state">Caricamento dipendenti…</div>
-          ) : lista.length === 0 ? (
+          ) : listaCorrente.length === 0 ? (
             <div className="employee-empty">
               <UserPlus size={28} aria-hidden="true" />
               <strong>Nessun dipendente registrato</strong>

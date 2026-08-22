@@ -89,9 +89,10 @@ public class AiPropostaEntity
     /// <summary>SHA-256 degli argomenti in chiaro: lega il token a ciò che l'utente ha visto.</summary>
     public string ArgomentiHash { get; set; } = "";
 
+    /// <summary>Titolo cifrato tenant-bound; può contenere nominativi o riferimenti pratica.</summary>
     public string Titolo { get; set; } = "";
 
-    /// <summary>Diff leggibile (righe etichetta/da/a) serializzato, mostrato prima della conferma.</summary>
+    /// <summary>Diff JSON cifrato tenant-bound; il chiaro vive solo nella risposta monouso.</summary>
     public string DiffJson { get; set; } = "";
 
     public DateTime CreataUtc { get; set; }

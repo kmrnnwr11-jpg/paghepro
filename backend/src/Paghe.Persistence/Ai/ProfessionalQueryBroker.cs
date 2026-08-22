@@ -50,7 +50,6 @@ public sealed record EsitoQueryBroker(
 public sealed class ProfessionalQueryBroker(
     PagheDbContext db,
     AiGrantService governor,
-    ScadenzarioService scadenzario,
     TimeProvider orologio)
 {
     private const int MassimoRighe = 200;
@@ -64,38 +63,163 @@ public sealed class ProfessionalQueryBroker(
         if (!verifica.Consentito || manifest is null)
             return new(false, verifica.Motivo, nome, [], 0, verifica.LettureRimanenti);
 
-        var proiezione = nome.ToLowerInvariant() switch
+        // Prima si contano soltanto le righe nello scope (nessuna entità o PII viene
+        // materializzata), poi si prenota la quota e solo allora si costruisce la proiezione.
+        var piano = await PreparaLetturaAsync(tenantId, manifest, nome, ct);
+        if (piano.Errore is not null)
+            return new(false, piano.Errore, piano.Risorsa, [], 0, verifica.LettureRimanenti);
+
+        var (accesso, manifestPrenotato) = await governor.AutorizzaAccessoConManifestAsync(
+            tenantId, utenteId, lease, nome, "read", piano.Quantita, ct);
+        if (!accesso.Consentito || manifestPrenotato is null)
+            return new(false, accesso.Motivo, piano.Risorsa, [], 0, accesso.LettureRimanenti);
+
+        Proiezione proiezione;
+        try
         {
-            "scadenzario" => await ScadenzeAsync(tenantId, manifest, ct),
-            "aziende" => await AziendaAsync(tenantId, manifest, ct),
-            "dipendenti" => await DipendentiAsync(tenantId, manifest, ct),
-            "cartellini" => await CartelliniAsync(tenantId, manifest, ct),
-            "cedolini" => await CedoliniMeseAsync(tenantId, manifest, ct),
-            _ => new Proiezione(nome, [], 0, $"La risorsa '{nome}' non ha ancora una proiezione nel broker."),
-        };
+            proiezione = nome.ToLowerInvariant() switch
+            {
+                "scadenzario" => await ScadenzeAsync(
+                    tenantId, manifestPrenotato, piano.Quantita, piano.Totale, ct),
+                "aziende" => await AziendaAsync(
+                    tenantId, manifestPrenotato, piano.Quantita, piano.Totale, ct),
+                "dipendenti" => await DipendentiAsync(
+                    tenantId, manifestPrenotato, piano.Quantita, piano.Totale, ct),
+                "cartellini" => await CartelliniAsync(
+                    tenantId, manifestPrenotato, piano.Quantita, piano.Totale, ct),
+                "cedolini" => await CedoliniMeseAsync(
+                    tenantId, manifestPrenotato, piano.Quantita, piano.Totale, ct),
+                _ => new Proiezione(nome, [], 0,
+                    $"La risorsa '{nome}' non ha ancora una proiezione nel broker."),
+            };
+        }
+        catch
+        {
+            await governor.RimborsaLettureAsync(
+                tenantId, utenteId, manifestPrenotato.GrantId, piano.Quantita,
+                CancellationToken.None);
+            throw;
+        }
 
         if (proiezione.Errore is not null)
+        {
+            await governor.RimborsaLettureAsync(
+                tenantId, utenteId, manifestPrenotato.GrantId, piano.Quantita, ct);
             return new(false, proiezione.Errore, proiezione.Risorsa, [], 0, verifica.LettureRimanenti);
+        }
 
-        var quantita = proiezione.Righe.Count;
-        var (accesso, _) = await governor.AutorizzaAccessoConManifestAsync(
-            tenantId, utenteId, lease, nome, "read", quantita, ct);
-        return accesso.Consentito
-            ? new(true, null, proiezione.Risorsa, proiezione.Righe, proiezione.Totale, accesso.LettureRimanenti)
-            : new(false, accesso.Motivo, proiezione.Risorsa, [], 0, accesso.LettureRimanenti);
+        if (proiezione.Righe.Count > piano.Quantita)
+        {
+            await governor.RimborsaLettureAsync(
+                tenantId, utenteId, manifestPrenotato.GrantId, piano.Quantita, ct);
+            return new(false, "La proiezione ha superato la prenotazione: lettura annullata.",
+                proiezione.Risorsa, [], 0, accesso.LettureRimanenti);
+        }
+
+        var nonConsegnate = piano.Quantita - proiezione.Righe.Count;
+        if (nonConsegnate > 0)
+            await governor.RimborsaLettureAsync(
+                tenantId, utenteId, manifestPrenotato.GrantId, nonConsegnate, ct);
+
+        // Ultima vidimazione prima dell'egress: una revoca durante la query nega le righe e
+        // restituisce tutta la quota effettivamente materializzata.
+        var (finale, manifestFinale) = await governor.VerificaAccessoConManifestAsync(
+            tenantId, utenteId, lease, nome, "read", ct);
+        if (!finale.Consentito || manifestFinale?.GrantId != manifestPrenotato.GrantId)
+        {
+            await governor.RimborsaLettureAsync(
+                tenantId, utenteId, manifestPrenotato.GrantId, proiezione.Righe.Count,
+                CancellationToken.None);
+            return new(false, finale.Motivo ?? "Mandato non più spendibile.",
+                proiezione.Risorsa, [], 0, finale.LettureRimanenti);
+        }
+
+        return new(true, null, proiezione.Risorsa, proiezione.Righe,
+            proiezione.Totale, finale.LettureRimanenti);
     }
 
-    private async Task<Proiezione> ScadenzeAsync(
-        Guid tenantId, ManifestGrant manifest, CancellationToken ct)
+    private async Task<PianoLettura> PreparaLetturaAsync(
+        Guid tenantId, ManifestGrant manifest, string nome, CancellationToken ct)
     {
-        var lista = await scadenzario.ElencoAsync(tenantId, rigenera: false);
-        // Il mandato aziendale vede i promemoria dell'azienda e quelli generici dello studio.
-        var pertinenti = manifest.AziendaId is { } aziendaId
-            ? lista.Where(p => p.AziendaId == aziendaId || p.AziendaId == null)
-            : lista;
+        switch (nome.ToLowerInvariant())
+        {
+            case "scadenzario":
+            {
+                var query = db.Promemoria.AsNoTracking().Where(p => p.TenantId == tenantId);
+                if (manifest.AziendaId is { } aziendaId)
+                    query = query.Where(p => p.AziendaId == aziendaId || p.AziendaId == null);
+                var totale = await query.CountAsync(ct);
+                return Piano(nome, totale, MassimoRighe);
+            }
+            case "aziende":
+            {
+                if (manifest.AziendaId is not { } aziendaId)
+                    return Errore(nome, "Il mandato non indica l'azienda: serve scope S1/S2.");
+                var esiste = await db.Aziende.AsNoTracking()
+                    .AnyAsync(a => a.Id == aziendaId && a.TenantId == tenantId, ct);
+                return esiste ? Piano(nome, 1, 1) : Errore(nome, "Azienda del mandato non trovata.");
+            }
+            case "dipendenti":
+            {
+                if (manifest.AziendaId is not { } aziendaId)
+                    return Errore(nome, "Il mandato non indica l'azienda: serve scope S1/S2.");
+                var totale = await db.Rapporti.AsNoTracking().CountAsync(r =>
+                    r.TenantId == tenantId && r.AziendaId == aziendaId
+                    && r.Dipendente != null && r.Dipendente.TenantId == tenantId, ct);
+                return Piano(nome, totale, MassimoRighe);
+            }
+            case "cartellini":
+            case "cedolini":
+            {
+                if (manifest.AziendaId is not { } aziendaId || manifest.Periodo is not { } periodo)
+                    return Errore(nome, nome.Equals("cartellini", StringComparison.OrdinalIgnoreCase)
+                        ? "Serve un mandato S2 con azienda e periodo per leggere i cartellini."
+                        : "Serve un mandato S2 con azienda e periodo per controllare i cedolini.");
+                if (!ProvaPeriodo(periodo, out _, out _, out var inizio, out var fine))
+                    return Errore(nome, "Periodo del mandato non valido.");
+                if (nome.Equals("cedolini", StringComparison.OrdinalIgnoreCase)
+                    && !await db.Aziende.AsNoTracking()
+                        .AnyAsync(a => a.TenantId == tenantId && a.Id == aziendaId, ct))
+                    return Errore(nome, "Azienda del mandato non trovata.");
+                var totale = await db.Rapporti.AsNoTracking().CountAsync(r =>
+                    r.TenantId == tenantId && r.AziendaId == aziendaId
+                    && r.Dipendente != null && r.Dipendente.TenantId == tenantId
+                    && r.DataAssunzione <= fine
+                    && (r.DataCessazione == null || r.DataCessazione >= inizio), ct);
+                return Piano(nome, totale,
+                    nome.Equals("cedolini", StringComparison.OrdinalIgnoreCase) ? 10 : MassimoRighe);
+            }
+            default:
+                return Errore(nome,
+                    $"La risorsa '{nome}' non ha ancora una proiezione nel broker.");
+        }
+    }
 
+    private static PianoLettura Piano(string risorsa, int totale, int limite) =>
+        new(risorsa, totale, Math.Min(totale, limite), null);
+
+    private static PianoLettura Errore(string risorsa, string errore) =>
+        new(risorsa, 0, 0, errore);
+
+    private async Task<Proiezione> ScadenzeAsync(
+        Guid tenantId, ManifestGrant manifest, int limite, int totale, CancellationToken ct)
+    {
         var oggi = DateOnly.FromDateTime(orologio.GetUtcNow().UtcDateTime);
-        var righe = pertinenti.Select(p =>
+        var query = db.Promemoria.AsNoTracking().Where(p => p.TenantId == tenantId);
+        if (manifest.AziendaId is { } aziendaId)
+            query = query.Where(p => p.AziendaId == aziendaId || p.AziendaId == null);
+        var minimi = await query
+            .OrderBy(p => p.DataScadenza)
+            .Select(p => new
+            {
+                p.Titolo,
+                p.Stato,
+                p.DataScadenza,
+                p.GiorniPreavviso,
+            })
+            .Take(limite)
+            .ToListAsync(ct);
+        var righe = minimi.Select(p =>
         {
             var giorni = p.DataScadenza.DayNumber - oggi.DayNumber;
             var urgenza =
@@ -107,36 +231,35 @@ public sealed class ProfessionalQueryBroker(
             return new RigaScadenza(p.Titolo, urgenza, giorni);
         }).ToList();
 
-        return Pagina(righe, "Scadenzario");
+        return new("Scadenzario", righe.Cast<object>().ToList(), totale, null);
     }
 
     private async Task<Proiezione> AziendaAsync(
-        Guid tenantId, ManifestGrant manifest, CancellationToken ct)
+        Guid tenantId, ManifestGrant manifest, int limite, int totale, CancellationToken ct)
     {
         if (manifest.AziendaId is not { } aziendaId)
             return new("Aziende", [], 0, "Il mandato non indica l'azienda: serve scope S1/S2.");
 
         var azienda = await db.Aziende.AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Id == aziendaId && a.TenantId == tenantId, ct);
+            .Where(a => a.Id == aziendaId && a.TenantId == tenantId)
+            .Select(a => new RigaAzienda(
+                a.RagioneSociale,
+                a.MatricolaInps != null && a.MatricolaInps != "",
+                a.PatInail != null && a.PatInail != "",
+                a.CodiceCatastale != null && a.CodiceCatastale != "",
+                a.IbanProtetto != null && a.IbanProtetto != "",
+                (a.Pec != null && a.Pec != "")
+                    || (a.CodiceDestinatarioSdi != null && a.CodiceDestinatarioSdi != "")))
+            .Take(limite)
+            .FirstOrDefaultAsync(ct);
         if (azienda is null)
             return new("Aziende", [], 0, "Azienda del mandato non trovata.");
 
-        var righe = new List<object>
-        {
-            new RigaAzienda(
-                azienda.RagioneSociale,
-                MatricolaInpsPresente: !string.IsNullOrWhiteSpace(azienda.MatricolaInps),
-                PatInailPresente: !string.IsNullOrWhiteSpace(azienda.PatInail),
-                CodiceCatastalePresente: !string.IsNullOrWhiteSpace(azienda.CodiceCatastale),
-                IbanPresente: !string.IsNullOrWhiteSpace(azienda.IbanProtetto),
-                RecapitoFiscalePresente: !string.IsNullOrWhiteSpace(azienda.Pec)
-                    || !string.IsNullOrWhiteSpace(azienda.CodiceDestinatarioSdi)),
-        };
-        return new("Aziende", righe, 1, null);
+        return new("Aziende", [azienda], totale, null);
     }
 
     private async Task<Proiezione> DipendentiAsync(
-        Guid tenantId, ManifestGrant manifest, CancellationToken ct)
+        Guid tenantId, ManifestGrant manifest, int limite, int totale, CancellationToken ct)
     {
         if (manifest.AziendaId is not { } aziendaId)
             return new("Dipendenti", [], 0, "Il mandato non indica l'azienda: serve scope S1/S2.");
@@ -146,27 +269,26 @@ public sealed class ProfessionalQueryBroker(
         var query = db.Rapporti.AsNoTracking()
             .Where(r => r.TenantId == tenantId && r.AziendaId == aziendaId
                 && r.Dipendente != null && r.Dipendente.TenantId == tenantId);
-        var totale = await query.CountAsync(ct);
         var righe = await query
             .OrderBy(r => r.Dipendente!.Cognome).ThenBy(r => r.Dipendente!.Nome)
             .Select(r => new RigaDipendente(
                 (r.Dipendente!.Cognome + " " + r.Dipendente.Nome).Trim(),
                 r.CodiceCcnl,
                 r.Livello))
-            .Take(MassimoRighe)
+            .Take(limite)
             .ToListAsync(ct);
         return new("Dipendenti", righe.Cast<object>().ToList(), totale, null);
     }
 
     private async Task<Proiezione> CartelliniAsync(
-        Guid tenantId, ManifestGrant manifest, CancellationToken ct)
+        Guid tenantId, ManifestGrant manifest, int limite, int totale, CancellationToken ct)
     {
         if (manifest.AziendaId is not { } aziendaId || manifest.Periodo is not { } periodo)
             return new("Cartellini", [], 0, "Serve un mandato S2 con azienda e periodo per leggere i cartellini.");
         if (!ProvaPeriodo(periodo, out var anno, out var mese, out var inizio, out var fine))
             return new("Cartellini", [], 0, "Periodo del mandato non valido.");
 
-        var rapporti = await RapportiDelMeseAsync(tenantId, aziendaId, inizio, fine, MassimoRighe, ct);
+        var rapporti = await RapportiDelMeseAsync(tenantId, aziendaId, inizio, fine, limite, ct);
         var rapportoIds = rapporti.Select(r => r.Id).ToArray();
         var compilati = (await db.Cartellini.AsNoTracking()
             .Where(c => c.TenantId == tenantId && c.Anno == anno && c.Mese == mese
@@ -174,11 +296,11 @@ public sealed class ProfessionalQueryBroker(
             .Select(c => c.RapportoLavoroId)
             .ToListAsync(ct)).ToHashSet();
         var righe = rapporti.Select(r => new RigaCartellino(r.Nominativo, compilati.Contains(r.Id))).ToList();
-        return Pagina(righe, "Cartellini");
+        return new("Cartellini", righe.Cast<object>().ToList(), totale, null);
     }
 
     private async Task<Proiezione> CedoliniMeseAsync(
-        Guid tenantId, ManifestGrant manifest, CancellationToken ct)
+        Guid tenantId, ManifestGrant manifest, int limite, int totale, CancellationToken ct)
     {
         const int dimensioneLotto = 10;
         if (manifest.AziendaId is not { } aziendaId || manifest.Periodo is not { } periodo)
@@ -199,11 +321,8 @@ public sealed class ProfessionalQueryBroker(
         if (azienda is null)
             return new("Cedolini", [], 0, "Azienda del mandato non trovata.");
 
-        var totale = await db.Rapporti.AsNoTracking().CountAsync(r =>
-            r.TenantId == tenantId && r.AziendaId == aziendaId
-            && r.Dipendente != null && r.Dipendente.TenantId == tenantId
-            && r.DataAssunzione <= fine && (r.DataCessazione == null || r.DataCessazione >= inizio), ct);
-        var rapporti = await RapportiDelMeseAsync(tenantId, aziendaId, inizio, fine, dimensioneLotto, ct);
+        var rapporti = await RapportiDelMeseAsync(
+            tenantId, aziendaId, inizio, fine, Math.Min(limite, dimensioneLotto), ct);
         var rapportoIds = rapporti.Select(r => r.Id).ToArray();
         var cartellini = (await db.Cartellini.AsNoTracking()
             .Where(c => c.TenantId == tenantId && c.Anno == anno && c.Mese == mese
@@ -273,10 +392,8 @@ public sealed class ProfessionalQueryBroker(
         return true;
     }
 
-    private static Proiezione Pagina<T>(List<T> righe, string risorsa)
-        where T : notnull =>
-        new(risorsa, righe.Take(MassimoRighe).Cast<object>().ToList(), righe.Count, null);
-
     private sealed record Proiezione(string Risorsa, List<object> Righe, int Totale, string? Errore);
+    private sealed record PianoLettura(
+        string Risorsa, int Totale, int Quantita, string? Errore);
     private sealed record RapportoMinimo(Guid Id, string Nominativo);
 }

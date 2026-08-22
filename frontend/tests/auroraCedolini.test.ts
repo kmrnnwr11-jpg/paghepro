@@ -9,7 +9,7 @@ import {
 } from "../src/auroraCedolini.ts";
 import type { RigaCedolinoMeseAi } from "../src/api.ts";
 
-test("crea un mandato S2 vincolato ad azienda, mese e dieci letture", () => {
+test("crea una richiesta S2 con lotto UI separato dal budget deciso dal server", () => {
   const richiesta = richiestaControlloCedolini("azienda-1", "2026-07");
   assert.deepEqual(richiesta, {
     purposeCode: "PREPARAZIONE_MESE_PAGHE",
@@ -20,8 +20,9 @@ test("crea un mandato S2 vincolato ad azienda, mese e dieci letture", () => {
     risorse: ["Cedolini"],
     operazioni: ["read"],
     durataMinuti: 30,
-    maxLetture: DIMENSIONE_LOTTO_CEDOLINI_AURORA,
   });
+  assert.equal(DIMENSIONE_LOTTO_CEDOLINI_AURORA, 10);
+  assert.equal("maxLetture" in richiesta, false);
 });
 
 test("riepiloga correttamente un lotto misto", () => {

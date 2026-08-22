@@ -44,23 +44,24 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
-- **Aurora — fase A0 chiusa e runtime harness A2 (22 agosto 2026)**: su richiesta del
-  fondatore di proseguire il piano `docs/PIANO-AURORA-AGENTE.md`, la baseline è stata
-  confermata e i ~166 percorsi non committati sono diventati otto checkpoint funzionali
-  (pacchetti; workflow cedolino; chat fail-closed; Governor; frontend in due parti;
-  render.yaml; documenti), ciascuno compilante da solo. Poi è stato costruito il runtime
-  A2, con i provider ancora spenti: `AiToolRegistry` a plugin (effetto, resa UI, ruolo,
-  risorsa, operazione, gate; default DENY), turno chat che risolve la lease del mandato nel
-  Governor, letture solo dal `ProfessionalQueryBroker`, bozze vidimate come `draft` (oggi
-  rifiutate dalle policy: nessuna scrittura raggiungibile), SessionLog `AiRun`/`AiToolCall`
-  a digest senza payload, proposta cifrata con token HMAC e conferma idempotente su
-  `/api/ai/chat/conferma`, guardie del loop (giri, ripetizioni, timeout, revoca, quota).
-  Le sette capacità legacy sono riclassificate (5 letture attive, 3 scritture dichiarate al
-  gate A3, `elenco_aziende` esclusa per scope); `AiChatStrumenti` resta in quarantena coi
-  suoi test. Migrazioni `RuntimeAurora` per entrambi i provider. Kill switch riprovato dal
-  vivo (chat sospesa, azione 409, conferma contraffatta 400, moduli normali funzionanti) e
-  informativa di trasparenza nel pannello. Della fase A1 restano al fondatore: verifica
-  DPA, accensione in sviluppo e Render. Suite backend **868/868** e frontend **27/27**.
+- **Aurora — fase A0 chiusa e runtime read-only A2 verificato (22 agosto 2026)**: il
+  runtime C# usa `AiToolRegistry` a plugin e default DENY; la SPA invia la lease soltanto
+  per lo stesso utente/tenant/azienda/mese e ogni lettura passa dal
+  `ProfessionalQueryBroker`. Sono attivi cinque tool di lettura minimizzati; tre descrittori
+  di scrittura restano al gate A3 e non vengono offerti. Il SessionLog conserva digest,
+  esiti e durate senza payload; guardie server limitano giri, tool call, argomenti, timeout,
+  ripetizioni, quota e revoca. Il pannello riconcilia l'inventario dei grant prima
+  dell'emissione, revoca anche emissioni tardive/perse, invalida chat e risultati al cambio
+  scope e rilegge dal server la quota dopo ogni turno. Il budget complessivo viene deciso e
+  mostrato dal server (250 record per la policy corrente); ogni proiezione cedolini resta un
+  lotto massimo di 10. Lo scaffold di proposta cifrata/token HMAC esiste, ma
+  `/api/ai/chat/conferma` resta **409 al gate A2**: idempotenza crash-safe, riverifica del
+  grant e transazione della prima scrittura sono prerequisiti A3, non funzionalità dichiarate
+  pronte. Provider locale/cloud e Render restano spenti finché il fondatore non chiude DPA e
+  G1. Verifiche: build Release 0 errori, backend **888/888**, frontend **35/35**, modelli EF
+  SQLite/PostgreSQL allineati e smoke Production su copia isolata (13 migrazioni,
+  `integrity_check=ok`, zero violazioni FK, `/health` 200, anonimo 401, provider spento,
+  azione/conferma 409). Il database originale è rimasto invariato.
 
 - **Aurora — primo verticale governato sui cedolini, lotto 10 (verifica finale 22 agosto 2026)**:
   il pannello esegue un controllo deterministico e in sola lettura sui primi 10 rapporti del
@@ -70,12 +71,14 @@ dotnet run --project src/Paghe.Demo -c Release
   (cartellino presente/da compilare/già elaborato/bloccato/protetto), mai importi, codice fiscale, IBAN o
   dati salute. La quota è per riga restituita. Le policy limitano le risorse per finalità e il
   registry delle capability è applicato in emissione e accesso; S0 senza selettori è negato.
-  Provider cloud e locale restano spenti, la chat non riceve tool e `/api/ai/chat/azione`
-  resta fail-closed. La suite completa passa **843/843**, inclusi i test su zero rapporti, revoca
+  Provider cloud e locale restano spenti; con una lease valida il runtime può offrire soltanto
+  i tool compatibili col manifest, mentre senza lease non chiama mai il provider.
+  `/api/ai/chat/azione` resta fail-closed. La suite completa passa **888/888**, inclusi i test
+  su zero rapporti, revoca
   tra query e risposta, endpoint 409/no-tools, cambio scope, selezione multi-range, migrazione
-  dello schema ibrido reale e integrità delle evidenze del workflow; verdi anche **27/27 test
+  dello schema ibrido reale e integrità delle evidenze del workflow; verdi anche **35/35 test
   frontend**, build completa backend e build frontend. Lo smoke Production su copia isolata del
-  database reale conferma provider/chat spenti, azioni `409`, tre storici `PreWorkflow`, 12
+  database reale conferma provider/chat spenti, azioni `409`, tre storici `PreWorkflow`, 13
   migrazioni e zero violazioni FK; il database originale resta invariato. Le FK composite
   proteggono anche Rapporto/Dipendente, DURC/Azienda e Promemoria/Azienda; l'adozione legacy è
   idempotente, atomica nello storico e fail-closed davanti a orfani, tenant discordanti, indici

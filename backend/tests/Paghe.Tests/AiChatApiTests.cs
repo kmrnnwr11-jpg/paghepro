@@ -11,13 +11,15 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Paghe.Api;
 using Paghe.Persistence;
+using Paghe.Persistence.Entities;
+using Paghe.Persistence.Gdpr;
 using Xunit;
 
 namespace Paghe.Tests;
 
 /// <summary>
-/// Confine HTTP della chat Aurora: la rotta legacy di azione resta chiusa e la chat
-/// esplicativa non offre né esegue strumenti, anche se il provider ne inventa uno.
+/// Confine HTTP della chat Aurora: la rotta legacy di azione resta chiusa e nessun provider
+/// viene chiamato senza un mandato Governor valido.
 /// </summary>
 public sealed class AiChatApiTests : IDisposable
 {
@@ -93,7 +95,7 @@ public sealed class AiChatApiTests : IDisposable
     }
 
     [Fact]
-    public async Task Chat_ToolCallSpontanea_NonInviaTools_ENonEsegueAzione()
+    public async Task Chat_SenzaLease_NonChiamaProviderENonConsumaQuota()
     {
         using var client = await NuovoClientAutenticatoAsync();
         var tenant = _tenantCorrente;
@@ -109,29 +111,205 @@ public sealed class AiChatApiTests : IDisposable
         });
 
         Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
-        Assert.Equal(1, _providerFinto.Chiamate);
-        Assert.Equal("https://provider.test/v1/chat/completions", _providerFinto.UltimoIndirizzo);
-
-        using (var inviato = JsonDocument.Parse(Assert.IsType<string>(_providerFinto.UltimoCorpo)))
-        {
-            Assert.False(inviato.RootElement.TryGetProperty("tools", out _));
-            Assert.Equal("none", inviato.RootElement.GetProperty("tool_choice").GetString());
-        }
+        Assert.Equal(0, _providerFinto.Chiamate);
+        Assert.Null(_providerFinto.UltimoIndirizzo);
+        Assert.Null(_providerFinto.UltimoCorpo);
 
         using (var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync()))
         {
             Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("azione").ValueKind);
             Assert.Contains(
-                "strumenti di Aurora sono sospesi",
+                "avviare il mandato",
                 ricevuto.RootElement.GetProperty("testo").GetString(),
                 StringComparison.OrdinalIgnoreCase);
         }
 
         var dopo = await FotografaDominioAsync(tenant);
-        Assert.Equal(prima with { ConsumiAi = prima.ConsumiAi + 1 }, dopo);
+        Assert.Equal(prima, dopo);
 
         await using var scope = _factory.Services.CreateAsyncScope();
         Assert.Null(scope.ServiceProvider.GetService<AiChatStrumenti>());
+    }
+
+    [Fact]
+    public async Task Conferma_ConGateA3Chiuso_Risponde409_ENonLeggeOApplicaProposte()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var prima = await FotografaDominioAsync(tenant);
+
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat/conferma", new
+        {
+            token = "token-che-non-deve-essere-letto",
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, risposta.StatusCode);
+        Assert.Contains("gate A3", await risposta.Content.ReadAsStringAsync(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, _providerFinto.Chiamate);
+        Assert.Equal(prima, await FotografaDominioAsync(tenant));
+    }
+
+    [Fact]
+    public async Task Chat_ConLeaseValida_RaggiungeRuntimeEOffreSoloToolDelMandato()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var aziendaId = Guid.NewGuid();
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Azienda test runtime HTTP",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var emissione = await client.PostAsJsonAsync("/api/ai/governor/grants", new
+        {
+            purposeCode = "PREPARAZIONE_MESE_PAGHE",
+            modalita = "Guidata",
+            scopeLevel = "S2",
+            aziendaId,
+            periodo = "2026-08",
+            risorse = new[] { "Cedolini" },
+            operazioni = new[] { "read" },
+            durataMinuti = 30,
+            maxLetture = 10,
+        });
+        Assert.Equal(HttpStatusCode.OK, emissione.StatusCode);
+        using var grant = JsonDocument.Parse(await emissione.Content.ReadAsStringAsync());
+        var lease = grant.RootElement.GetProperty("lease").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(lease));
+
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Controlla lo stato del mese.",
+            storia = Array.Empty<object>(),
+            aziendaId,
+            contestoSelezionato = (object?)null,
+            sezioneUi = "Cedolini",
+            lease,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        Assert.Equal(AuroraAgentRuntime.MassimoGiri, _providerFinto.Chiamate);
+        Assert.NotNull(_providerFinto.UltimoCorpo);
+        using (var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!))
+        {
+            var strumenti = inviato.RootElement.GetProperty("tools");
+            Assert.Single(strumenti.EnumerateArray());
+            Assert.Equal("stato_cedolini_mese",
+                strumenti[0].GetProperty("function").GetProperty("name").GetString());
+        }
+
+        await using var verifica = _factory.Services.CreateAsyncScope();
+        var dbVerifica = verifica.ServiceProvider.GetRequiredService<PagheDbContext>();
+        Assert.Equal(AuroraAgentRuntime.MassimoGiri,
+            await dbVerifica.ConsumiAi.AsNoTracking()
+                .Where(c => c.TenantId == tenant)
+                .Select(c => c.Chiamate)
+                .SingleAsync());
+        Assert.Empty(await dbVerifica.Dipendenti.AsNoTracking()
+            .Where(d => d.TenantId == tenant).ToListAsync());
+    }
+
+    [Fact]
+    public async Task LottoDieci_PoiChat_UsanoLoStessoBudgetServerSenzaEsaurirlo()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var aziendaId = Guid.NewGuid();
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Azienda con lotto completo",
+            });
+            for (var indice = 0; indice < 10; indice++)
+            {
+                var dipendenteId = Guid.NewGuid();
+                db.Dipendenti.Add(new DipendenteEntity
+                {
+                    Id = dipendenteId,
+                    TenantId = tenant,
+                    CodiceFiscale = $"TEST{indice:000000000000}",
+                    Nome = $"Nome {indice:00}",
+                    Cognome = "Test",
+                });
+                db.Rapporti.Add(new RapportoLavoroEntity
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenant,
+                    AziendaId = aziendaId,
+                    DipendenteId = dipendenteId,
+                    CodiceCcnl = "TEST",
+                    Livello = "1",
+                    DataAssunzione = new DateOnly(2025, 1, 1),
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        // maxLetture è volutamente omesso: il server applica e comunica il budget
+        // effettivo della policy, mentre il broker mantiene il lotto di dieci per query.
+        using var emissione = await client.PostAsJsonAsync("/api/ai/governor/grants", new
+        {
+            purposeCode = "PREPARAZIONE_MESE_PAGHE",
+            modalita = "Guidata",
+            scopeLevel = "S2",
+            aziendaId,
+            periodo = "2026-08",
+            risorse = new[] { "Cedolini" },
+            operazioni = new[] { "read" },
+            durataMinuti = 30,
+        });
+        Assert.Equal(HttpStatusCode.OK, emissione.StatusCode);
+        using var grant = JsonDocument.Parse(await emissione.Content.ReadAsStringAsync());
+        var lease = grant.RootElement.GetProperty("lease").GetString();
+        var grantId = grant.RootElement.GetProperty("manifest").GetProperty("grantId").GetGuid();
+        Assert.Equal(250,
+            grant.RootElement.GetProperty("manifest").GetProperty("maxLetture").GetInt32());
+
+        using var controllo = await client.PostAsJsonAsync("/api/ai/governor/query", new
+        {
+            lease,
+            risorsa = "Cedolini",
+        });
+        Assert.Equal(HttpStatusCode.OK, controllo.StatusCode);
+        using (var esito = JsonDocument.Parse(await controllo.Content.ReadAsStringAsync()))
+        {
+            Assert.Equal(10, esito.RootElement.GetProperty("righe").GetArrayLength());
+            Assert.Equal(240, esito.RootElement.GetProperty("lettureRimanenti").GetInt32());
+        }
+
+        _providerFinto.RispondeConToolCedolini = true;
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Spiegami lo stato del lotto appena controllato.",
+            storia = Array.Empty<object>(),
+            aziendaId,
+            contestoSelezionato = (object?)null,
+            sezioneUi = "Cedolini",
+            lease,
+        });
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        Assert.Equal(2, _providerFinto.Chiamate);
+
+        using var trasparenza = await client.GetAsync($"/api/ai/governor/grants/{grantId}");
+        Assert.Equal(HttpStatusCode.OK, trasparenza.StatusCode);
+        using var cosaVede = JsonDocument.Parse(await trasparenza.Content.ReadAsStringAsync());
+        var manifest = cosaVede.RootElement.GetProperty("manifest");
+        Assert.Equal(250, manifest.GetProperty("maxLetture").GetInt32());
+        Assert.Equal(20, manifest.GetProperty("lettureUsate").GetInt32());
     }
 
     private Guid _tenantCorrente;
@@ -171,6 +349,7 @@ public sealed class AiChatApiTests : IDisposable
             await db.Promemoria.AsNoTracking().CountAsync(p => p.TenantId == tenant),
             await db.AiScopeGrants.AsNoTracking().CountAsync(g => g.TenantId == tenant),
             await db.AiAudit.AsNoTracking().CountAsync(a => a.TenantId == tenant),
+            await db.AiProposte.AsNoTracking().CountAsync(p => p.TenantId == tenant),
             await db.ConsumiAi.AsNoTracking().CountAsync(c => c.TenantId == tenant));
     }
 
@@ -199,6 +378,7 @@ public sealed class AiChatApiTests : IDisposable
         int Promemoria,
         int AiScopeGrants,
         int AiAudit,
+        int AiProposte,
         int ConsumiAi);
 
     private sealed class HandlerProviderFinto : HttpMessageHandler
@@ -206,6 +386,7 @@ public sealed class AiChatApiTests : IDisposable
         private int _chiamate;
 
         public int Chiamate => Volatile.Read(ref _chiamate);
+        public bool RispondeConToolCedolini { get; set; }
         public string? UltimoCorpo { get; private set; }
         public string? UltimoIndirizzo { get; private set; }
 
@@ -213,11 +394,48 @@ public sealed class AiChatApiTests : IDisposable
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            Interlocked.Increment(ref _chiamate);
+            var numeroChiamata = Interlocked.Increment(ref _chiamate);
             UltimoIndirizzo = request.RequestUri?.ToString();
             UltimoCorpo = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            if (RispondeConToolCedolini)
+            {
+                var corpo = numeroChiamata == 1
+                    ? """
+                        {
+                          "choices": [{
+                            "message": {
+                              "role": "assistant",
+                              "content": null,
+                              "tool_calls": [{
+                                "id": "call_stato_cedolini",
+                                "type": "function",
+                                "function": {
+                                  "name": "stato_cedolini_mese",
+                                  "arguments": "{}"
+                                }
+                              }]
+                            }
+                          }]
+                        }
+                        """
+                    : """
+                        {
+                          "choices": [{
+                            "message": {
+                              "role": "assistant",
+                              "content": "Il lotto di dieci cedolini è stato letto nel mandato corrente."
+                            }
+                          }]
+                        }
+                        """;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(corpo, Encoding.UTF8, "application/json"),
+                };
+            }
 
             const string toolCallSpontanea = """
                 {

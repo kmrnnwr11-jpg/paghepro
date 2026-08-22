@@ -8,18 +8,26 @@ namespace Paghe.Api;
 /// (azienda, periodo) viene dal manifest del mandato, mai da argomenti del modello — per
 /// questo lo schema è vuoto. Il broker vidima la lease, minimizza le righe e consuma quota.
 /// </summary>
-public sealed class StrumentoLetturaBroker(
-    DescrittoreStrumento descrittore, ProfessionalQueryBroker broker) : IStrumentoAurora
+public sealed class StrumentoLetturaBroker(DescrittoreStrumento descrittore) : IStrumentoAurora
+{
+    public DescrittoreStrumento Descrittore { get; } = descrittore;
+}
+
+/// <summary>
+/// Esecutore centrale delle letture: un plugin A2 può solo scegliere un descrittore già
+/// filtrato dal registry; dati e quota passano sempre dal ProfessionalQueryBroker.
+/// </summary>
+public sealed class EsecutoreLettureAurora(ProfessionalQueryBroker broker)
+    : IEsecutoreLettureAurora
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public DescrittoreStrumento Descrittore { get; } = descrittore;
-
     public async Task<RisultatoStrumentoAurora> EseguiAsync(
-        ContestoAurora contesto, string argomentiJson, CancellationToken ct)
+        ContestoAurora contesto, DescrittoreStrumento descrittore,
+        string argomentiJson, CancellationToken ct)
     {
         var esito = await broker.LeggiAsync(
-            contesto.TenantId, contesto.UtenteId, contesto.Lease, Descrittore.Risorsa, ct);
+            contesto.TenantId, contesto.UtenteId, contesto.Lease, descrittore.Risorsa, ct);
         if (!esito.Consentito)
             return new(
                 JsonSerializer.Serialize(new { negato = true, motivo = esito.Motivo }, Json),
@@ -55,6 +63,7 @@ public static class AuroraStrumentiCatalogo
         type = "object",
         properties = new { },
         required = Array.Empty<string>(),
+        additionalProperties = false,
     };
 
     // Gli schemi completi delle scritture arrivano con la fase A3 (diff + conferma attiva):
@@ -64,6 +73,7 @@ public static class AuroraStrumentiCatalogo
         type = "object",
         properties = new { },
         required = Array.Empty<string>(),
+        additionalProperties = false,
         description = "Definito nella fase A3 del piano Aurora.",
     };
 
@@ -150,7 +160,7 @@ public static class AuroraStrumentiCatalogo
         {
             var d = descrittore;
             services.AddScoped<IStrumentoAurora>(sp =>
-                new StrumentoLetturaBroker(d, sp.GetRequiredService<ProfessionalQueryBroker>()));
+                new StrumentoLetturaBroker(d));
         }
         foreach (var descrittore in ScrittureDichiarate)
         {
@@ -158,13 +168,17 @@ public static class AuroraStrumentiCatalogo
             services.AddScoped<IStrumentoAurora>(_ => new StrumentoScritturaDichiarata(d));
         }
         services.AddScoped<AiToolRegistry>();
+        services.AddScoped<IEsecutoreLettureAurora, EsecutoreLettureAurora>();
         services.AddScoped<AiRuntimeStore>();
         // Factory esplicita: il timeout per strumento resta il default di produzione.
         services.AddScoped(sp => new AuroraAgentRuntime(
             sp.GetRequiredService<AiChatClient>(),
             sp.GetRequiredService<AiToolRegistry>(),
             sp.GetRequiredService<Paghe.Persistence.Ai.AiGrantService>(),
-            sp.GetRequiredService<Paghe.Persistence.Ai.AiRuntimeStore>()));
+            sp.GetRequiredService<IEsecutoreLettureAurora>(),
+            sp.GetRequiredService<Paghe.Persistence.Ai.AiRuntimeStore>(),
+            sp.GetRequiredService<Paghe.Persistence.ConsumoAiService>(),
+            sp.GetRequiredService<AiOptions>()));
         return services;
     }
 }

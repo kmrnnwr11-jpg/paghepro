@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Calculator, CalendarDays, CheckCircle2, Download, Pencil, Users, X } from "lucide-react";
 import {
   api, scaricaBlob,
@@ -6,6 +6,7 @@ import {
   type GiornataCartellino, type PresenzeMese, type ProblemaCartellino,
 } from "../api";
 import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
+import { creaSequenziatoreRichieste } from "../ultimaRichiesta";
 
 const oggi = new Date();
 const euro = (n: number) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -164,40 +165,77 @@ export function Presenze() {
   const [calendari, setCalendari] = useState<Record<string, GiornataCartellino[]>>({});
   const [problemi, setProblemi] = useState<Record<string, ProblemaCartellino[]>>({});
   const [verificando, setVerificando] = useState<string | null>(null);
+  const richiesteBoard = useRef(creaSequenziatoreRichieste());
+  const scopeCorrente = azienda ? `${azienda.id}:${anno}-${mese}` : null;
+  const scopeCorrenteRef = useRef(scopeCorrente);
+  const [scopeBoard, setScopeBoard] = useState<string | null>(null);
+  scopeCorrenteRef.current = scopeCorrente;
+  const boardCorrente = scopeBoard === scopeCorrente ? board : null;
 
   useEffect(() => {
+    const controller = new AbortController();
     (async () => {
       try {
-        const aziende = await api.aziende();
+        const aziende = await api.aziende(controller.signal);
         const scelta = scegliAziendaPreferita(aziende);
         setAzienda(scelta);
         if (scelta) salvaAziendaCorrenteId(scelta.id);
       } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
         setErrore(e instanceof Error ? e.message : "Errore di caricamento");
       } finally {
         setCaricamento(false);
       }
     })();
+    return () => controller.abort();
   }, []);
 
   const carica = useCallback(async () => {
     if (!azienda) return;
-    const b = await api.presenzeMese(azienda.id, anno, mese);
-    setBoard(b);
-    setDati(Object.fromEntries(b.righe.map((r) => [r.rapportoId, dalRiepilogo(r)])));
-    setConfermato(Object.fromEntries(b.righe.map((r) => [r.rapportoId, r.elaborato])));
-    // Il calendario riappare solo se era già stato compilato: chi lavora a totali non se lo trova.
-    setCalendari(Object.fromEntries(
-      b.righe.filter((r) => r.giornate.length > 0).map((r) => [r.rapportoId, r.giornate])));
+    const scopeRichiesto = `${azienda.id}:${anno}-${mese}`;
+    const richiesta = richiesteBoard.current.apri();
+    setCaricamento(true);
+    setBoard(null);
+    setScopeBoard(null);
+    setDati({});
+    setConfermato({});
+    setCalendari({});
     setProblemi({});
+    try {
+      const b = await api.presenzeMese(azienda.id, anno, mese, richiesta.signal);
+      if (!richiesta.attiva() || scopeCorrenteRef.current !== scopeRichiesto) return;
+      setBoard(b);
+      setScopeBoard(scopeRichiesto);
+      setDati(Object.fromEntries(b.righe.map((r) => [r.rapportoId, dalRiepilogo(r)])));
+      setConfermato(Object.fromEntries(b.righe.map((r) => [r.rapportoId, r.elaborato])));
+      // Il calendario riappare solo se era già stato compilato: chi lavora a totali non se lo trova.
+      setCalendari(Object.fromEntries(
+        b.righe.filter((r) => r.giornate.length > 0).map((r) => [r.rapportoId, r.giornate])));
+      setProblemi({});
+    } finally {
+      if (richiesta.attiva()) setCaricamento(false);
+    }
   }, [azienda, anno, mese]);
 
   useEffect(() => {
     setAperto(null);
     setErrore(null);
-    if (!azienda) { setBoard(null); return; }
-    carica().catch((e) => setErrore(e instanceof Error ? e.message : "Errore"));
-  }, [azienda, carica]);
+    setAvviso(null);
+    if (!azienda) {
+      richiesteBoard.current.invalida();
+      setBoard(null);
+      setScopeBoard(null);
+      setCaricamento(false);
+      return;
+    }
+    carica().catch((e) => {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      if (scopeCorrenteRef.current === `${azienda.id}:${anno}-${mese}`)
+        setErrore(e instanceof Error ? e.message : "Errore");
+    });
+  }, [azienda, anno, mese, carica]);
+
+  useEffect(() => () => richiesteBoard.current.invalida(), []);
 
   function aggiorna(rapportoId: string, chiave: keyof DatiCartellino, valore: number) {
     setDati((correnti) => ({
@@ -205,6 +243,20 @@ export function Presenze() {
       [rapportoId]: { ...(correnti[rapportoId] ?? vuoto), [chiave]: valore },
     }));
     setConfermato((correnti) => ({ ...correnti, [rapportoId]: false }));
+  }
+
+  function preparaCambioPeriodo() {
+    richiesteBoard.current.invalida();
+    setCaricamento(true);
+    setBoard(null);
+    setScopeBoard(null);
+    setDati({});
+    setConfermato({});
+    setCalendari({});
+    setProblemi({});
+    setAperto(null);
+    setErrore(null);
+    setAvviso(null);
   }
 
   function aggiornaAnf(
@@ -271,19 +323,29 @@ export function Presenze() {
   }
 
   async function verifica(rapportoId: string) {
+    const scopeVerifica = scopeCorrente;
+    if (!scopeVerifica || scopeBoard !== scopeVerifica) return;
     setVerificando(rapportoId);
     setErrore(null);
     try {
       const esito = await api.verificaCartellino(rapportoId, corpo(rapportoId));
+      if (scopeCorrenteRef.current !== scopeVerifica) return;
       setProblemi((p) => ({ ...p, [rapportoId]: esito.problemi }));
     } catch (e) {
-      setErrore(e instanceof Error ? e.message : "Impossibile controllare il mese.");
+      if (scopeCorrenteRef.current === scopeVerifica)
+        setErrore(e instanceof Error ? e.message : "Impossibile controllare il mese.");
     } finally {
       setVerificando(null);
     }
   }
 
   async function elabora(rapportoId: string) {
+    const scopeOperazione = scopeCorrente;
+    if (!scopeOperazione || scopeBoard !== scopeOperazione
+      || !boardCorrente?.righe.some((r) => r.rapportoId === rapportoId)) {
+      setErrore("Il periodo è cambiato: attendi il caricamento del cartellino corretto.");
+      return;
+    }
     if (!confermato[rapportoId]) {
       setErrore("Controlla tutti i dati del mese e conferma il cartellino prima di elaborare.");
       return;
@@ -291,45 +353,57 @@ export function Presenze() {
     setElaborando(rapportoId);
     setErrore(null);
     setAvviso(null);
+    const corpoOperazione = corpo(rapportoId);
     try {
       let cedolino;
       try {
-        cedolino = await api.archiviaCedolino(rapportoId, corpo(rapportoId));
+        cedolino = await api.archiviaCedolino(rapportoId, corpoOperazione);
       } catch (e) {
         // Mese con F24 già inviato: il commercialista può correggere un errore
         // ricalcolando comunque, ma solo dopo conferma esplicita.
         const msg = e instanceof Error ? e.message : "";
         if (!msg.includes("ricalcolo forzato")) throw e;
+        if (scopeCorrenteRef.current !== scopeOperazione) return;
         if (!confirm(`${msg}\n\nVuoi ricalcolare comunque questa busta paga?`)) return;
-        cedolino = await api.archiviaCedolino(rapportoId, corpo(rapportoId), true);
-        setAvviso("Busta paga ricalcolata su un mese con F24 già inviato: ricordati di rigenerare l'F24 del mese.");
+        cedolino = await api.archiviaCedolino(rapportoId, corpoOperazione, true);
+        if (scopeCorrenteRef.current === scopeOperazione)
+          setAvviso("Busta paga ricalcolata su un mese con F24 già inviato: ricordati di rigenerare l'F24 del mese.");
       }
       // Avviso (non blocco): saldi ferie/permessi sotto zero dopo questo cedolino.
       const sottoZero = [
         (cedolino.ferieResidue ?? 0) < 0 && `ferie residue ${cedolino.ferieResidue} gg`,
         (cedolino.permessiResidui ?? 0) < 0 && `permessi residui ${cedolino.permessiResidui} h`,
       ].filter(Boolean).join(" e ");
-      if (sottoZero) setAvviso(`Attenzione: ${sottoZero} sotto zero. La busta è valida, ma verifica le assenze inserite.`);
-      await carica();
-      setAperto(null);
+      if (sottoZero && scopeCorrenteRef.current === scopeOperazione)
+        setAvviso(`Attenzione: ${sottoZero} sotto zero. La busta è valida, ma verifica le assenze inserite.`);
+      if (scopeCorrenteRef.current === scopeOperazione) {
+        await carica();
+        if (scopeCorrenteRef.current === scopeOperazione) setAperto(null);
+      }
     } catch (e) {
-      setErrore(e instanceof Error ? e.message : "Errore nel calcolo");
+      if (scopeCorrenteRef.current === scopeOperazione)
+        setErrore(e instanceof Error ? e.message : "Errore nel calcolo");
     } finally {
       setElaborando(null);
     }
   }
 
   async function scaricaPdf(rapportoId: string) {
+    const scopeDownload = scopeCorrente;
+    if (!scopeDownload || scopeBoard !== scopeDownload) return;
     setScaricando(rapportoId);
     setErrore(null);
     try {
       const cedolini = await api.cedoliniArchiviati(rapportoId);
+      if (scopeCorrenteRef.current !== scopeDownload) return;
       const cedolino = cedolini.find((c) => c.anno === anno && c.mese === mese);
       if (!cedolino) throw new Error("Cedolino del periodo non trovato nell'archivio.");
       const { blob, filename } = await api.cedolinoPdf(cedolino.id);
+      if (scopeCorrenteRef.current !== scopeDownload) return;
       await scaricaBlob(blob, filename);
     } catch (e) {
-      setErrore(e instanceof Error ? e.message : "Impossibile scaricare il PDF.");
+      if (scopeCorrenteRef.current === scopeDownload)
+        setErrore(e instanceof Error ? e.message : "Impossibile scaricare il PDF.");
     } finally {
       setScaricando(null);
     }
@@ -383,11 +457,11 @@ export function Presenze() {
             <div className="ts-kpi-grid">
               <article className="glass-card ts-kpi">
                 <span className="ts-kpi-icon tone-icon blue"><Users size={20} /></span>
-                <div><span>Dipendenti</span><b className="num">{board?.totale ?? 0}</b><small>Totale azienda</small></div>
+                <div><span>Dipendenti</span><b className="num">{boardCorrente?.totale ?? 0}</b><small>Totale azienda</small></div>
               </article>
               <article className="glass-card ts-kpi">
                 <span className="ts-kpi-icon tone-icon green"><CheckCircle2 size={20} /></span>
-                <div><span>Cedolini elaborati</span><b className="num">{board?.elaborati ?? 0}/{board?.totale ?? 0}</b><small>Questo mese</small></div>
+                <div><span>Cedolini elaborati</span><b className="num">{boardCorrente?.elaborati ?? 0}/{boardCorrente?.totale ?? 0}</b><small>Questo mese</small></div>
               </article>
             </div>
 
@@ -396,11 +470,17 @@ export function Presenze() {
                 <label>
                   <span>Anno</span>
                   {/* Regola: le buste paga si elaborano al massimo per il mese corrente. */}
-                  <input type="number" min={2000} max={oggi.getFullYear()} value={anno} onChange={(e) => setAnno(Number(e.target.value))} />
+                  <input type="number" min={2000} max={oggi.getFullYear()} value={anno} onChange={(e) => {
+                    preparaCambioPeriodo();
+                    setAnno(Number(e.target.value));
+                  }} />
                 </label>
                 <label>
                   <span>Mese</span>
-                  <select value={mese} onChange={(e) => setMese(Number(e.target.value))}>
+                  <select value={mese} onChange={(e) => {
+                    preparaCambioPeriodo();
+                    setMese(Number(e.target.value));
+                  }}>
                     {mesi.slice(1).map((m, i) => (
                       <option key={i + 1} value={i + 1}
                         disabled={anno >= oggi.getFullYear() && i + 1 > oggi.getMonth() + 1}>
@@ -411,14 +491,16 @@ export function Presenze() {
                 </label>
               </div>
 
-              {!board || board.righe.length === 0 ? (
+              {caricamento ? (
+                <div className="empty-state">Caricamento del periodo…</div>
+              ) : !boardCorrente || boardCorrente.righe.length === 0 ? (
                 <div className="empty-state">Nessun dipendente. Aggiungine uno in Dipendenti.</div>
               ) : (
                 <div className="table-wrap">
                   <table className="data-table spacious presence-table">
                     <thead><tr><th>Dipendente</th><th>Riepilogo mese</th><th>Stato</th><th className="right">Netto</th><th className="right">Azioni</th></tr></thead>
                     <tbody>
-                      {board.righe.map((r) => {
+                      {boardCorrente.righe.map((r) => {
                         const cartellino = dati[r.rapportoId] ?? vuoto;
                         const espanso = aperto === r.rapportoId;
                         return (
@@ -628,6 +710,8 @@ export function Presenze() {
                                     </label>
                                     <button className="btn primary" type="button"
                                       disabled={!confermato[r.rapportoId]
+                                        || scopeBoard !== scopeCorrente
+                                        || caricamento
                                         || cartellino.statoAssegniFamiliari === "DaVerificare"
                                         || (cartellino.statoAssegniFamiliari === "Spettanti"
                                           && cartellino.importoAssegniFamiliari <= 0)

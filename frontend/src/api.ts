@@ -547,7 +547,7 @@ export const api = {
   eseguiRetention: (dati: {
     anteprimaId: string; chiaveIdempotenza: string; codiceConferma: string; dimensioneLotto?: number;
   }) => req<RicevutaRetention>("/api/retention/esegui", { method: "POST", body: JSON.stringify(dati) }),
-  aziende: () => req<Azienda[]>("/api/aziende"),
+  aziende: (signal?: AbortSignal) => req<Azienda[]>("/api/aziende", { signal }),
   creaDatasetDemo: () => req<{ aziende: number; dipendenti: number }>("/api/demo/dataset", { method: "POST" }),
   // Correzione anagrafica azienda (es. dopo una visura letta male): invia solo i campi da cambiare.
   correggiAzienda: (id: string, campi: Partial<NuovaAzienda>) =>
@@ -619,9 +619,10 @@ export const api = {
     const match = /filename="?([^"]+)"?/.exec(dispo);
     return { blob: await res.blob(), filename: match?.[1] ?? `certificazione-unica-${anno}.pdf` };
   },
-  livelli: (codice: string) =>
+  livelli: (codice: string, signal?: AbortSignal) =>
     req<{ codice: string; descrizione: string; livelli: Livello[] }>(
       `/api/ccnl/${codice}/livelli`,
+      { signal },
     ),
   calcolaCedolino: (rapporto: Rapporto, cartellino: Cartellino) =>
     req<Cedolino>("/api/cedolini/calcola", {
@@ -688,8 +689,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(campi),
     }),
-  presenzeMese: (aziendaId: string, anno: number, mese: number) =>
-    req<PresenzeMese>(`/api/aziende/${aziendaId}/presenze/${anno}/${mese}`),
+  presenzeMese: (aziendaId: string, anno: number, mese: number, signal?: AbortSignal) =>
+    req<PresenzeMese>(`/api/aziende/${aziendaId}/presenze/${anno}/${mese}`, { signal }),
 
   // --- Fine anno: conguaglio IRPEF, rivalutazione TFR, autoliquidazione INAIL ---
   conguaglioAnnuale: (rapportoId: string, anno: number) =>
@@ -990,8 +991,8 @@ export const api = {
     req<{ ok: boolean; messaggio: string }>("/api/configurazione-sdi/verifica", { method: "POST" }),
 
   // --- Dipendenti (anagrafiche reali per azienda) ---
-  dipendenti: (aziendaId: string) =>
-    req<DipendenteRapporto[]>(`/api/aziende/${aziendaId}/dipendenti`),
+  dipendenti: (aziendaId: string, signal?: AbortSignal) =>
+    req<DipendenteRapporto[]>(`/api/aziende/${aziendaId}/dipendenti`, { signal }),
   creaDipendente: (aziendaId: string, d: CreaDipendente) =>
     req<{ rapportoId: string; dipendenteId: string; nome: string; cognome: string }>(
       `/api/aziende/${aziendaId}/dipendenti`,
@@ -1108,16 +1109,17 @@ export const api = {
 
   // --- Governor AI (G2): mandati, accessi governati, revoca, trasparenza ---
 
-  aiPreflight: (richiesta: RichiestaGrantAi) =>
+  aiPreflight: (richiesta: RichiestaGrantAi, signal?: AbortSignal) =>
     req<EsitoPreflightAi>("/api/ai/governor/preflight", {
       method: "POST",
       body: JSON.stringify(richiesta),
+      signal,
     }),
 
   aiEmettiGrant: (richiesta: RichiestaGrantAi) =>
     req<GrantAiEmesso>("/api/ai/governor/grants", { method: "POST", body: JSON.stringify(richiesta) }),
 
-  aiGrants: () => req<ManifestGrantAi[]>("/api/ai/governor/grants"),
+  aiGrants: (signal?: AbortSignal) => req<ManifestGrantAi[]>("/api/ai/governor/grants", { signal }),
 
   /** Ogni lettura di Aurora passa da qui: 403 = negato (il motivo arriva nel corpo). */
   aiAccesso: async (lease: string, risorsa: string, operazione: string): Promise<EsitoAccessoAi> => {
@@ -1134,11 +1136,16 @@ export const api = {
   },
 
   /** Query broker: permesso + dati minimizzati in un passo; scope dal mandato, non dal client. */
-  aiQuery: async <T = unknown>(lease: string, risorsa: string): Promise<EsitoQueryAi<T>> => {
+  aiQuery: async <T = unknown>(
+    lease: string,
+    risorsa: string,
+    signal?: AbortSignal,
+  ): Promise<EsitoQueryAi<T>> => {
     try {
       return await req<EsitoQueryAi<T>>("/api/ai/governor/query", {
         method: "POST",
         body: JSON.stringify({ lease, risorsa }),
+        signal,
       });
     } catch (e) {
       if (e instanceof ApiError && e.status === 403 && e.corpo && "consentito" in e.corpo)
@@ -1152,25 +1159,29 @@ export const api = {
 
   aiArresta: () => req<{ revocati: number }>("/api/ai/governor/arresta", { method: "POST" }),
 
-  aiCosaVede: (grantId: string) =>
-    req<CosaVedeAi>(`/api/ai/governor/grants/${grantId}`),
+  aiCosaVede: (grantId: string, signal?: AbortSignal) =>
+    req<CosaVedeAi>(`/api/ai/governor/grants/${grantId}`, { signal }),
 
-  // --- Aurora personale: solo spiegazioni, senza accesso all'archivio né azioni ---
+  // --- Aurora personale: runtime governato dalla lease, strumenti limitati e azioni non eseguibili ---
 
-  aiChatStato: () => req<StatoChatAi>("/api/ai/chat/stato"),
+  aiChatStato: (signal?: AbortSignal) => req<StatoChatAi>("/api/ai/chat/stato", { signal }),
 
   aiChat: (
     messaggio: string,
     storia: MessaggioChatAi[],
+    lease: string,
     aziendaId?: string | null,
     contestoSelezionato?: ContestoSelezionatoAi | null,
     sezioneUi?: string | null,
+    signal?: AbortSignal,
   ) =>
     req<RispostaChatAi>("/api/ai/chat", {
       method: "POST",
+      signal,
       body: JSON.stringify({
         messaggio,
         storia,
+        lease,
         aziendaId: aziendaId ?? null,
         contestoSelezionato: contestoSelezionato ?? null,
         sezioneUi: sezioneUi ?? null,
@@ -1248,6 +1259,8 @@ export interface EsitoPreflightAi {
   consentito: boolean;
   motivo: string | null;
   descrizione: string | null;
+  durataMinuti: number | null;
+  maxLetture: number | null;
 }
 
 export interface EsitoAccessoAi {
@@ -1294,7 +1307,7 @@ export interface RigaCedolinoMeseAi {
   statoCedolino: string | null;
 }
 
-// --- Chat esplicativa senza strumenti ---
+// --- Chat Aurora governata dal mandato corrente ---
 
 /** Messaggio della conversazione: il client lo rimanda indietro così com'è. */
 export interface MessaggioChatAi {

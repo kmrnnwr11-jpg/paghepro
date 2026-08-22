@@ -12,12 +12,14 @@
 > `docs/PIANO-PERSONALE-PRIVACY-FIRST.md` sono storiche e non eseguibili. Questa precedenza non
 > autorizza codice e non cambia l'ordine delle attività non-AI già presenti qui.
 
-> **Stato Aurora al 22 agosto 2026:** completato e verificato un primo verticale G2 deterministico,
-> read-only e senza modello: controllo cedolini mensile a checkpoint di 10 righe con preflight,
-> grant S2, quota per record, trasparenza e revoca. G1 resta aperto e il provider resta spento;
-> il runtime agente con scritture firmate/idempotenti non è ancora autorizzato. La riconciliazione
-> tecnica A0 passa 843/843 test backend, 27/27 frontend e lo smoke Production su copia isolata;
-> stage e checkpoint Git attendono la conferma del fondatore.
+> **Stato Aurora al 22 agosto 2026:** completato e verificato il runtime A2 read-only: chat e
+> cinque strumenti passano dal Governor con lease S2, scope esatto, proiezioni minimizzate,
+> quota server-side, revoca e SessionLog. Il controllo cedolini legge lotti massimi di 10 dentro
+> un budget di mandato esplicitato dal preflight. La SPA blocca grant concorrenti/orfani e
+> invalida ogni risposta al cambio azienda, periodo o pagina. G1 resta aperto e il provider resta
+> spento; le tre scritture A3 non sono offerte e gli endpoint di applicazione restano `409`.
+> Verifica tecnica: **888/888 backend**, **35/35 frontend**, build Release/SPA verdi, modelli EF
+> SQLite/PostgreSQL allineati e smoke Production fail-closed su copia isolata del database.
 
 ---
 

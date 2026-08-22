@@ -138,7 +138,7 @@ piccolo a scapito della riproducibilità.
   risultano spenti, la chat restituisce zero azioni e l'endpoint legacy resta `409`;
 - l'hash SHA-256 del `paghe.db` originale è rimasto invariato prima e dopo la prova.
 
-## 7. Gate ancora aperti
+## 7. Gate ancora aperti e avanzamento successivo
 
 - **A0 Git:** risolto il 22 agosto 2026 — checkpoint locali creati con la conferma del fondatore;
   nessun file è stato scartato.
@@ -147,8 +147,11 @@ piccolo a scapito della riproducibilità.
 - **Retention:** snapshot e PDF sono cifrati ma esclusi fail-closed dal motore di cancellazione.
   Durata, decorrenza e base giuridica del fascicolo cedolino devono essere approvate prima di
   aggiungere una categoria distruttiva.
-- **Aurora agente:** runtime, registry dinamico, SessionLog, proposta firmata, strumenti e
-  navigazione restano fasi A2-A5; il verticale corrente non li simula né li dichiara completati.
+- **Aurora agente:** dopo A0 è stato completato e verificato il verticale A2 read-only:
+  registry dinamico, SessionLog, lease collegata alla chat e cinque letture broker. Lo scaffold
+  cifrato delle proposte è presente, ma A3 resta chiuso: nessuna scrittura è offerta o
+  confermabile finché non sono provati riverifica grant/policy, applicazione transazionale,
+  idempotenza crash-safe e diff end-to-end. Navigazione e consigli restano A4-A5.
 
 ## 8. Criterio di uscita da A0
 

@@ -174,6 +174,29 @@ public sealed class AiGovernorTests : IDisposable
         Assert.True(esito.Consentito);
         Assert.Contains("Leggerò:", esito.Descrizione);
         Assert.Contains("Non farò: invii, pagamenti o modifiche", esito.Descrizione);
+        Assert.Equal(120, esito.DurataMinuti);
+        Assert.Equal(250, esito.MaxLetture);
+    }
+
+    [Fact]
+    public async Task PreflightEsponeIlBudgetEffettivoDellaPolicyQuandoLaRichiestaLoOmette()
+    {
+        var tenant = Guid.NewGuid();
+        await using var db = NuovoContesto();
+        var azienda = await CreaAziendaAsync(db, tenant);
+        var richiesta = RichiestaTipo(azienda) with
+        {
+            PurposeCode = "PREPARAZIONE_MESE_PAGHE",
+            DurataMinuti = 30,
+            MaxLetture = null,
+        };
+
+        var esito = await NuovoServizio(db).PreflightAsync(
+            tenant, Guid.NewGuid(), richiesta);
+
+        Assert.True(esito.Consentito);
+        Assert.Equal(30, esito.DurataMinuti);
+        Assert.Equal(250, esito.MaxLetture);
     }
 
     // ---------- Enforcement: nessun accesso senza mandato valido ----------
@@ -223,7 +246,7 @@ public sealed class AiGovernorTests : IDisposable
 
         var esito = await servizio.AutorizzaAccessoAsync(Guid.NewGuid(), utente, grant!.Lease, "Cedolini", "read");
         Assert.False(esito.Consentito);
-        Assert.Contains("Tenant non corrispondente", esito.Motivo);
+        Assert.Contains("Mandato non trovato", esito.Motivo);
     }
 
     [Fact]
@@ -241,7 +264,7 @@ public sealed class AiGovernorTests : IDisposable
         var accesso = await servizio.AutorizzaAccessoAsync(
             tenant, altroUtente, grant!.Lease, "Cedolini", "read");
         Assert.False(accesso.Consentito);
-        Assert.Contains("Utente non corrispondente", accesso.Motivo);
+        Assert.Contains("Mandato non trovato", accesso.Motivo);
         Assert.False(await servizio.RevocaAsync(
             tenant, altroUtente, grant.Manifest.GrantId));
         Assert.Null(await servizio.CosaVedeAsync(

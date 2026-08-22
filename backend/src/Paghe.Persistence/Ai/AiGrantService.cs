@@ -35,7 +35,12 @@ public sealed record ManifestGrant(
     string Stato,
     string Descrizione);
 
-public sealed record EsitoPreflight(bool Consentito, string? Motivo, string? Descrizione);
+public sealed record EsitoPreflight(
+    bool Consentito,
+    string? Motivo,
+    string? Descrizione,
+    int? DurataMinuti = null,
+    int? MaxLetture = null);
 
 public sealed record GrantEmesso(ManifestGrant Manifest, string Lease);
 
@@ -81,7 +86,12 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
         }
 
         await AppendiAuditAsync(tenantId, null, utenteId, "Preflight", Riassunto(richiesta), null, ct);
-        return new EsitoPreflight(true, null, Descrizione(valida.Value));
+        return new EsitoPreflight(
+            true,
+            null,
+            Descrizione(valida.Value),
+            valida.Value.DurataMinuti,
+            valida.Value.MaxLetture);
     }
 
     public async Task<(GrantEmesso? Grant, string? Errore)> EmettiAsync(
@@ -182,21 +192,32 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
         if (adesso >= decodificata.ExpiresAtUtc)
             return (await NegaAsync(tenantId, decodificata.GrantId, utenteId, risorsa, operazione, "Lease scaduta.", ct), null);
 
-        var grant = await db.AiScopeGrants.FirstOrDefaultAsync(g => g.Id == decodificata.GrantId, ct);
+        // Il confine tenant/owner deve stare nel predicato SQL: non materializziamo mai un
+        // mandato appartenente a un altro contesto per poi respingerlo in memoria.
+        var queryGrant = db.AiScopeGrants.Where(g =>
+            g.Id == decodificata.GrantId
+            && g.TenantId == tenantId
+            && g.UtenteId == utenteId);
+        // La vidimazione senza consumo deve interrogare sempre il database: dopo una
+        // prenotazione il DbContext può avere ancora in memoria il grant Attivo, mentre una
+        // richiesta concorrente lo ha già revocato. AsNoTracking chiude questa finestra.
+        var grant = consumaQuota
+            ? await queryGrant.FirstOrDefaultAsync(ct)
+            : await queryGrant.AsNoTracking().FirstOrDefaultAsync(ct);
         if (grant is null)
-            return (await NegaAsync(tenantId, decodificata.GrantId, utenteId, risorsa, operazione, "Mandato inesistente.", ct), null);
-        if (grant.TenantId != tenantId)
-            return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Tenant non corrispondente al mandato.", ct), null);
-        if (grant.UtenteId != utenteId)
-            return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Utente non corrispondente al mandato.", ct), null);
+            return (await NegaAsync(tenantId, decodificata.GrantId, utenteId, risorsa, operazione,
+                "Mandato non trovato per questo utente.", ct), null);
         if (!string.Equals(grant.Nonce, decodificata.Nonce, StringComparison.Ordinal))
             return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Nonce non valido (possibile replay).", ct), null);
         if (grant.Stato != "Attivo")
             return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, $"Mandato {grant.Stato.ToLowerInvariant()}.", ct), null);
         if (adesso >= grant.ScadeUtc)
         {
-            grant.Stato = "Scaduto";
-            grant.Versione++;
+            if (consumaQuota)
+            {
+                grant.Stato = "Scaduto";
+                grant.Versione++;
+            }
             return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Mandato scaduto.", ct), null);
         }
         if (adesso - grant.UltimoUsoUtc > TimeSpan.FromMinutes(grant.TimeoutInattivitaMinuti))
@@ -258,11 +279,18 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
             }
             catch (DbUpdateConcurrencyException)
             {
-                await db.Entry(grant).ReloadAsync(ct);
+                // ReloadAsync usa soltanto la PK. Stacchiamo invece l'istanza e rileggiamo
+                // applicando ancora tenant e proprietario nel predicato SQL.
+                db.Entry(grant).State = EntityState.Detached;
+                grant = await db.AiScopeGrants.FirstOrDefaultAsync(g =>
+                    g.Id == decodificata.GrantId
+                    && g.TenantId == tenantId
+                    && g.UtenteId == utenteId, ct);
+                if (grant is null)
+                    return (await NegaAsync(tenantId, decodificata.GrantId, utenteId,
+                        risorsa, operazione, "Mandato non trovato per questo utente.", ct), null);
                 if (grant.Stato != "Attivo")
                     return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Mandato revocato durante l'accesso.", ct), null);
-                if (grant.UtenteId != utenteId)
-                    return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Utente non corrispondente al mandato.", ct), null);
             }
         }
         return (await NegaAsync(tenantId, grant.Id, utenteId, risorsa, operazione, "Conflitto di concorrenza persistente.", ct), null);
@@ -285,8 +313,10 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
             return (null, "Lease scaduta.");
 
         var grant = await db.AiScopeGrants.AsNoTracking()
-            .FirstOrDefaultAsync(g => g.Id == decodificata.GrantId, ct);
-        if (grant is null || grant.TenantId != tenantId || grant.UtenteId != utenteId)
+            .FirstOrDefaultAsync(g => g.Id == decodificata.GrantId
+                && g.TenantId == tenantId
+                && g.UtenteId == utenteId, ct);
+        if (grant is null)
             return (null, "Mandato non trovato per questo utente.");
         if (!string.Equals(grant.Nonce, decodificata.Nonce, StringComparison.Ordinal))
             return (null, "Nonce non valido (possibile replay).");
@@ -300,6 +330,47 @@ public sealed class AiGrantService(PagheDbContext db, AiGovernorOptions opzioni,
             return (null, "Policy del mandato superata: serve un nuovo grant.");
 
         return (Manifest(grant), null);
+    }
+
+    /// <summary>
+    /// Restituisce al mandato una prenotazione che il broker non ha potuto consegnare
+    /// (cancellazione concorrente, errore o revoca prima dell'egress). Il rimborso è protetto
+    /// dallo stesso token di concorrenza della quota e non può oltrepassare le letture usate.
+    /// </summary>
+    public async Task RimborsaLettureAsync(
+        Guid tenantId, Guid utenteId, Guid grantId, int quantita,
+        CancellationToken ct = default)
+    {
+        if (quantita <= 0) return;
+
+        var grant = await db.AiScopeGrants.FirstOrDefaultAsync(g =>
+            g.Id == grantId && g.TenantId == tenantId && g.UtenteId == utenteId, ct);
+        if (grant is null) return;
+
+        for (var tentativo = 0; tentativo < TentativiConcorrenza; tentativo++)
+        {
+            var rimborso = Math.Min(quantita, Math.Max(0, grant.LettureUsate));
+            if (rimborso == 0) return;
+            grant.LettureUsate -= rimborso;
+            grant.Versione++;
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                await AppendiAuditAsync(tenantId, grant.Id, utenteId, "Rimborso",
+                    $"letture non consegnate x{rimborso}", null, ct);
+                return;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                db.Entry(grant).State = EntityState.Detached;
+                grant = await db.AiScopeGrants.FirstOrDefaultAsync(g =>
+                    g.Id == grantId && g.TenantId == tenantId && g.UtenteId == utenteId, ct);
+                if (grant is null) return;
+            }
+        }
+
+        throw new InvalidOperationException(
+            "Impossibile riconciliare la quota del mandato dopo conflitti concorrenti.");
     }
 
     // ---------- Revoca ----------

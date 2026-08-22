@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Send, ShieldCheck, Sparkles, X } from "lucide-react";
 import {
   api,
@@ -16,13 +16,24 @@ import { anteprimaContestoAurora, type ContestoAurora } from "./auroraContext";
 import {
   ambitoControlloCedolini,
   contaStatiCedolini,
+  DIMENSIONE_LOTTO_CEDOLINI_AURORA,
   richiestaControlloCedolini,
   stessoAmbitoControlloCedolini,
   type AmbitoControlloCedolini,
 } from "./auroraCedolini";
+import {
+  aggiornaManifestMandatoSeCorrente,
+  chiaveScopeAurora,
+  chiaveScopeConversazioneAurora,
+  leasePerScopeAurora,
+  mandatoCompatibileConAmbito,
+  mandatoPerScope,
+  mandatiAttiviUnici,
+  mandatiDaRevocare,
+} from "./auroraScope";
+import { creaSequenziatoreRichieste } from "./ultimaRichiesta";
 
-// La chat resta senza strumenti. Il controllo cedolini è un percorso deterministico separato:
-// preflight visibile, mandato del Governor, proiezione minimizzata e revoca immediata.
+// Chat e strumenti usano esclusivamente il mandato visibile dello scope azienda-periodo corrente.
 
 interface Bolla {
   id: number;
@@ -73,28 +84,112 @@ export function AuroraPanel({
   const [ambitoPreflight, setAmbitoPreflight] = useState<AmbitoControlloCedolini | null>(null);
   const [mandato, setMandato] = useState<GrantAiEmesso | null>(null);
   const [mandatiResidui, setMandatiResidui] = useState<ManifestGrantAi[]>([]);
+  const [inventarioCaricato, setInventarioCaricato] = useState(false);
+  const [inventarioInCorso, setInventarioInCorso] = useState(true);
   const [esitoCedolini, setEsitoCedolini] = useState<EsitoQueryAi<RigaCedolinoMeseAi> | null>(null);
   const [trasparenza, setTrasparenza] = useState<CosaVedeAi | null>(null);
   const [erroreControllo, setErroreControllo] = useState<string | null>(null);
   const [controlloInCorso, setControlloInCorso] = useState(false);
+  const [scopeChat, setScopeChat] = useState<string | null>(null);
+  const [scopeEsito, setScopeEsito] = useState<string | null>(null);
+  const [scopeTrasparenza, setScopeTrasparenza] = useState<string | null>(null);
+  const [quotaConfermata, setQuotaConfermata] = useState<{
+    grantId: string;
+    scopeMandato: string;
+  } | null>(null);
   const prossimoId = useRef(1);
   const fondo = useRef<HTMLDivElement>(null);
   const storiaRef = useRef<MessaggioChatAi[]>([]);
   const campoMessaggio = useRef<HTMLTextAreaElement>(null);
   const chiusuraInCorso = useRef(false);
+  const montato = useRef(true);
+  const avvioInCorsoRef = useRef(false);
+  const mandatoRef = useRef<GrantAiEmesso | null>(mandato);
+  mandatoRef.current = mandato;
+  const richiesteChat = useRef(creaSequenziatoreRichieste());
+  const richiestePreflight = useRef(creaSequenziatoreRichieste());
+  const richiesteQuery = useRef(creaSequenziatoreRichieste());
+  const richiesteTrasparenza = useRef(creaSequenziatoreRichieste());
+  const richiesteRevoca = useRef(creaSequenziatoreRichieste());
+  const richiesteMandati = useRef(creaSequenziatoreRichieste());
+  const richiesteStato = useRef(creaSequenziatoreRichieste());
+  const richiesteAvvio = useRef(creaSequenziatoreRichieste());
+  const richiesteQuota = useRef(creaSequenziatoreRichieste());
   const ambitoCorrente = azienda ? ambitoControlloCedolini(azienda.id, periodo) : null;
   const ambitoCorrenteRef = useRef<AmbitoControlloCedolini | null>(ambitoCorrente);
   ambitoCorrenteRef.current = ambitoCorrente;
+  const scopeMandato = chiaveScopeAurora(azienda?.id, periodo);
+  const scopeMandatoRef = useRef(scopeMandato);
+  scopeMandatoRef.current = scopeMandato;
+  const scopeConversazione = chiaveScopeConversazioneAurora(azienda?.id, periodo, sezione);
+  const scopeConversazioneRef = useRef(scopeConversazione);
+  scopeConversazioneRef.current = scopeConversazione;
+  const scopeConversazionePrecedente = useRef(scopeConversazione);
+  const ultimoContesto = useRef<ContestoAurora | null>(contesto);
+  const scopeContesto = useRef<string | null>(contesto ? scopeConversazione : null);
+  if (ultimoContesto.current !== contesto) {
+    ultimoContesto.current = contesto;
+    scopeContesto.current = contesto ? scopeConversazione : null;
+  }
+  const contestoCorrente = scopeContesto.current === scopeConversazione ? contesto : null;
+  const mandatoCorrente = mandatoPerScope(mandato, azienda?.id, periodo);
+  const leaseCorrente = leasePerScopeAurora(mandato, azienda?.id, periodo);
   const preflightCorrente = stessoAmbitoControlloCedolini(ambitoPreflight, ambitoCorrente)
     ? preflight
     : null;
+  const esitoCorrente = scopeEsito === scopeMandato ? esitoCedolini : null;
+  const trasparenzaCorrente = scopeTrasparenza === scopeMandato ? trasparenza : null;
+  const bolleCorrenti = scopeChat === scopeConversazione ? bolle : [];
+  const quotaCorrenteConfermata = Boolean(mandatoCorrente
+    && quotaConfermata?.grantId === mandatoCorrente.manifest.grantId
+    && quotaConfermata.scopeMandato === scopeMandato);
+
+  const riconciliaMandati = useCallback(async (): Promise<ManifestGrantAi[]> => {
+    const richiesta = richiesteMandati.current.apri();
+    if (montato.current) {
+      setInventarioCaricato(false);
+      setInventarioInCorso(true);
+    }
+    try {
+      const grants = await api.aiGrants(richiesta.signal);
+      if (!richiesta.attiva()) throw new DOMException("Inventario superato", "AbortError");
+      const attivi = mandatiAttiviUnici(grants);
+      if (montato.current) {
+        const grantCorrenteId = mandatoRef.current?.manifest.grantId;
+        setMandatiResidui(attivi.filter((grant) => grant.grantId !== grantCorrenteId));
+        setInventarioCaricato(true);
+      }
+      return attivi;
+    } finally {
+      if (richiesta.attiva() && montato.current) setInventarioInCorso(false);
+    }
+  }, []);
+
+  const riconciliaQuotaChat = async (grantId: string, scopeAtteso: string) => {
+    if (!montato.current
+      || scopeMandatoRef.current !== scopeAtteso
+      || mandatoRef.current?.manifest.grantId !== grantId) return;
+    const richiesta = richiesteQuota.current.apri();
+    try {
+      const risultato = await api.aiCosaVede(grantId, richiesta.signal);
+      if (!richiesta.attiva()
+        || !montato.current
+        || scopeMandatoRef.current !== scopeAtteso
+        || mandatoRef.current?.manifest.grantId !== grantId) return;
+      setMandato((corrente) =>
+        aggiornaManifestMandatoSeCorrente(corrente, risultato.manifest, grantId));
+      setQuotaConfermata({ grantId, scopeMandato: scopeAtteso });
+    } catch {
+      // La quota resta esplicitamente non confermata finché il server non è leggibile.
+    }
+  };
 
   useEffect(() => { storiaRef.current = storia; }, [storia]);
 
   useEffect(() => {
-    if (!contesto) return;
+    if (!contestoCorrente) return;
     setBozza((corrente) => corrente.trim() || BOZZA_TESTO_SELEZIONATO);
-  }, [contesto]);
+  }, [contestoCorrente]);
 
   useEffect(() => {
     const id = window.setTimeout(() => campoMessaggio.current?.focus(), 0);
@@ -102,20 +197,62 @@ export function AuroraPanel({
   }, []);
 
   useEffect(() => {
-    api.aiChatStato().then(setStato).catch(() => setStato(null));
-    api.aiGrants()
-      .then((grants) => setMandatiResidui(grants.filter((grant) =>
-        grant.stato === "Attivo" && new Date(grant.scadeUtc).getTime() > Date.now())))
-      .catch(() => setMandatiResidui([]));
-  }, []);
+    montato.current = true;
+    const richiestaStato = richiesteStato.current.apri();
+    api.aiChatStato(richiestaStato.signal)
+      .then((risultato) => { if (richiestaStato.attiva()) setStato(risultato); })
+      .catch(() => { if (richiestaStato.attiva()) setStato(null); });
+    void riconciliaMandati().catch((e) => {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      if (montato.current)
+        setErroreControllo("Impossibile verificare i mandati attivi: Aurora resta bloccata.");
+    });
+    return () => {
+      richiestaStato.invalida();
+    };
+  }, [riconciliaMandati]);
 
   useEffect(() => {
-    if (!mandato || mandato.manifest.aziendaId === (azienda?.id ?? null)) return;
+    richiestePreflight.current.invalida();
+    richiesteQuery.current.invalida();
+    richiesteTrasparenza.current.invalida();
+    richiesteAvvio.current.invalida();
+    richiesteQuota.current.invalida();
+    setPreflight(null);
+    setAmbitoPreflight(null);
+    setEsitoCedolini(null);
+    setScopeEsito(null);
+    setTrasparenza(null);
+    setScopeTrasparenza(null);
+    setQuotaConfermata(null);
+    // Se è stato annullato soltanto un preflight, nessuna revoca successiva deve restare
+    // bloccata. Con un mandato presente sarà invece la revoca a possedere lo stato busy.
+    if (!mandatoRef.current && !avvioInCorsoRef.current) setControlloInCorso(false);
+  }, [scopeMandato]);
+
+  useEffect(() => {
+    if (scopeConversazionePrecedente.current === scopeConversazione) return;
+    scopeConversazionePrecedente.current = scopeConversazione;
+    richiesteChat.current.invalida();
+    setBolle([]);
+    setStoria([]);
+    setScopeChat(null);
+    setInCorso(false);
+    setBozza("");
+    scopeContesto.current = null;
+    onRimuoviContesto();
+  }, [onRimuoviContesto, scopeConversazione]);
+
+  useEffect(() => {
+    if (!mandato || mandatoPerScope(mandato, azienda?.id, periodo)) return;
     const grantId = mandato.manifest.grantId;
     const manifestPrecedente = mandato.manifest;
+    const scopeRevoca = scopeMandato;
+    const richiestaRevoca = richiesteRevoca.current.apri();
     // Non mostrare mai righe del cliente precedente sotto la nuova intestazione. Conserviamo
     // soltanto il manifest minimo necessario a rendere revocabile un eventuale errore di rete.
     setMandato(null);
+    setQuotaConfermata(null);
     setMandatiResidui((correnti) => [
       manifestPrecedente,
       ...correnti.filter((grant) => grant.grantId !== grantId),
@@ -123,64 +260,109 @@ export function AuroraPanel({
     setPreflight(null);
     setAmbitoPreflight(null);
     setEsitoCedolini(null);
+    setScopeEsito(null);
     setTrasparenza(null);
+    setScopeTrasparenza(null);
     setControlloInCorso(true);
-    setErroreControllo("Cambio azienda: sto revocando il mandato precedente.");
+    const messaggioRevoca = "Cambio azienda o mese: sto revocando il mandato precedente.";
+    setErroreControllo(messaggioRevoca);
     void api.aiRevocaGrant(grantId)
       .then(() => {
         setMandatiResidui((correnti) => correnti.filter((grant) => grant.grantId !== grantId));
-        setErroreControllo(null);
+        if (richiestaRevoca.attiva() && scopeMandatoRef.current === scopeRevoca)
+          setErroreControllo((corrente) => corrente === messaggioRevoca ? null : corrente);
       })
       .catch(() => {
-        setErroreControllo("Il vecchio mandato non è stato revocato: usa Revoca mandati residui prima di continuare.");
+        if (richiestaRevoca.attiva() && scopeMandatoRef.current === scopeRevoca)
+          setErroreControllo("Il vecchio mandato non è stato revocato: usa Revoca mandati residui prima di continuare.");
       })
-      .finally(() => setControlloInCorso(false));
-  }, [azienda?.id, mandato]);
+      .finally(() => {
+        if (richiestaRevoca.attiva()) setControlloInCorso(false);
+      });
+  }, [azienda?.id, periodo, mandato, scopeMandato]);
+
+  useEffect(() => () => {
+    montato.current = false;
+    richiesteChat.current.invalida();
+    richiestePreflight.current.invalida();
+    richiesteQuery.current.invalida();
+    richiesteTrasparenza.current.invalida();
+    richiesteRevoca.current.invalida();
+    richiesteMandati.current.invalida();
+    richiesteStato.current.invalida();
+    richiesteAvvio.current.invalida();
+    richiesteQuota.current.invalida();
+  }, []);
 
   useEffect(() => {
     fondo.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [bolle, inCorso]);
 
-  const aggiungi = (bolla: Omit<Bolla, "id">) =>
-    setBolle((prima) => [...prima, { ...bolla, id: prossimoId.current++ }]);
-
   const invia = async (testo: string) => {
     const messaggio = testo.trim();
     if (!messaggio || inCorso) return;
-    const contestoDaInviare = contesto;
-    aggiungi({
+    const scopeRichiesto = scopeConversazione;
+    const scopeQuotaRichiesto = scopeMandato;
+    const lease = leaseCorrente;
+    const grantIdQuota = mandatoCorrente?.manifest.grantId ?? null;
+    const contestoDaInviare = contestoCorrente;
+    const storiaDaInviare = scopeChat === scopeRichiesto ? storiaRef.current : [];
+    const bollaUtente: Bolla = {
+      id: prossimoId.current++,
       chi: "utente",
       testo: messaggio,
       citazione: contestoDaInviare ? anteprimaContestoAurora(contestoDaInviare, 240) : undefined,
-    });
+    };
+    setBolle((prima) => scopeChat === scopeRichiesto ? [...prima, bollaUtente] : [bollaUtente]);
+    setScopeChat(scopeRichiesto);
     setBozza("");
+    if (!lease || !grantIdQuota) {
+      setBolle((prima) => [...prima, {
+        id: prossimoId.current++,
+        chi: "aurora",
+        testo: "Prima mostra e avvia il controllo in sola lettura: Aurora può rispondere soltanto con un mandato valido per questa azienda e questo mese.",
+      }]);
+      setBozza(messaggio);
+      return;
+    }
+    const richiesta = richiesteChat.current.apri();
+    richiesteQuota.current.invalida();
+    setQuotaConfermata(null);
     setInCorso(true);
     try {
       const r = await api.aiChat(
         messaggio,
-        storiaRef.current,
+        storiaDaInviare,
+        lease,
         azienda?.id ?? null,
         contestoDaInviare
           ? { testo: contestoDaInviare.testo, sezione: contestoDaInviare.sezione }
           : null,
         sezione,
+        richiesta.signal,
       );
-      aggiungi({ chi: "aurora", testo: r.testo });
+      if (!richiesta.attiva() || scopeConversazioneRef.current !== scopeRichiesto) return;
+      setBolle((prima) => [...prima, { id: prossimoId.current++, chi: "aurora", testo: r.testo }]);
       if (r.ok) {
         setStoria(r.storia);
+        setScopeChat(scopeRichiesto);
         if (contestoDaInviare) onRimuoviContesto();
       } else {
         // Il provider spento risponde in modo controllato: conserva testo e domanda per il retry.
         setBozza(messaggio);
       }
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      if (!richiesta.attiva() || scopeConversazioneRef.current !== scopeRichiesto) return;
       setBozza(messaggio);
-      aggiungi({
+      setBolle((prima) => [...prima, {
+        id: prossimoId.current++,
         chi: "aurora",
         testo: `Non riesco a parlare con l'assistente: ${e instanceof Error ? e.message : "errore"}.`,
-      });
+      }]);
     } finally {
-      setInCorso(false);
+      await riconciliaQuotaChat(grantIdQuota, scopeQuotaRichiesto);
+      if (richiesta.attiva()) setInCorso(false);
     }
   };
 
@@ -189,13 +371,13 @@ export function AuroraPanel({
     onRimuoviContesto();
   };
 
-  const suggerimenti = contesto ? SUGGERIMENTI_CON_TESTO : SUGGERIMENTI;
-  const conteggi = esitoCedolini ? contaStatiCedolini(esitoCedolini.righe) : null;
+  const suggerimenti = contestoCorrente ? SUGGERIMENTI_CON_TESTO : SUGGERIMENTI;
+  const conteggi = esitoCorrente ? contaStatiCedolini(esitoCorrente.righe) : null;
 
   const mostraPreflight = async () => {
     if (!azienda || controlloInCorso) return;
-    if (mandatiResidui.length > 0) {
-      setErroreControllo("Revoca il mandato precedente prima di iniziare un nuovo controllo.");
+    if (mandato) {
+      setErroreControllo("Attendi la revoca del mandato precedente prima di iniziare un nuovo controllo.");
       return;
     }
     setControlloInCorso(true);
@@ -203,49 +385,81 @@ export function AuroraPanel({
     setPreflight(null);
     setAmbitoPreflight(null);
     setEsitoCedolini(null);
+    setScopeEsito(null);
     setTrasparenza(null);
+    setScopeTrasparenza(null);
     const ambitoRichiesto = ambitoControlloCedolini(azienda.id, periodo);
+    const scopeRichiesto = scopeMandato;
+    const richiesta = richiestePreflight.current.apri();
     try {
+      const attivi = await riconciliaMandati();
+      if (!richiesta.attiva() || scopeMandatoRef.current !== scopeRichiesto) return;
+      if (attivi.length > 0) {
+        setErroreControllo("Revoca tutti i mandati attivi prima di iniziare un nuovo controllo.");
+        return;
+      }
       const esito = await api.aiPreflight(
         richiestaControlloCedolini(ambitoRichiesto.aziendaId, ambitoRichiesto.periodo),
+        richiesta.signal,
       );
+      if (!richiesta.attiva() || scopeMandatoRef.current !== scopeRichiesto) return;
       setPreflight(esito);
       setAmbitoPreflight(ambitoRichiesto);
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        richiesta.invalida();
+        return;
+      }
+      if (!richiesta.attiva() || scopeMandatoRef.current !== scopeRichiesto) return;
       setErroreControllo(e instanceof Error ? e.message : "Preflight non disponibile.");
     } finally {
-      setControlloInCorso(false);
+      if (richiesta.attiva() && scopeMandatoRef.current === scopeRichiesto)
+        setControlloInCorso(false);
     }
   };
 
   const avviaControllo = async () => {
     if (!azienda || !preflightCorrente?.consentito || controlloInCorso) return;
     const ambitoAvvio = ambitoControlloCedolini(azienda.id, periodo);
+    const scopeAvvio = scopeMandato;
+    const richiestaAvvio = richiesteAvvio.current.apri();
+    let nuovoMandato: GrantAiEmesso | null = null;
+    let completato = false;
+    let emissioneTentata = false;
+    avvioInCorsoRef.current = true;
     setControlloInCorso(true);
     setErroreControllo(null);
     try {
-      const nuovoMandato = await api.aiEmettiGrant(
+      const attiviPrima = await riconciliaMandati();
+      if (!richiestaAvvio.attiva() || scopeMandatoRef.current !== scopeAvvio) return;
+      if (attiviPrima.length > 0) {
+        setErroreControllo("Esistono già mandati attivi: revocali prima di emetterne uno nuovo.");
+        return;
+      }
+
+      emissioneTentata = true;
+      nuovoMandato = await api.aiEmettiGrant(
         richiestaControlloCedolini(ambitoAvvio.aziendaId, ambitoAvvio.periodo),
       );
-      if (!stessoAmbitoControlloCedolini(ambitoAvvio, ambitoCorrenteRef.current)) {
-        try {
-          await api.aiRevocaGrant(nuovoMandato.manifest.grantId);
-        } catch {
-          setMandatiResidui((correnti) => [
-            nuovoMandato.manifest,
-            ...correnti.filter((grant) => grant.grantId !== nuovoMandato.manifest.grantId),
-          ]);
-          throw new Error(
-            "Azienda o mese cambiati durante l’avvio e mandato non revocato: usa Revoca mandati residui.",
-          );
-        }
-        throw new Error("Azienda o mese cambiati durante l’avvio: mandato revocato. Ripeti il preflight.");
+      if (!richiestaAvvio.attiva()
+        || !stessoAmbitoControlloCedolini(ambitoAvvio, ambitoCorrenteRef.current)
+        || scopeMandatoRef.current !== scopeAvvio) {
+        throw new Error("Azienda o mese cambiati durante l’emissione: il mandato sarà revocato senza leggere dati.");
       }
-      setMandato(nuovoMandato);
-      setMandatiResidui([]);
-      const esito = await api.aiQuery<RigaCedolinoMeseAi>(nuovoMandato.lease, "Cedolini");
+      const richiestaQuery = richiesteQuery.current.apri();
+      const esito = await api.aiQuery<RigaCedolinoMeseAi>(
+        nuovoMandato.lease,
+        "Cedolini",
+        richiestaQuery.signal,
+      );
+      if (!richiestaQuery.attiva() || scopeMandatoRef.current !== scopeAvvio)
+        throw new Error("Azienda o mese cambiati durante la lettura: mandato revocato. Ripeti il preflight.");
       if (!esito.consentito) throw new Error(esito.motivo ?? "Accesso negato dal Governor.");
+      setMandato(nuovoMandato);
+      setMandatiResidui((correnti) => correnti.filter(
+        (grant) => grant.grantId !== nuovoMandato?.manifest.grantId));
       setEsitoCedolini(esito);
+      setScopeEsito(scopeAvvio);
       setMandato({
         ...nuovoMandato,
         manifest: {
@@ -253,38 +467,120 @@ export function AuroraPanel({
           lettureUsate: nuovoMandato.manifest.maxLetture - esito.lettureRimanenti,
         },
       });
+      setQuotaConfermata({
+        grantId: nuovoMandato.manifest.grantId,
+        scopeMandato: scopeAvvio,
+      });
+      completato = true;
     } catch (e) {
-      setErroreControllo(e instanceof Error ? e.message : "Controllo non riuscito.");
+      if (!emissioneTentata && !nuovoMandato) return;
+      let inventarioDopoErrore: ManifestGrantAi[] = [];
+      try {
+        inventarioDopoErrore = await riconciliaMandati();
+      } catch {
+        // Se la risposta di emissione è andata persa, il prossimo tentativo resta bloccato
+        // finché l'inventario non torna leggibile.
+      }
+      const candidati = mandatiDaRevocare(
+        nuovoMandato,
+        [],
+        inventarioDopoErrore.filter((grant) =>
+          mandatoCompatibileConAmbito(grant, ambitoAvvio.aziendaId, ambitoAvvio.periodo)),
+      );
+      const falliti = new Map<string, ManifestGrantAi>();
+      const revocaCandidati = async (manifesti: ManifestGrantAi[]) => {
+        if (completato) return;
+        for (const manifest of mandatiAttiviUnici(manifesti)) {
+          try {
+            await api.aiRevocaGrant(manifest.grantId);
+            falliti.delete(manifest.grantId);
+          } catch {
+            falliti.set(manifest.grantId, manifest);
+          }
+        }
+      };
+      await revocaCandidati(candidati);
+
+      // Seconda riconciliazione: copre il caso in cui il POST abbia creato il grant ma la
+      // risposta sia andata persa e il primo inventario fosse temporaneamente indisponibile.
+      let inventarioFinale: ManifestGrantAi[] = [];
+      try {
+        const ancoraAttivi = await riconciliaMandati();
+        await revocaCandidati(ancoraAttivi.filter((grant) =>
+          mandatoCompatibileConAmbito(grant, ambitoAvvio.aziendaId, ambitoAvvio.periodo)));
+        inventarioFinale = await riconciliaMandati();
+      } catch {
+        // Il gate dell'inventario resta chiuso; gli ID noti falliti restano visibili.
+      }
+
+      if (montato.current) {
+        const nonRevocati = mandatiAttiviUnici([
+          ...falliti.values(),
+          ...inventarioFinale.filter((grant) =>
+            mandatoCompatibileConAmbito(grant, ambitoAvvio.aziendaId, ambitoAvvio.periodo)),
+        ]);
+        if (nonRevocati.length > 0) {
+          setMandatiResidui((correnti) => mandatiAttiviUnici([...correnti, ...nonRevocati]));
+          setErroreControllo(
+            "Il controllo è stato interrotto e alcuni mandati non sono stati revocati: usa Revoca mandati residui.",
+          );
+        } else if (richiestaAvvio.attiva() && scopeMandatoRef.current === scopeAvvio) {
+          setErroreControllo(e instanceof Error ? e.message : "Controllo non riuscito.");
+        }
+      }
     } finally {
-      setControlloInCorso(false);
+      avvioInCorsoRef.current = false;
+      if (montato.current) setControlloInCorso(false);
     }
   };
 
   const mostraTrasparenza = async () => {
-    if (!mandato || controlloInCorso) return;
+    if (!mandatoCorrente || controlloInCorso) return;
+    const scopeRichiesto = scopeMandato;
+    const richiesta = richiesteTrasparenza.current.apri();
     setControlloInCorso(true);
     setErroreControllo(null);
     try {
-      setTrasparenza(await api.aiCosaVede(mandato.manifest.grantId));
+      const risultato = await api.aiCosaVede(mandatoCorrente.manifest.grantId, richiesta.signal);
+      if (!richiesta.attiva() || scopeMandatoRef.current !== scopeRichiesto) return;
+      setTrasparenza(risultato);
+      setScopeTrasparenza(scopeRichiesto);
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      if (!richiesta.attiva() || scopeMandatoRef.current !== scopeRichiesto) return;
       setErroreControllo(e instanceof Error ? e.message : "Registro non disponibile.");
     } finally {
-      setControlloInCorso(false);
+      if (richiesta.attiva() && scopeMandatoRef.current === scopeRichiesto)
+        setControlloInCorso(false);
     }
   };
 
   const arresta = async () => {
     if (controlloInCorso) return;
+    richiesteRevoca.current.invalida();
+    richiesteMandati.current.invalida();
+    richiesteChat.current.invalida();
+    richiestePreflight.current.invalida();
+    richiesteQuery.current.invalida();
+    richiesteTrasparenza.current.invalida();
+    richiesteQuota.current.invalida();
+    setInCorso(false);
     setControlloInCorso(true);
     setErroreControllo(null);
     try {
       await api.aiArresta();
       setMandato(null);
+      setQuotaConfermata(null);
       setMandatiResidui([]);
+      setBolle([]);
+      setStoria([]);
+      setScopeChat(null);
       setPreflight(null);
       setAmbitoPreflight(null);
       setEsitoCedolini(null);
+      setScopeEsito(null);
       setTrasparenza(null);
+      setScopeTrasparenza(null);
     } catch (e) {
       setErroreControllo(e instanceof Error ? e.message : "Arresto non riuscito.");
     } finally {
@@ -298,25 +594,45 @@ export function AuroraPanel({
       setErroreControllo("Attendi la conclusione del controllo prima di chiudere Aurora.");
       return;
     }
-    if (!mandato && mandatiResidui.length === 0) {
-      onChiudi();
-      return;
-    }
-
     chiusuraInCorso.current = true;
     setControlloInCorso(true);
-    setErroreControllo("Sto revocando il mandato prima di chiudere Aurora.");
+    setErroreControllo("Sto verificando e revocando tutti i mandati prima di chiudere Aurora.");
     try {
-      if (mandato)
-        await api.aiRevocaGrant(mandato.manifest.grantId);
-      else
-        await api.aiArresta();
+      const inventario = await riconciliaMandati();
+      const daRevocare = mandatiDaRevocare(mandatoRef.current, mandatiResidui, inventario);
+      const falliti: ManifestGrantAi[] = [];
+      for (const manifest of daRevocare) {
+        try {
+          await api.aiRevocaGrant(manifest.grantId);
+        } catch {
+          falliti.push(manifest);
+        }
+      }
+      if (falliti.length > 0) {
+        setMandato(null);
+        setQuotaConfermata(null);
+        setMandatiResidui(mandatiAttiviUnici(falliti));
+        setErroreControllo(
+          `Non chiudo Aurora: ${falliti.length} mandat${falliti.length === 1 ? "o non è stato revocato" : "i non sono stati revocati"}. Riprova Revoca mandati residui.`,
+        );
+        return;
+      }
+
+      const rimasti = await riconciliaMandati();
+      if (rimasti.length > 0) {
+        setMandato(null);
+        setQuotaConfermata(null);
+        setMandatiResidui(rimasti);
+        setErroreControllo("Non chiudo Aurora: il server segnala ancora mandati attivi.");
+        return;
+      }
       setMandato(null);
+      setQuotaConfermata(null);
       setMandatiResidui([]);
       onChiudi();
     } catch (e) {
       setErroreControllo(
-        `Non chiudo Aurora perché il mandato non è stato revocato: ${e instanceof Error ? e.message : "errore"}. Usa Revoca mandato e riprova.`,
+        `Non chiudo Aurora perché non posso verificare o revocare tutti i mandati: ${e instanceof Error ? e.message : "errore"}. Riprova.`,
       );
     } finally {
       chiusuraInCorso.current = false;
@@ -335,8 +651,8 @@ export function AuroraPanel({
       <header className="cp-mandato">
         <div className="cp-mandato-riga">
           <span className="cp-titolo"><Sparkles size={16} aria-hidden="true" /> Aurora</span>
-          <span className={`cp-badge${mandato ? " attivo" : ""}`}>
-            {mandato ? "mandato attivo" : stato?.attiva
+          <span className={`cp-badge${mandatoCorrente ? " attivo" : ""}`}>
+            {mandatoCorrente ? "mandato attivo" : stato?.attiva
               ? `${stato.provider} · ${stato.modello}`
               : "controllo deterministico"}
           </span>
@@ -346,8 +662,9 @@ export function AuroraPanel({
         </div>
         <p className="cp-scope">
           Pagina: <b>{sezione}</b>{azienda ? <> · Azienda: <b>{azienda.ragioneSociale}</b></> : null}<br />
-          La chat spiega soltanto. Il controllo cedolini legge un lotto massimo di 10 righe
-          solo dopo il preflight e non modifica nulla.<br />
+          Aurora risponde e usa strumenti in sola lettura soltanto con il mandato mostrato per
+          questa azienda e questo mese. Il controllo cedolini legge al massimo 10 righe e non
+          modifica nulla.<br />
           {stato?.attiva ? (
             <>Le domande scritte qui vengono inviate al provider <b>{stato.provider}</b> per
             generare la risposta: non incollare dati che non vuoi condividere.</>
@@ -358,17 +675,17 @@ export function AuroraPanel({
         </p>
       </header>
 
-      {contesto && (
+      {contestoCorrente && (
         <section className="cp-contesto" aria-label="Testo selezionato per Aurora">
           <div className="cp-contesto-testa">
-            <strong>Testo selezionato · {contesto.sezione}</strong>
+            <strong>Testo selezionato · {contestoCorrente.sezione}</strong>
             <button type="button" onClick={rimuoviContesto} aria-label="Rimuovi testo selezionato">
               <X size={15} aria-hidden="true" />
             </button>
           </div>
-          <blockquote>{anteprimaContestoAurora(contesto, 320)}</blockquote>
+          <blockquote>{anteprimaContestoAurora(contestoCorrente, 320)}</blockquote>
           <small>
-            {contesto.troncato ? "Testo ridotto a 4.000 caratteri. " : ""}
+            {contestoCorrente.troncato ? "Testo ridotto a 4.000 caratteri. " : ""}
             Sarà allegato una volta sola alla prossima domanda, anche se usi un pulsante rapido.
           </small>
         </section>
@@ -394,37 +711,56 @@ export function AuroraPanel({
                     setPeriodo(e.target.value);
                     setPreflight(null);
                     setEsitoCedolini(null);
+                    setScopeEsito(null);
                     setTrasparenza(null);
+                    setScopeTrasparenza(null);
                   }}
                 />
               </label>
-              {!preflightCorrente && !mandato && (
-                <button className="btn secondary" type="button" disabled={controlloInCorso || mandatiResidui.length > 0} onClick={mostraPreflight}>
-                  Mostra cosa controllerà
+              {!preflightCorrente && !mandatoCorrente && (
+                <button className="btn secondary" type="button" disabled={!inventarioCaricato || inventarioInCorso || controlloInCorso || Boolean(mandato) || mandatiResidui.length > 0} onClick={mostraPreflight}>
+                  {inventarioInCorso ? "Verifica mandati…" : "Mostra cosa controllerà"}
                 </button>
               )}
             </>
           )}
 
-          {preflightCorrente && !mandato && (
+          {preflightCorrente && !mandatoCorrente && (
             <div className={`cp-esito ${preflightCorrente.consentito ? "ok" : "urgente"}`}>
               <strong>{preflightCorrente.consentito ? "Pronto per la tua conferma" : "Controllo non consentito"}</strong>
               <span>{preflightCorrente.descrizione ?? preflightCorrente.motivo}</span>
               {preflightCorrente.consentito && (
-                <button className="btn primary" type="button" disabled={controlloInCorso} onClick={avviaControllo}>
-                  Avvia controllo in sola lettura
-                </button>
+                <>
+                  <small>
+                    Ogni lettura mostra al massimo <b>{DIMENSIONE_LOTTO_CEDOLINI_AURORA} righe</b>. Budget complessivo del mandato: <b>{preflightCorrente.maxLetture ?? "definito dal server"} letture</b> · durata: <b>{preflightCorrente.durataMinuti ?? "definita dal server"} minuti</b>.
+                  </small>
+                  <button className="btn primary" type="button" disabled={!inventarioCaricato || inventarioInCorso || controlloInCorso || mandatiResidui.length > 0} onClick={avviaControllo}>
+                    Avvia controllo in sola lettura
+                  </button>
+                </>
               )}
             </div>
           )}
 
-          {mandato && (
+          {mandatoCorrente && (
             <div className="cp-esito ok">
-              <strong>{mandato.manifest.periodo} · sola lettura</strong>
-              <span>
-                Quota: {mandato.manifest.lettureUsate}/{mandato.manifest.maxLetture} righe ·
-                scade {new Date(mandato.manifest.scadeUtc).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
-              </span>
+              <strong>{mandatoCorrente.manifest.periodo} · sola lettura</strong>
+              {quotaCorrenteConfermata ? (
+                <span>
+                  Quota: {mandatoCorrente.manifest.lettureUsate}/{mandatoCorrente.manifest.maxLetture} righe ·
+                  scade {new Date(mandatoCorrente.manifest.scadeUtc).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              ) : (
+                <span>
+                  Quota da verificare con il server · scade {new Date(mandatoCorrente.manifest.scadeUtc).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+              {quotaCorrenteConfermata
+                && mandatoCorrente.manifest.maxLetture - mandatoCorrente.manifest.lettureUsate < DIMENSIONE_LOTTO_CEDOLINI_AURORA && (
+                <small>
+                  Restano meno di {DIMENSIONE_LOTTO_CEDOLINI_AURORA} letture: non c’è budget per un altro lotto completo.
+                </small>
+              )}
               <div className="cp-mandato-azioni">
                 <button className="cp-chip" type="button" disabled={controlloInCorso} onClick={mostraTrasparenza}>
                   Dati letti dal controllo
@@ -436,7 +772,7 @@ export function AuroraPanel({
             </div>
           )}
 
-          {!mandato && mandatiResidui.length > 0 && (
+          {mandatiResidui.length > 0 && (
             <div className="cp-esito avviso">
               <strong>Mandato precedente ancora attivo</strong>
               <span>
@@ -449,23 +785,44 @@ export function AuroraPanel({
             </div>
           )}
 
-          {conteggi && esitoCedolini && (
+          {!inventarioCaricato && !inventarioInCorso && mandatiResidui.length === 0 && (
+            <div className="cp-esito urgente">
+              <strong>Inventario mandati non verificato</strong>
+              <span>Aurora non può emettere nuovi mandati finché il server non risponde.</span>
+              <button
+                className="btn secondary"
+                type="button"
+                disabled={controlloInCorso}
+                onClick={() => {
+                  setErroreControllo(null);
+                  void riconciliaMandati().catch(() => {
+                    if (montato.current)
+                      setErroreControllo("Impossibile verificare i mandati attivi: Aurora resta bloccata.");
+                  });
+                }}
+              >
+                Riprova verifica mandati
+              </button>
+            </div>
+          )}
+
+          {conteggi && esitoCorrente && (
             <div className="cp-lotto">
               <strong>
-                {esitoCedolini.righe.length} di {esitoCedolini.totale} rapporti controllati
+                {esitoCorrente.righe.length} di {esitoCorrente.totale} rapporti controllati
               </strong>
               <span className="cp-lotto-riepilogo">
                 {conteggi.cartellino_presente} cartellini presenti · {conteggi.da_compilare} da compilare · {conteggi.gia_elaborato} già elaborati · {conteggi.bloccato} bloccati · {conteggi.protetto} protetti
               </span>
               <ul>
-                {esitoCedolini.righe.map((riga) => (
+                {esitoCorrente.righe.map((riga) => (
                   <li key={riga.rapportoId}>
                     <div><b>{riga.nominativo}</b><span className={`cp-stato ${riga.stato}`}>{riga.stato.replaceAll("_", " ")}</span></div>
                     <small>{riga.motivo}</small>
                   </li>
                 ))}
               </ul>
-              {esitoCedolini.totale > esitoCedolini.righe.length && (
+              {esitoCorrente.totale > esitoCorrente.righe.length && (
                 <small>
                   Questo incremento mostra i primi 10. I successivi richiedono il prossimo
                   checkpoint con cursore verificabile e non vengono letti ora.
@@ -474,14 +831,14 @@ export function AuroraPanel({
             </div>
           )}
 
-          {trasparenza && (
+          {trasparenzaCorrente && (
             <div className="cp-trasparenza">
               <div className="cp-trasparenza-testa">
                 <strong>Cosa ha letto il controllo</strong>
-                <span>{trasparenza.manifest.risorse.join(", ")}</span>
+                <span>{trasparenzaCorrente.manifest.risorse.join(", ")}</span>
               </div>
               <ul>
-                {trasparenza.eventi.map((evento) => (
+                {trasparenzaCorrente.eventi.map((evento) => (
                   <li key={evento.sequenza}>
                     <span className={`cp-evento${evento.motivo ? " nega" : ""}`}>{evento.evento}</span>
                     <span className="cp-evento-dettaglio">{evento.dettaglio}{evento.motivo ? ` · ${evento.motivo}` : ""}</span>
@@ -510,7 +867,7 @@ export function AuroraPanel({
           </div>
         )}
 
-        {bolle.map((b) => (
+        {bolleCorrenti.map((b) => (
           <div className={`cp-msg${b.chi === "utente" ? " mio" : ""}`} key={b.id}>
             <p>{b.testo}</p>
             {b.citazione && <blockquote className="cp-citazione">“{b.citazione}”</blockquote>}
@@ -556,10 +913,9 @@ export function AuroraPanel({
       <footer className="cp-nota">
         <ShieldCheck size={14} aria-hidden="true" />
         <span>
-          La chat invia al server messaggio, sezione, ID dell’azienda scelta e fino a 12 tue domande
-          precedenti; il testo selezionato è monouso. Il controllo deterministico usa azienda e mese
-          confermati e restituisce, per massimo 10 rapporti, ID tecnici, nominativo, stato e motivo.
-          Questi dati del controllo non vanno a un modello o provider AI e non vengono modificati.
+          La chat invia al server mandato, messaggio, sezione, ID dell’azienda scelta e fino a 12 tue
+          domande precedenti; il testo selezionato è monouso. Ogni lettura passa dal Governor e resta
+          vincolata ad azienda, mese, risorse e quota del mandato visibile. Aurora non esegue modifiche.
         </span>
       </footer>
     </aside>

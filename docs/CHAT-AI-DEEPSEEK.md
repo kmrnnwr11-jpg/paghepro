@@ -1,4 +1,4 @@
-# Aurora: controllo governato e chat sospesa
+# Aurora: runtime governato, provider ancora spento
 
 > Stato dal 10 agosto 2026: **DeepSeek e gli altri provider cloud sono sospesi**. Il nome di
 > questo file resta per compatibilità con i collegamenti storici.
@@ -10,8 +10,9 @@ backend/src/Paghe.Api/paghe.db
 ```
 
 Nel deploy SaaS il database può invece essere PostgreSQL: «deterministico» non significa
-necessariamente «eseguito sul computer dell'utente». In entrambi i profili, nessuna riga del
-controllo cedolini viene inviata a un modello.
+necessariamente «eseguito sul computer dell'utente». Con i provider spenti nessuna riga viene
+inviata a un modello. Dopo una futura accensione approvata, soltanto le proiezioni minimizzate
+lette tramite un mandato valido potranno entrare nel runtime.
 
 La configurazione è fail-closed: `Provider=Spento` non può essere riattivato da URL/modello/chiave;
 `Ai:SoloLocale=true` vieta il cloud; `ProviderCloudApprovato=false` blocca il profilo SaaS e
@@ -34,10 +35,11 @@ anche una selezione che attraversa un'area privata viene rifiutata.
 
 ### Controllo cedolini in lotti da 10
 
-Nel pannello è disponibile anche il primo percorso governato di Aurora, indipendente dalla chat
-e dal modello. Dopo aver scelto azienda e mese, l'utente vede prima un riepilogo di ciò che verrà
-letto e conferma l'avvio. Il Governor emette un mandato S2 di 30 minuti e massimo 10 righe; il
-broker restituisce solo nominativo e stato operativo del cedolino. Non escono importi, codice
+Nel pannello è disponibile il primo percorso governato di Aurora. Dopo aver scelto azienda e
+mese, l'utente vede prima finalità, durata e budget effettivi decisi dal server e conferma
+l'avvio. Il Governor emette un mandato S2 di 30 minuti; la policy corrente assegna un budget
+complessivo di 250 record, mentre ogni singola lettura cedolini resta limitata a un lotto di 10.
+Il broker restituisce solo nominativo e stato operativo del cedolino. Non escono importi, codice
 fiscale, IBAN o dati di malattia/infortunio.
 
 Il pannello mostra quota, scadenza, «Dati letti dal controllo» e «Revoca mandato». Se i rapporti sono più di 10,
@@ -55,10 +57,11 @@ supererà tutti i controlli normativi e di periodo.
   perché l'intera selezione venga scartata.
 - Un filtro server deterministico blocca password, chiavi private e formati noti di token prima
   che possano raggiungere un modello.
-- In modalità spiegazione il modello non riceve nessuno strumento: non può leggere l'archivio,
-  proporre azioni o modificare dati.
-- L'endpoint storico di conferma delle azioni AI è sospeso; i dati si salvano soltanto dai normali
-  moduli PaghePro.
+- Senza lease la chat non chiama il provider e non riceve strumenti. Con una lease valida il
+  registry offre soltanto i tool di lettura compatibili con ruolo, risorsa, operazione e scope;
+  ogni esecuzione torna al broker e la quota viene riletta dal server dopo il turno.
+- Gli endpoint di scrittura/conferma AI rispondono `409` al gate A2; i dati si salvano soltanto
+  dai normali moduli PaghePro.
 - La cronologia proveniente dal browser conserva solo le domande `user`, con limiti; risposte
   `assistant`, messaggi `system`, `tool` e chiamate forgiate sono scartati. Dopo una domanda con
   testo selezionato non viene restituita storia, così neppure un'eventuale citazione del modello

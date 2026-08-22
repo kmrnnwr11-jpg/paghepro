@@ -30,6 +30,17 @@ public sealed record ContestoAurora(
 public sealed record RisultatoStrumentoAurora(
     string ContenutoJson, bool Negato, string? Motivo, int Righe);
 
+/// <summary>
+/// Unico esecutore ammesso per le letture A2. I plugin dichiarano il contratto, ma non
+/// ricevono accesso diretto ai dati: tenant, scope, quota e revoca restano nel broker.
+/// </summary>
+public interface IEsecutoreLettureAurora
+{
+    Task<RisultatoStrumentoAurora> EseguiAsync(
+        ContestoAurora contesto, DescrittoreStrumento descrittore,
+        string argomentiJson, CancellationToken ct);
+}
+
 /// <summary>Proposta preparata da uno strumento di scrittura, prima della persistenza.</summary>
 public sealed record PropostaAurora(
     string Titolo, IReadOnlyList<RigaDiffAurora> Diff, bool PuoProcedere, string? MotivoBlocco);
@@ -44,17 +55,14 @@ public sealed record PropostaAzioneAurora(
     DateTime ScadeUtc);
 
 /// <summary>
-/// Uno strumento del runtime. Le letture implementano <see cref="EseguiAsync"/>; le
-/// scritture <see cref="PreparaAsync"/> (diff per l'utente) e <see cref="ApplicaAsync"/>
+/// Uno strumento del runtime. Le letture dichiarano soltanto il descrittore e passano
+/// dall'esecutore centrale; le scritture usano <see cref="PreparaAsync"/> (diff per l'utente)
+/// e <see cref="ApplicaAsync"/>
 /// (eseguita solo dopo la conferma col token, dentro i servizi normali del programma).
 /// </summary>
 public interface IStrumentoAurora
 {
     DescrittoreStrumento Descrittore { get; }
-
-    Task<RisultatoStrumentoAurora> EseguiAsync(
-        ContestoAurora contesto, string argomentiJson, CancellationToken ct) =>
-        throw new InvalidOperationException($"Lo strumento {Descrittore.Nome} non esegue letture.");
 
     Task<PropostaAurora> PreparaAsync(
         ContestoAurora contesto, string argomentiJson, CancellationToken ct) =>

@@ -891,20 +891,26 @@ processo AI con credenziali o accesso generico.
 > deterministiche/mock. Resta vincolante: **nessun modello AI viene acceso prima che
 > l'isolamento G1 sia provato** per il profilo in cui il modello girerebbe.
 
-- [ ] `ProfessionalResourceCatalog` e `AiCapabilityRegistry`;
-- [ ] `AiUsagePolicyStore` versionato;
-- [ ] `AiScopeGrantRecord` autorevole + `AiScopeLease` opaca e firmata;
+- [x] `ProfessionalResourceCatalog` e `AiCapabilityRegistry`;
+- [x] `AiUsagePolicyStore` versionato;
+- [x] `AiScopeGrantRecord` autorevole + `AiScopeLease` opaca e firmata;
 - [ ] `AiPolicyEvaluator` centralizzato;
-- [ ] query broker tipizzato e tenant-scoped;
-- [ ] contatori atomici e checkpoint;
-- [ ] revoca, stop, resume e idempotenza;
-- [ ] audit append-only/tamper-evident;
-- [ ] UI barra, preflight, drawer e `Cosa vede l'AI`.
+- [x] query broker tipizzato e tenant-scoped;
+- [x] contatori atomici e checkpoint;
+- [ ] revoca, stop, resume e idempotenza — revoca e stop sono chiusi per A2 read-only;
+      resume e idempotenza delle scritture restano gate A3/G5;
+- [x] audit append-only/tamper-evident per grant, accessi e run A2;
+- [x] UI barra, preflight, drawer e `Cosa vede l'AI`.
 
 Si parte con `S0-S2`, `A1-A2`, senza scritture.
 
 **Gate G2:** 100% dei run/tool/retrieval richiede un grant valido; zero bypass in test concorrenti,
 property-based e fuzz; revoca e quote rispettate.
+
+**Stato verificato 22 agosto 2026:** il verticale A2 read-only soddisfa grant obbligatorio,
+tenant/scope, revoca, quota atomica, audit e UI. G2 complessivo resta aperto finché non esiste
+un `AiPolicyEvaluator` unico e finché resume/idempotenza delle scritture non sono provati; il
+completamento parziale non autorizza A3 né l'accensione di un provider reale.
 
 ### Fase G3 — Lettura e bozze su tutti i moduli già pronti
 

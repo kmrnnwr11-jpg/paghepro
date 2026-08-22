@@ -1188,6 +1188,22 @@ export const api = {
       }),
     }),
 
+  // Protocollo proposta A3: viaggia soltanto il token firmato dal server, mai gli argomenti.
+  aiPropostaConferma: (token: string, signal?: AbortSignal) =>
+    req<EsitoPropostaAurora>("/api/ai/chat/conferma", {
+      method: "POST", signal, body: JSON.stringify({ token }),
+    }),
+
+  aiPropostaAnnulla: (token: string, signal?: AbortSignal) =>
+    req<EsitoPropostaAurora>("/api/ai/chat/annulla", {
+      method: "POST", signal, body: JSON.stringify({ token }),
+    }),
+
+  aiPropostaUndo: (token: string, signal?: AbortSignal) =>
+    req<EsitoPropostaAurora>("/api/ai/chat/undo", {
+      method: "POST", signal, body: JSON.stringify({ token }),
+    }),
+
   // --- Posta (email/PEC): caselle collegate self-service, il triage AI resta sempre da confermare ---
   caselleEmail: () => req<CasellaEmail[]>("/api/posta/caselle"),
   creaCasellaEmail: (c: NuovaCasellaEmail) =>
@@ -1323,10 +1339,41 @@ export interface ContestoSelezionatoAi {
   sezione: string;
 }
 
+/** Una riga del diff mostrato prima della conferma: cosa cambia, da quale valore a quale. */
+export interface RigaDiffAurora {
+  etichetta: string;
+  da: string | null;
+  a: string | null;
+}
+
+/**
+ * Proposta firmata dal server: il browser conserva e rimanda soltanto il token opaco.
+ * Con confermabile=false (collaudo DryRun) non c'è token e non è possibile applicare nulla.
+ */
+export interface PropostaAzioneAurora {
+  token: string | null;
+  strumento: string;
+  titolo: string;
+  diff: RigaDiffAurora[];
+  resaUi: string;
+  scadeUtc: string;
+  propostaId: string | null;
+  confermabile: boolean;
+}
+
+/** Esito di conferma/annullo/ripristino; tokenUndo consente il ripristino finché è valido. */
+export interface EsitoPropostaAurora {
+  propostaId: string | null;
+  stato: string;
+  messaggio: string;
+  esitoJson: string | null;
+  tokenUndo: string | null;
+}
+
 export interface RispostaChatAi {
   testo: string;
   storia: MessaggioChatAi[];
-  azione: null;
+  azione: PropostaAzioneAurora | null;
   ok: boolean;
 }
 

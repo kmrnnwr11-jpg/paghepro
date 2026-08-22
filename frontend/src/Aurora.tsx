@@ -5,14 +5,23 @@ import {
   type Azienda,
   type CosaVedeAi,
   type EsitoPreflightAi,
+  type EsitoPropostaAurora,
   type EsitoQueryAi,
   type GrantAiEmesso,
   type ManifestGrantAi,
   type MessaggioChatAi,
+  type PropostaAzioneAurora,
   type RigaCedolinoMeseAi,
   type StatoChatAi,
 } from "./api";
 import { anteprimaContestoAurora, type ContestoAurora } from "./auroraContext";
+import {
+  descriviScadenzaProposta,
+  esitoPropostaDaErrore,
+  esitoRassicurante,
+  propostaScaduta,
+  puoRipristinare,
+} from "./auroraProposta";
 import {
   ambitoControlloCedolini,
   contaStatiCedolini,
@@ -91,6 +100,10 @@ export function AuroraPanel({
   const [erroreControllo, setErroreControllo] = useState<string | null>(null);
   const [controlloInCorso, setControlloInCorso] = useState(false);
   const [scopeChat, setScopeChat] = useState<string | null>(null);
+  const [proposta, setProposta] = useState<PropostaAzioneAurora | null>(null);
+  const [esitoProposta, setEsitoProposta] = useState<EsitoPropostaAurora | null>(null);
+  const [scopeProposta, setScopeProposta] = useState<string | null>(null);
+  const [propostaInCorso, setPropostaInCorso] = useState(false);
   const [scopeEsito, setScopeEsito] = useState<string | null>(null);
   const [scopeTrasparenza, setScopeTrasparenza] = useState<string | null>(null);
   const [quotaConfermata, setQuotaConfermata] = useState<{
@@ -115,6 +128,7 @@ export function AuroraPanel({
   const richiesteStato = useRef(creaSequenziatoreRichieste());
   const richiesteAvvio = useRef(creaSequenziatoreRichieste());
   const richiesteQuota = useRef(creaSequenziatoreRichieste());
+  const richiesteProposta = useRef(creaSequenziatoreRichieste());
   const ambitoCorrente = azienda ? ambitoControlloCedolini(azienda.id, periodo) : null;
   const ambitoCorrenteRef = useRef<AmbitoControlloCedolini | null>(ambitoCorrente);
   ambitoCorrenteRef.current = ambitoCorrente;
@@ -140,6 +154,8 @@ export function AuroraPanel({
   const esitoCorrente = scopeEsito === scopeMandato ? esitoCedolini : null;
   const trasparenzaCorrente = scopeTrasparenza === scopeMandato ? trasparenza : null;
   const bolleCorrenti = scopeChat === scopeConversazione ? bolle : [];
+  const propostaCorrente = scopeProposta === scopeConversazione ? proposta : null;
+  const esitoPropostaCorrente = scopeProposta === scopeConversazione ? esitoProposta : null;
   const quotaCorrenteConfermata = Boolean(mandatoCorrente
     && quotaConfermata?.grantId === mandatoCorrente.manifest.grantId
     && quotaConfermata.scopeMandato === scopeMandato);
@@ -292,6 +308,7 @@ export function AuroraPanel({
     richiesteStato.current.invalida();
     richiesteAvvio.current.invalida();
     richiesteQuota.current.invalida();
+    richiesteProposta.current.invalida();
   }, []);
 
   useEffect(() => {
@@ -343,6 +360,11 @@ export function AuroraPanel({
       );
       if (!richiesta.attiva() || scopeConversazioneRef.current !== scopeRichiesto) return;
       setBolle((prima) => [...prima, { id: prossimoId.current++, chi: "aurora", testo: r.testo }]);
+      if (r.azione) {
+        setProposta(r.azione);
+        setEsitoProposta(null);
+        setScopeProposta(scopeRichiesto);
+      }
       if (r.ok) {
         setStoria(r.storia);
         setScopeChat(scopeRichiesto);
@@ -369,6 +391,36 @@ export function AuroraPanel({
   const rimuoviContesto = () => {
     setBozza((corrente) => corrente === BOZZA_TESTO_SELEZIONATO ? "" : corrente);
     onRimuoviContesto();
+  };
+
+  // Conferma, annullo e ripristino rimandano al server soltanto il token firmato. L'esito
+  // arriva anche dentro 409/410: viene mostrato com'è, senza ritentare nulla in automatico.
+  const operaSuProposta = async (
+    chiama: (token: string, signal?: AbortSignal) => Promise<EsitoPropostaAurora>,
+    token: string,
+  ) => {
+    if (propostaInCorso) return;
+    const scopeRichiesto = scopeConversazione;
+    const scopeQuotaRichiesto = scopeMandato;
+    const grantIdQuota = mandatoCorrente?.manifest.grantId ?? null;
+    const richiesta = richiesteProposta.current.apri();
+    setPropostaInCorso(true);
+    try {
+      let esito: EsitoPropostaAurora;
+      try {
+        esito = await chiama(token, richiesta.signal);
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        esito = esitoPropostaDaErrore(e);
+      }
+      if (!richiesta.attiva() || scopeConversazioneRef.current !== scopeRichiesto) return;
+      setEsitoProposta(esito);
+      setScopeProposta(scopeRichiesto);
+    } finally {
+      // Un effetto applicato consuma quota del mandato: il contatore si rilegge dal server.
+      if (grantIdQuota) await riconciliaQuotaChat(grantIdQuota, scopeQuotaRichiesto);
+      if (richiesta.attiva()) setPropostaInCorso(false);
+    }
   };
 
   const suggerimenti = contestoCorrente ? SUGGERIMENTI_CON_TESTO : SUGGERIMENTI;
@@ -875,6 +927,82 @@ export function AuroraPanel({
           </div>
         ))}
 
+        {propostaCorrente && (
+          <div className="cp-azione" aria-label="Proposta di modifica preparata da Aurora">
+            {!propostaCorrente.confermabile && (
+              <span className="cp-azione-tag">Anteprima di collaudo — non può modificare dati</span>
+            )}
+            <strong>{propostaCorrente.titolo}</strong>
+            {propostaCorrente.diff.length > 0 && (
+              <dl className="cp-azione-campi">
+                {propostaCorrente.diff.map((riga, i) => (
+                  <div key={i}>
+                    <dt>{riga.etichetta}</dt>
+                    <dd>
+                      {riga.da != null && riga.da !== "" && <>{riga.da} → </>}
+                      {riga.a ?? "—"}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+
+            {esitoPropostaCorrente ? (
+              <>
+                <div className={`cp-esito${esitoRassicurante(esitoPropostaCorrente) ? "" : " avviso"}`}>
+                  <span>{esitoPropostaCorrente.messaggio}</span>
+                </div>
+                {puoRipristinare(esitoPropostaCorrente) && (
+                  <div className="cp-azione-bottoni">
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={propostaInCorso}
+                      onClick={() => void operaSuProposta(
+                        api.aiPropostaUndo, esitoPropostaCorrente.tokenUndo!)}
+                    >
+                      Ripristina com’era prima
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : propostaCorrente.confermabile && propostaCorrente.token ? (
+              propostaScaduta(propostaCorrente, new Date()) ? (
+                <div className="cp-esito avviso">
+                  <span>Proposta scaduta: chiedi ad Aurora di prepararla di nuovo.</span>
+                </div>
+              ) : (
+                <>
+                  <p className="cp-azione-scadenza">
+                    {descriviScadenzaProposta(propostaCorrente, new Date())} Nessun dato viene
+                    modificato finché non confermi.
+                  </p>
+                  <div className="cp-azione-bottoni">
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={propostaInCorso}
+                      onClick={() => void operaSuProposta(
+                        api.aiPropostaConferma, propostaCorrente.token!)}
+                    >
+                      Conferma e applica
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={propostaInCorso}
+                      onClick={() => void operaSuProposta(
+                        api.aiPropostaAnnulla, propostaCorrente.token!)}
+                    >
+                      Annulla proposta
+                    </button>
+                  </div>
+                </>
+              )
+            ) : null}
+          </div>
+        )}
+
         {inCorso && <div className="cp-msg cp-attesa"><p>Sto pensando…</p></div>}
         <div ref={fondo} />
       </div>
@@ -915,7 +1043,9 @@ export function AuroraPanel({
         <span>
           La chat invia al server mandato, messaggio, sezione, ID dell’azienda scelta e fino a 12 tue
           domande precedenti; il testo selezionato è monouso. Ogni lettura passa dal Governor e resta
-          vincolata ad azienda, mese, risorse e quota del mandato visibile. Aurora non esegue modifiche.
+          vincolata ad azienda, mese, risorse e quota del mandato visibile. Aurora non esegue mai
+          modifiche da sola: può solo prepararle, si applicano con la tua conferma e restano
+          annullabili.
         </span>
       </footer>
     </aside>

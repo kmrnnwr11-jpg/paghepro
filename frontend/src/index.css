@@ -6542,6 +6542,12 @@ textarea:focus {
   color: #991b1b;
 }
 
+.cp-azione-scadenza {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .cp-azione-bottoni {
   display: flex;
   gap: 7px;

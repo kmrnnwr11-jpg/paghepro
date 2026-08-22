@@ -125,10 +125,14 @@ public sealed class EstrazioneAiTests
         var handler = new HandlerFinto(RispostaChat(
             """{"campi":[{"nome":"comune","valore":"Milano","confidenza":0.9}]}"""));
         var ai = new EstrattoreAiCompatibile(new HttpClient(handler),
-            new AiOptions { Provider = "DeepSeek", ApiKey = "chiave-prova" });
+            new AiOptions
+            {
+                Provider = "DeepSeek", ApiKey = "chiave-prova",
+                ProviderCloudApprovato = true,
+            });
 
         Assert.True(ai.Attivo);
-        Assert.Equal("deepseek-chat", ai.Modello);
+        Assert.Equal("deepseek-v4-flash", ai.Modello);
 
         var proposta = await ai.EstraiAsync("visura camerale", "testo visura", ["comune"]);
 
@@ -139,6 +143,7 @@ public sealed class EstrazioneAiTests
         Assert.Equal("Bearer", handler.UltimaRichiesta.Headers.Authorization!.Scheme);
         Assert.Contains("visura camerale", handler.UltimoCorpo);
         Assert.Contains("json_object", handler.UltimoCorpo);
+        Assert.Contains("\"thinking\":{\"type\":\"disabled\"}", handler.UltimoCorpo);
     }
 
     [Fact]
@@ -146,7 +151,7 @@ public sealed class EstrazioneAiTests
     {
         var handler = new HandlerFinto(new HttpResponseMessage(HttpStatusCode.InternalServerError));
         var ai = new EstrattoreAiCompatibile(new HttpClient(handler),
-            new AiOptions { Provider = "Glm", ApiKey = "chiave" });
+            new AiOptions { Provider = "Glm", ApiKey = "chiave", ProviderCloudApprovato = true });
         Assert.Null(await ai.EstraiAsync("visura camerale", "testo", ["comune"]));
     }
 
@@ -181,7 +186,7 @@ public sealed class EstrazioneAiTests
         var handler = new HandlerFinto(RispostaChat(
             """{"campi":[{"nome":"partitaIva","valore":"01234567890","confidenza":0.95}]}"""));
         var ai = new EstrattoreAiCompatibile(new HttpClient(handler),
-            new AiOptions { Provider = "Glm", ApiKey = "chiave" });
+            new AiOptions { Provider = "Glm", ApiKey = "chiave", ProviderCloudApprovato = true });
 
         Assert.True(ai.VedeImmagini);
         Assert.Equal("glm-4v-flash", ai.ModelloVisione);
@@ -201,7 +206,7 @@ public sealed class EstrazioneAiTests
     {
         var handler = new HandlerFinto(RispostaChat("{}"));
         var ai = new EstrattoreAiCompatibile(new HttpClient(handler),
-            new AiOptions { Provider = "DeepSeek", ApiKey = "chiave" });
+            new AiOptions { Provider = "DeepSeek", ApiKey = "chiave", ProviderCloudApprovato = true });
         Assert.False(ai.VedeImmagini);
         Assert.Null(await ai.EstraiDaImmagineAsync("visura", [1], "image/png", ["cap"]));
     }
@@ -217,6 +222,8 @@ public sealed class EstrazioneAiTests
                 BaseUrl = "http://localhost:11434/v1",
                 Modello = "qwen3:14b",
                 ModelloVisione = "qwen2.5vl:7b",
+                SoloLocale = true,
+                GateLocaleG1Verificato = true,
             });
         Assert.True(ai.VedeImmagini);
         Assert.Equal("qwen2.5vl:7b", ai.ModelloVisione);

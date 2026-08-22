@@ -26,6 +26,9 @@ public sealed class EstrattoreAiCompatibile : IEstrattoreAiDocumenti
         if (string.IsNullOrWhiteSpace(baseUrl))
             throw new InvalidOperationException(
                 "Ai:BaseUrl mancante: per il provider \"Compatibile\" indicare l'endpoint OpenAI-compatibile.");
+        if (!opzioni.EndpointConsentito(baseUrl))
+            throw new InvalidOperationException(
+                "Endpoint AI non autorizzato dal gate G1/G1-SaaS o fuori dalla allowlist egress.");
         _http.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
         Modello = string.IsNullOrWhiteSpace(opzioni.Modello) ? modelloDefault : opzioni.Modello!;
         if (string.IsNullOrWhiteSpace(Modello))
@@ -44,7 +47,9 @@ public sealed class EstrattoreAiCompatibile : IEstrattoreAiDocumenti
     public string? ModelloVisione { get; }
 
     /// <summary>Con l'interruttore acceso ma senza chiave si resta spenti: il provider direbbe 401.</summary>
-    public bool Attivo => !_opzioni.ChiaveMancante;
+    public bool Attivo => !_opzioni.ChiaveMancante
+        && _http.BaseAddress is not null
+        && _opzioni.EndpointConsentito(_http.BaseAddress.ToString());
 
     public bool VedeImmagini => !string.IsNullOrWhiteSpace(ModelloVisione);
 
@@ -52,7 +57,8 @@ public sealed class EstrattoreAiCompatibile : IEstrattoreAiDocumenti
     private static (string BaseUrl, string Modello, string? Visione) DefaultProvider(string provider) =>
         provider.ToLowerInvariant() switch
         {
-            "deepseek" => ("https://api.deepseek.com", "deepseek-chat", null),
+            // Il nome storico deepseek-chat è deprecato dal provider dal 24 luglio 2026.
+            "deepseek" => ("https://api.deepseek.com", "deepseek-v4-flash", null),
             "glm" => ("https://open.bigmodel.cn/api/paas/v4", "glm-4-flash", "glm-4v-flash"),
             _ => ("", "", null),
         };
@@ -64,10 +70,10 @@ public sealed class EstrattoreAiCompatibile : IEstrattoreAiDocumenti
         if (string.IsNullOrWhiteSpace(testoDocumento) || campiRichiesti.Count == 0)
             return null;
 
-        var corpo = new
+        var corpo = new Dictionary<string, object?>
         {
-            model = Modello,
-            messages = new object[]
+            ["model"] = Modello,
+            ["messages"] = new object[]
             {
                 new { role = "system", content = AiOptions.IstruzioniEstrazione },
                 new
@@ -78,8 +84,13 @@ public sealed class EstrattoreAiCompatibile : IEstrattoreAiDocumenti
             },
             // La maggior parte dei provider compatibili rispetta il JSON mode; in ogni
             // caso le istruzioni chiedono JSON e il parser tollera risposte non valide.
-            response_format = new { type = "json_object" },
+            ["response_format"] = new { type = "json_object" },
         };
+
+        // L'estrazione è deterministica e in un solo giro: il thinking predefinito di V4
+        // aumenterebbe latenza e consumo senza aggiungere garanzie sui campi estratti.
+        if (_opzioni.Provider.Equals("DeepSeek", StringComparison.OrdinalIgnoreCase))
+            corpo["thinking"] = new { type = "disabled" };
 
         return await InviaAsync(corpo, ct);
     }

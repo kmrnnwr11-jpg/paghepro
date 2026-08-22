@@ -129,7 +129,14 @@ builder.Services.AddSingleton(firmaOptions);
 // l'AI legge e PROPONE soltanto — la conferma resta all'utente, i calcoli nel codice.
 var aiOptions = new AiOptions();
 builder.Configuration.GetSection("Ai").Bind(aiOptions);
+aiOptions.ValidaProfiloLocale();
 builder.Services.AddSingleton(aiOptions);
+HttpMessageHandler CreaHandlerAi() => new SocketsHttpHandler
+{
+    // Ogni profilo AI usa egress esplicito: proxy e redirect potrebbero aggirare la allowlist.
+    UseProxy = false,
+    AllowAutoRedirect = false,
+};
 switch (aiOptions.Provider.ToLowerInvariant())
 {
     case "claude":
@@ -138,18 +145,18 @@ switch (aiOptions.Provider.ToLowerInvariant())
     case "deepseek":
     case "glm":
     case "compatibile":
-        builder.Services.AddHttpClient<IEstrattoreAiDocumenti, EstrattoreAiCompatibile>();
+        builder.Services.AddHttpClient<IEstrattoreAiDocumenti, EstrattoreAiCompatibile>()
+            .ConfigurePrimaryHttpMessageHandler(CreaHandlerAi);
         break;
     default:
         builder.Services.AddSingleton<IEstrattoreAiDocumenti, EstrattoreAiSpento>();
         break;
 }
 
-// Assistente a chat (function calling) sullo stesso provider OpenAI-compatibile: dialoga,
-// legge l'archivio con gli strumenti e PROPONE le operazioni di scrittura, che restano
-// sempre da confermare all'utente. Se il provider non è configurato la chat resta spenta.
-builder.Services.AddHttpClient<AiChatClient>();
-builder.Services.AddScoped<AiChatStrumenti>();
+// Assistente personale di spiegazione sullo stesso endpoint OpenAI-compatibile. In questa fase
+// non riceve strumenti dell'archivio e non scrive: i dati restano nei moduli normali PaghePro.
+builder.Services.AddHttpClient<AiChatClient>()
+    .ConfigurePrimaryHttpMessageHandler(CreaHandlerAi);
 
 // Canale "Sdi": "Rest" (provider accreditato), "Simulato" (demo, ciclo completo senza invio reale),
 // "Manuale" (default, prepara il file da firmare/caricare).
@@ -2649,7 +2656,7 @@ app.MapConfigurazioneSdi();
 app.MapPosta();
 app.MapCertificazioneUnica();
 app.MapAi();
-app.MapAiChat();           // Assistente a chat: legge da solo, scrive solo dopo la tua conferma
+app.MapAiChat();           // Chat esplicativa senza strumenti; i dati passano solo dal Governor.
 app.MapLipe();
 app.MapModello770();
 app.MapRapportoDettaglio();

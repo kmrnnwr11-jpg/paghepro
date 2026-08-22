@@ -64,7 +64,10 @@ public sealed class AiChatClient
         // la chat resta spenta e l'endpoint lo spiega in italiano all'utente. Senza chiave
         // un provider remoto risponderebbe 401 a ogni messaggio: meglio dire subito che
         // manca la chiave (un modello in locale, invece, non ne vuole nessuna).
-        Attivo = baseUrl.Length > 0 && Modello.Length > 0 && !opzioni.ChiaveMancante;
+        Attivo = baseUrl.Length > 0 && Modello.Length > 0
+            && !opzioni.Provider.Equals("Spento", StringComparison.OrdinalIgnoreCase)
+            && !opzioni.ChiaveMancante
+            && opzioni.EndpointConsentito(baseUrl);
         if (!Attivo) return;
 
         _http.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
@@ -83,7 +86,9 @@ public sealed class AiChatClient
     private static (string BaseUrl, string Modello) DefaultProvider(string provider) =>
         provider.ToLowerInvariant() switch
         {
-            "deepseek" => ("https://api.deepseek.com", "deepseek-chat"),
+            // deepseek-chat e deepseek-reasoner sono deprecati dal 24 luglio 2026.
+            // Aurora richiede il function calling, disponibile sul modello Flash corrente.
+            "deepseek" => ("https://api.deepseek.com", "deepseek-v4-flash"),
             "glm" => ("https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
             _ => ("", ""),
         };
@@ -95,20 +100,35 @@ public sealed class AiChatClient
     {
         if (!Attivo)
             throw new InvalidOperationException(
-                "Chat AI non configurata: imposta Ai:Provider (es. DeepSeek) e Ai:ApiKey.");
+                "Aurora non è disponibile: controlla che il modello locale sia configurato e avviato.");
 
-        var corpo = new
+        var corpo = new Dictionary<string, object?>
         {
-            model = Modello,
-            messages = messaggi.Select(Serializza).ToArray(),
-            tools = strumenti.Select(s => new
+            ["model"] = Modello,
+            ["messages"] = messaggi.Select(Serializza).ToArray(),
+            ["temperature"] = 0.2,
+        };
+        if (strumenti.Count > 0)
+        {
+            corpo["tools"] = strumenti.Select(s => new
             {
                 type = "function",
                 function = new { name = s.Nome, description = s.Descrizione, parameters = s.Parametri },
-            }).ToArray(),
-            tool_choice = "auto",
-            temperature = 0.2,
-        };
+            }).ToArray();
+            corpo["tool_choice"] = "auto";
+        }
+        else
+        {
+            // Modalità spiegazione: il modello non deve neppure vedere il catalogo strumenti.
+            corpo["tool_choice"] = "none";
+        }
+
+        // V4 attiva il thinking per default. Nei giri con strumenti il provider obbliga
+        // a rimandare il reasoning_content integrale; Aurora non lo conserva né lo espone
+        // alla SPA. La modalità non-thinking mantiene il protocollo semplice e prevedibile
+        // del vecchio deepseek-chat e impedisce il 400 al secondo giro dello strumento.
+        if (_opzioni.Provider.Equals("DeepSeek", StringComparison.OrdinalIgnoreCase))
+            corpo["thinking"] = new { type = "disabled" };
 
         using var richiesta = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
         {

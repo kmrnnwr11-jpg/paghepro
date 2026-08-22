@@ -22,12 +22,33 @@ public sealed class AiOptions
     /// <summary>Endpoint base per i provider OpenAI-compatibili (per DeepSeek/GLM c'è un default).</summary>
     public string? BaseUrl { get; set; }
 
+    /// <summary>
+    /// Profilo personale: vieta provider remoti. Il runtime Ollama resta bloccato finché il gate
+    /// G1 non prova socket locale, zero egress, vault e ripristino cifrato.
+    /// </summary>
+    public bool SoloLocale { get; set; }
+
+    /// <summary>
+    /// Interruttore esplicito del percorso G1-SaaS. Rimane falso finché titolare e supporto
+    /// legale non hanno approvato DPA, retention e residenza del provider selezionato.
+    /// </summary>
+    public bool ProviderCloudApprovato { get; set; }
+
+    /// <summary>Il runtime locale può partire soltanto dopo la prova tecnica G1.</summary>
+    public bool GateLocaleG1Verificato { get; set; }
+
+    /// <summary>
+    /// Host HTTPS ammessi per Provider=Compatibile. I provider conosciuti hanno una allowlist
+    /// incorporata; una BaseUrl configurabile non diventa mai un canale egress arbitrario.
+    /// </summary>
+    public string[] HostCloudConsentiti { get; set; } = [];
+
     /// <summary>Modello da usare; vuoto = default del provider.</summary>
     public string? Modello { get; set; }
 
     /// <summary>
     /// Modello dell'assistente a chat (function calling). Vuoto = si usa <see cref="Modello"/>
-    /// e, se manca anche quello, il default del provider (DeepSeek → deepseek-chat).
+    /// e, se manca anche quello, il default del provider (DeepSeek → deepseek-v4-flash).
     /// </summary>
     public string? ModelloChat { get; set; }
 
@@ -47,12 +68,87 @@ public sealed class AiOptions
     /// Un modello sulla stessa macchina (Ollama e simili) non chiede chiavi.
     /// </summary>
     public bool ChiaveMancante =>
-        string.IsNullOrWhiteSpace(ApiKey) && !InLocale(BaseUrl);
+        string.IsNullOrWhiteSpace(ApiKey) && !ÈEndpointOllamaLocale(BaseUrl);
 
-    private static bool InLocale(string? baseUrl) =>
-        baseUrl is not null
-        && (baseUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase)
-            || baseUrl.Contains("127.0.0.1", StringComparison.Ordinal));
+    /// <summary>
+    /// Il piano vincolante vieta di accendere Ollama prima della prova G1. È un blocco nel codice,
+    /// non un flag di configurazione aggirabile accidentalmente.
+    /// </summary>
+    public bool BloccatoDaGateG1 =>
+        Uri.TryCreate(BaseUrl, UriKind.Absolute, out var uri)
+        && uri.IsLoopback && !GateLocaleG1Verificato;
+
+    /// <summary>
+    /// Validazione fail-closed dell'unico endpoint locale ammesso. Evita controlli per sottostringa
+    /// che accetterebbero host come localhost.example o redirect verso la rete.
+    /// </summary>
+    public static bool ÈEndpointOllamaLocale(string? baseUrl)
+    {
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)) return false;
+        bool hostLoopback = uri.Host.Equals("127.0.0.1", StringComparison.Ordinal)
+            || uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.Equals("::1", StringComparison.Ordinal)
+            || uri.Host.Equals("[::1]", StringComparison.Ordinal);
+        string path = uri.AbsolutePath.TrimEnd('/');
+        return uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            && hostLoopback
+            && uri.Port == 11434
+            && uri.UserInfo.Length == 0
+            && uri.Query.Length == 0
+            && uri.Fragment.Length == 0
+            && path.Equals("/v1", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Controlla l'endpoint effettivo (incluso il default del provider) con regole fail-closed.
+    /// </summary>
+    public bool EndpointConsentito(string? baseUrl)
+    {
+        if (Provider.Equals("Spento", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
+            || uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0)
+            return false;
+
+        if (uri.IsLoopback)
+            return SoloLocale && GateLocaleG1Verificato && ÈEndpointOllamaLocale(baseUrl);
+
+        if (SoloLocale || !ProviderCloudApprovato
+            || !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || uri.Port != 443)
+            return false;
+
+        string host = uri.IdnHost.ToLowerInvariant();
+        return Provider.ToLowerInvariant() switch
+        {
+            "deepseek" => host == "api.deepseek.com",
+            "glm" => host == "open.bigmodel.cn",
+            "claude" => host == "api.anthropic.com",
+            "compatibile" => HostCloudConsentiti.Any(h =>
+                string.Equals(h?.Trim().TrimEnd('.'), host, StringComparison.OrdinalIgnoreCase)),
+            _ => false,
+        };
+    }
+
+    /// <summary>Blocca all'avvio cloud non approvato e runtime locale prima del gate G1.</summary>
+    public void ValidaProfiloLocale()
+    {
+        if (Provider.Equals("Spento", StringComparison.OrdinalIgnoreCase)) return;
+        if (Uri.TryCreate(BaseUrl, UriKind.Absolute, out var uri) && uri.IsLoopback)
+        {
+            if (!SoloLocale || !GateLocaleG1Verificato || !ÈEndpointOllamaLocale(BaseUrl))
+                throw new InvalidOperationException(
+                    "Aurora locale resta sospesa: endpoint canonico e gate di isolamento G1 non verificati.");
+            return;
+        }
+        if (SoloLocale)
+            throw new InvalidOperationException(
+                "Profilo AI solo locale: i provider cloud sono vietati. Usare Provider=Spento "
+                + "finché il runtime locale G1 non è pronto.");
+        if (!ProviderCloudApprovato)
+            throw new InvalidOperationException(
+                "Provider AI cloud non approvato: completare il gate G1-SaaS (DPA, egress e trasparenza) "
+                + "oppure usare Provider=Spento.");
+    }
 
     /// <summary>
     /// Limite mensile di chiamate AI per studio (tenant), per il modello "AI inclusa nel
@@ -103,7 +199,8 @@ public sealed class EstrattoreAiAnthropic : IEstrattoreAiDocumenti
             : new AnthropicClient { ApiKey = opzioni.ApiKey };
     }
 
-    public bool Attivo => true;
+    public bool Attivo => _opzioni.Provider.Equals("Claude", StringComparison.OrdinalIgnoreCase)
+        && _opzioni.EndpointConsentito("https://api.anthropic.com");
 
     /// <summary>Tutti i modelli Claude attuali leggono immagini con il modello principale.</summary>
     public bool VedeImmagini => true;
@@ -112,7 +209,7 @@ public sealed class EstrattoreAiAnthropic : IEstrattoreAiDocumenti
         string tipoDocumento, byte[] immagine, string mimeType,
         IReadOnlyList<string> campiRichiesti, CancellationToken ct = default)
     {
-        if (immagine.Length == 0 || campiRichiesti.Count == 0)
+        if (!Attivo || immagine.Length == 0 || campiRichiesti.Count == 0)
             return null;
 
         var response = await _client.Messages.Create(new MessageCreateParams
@@ -165,7 +262,7 @@ public sealed class EstrattoreAiAnthropic : IEstrattoreAiDocumenti
         string tipoDocumento, string testoDocumento,
         IReadOnlyList<string> campiRichiesti, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(testoDocumento) || campiRichiesti.Count == 0)
+        if (!Attivo || string.IsNullOrWhiteSpace(testoDocumento) || campiRichiesti.Count == 0)
             return null;
 
         var response = await _client.Messages.Create(new MessageCreateParams

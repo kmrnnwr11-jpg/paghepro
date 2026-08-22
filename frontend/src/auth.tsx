@@ -132,11 +132,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTok(sessione.token);
       } catch {
         if (!buildMobile && localStorage.getItem(USCITA_ESPLICITA) !== "1") {
-          try {
-            await entraComeOspite();
-            return;
-          } catch {
-            // Motore non raggiungibile: mostra comunque la schermata di accesso.
+          // Il motore locale può metterci qualche secondo a partire: qualche breve
+          // tentativo evita di mostrare la schermata di accesso a chi non l'ha chiesta.
+          for (let tentativo = 0; tentativo < 3; tentativo++) {
+            try {
+              await entraComeOspite();
+              return;
+            } catch {
+              if (tentativo < 2) await new Promise((r) => setTimeout(r, 2000));
+              // Dopo l'ultimo tentativo: motore non raggiungibile, schermata di accesso.
+            }
           }
         }
       } finally {

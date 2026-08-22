@@ -44,6 +44,23 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Aurora — protocollo A3 di proposta, conferma e undo (23 agosto 2026)**: le scritture
+  reversibili passano da un intento firmato completo (comando canonico, undo, precondizione/
+  postcondizione, diff) cifrato tenant-bound, con token v2 tipizzati: una conferma non vale mai
+  come undo né come lease. Conferma, riverifica del grant, quota effetto, applicazione di dominio
+  e audit condividono la stessa transazione serializable: il replay non duplica, il rifiuto del
+  dominio marca `Conflitto` senza effetti, annullo e ripristino (finestra 24 ore) sono idempotenti.
+  `AiRolloutPolicy` tiene il gate fail-closed: default `A2`/`Off` ovunque, Render compreso; il
+  collaudo A3 richiede coppie esatte `tenant:utente` e modalità `DryRun`/`Confirmed` esplicite.
+  Primo strumento allowlisted `compila_presenze` sul cartellino-bozza versionato. Migrazioni
+  `ProtocolloPropostaA3` per entrambi i provider; l'adozione dei database legacy crea gli indici
+  dopo l'allineamento delle colonne, così un indice su colonne introdotte dopo la `CreateTable`
+  non blocca più l'avvio. Endpoint `conferma`/`annulla`/`undo`/`stato` reali: token non firmato
+  dal server → `400` senza toccare provider né dominio. Restano per il gate G5: limiti e
+  checkpoint batch, riconciliazione proposta-applicazione-audit, card conferma/undo nella SPA e
+  cicli shadow. Verifiche: build Release 0 errori, **905/905 test backend** più il fuzz da
+  10.000 tentativi ostili, verde in questa sessione.
+
 - **Fondazione cartellino-bozza per Aurora A3 (22 agosto 2026)**: il calendario presenze può
   essere creato o aggiornato separatamente dal cedolino attraverso un servizio tenant-scoped e
   una API autenticata/rate-limited. Ogni riga ha ID e versione ottimistica; una copia obsoleta

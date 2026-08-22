@@ -44,22 +44,41 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
-- **Aurora: chat AI aperta con strumenti (8 agosto 2026)**: il pannello Aurora non è più un
-  elenco di controlli fissi dietro il mandato del Governatore — è una chat con un modello vero
-  (DeepSeek `deepseek-chat` di default, o GLM/Ollama via endpoint OpenAI-compatibile) con
-  function calling. Il modello legge da solo l'archivio (`elenco_aziende`, `scheda_azienda`,
-  `elenco_dipendenti`, `scadenze_studio`) e **propone** le scritture (`registra_azienda`,
-  `correggi_azienda`, `registra_dipendente`): la SPA le mostra come scheda con i campi
-  compilati e l'elenco di cosa manca (con il perché), e nulla viene scritto finché l'utente non
-  preme «Conferma ed esegui». Il tenant arriva sempre dal token, mai dal modello; valgono le
-  regole del programma (duplicati P.IVA/CF, anti-doppione dipendente). Nessun limite mensile
-  sulla chat: il consumo è solo conteggiato. Verificato dal vivo il giro completo
-  (messaggio → strumento → proposta → archivio ancora vuoto → conferma → azienda registrata);
-  suite **672/672** verde e build SPA verde. Configurazione e limiti in
-  `docs/CHAT-AI-DEEPSEEK.md`. **Attenzione**: con DeepSeek i dati letti escono verso il
-  provider — per dati reali di clienti serve il modello locale (Ollama, provider
-  `Compatibile`). Il Governatore AI (`/api/ai/governor/*`) resta nel codice ma la chat non ci
-  passa più.
+- **Aurora — primo verticale governato sui cedolini, lotto 10 (verifica finale 22 agosto 2026)**:
+  il pannello esegue un controllo deterministico e in sola lettura sui primi 10 rapporti del
+  mese scelto. Prima mostra il preflight, poi emette un grant Guidata/S2 legato a utente,
+  tenant, azienda, periodo, finalità, risorsa e quota; espone manifest, contatore, «Dati letti
+  dal controllo» e «Revoca mandato». Il broker restituisce solo nominativo e stato operativo
+  (cartellino presente/da compilare/già elaborato/bloccato/protetto), mai importi, codice fiscale, IBAN o
+  dati salute. La quota è per riga restituita. Le policy limitano le risorse per finalità e il
+  registry delle capability è applicato in emissione e accesso; S0 senza selettori è negato.
+  Provider cloud e locale restano spenti, la chat non riceve tool e `/api/ai/chat/azione`
+  resta fail-closed. La suite completa passa **843/843**, inclusi i test su zero rapporti, revoca
+  tra query e risposta, endpoint 409/no-tools, cambio scope, selezione multi-range, migrazione
+  dello schema ibrido reale e integrità delle evidenze del workflow; verdi anche **27/27 test
+  frontend**, build completa backend e build frontend. Lo smoke Production su copia isolata del
+  database reale conferma provider/chat spenti, azioni `409`, tre storici `PreWorkflow`, 12
+  migrazioni e zero violazioni FK; il database originale resta invariato. Le FK composite
+  proteggono anche Rapporto/Dipendente, DURC/Azienda e Promemoria/Azienda; l'adozione legacy è
+  idempotente, atomica nello storico e fail-closed davanti a orfani, tenant discordanti, indici
+  parziali o colonne SQLite sconosciute. È un checkpoint da 10, non un limite di prodotto.
+
+- **Aurora personale: cloud sospeso e spiegazione del testo selezionato (10 agosto 2026)**:
+  DeepSeek/GLM/Claude sono spenti nel profilo predefinito e in `render.yaml`; i deploy Render
+  automatici sono disabilitati. `Ai:SoloLocale=true` accetta per ora soltanto `Provider=Spento`:
+  anche Ollama sul loopback canonico è bloccato nel codice finché il gate G1 non è provato.
+  L'icona Aurora è disponibile in
+  ogni schermata autenticata e come pulsante mobile flottante: l'utente seleziona il testo nella
+  parte centrale dell'app, vede un'anteprima rimovibile e lo invia una sola volta. Il payload è
+  separato, limitato a 4.000 caratteri e marcato come non fidato; non entra nella cronologia.
+  Selezioni che attraversano aree private e testi con password, chiavi o token sono rifiutati
+  prima di qualunque modello. La storia proveniente dal browser conserva solo domande `user`.
+  Finché G1 non è chiuso, il modello locale resta spento. Anche dopo l'attivazione Aurora parte
+  in modalità sola spiegazione: nessun catalogo strumenti, nessuna lettura archivio, nessuna
+  scrittura; l'endpoint storico `/api/ai/chat/azione` risponde 409. La baseline di questo
+  incremento era **52 test AI** e **18 test frontend**; i conteggi aggiornati sono nella voce
+  del 17 agosto. Guida e stato in
+  `docs/CHAT-AI-DEEPSEEK.md`.
 
 - **Webapp pubblicata online (6 agosto 2026)**: <https://paghepro.onrender.com>, un solo servizio
   Render Free costruito da `Dockerfile.railway` (SPA e API sulla stessa origine, niente CORS né
@@ -284,25 +303,38 @@ dotnet run --project src/Paghe.Demo -c Release
   retribuite). Il cruscotto Presenze rilegge l'intero cartellino, richiede conferma esplicita e il
   backend blocca quantità negative o giornate incompatibili col mese. Malattia e infortunio
   stornano la paga ordinaria prima delle indennità, evitando il precedente doppio pagamento. Il
-  PDF (`CedolinoPdf`) usa un modulo tabellare classico A4, verificato visivamente contro due
-  cedolini reali di mesi diversi; la pagina **Cedolini** e
+  PDF (`CedolinoPdf`) usa `CedolinoProfessionalePdf`: un prospetto A4 bianco, compatto e operativo,
+  con testata azienda/periodo, griglia anagrafica e rapporto, tabella voci a righe alternate, quadro
+  contributivo-fiscale, ratei e netto conclusivo. Il caso ordinario resta su una pagina; l'allegato
+  presenze viene creato solo con calendario giornaliero o variabili aggiuntive. Con molte voci la
+  tabella continua senza troncamenti e ogni pagina ripete azienda, periodo e titolo. Il renderer usa
+  testo selezionabile, font incorporati, IBAN mascherato e mantiene gli storni di competenza nella colonna corretta;
+  elimina la falsa quietanza e non presenta come LUL l'allegato presenze. La pagina **Cedolini** è
   solo archivio/download per evitare ricalcoli concorrenti che azzerino le causali. Il PDF ha testata ditta
   con P.IVA e matricola INPS/P.A.T. INAIL, riquadro inquadramento dipendente (CF, qualifica,
-  livello, CCNL, tipo contratto, mensilità, orario e IBAN), corpo voci con colonne
-  quantità/base/competenze/trattenute e griglia estesa fino ai riepiloghi, dati
+  livello, CCNL, codice alfanumerico unico CNEL quando fornito, tipo contratto, mensilità, orario
+  e IBAN mascherato), corpo voci con colonne quantità/base/competenze/trattenute, dati
   previdenziali e fiscali, riepilogo causali, saldi ferie/ROL, TFR e costo azienda, netto.
+  I cedolini storici privi del cartellino non interrompono più la stampa: presenze, calendario e
+  ANF vengono dichiarati non disponibili senza inventare valori. Verificati 9 test PDF del
+  cedolino: ordinario su una pagina, scenario denso di 40 voci su due pagine con testata ripetuta e
+  calendario completo di 31 giorni su un allegato dedicato; tutti gli artefatti sono A4 e usano Lato incorporato.
   L'anagrafica arriva da `IntestazioneCedolino` (Paghe.Core/Domain) costruita in
-  `CedoliniService.RicalcolaPerPdfAsync`. Resta **BOZZA DA VALIDARE**: mancano calendario
-  giornaliero, regole CCNL tutte versionate, saldi storici, codice unico CNEL 2026, snapshot
-  immutabile e validazione del Consulente del Lavoro. Vedi
+  `CedoliniService.RicalcolaPerPdfAsync`. Fuori dal nuovo workflow resta **BOZZA DA VALIDARE**:
+  mancano calendario giornaliero sempre disponibile, regole CCNL tutte versionate, saldi storici
+  e alimentazione persistita del codice CNEL. Il percorso
+  `Bozza -> Controllata -> Validata -> Chiusa` crea invece snapshot e documento immutabili e
+  richiede la validazione esplicita del professionista prima dello stato definitivo. Vedi
   `docs/RICERCA-CEDOLINO-PROFESSIONALE-2026.md`.
 - **Migrazioni EF versionate (schema del database)**: lo schema è gestito da migrazioni EF, non
   più da `EnsureCreated()` + DDL scritto a mano. EF ammette un solo assembly di migrazioni per
   contesto, quindi ce n'è uno per provider: `Paghe.Migrazioni.Sqlite` e `Paghe.Migrazioni.Postgres`
   (scelti in `Program.cs` con `MigrationsAssembly`). All'avvio `SchemaDatabase.Applica` applica le
   migrazioni mancanti e, sui database creati **prima** delle migrazioni, li **adotta**: completa
-  colonne, tabelle e indici usando le operazioni della migrazione iniziale e la registra come
-  applicata, senza toccare i dati e senza cancellare nulla. L'esito è nel log
+  colonne, tabelle, indici e vincoli usando le operazioni versionate, preserva i valori e applica
+  soltanto i backfill semantici espliciti (per esempio `PreWorkflow` e ANF `DaVerificare`). Schemi
+  parziali, orfani o tenant discordanti restano fail-closed e non ricevono uno storico falso.
+  L'esito è nel log
   (`Schema database: ...`). Verificato dal vivo su SQLite nuovo, SQLite di sviluppo esistente
   (40→52 tabelle, dati intatti), PostgreSQL nuovo, PostgreSQL tipo Supabase (schema `public` con
   tabelle estranee) e PostgreSQL con schema preesistente senza storico. **Una modifica al modello

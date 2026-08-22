@@ -1,93 +1,113 @@
-# Aurora: la chat con l'AI (DeepSeek)
+# Aurora: controllo governato e chat sospesa
 
-Aurora è l'assistente a chat dentro PaghePro. Non è più un elenco di controlli fissi: è un
-modello linguistico vero, che parla, legge l'archivio dello studio con i propri strumenti e
-prepara le operazioni. **Le scritture non partono mai da sola: le confermi tu con un bottone.**
+> Stato dal 10 agosto 2026: **DeepSeek e gli altri provider cloud sono sospesi**. Il nome di
+> questo file resta per compatibilità con i collegamenti storici.
 
-## 1. Accendere l'AI (una volta sola)
+Nell'installazione personale PaghePro può usare il database SQLite locale:
 
-Serve una chiave del provider. Con DeepSeek: <https://platform.deepseek.com> → *API keys* →
-crea la chiave (comincia con `sk-`) e ricarica qualche euro di credito.
-
-**Sull'app online (paghepro.onrender.com)** il provider è già impostato su DeepSeek in
-[`render.yaml`](../render.yaml): manca soltanto la chiave, che non può stare nel repository.
-
-> Render → servizio **paghepro** → **Environment** → la voce `Ai__ApiKey` (vuota) → incolla la
-> chiave → **Save**. Il servizio si riavvia da solo, un paio di minuti.
-
-**In locale** (Mac), dalla cartella `backend`:
-
-```bash
-Ai__Provider=DeepSeek Ai__ApiKey=sk-... dotnet run --project src/Paghe.Api -c Release
+```text
+backend/src/Paghe.Api/paghe.db
 ```
 
-La chiave **non va scritta nei file del progetto**: finirebbe su GitHub.
+Nel deploy SaaS il database può invece essere PostgreSQL: «deterministico» non significa
+necessariamente «eseguito sul computer dell'utente». In entrambi i profili, nessuna riga del
+controllo cedolini viene inviata a un modello.
 
-Controllo: apri Aurora, in alto deve comparire `deepseek-chat` invece di «da configurare».
-Oppure chiama `GET /api/ai/chat/stato`. Finché la chiave manca la chat resta spenta di
-proposito e lo scrive: meglio dirlo prima che prendere un errore a ogni messaggio.
+La configurazione è fail-closed: `Provider=Spento` non può essere riattivato da URL/modello/chiave;
+`Ai:SoloLocale=true` vieta il cloud; `ProviderCloudApprovato=false` blocca il profilo SaaS e
+`GateLocaleG1Verificato=false` blocca Ollama. Gli endpoint compatibili richiedono inoltre una
+allowlist host esatta. Gli handler AI non usano proxy né redirect. `render.yaml` mantiene Aurora
+spenta e disabilita i deploy automatici.
 
-### Altri provider
+## Cosa vede l'utente
 
-Lo stesso canale funziona con qualsiasi endpoint OpenAI-compatibile:
+L'icona **Aurora** è sempre disponibile nelle schermate autenticate, anche come pulsante mobile
+flottante. Per chiedere una spiegazione:
 
-| Provider | `Ai__Provider` | Note |
-| --- | --- | --- |
-| DeepSeek | `DeepSeek` | default `deepseek-chat`, economico |
-| GLM / Zhipu | `Glm` | default `glm-4-flash` |
-| Ollama sul tuo server | `Compatibile` | + `Ai__BaseUrl=http://localhost:11434/v1` e `Ai__Modello=qwen2.5:14b` — nessun dato esce dalla tua macchina |
+1. seleziona una frase, un errore o una voce nella parte centrale di PaghePro;
+2. premi l'icona Aurora;
+3. controlla l'anteprima e invia la domanda oppure usa uno dei pulsanti dedicati al testo.
 
-`Ai__ModelloChat` cambia solo il modello della chat (la lettura documenti resta su `Ai__Modello`).
+Il testo è limitato a 4.000 caratteri, resta solo nella memoria della schermata, è rimovibile e
+viene inviato una volta sola. Input, menu, pannello Aurora e aree private non vengono acquisiti;
+anche una selezione che attraversa un'area privata viene rifiutata.
 
-## 2. Come si usa
+### Controllo cedolini in lotti da 10
 
-Scrivi come parleresti a un collega e incolla i dati che hai:
+Nel pannello è disponibile anche il primo percorso governato di Aurora, indipendente dalla chat
+e dal modello. Dopo aver scelto azienda e mese, l'utente vede prima un riepilogo di ciò che verrà
+letto e conferma l'avvio. Il Governor emette un mandato S2 di 30 minuti e massimo 10 righe; il
+broker restituisce solo nominativo e stato operativo del cedolino. Non escono importi, codice
+fiscale, IBAN o dati di malattia/infortunio.
 
-> registra questa azienda: Panificio Aurora Srl, P.IVA 12345678903, Via Torino 14, 20123
-> Milano MI, pec aurora@pec.it
+Il pannello mostra quota, scadenza, «Dati letti dal controllo» e «Revoca mandato». Se i rapporti sono più di 10,
+questo incremento mostra soltanto i primi dieci: il checkpoint successivo richiederà un cursore
+server-side verificabile. Dieci è un checkpoint, non un limite globale del prodotto. Il controllo
+non calcola e non salva cedolini; porta soltanto a
+uno stato leggibile (`cartellino presente`, `da compilare`, `già elaborato`, `bloccato`,
+`protetto`). «Cartellino presente» è volutamente preliminare: non promette che il motore paghe
+supererà tutti i controlli normativi e di periodo.
 
-Aurora compila la scheda, ti mostra **cosa ha messo** e **cosa manca** (con il perché: la
-matricola INPS serve per UniEmens, il codice catastale per le addizionali IRPEF…) e aspetta.
-Tu premi *Conferma ed esegui* — o le dai i dati mancanti e la fai rifare.
+## Protezioni attive
 
-Vale lo stesso per l'assunzione di un dipendente e per la correzione di un'anagrafica.
+- Il testo selezionato viaggia in un campo separato ed è marcato come contenuto non fidato.
+- Le selezioni discontinue con più intervalli sono rifiutate; basta un'area privata attraversata
+  perché l'intera selezione venga scartata.
+- Un filtro server deterministico blocca password, chiavi private e formati noti di token prima
+  che possano raggiungere un modello.
+- In modalità spiegazione il modello non riceve nessuno strumento: non può leggere l'archivio,
+  proporre azioni o modificare dati.
+- L'endpoint storico di conferma delle azioni AI è sospeso; i dati si salvano soltanto dai normali
+  moduli PaghePro.
+- La cronologia proveniente dal browser conserva solo le domande `user`, con limiti; risposte
+  `assistant`, messaggi `system`, `tool` e chiamate forgiate sono scartati. Dopo una domanda con
+  testo selezionato non viene restituita storia, così neppure un'eventuale citazione del modello
+  può essere ritrasmessa al turno seguente.
+- Se la richiesta è ambigua o incompleta, Aurora deve fare una domanda concreta prima di
+  proseguire.
 
-## 3. Cosa può e cosa non può
+## Modello locale preparato, non ancora attivato
 
-Legge da sola (nessuna conferma): elenco aziende, scheda azienda con i dati mancanti,
-dipendenti di un'azienda, scadenze dello studio.
+Per il Mac M3 con 24 GB il candidato qualificabile è `qwen3.5:9b`: 6,6 GB, licenza Apache-2.0,
+supporto strumenti e molte lingue. La configurazione prevista, solo dopo la chiusura del gate G1
+e la rimozione deliberata del blocco nel codice, è:
 
-Scrive solo dopo la tua conferma: registrare un'azienda, correggere un'azienda, assumere un
-dipendente.
+```text
+Ai__Provider=Compatibile
+Ai__SoloLocale=true
+Ai__GateLocaleG1Verificato=true
+Ai__BaseUrl=http://127.0.0.1:11434/v1
+Ai__Modello=qwen3.5:9b
+Ai__ModelloChat=qwen3.5:9b
+Ai__LimiteMensileChiamate=0
+```
 
-Regole scritte nelle istruzioni del modello:
+Il modello resta **spento per ora**: il piano privacy-first vieta di accenderlo finché non sono
+provati isolamento del processo locale, assenza di egress, vault/chiave reale e backup/restore.
+Inoltre l'installazione Homebrew di Ollama 0.15.6 presente sul Mac va in crash durante l'avvio e
+deve essere sostituita con l'app macOS ufficiale prima del collaudo.
 
-- non inventa P.IVA, codici fiscali, matricole INPS, P.A.T. INAIL, ATECO, IBAN, CCNL o livelli:
-  se non glieli hai dati, li chiede;
-- i calcoli di cedolini, contributi e imposte restano al motore del programma;
-- vede solo i dati del tuo studio (il tenant arriva dal token, non dal modello).
+## Passi cloud ancora manuali
 
-Le stesse protezioni del programma valgono anche quando scrive Aurora: niente doppioni di
-P.IVA o codice fiscale, niente buste paga di mesi futuri, niente dipendente assunto due volte
-nella stessa azienda.
+Il repository non può sospendere un'istanza Render già creata né revocare una chiave sul portale
+DeepSeek. Dopo aver verificato l'eventuale esportazione dei dati online:
 
-## 4. Da sapere prima di usarla su clienti veri
+1. revocare la vecchia chiave DeepSeek dal portale del provider;
+2. nel dashboard Render sospendere il servizio `paghepro`;
+3. solo dopo backup e confronto dei conteggi, sospendere Supabase.
 
-- **I dati che Aurora legge escono verso il provider.** Con DeepSeek finiscono su server in
-  Cina. Per lavorare su dati reali di clienti la strada pulita è un modello locale (Ollama sul
-  tuo server, provider `Compatibile`): stessa chat, nessun dato fuori.
-- Il consumo è conteggiato per studio nel pannello AI, ma **non blocca** la chat.
-- Il motore dei cedolini resta **BOZZA DA VALIDARE**: l'assistente non cambia questo stato.
+Non cancellare database o servizi cloud prima di aver verificato una copia locale ripristinabile.
 
-## 5. Dove sta nel codice
+## File principali
 
-| Cosa | File |
+| Funzione | File |
 | --- | --- |
-| Dialogo con il provider (function calling) | `backend/src/Paghe.Api/AiChatClient.cs` |
-| Strumenti (letture + scritture proposte) | `backend/src/Paghe.Api/AiChatStrumenti.cs` |
-| Endpoint `/api/ai/chat`, `/api/ai/chat/azione`, `/api/ai/chat/stato` | `backend/src/Paghe.Api/AiChatEndpoints.cs` |
-| Pannello a chat | `frontend/src/Aurora.tsx` |
-| Test | `backend/tests/Paghe.Tests/AiChatTests.cs` |
-
-Il Governatore AI (mandati, quote, lease) resta nel codice e nei suoi endpoint
-`/api/ai/governor/*`, ma la chat non ci passa più.
+| Client locale OpenAI-compatible | `backend/src/Paghe.Api/AiChatClient.cs` |
+| Confini chat, contesto e cronologia | `backend/src/Paghe.Api/AiChatEndpoints.cs` |
+| Filtro segreti pre-modello | `backend/src/Paghe.Api/LocalSecretBoundaryFilter.cs` |
+| Configurazione solo-loopback | `backend/src/Paghe.Api/EstrattoreAiAnthropic.cs` |
+| Pannello Aurora | `frontend/src/Aurora.tsx` |
+| Richiesta lotto cedolini | `frontend/src/auroraCedolini.ts` |
+| Acquisizione testo selezionato | `frontend/src/auroraContext.ts` |
+| Governor e broker | `backend/src/Paghe.Persistence/Ai/`, `backend/src/Paghe.Api/AiGovernorEndpoints.cs` |
+| Test | `backend/tests/Paghe.Tests/AiChatTests.cs`, `backend/tests/Paghe.Tests/AiGovernorTests.cs`, `backend/tests/Paghe.Tests/AiQueryBrokerTests.cs`, `frontend/tests/auroraContext.test.ts`, `frontend/tests/auroraCedolini.test.ts` |

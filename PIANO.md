@@ -2,7 +2,7 @@
 
 > Documento guida del progetto. Scritto in modo semplice: **non serve essere del mestiere
 > per seguirlo.** Ogni fase dice *cosa fai tu* e *cosa fa l'agente AI (il codice)*.
-> Aggiornato al: 2026-06-27.
+> Aggiornato al: 2026-08-22.
 
 > **Governance AI personale aggiornata il 15 luglio 2026:** per qualunque lavoro sull'AI dentro
 > PaghePro prevale
@@ -11,6 +11,13 @@
 > implementare nuove capability AI si eseguono G0, G1 e G2 del nuovo piano. Le checklist P-1–P6 di
 > `docs/PIANO-PERSONALE-PRIVACY-FIRST.md` sono storiche e non eseguibili. Questa precedenza non
 > autorizza codice e non cambia l'ordine delle attività non-AI già presenti qui.
+
+> **Stato Aurora al 22 agosto 2026:** completato e verificato un primo verticale G2 deterministico,
+> read-only e senza modello: controllo cedolini mensile a checkpoint di 10 righe con preflight,
+> grant S2, quota per record, trasparenza e revoca. G1 resta aperto e il provider resta spento;
+> il runtime agente con scritture firmate/idempotenti non è ancora autorizzato. La riconciliazione
+> tecnica A0 passa 843/843 test backend, 27/27 frontend e lo smoke Production su copia isolata;
+> stage e checkpoint Git attendono la conferma del fondatore.
 
 ---
 
@@ -230,8 +237,11 @@ come ufficiale prima dei controlli e della validazione professionale.
 - [x] 🔧 **Primo blocco mensile**: il cruscotto Presenze raccoglie e conserva straordinari,
   ferie, ROL, ex-festività, malattia, infortunio e assenze non retribuite; richiede conferma prima
   dell'elaborazione, valida quantità e calendario e riporta le causali nel PDF. Il PDF usa ora
-  un modulo paghe classico su una pagina A4, confrontato visivamente con cedolini reali: testata,
-  inquadramento, saldi, griglia voci, contributi, fisco e netto; resta marcato “bozza da validare”.
+  un prospetto A4 professionale e compatto, con griglia anagrafica/rapporto, tabella voci dominante,
+  quadri contributivi/fiscali, ratei e netto conclusivo; l'allegato presenze viene aggiunto solo
+  quando esistono calendario giornaliero o variabili da dettagliare. IBAN mascherato, font incorporati,
+  testata ripetuta nelle continuazioni e controlli su storni/valori mancanti; resta marcato “bozza da
+  validare” e non viene qualificato come LUL.
 - [x] 🔧 Corretto il doppio pagamento di malattia/infortunio: la quota ordinaria delle giornate
   viene stornata prima di applicare indennità e integrazioni (ancora da validare per CCNL).
 - [ ] 🔧 **Cartellino giornaliero**: ore ordinarie, causale per data/intervallo, PUC malattia,

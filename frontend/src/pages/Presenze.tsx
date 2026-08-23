@@ -165,6 +165,14 @@ export function Presenze() {
   const [calendari, setCalendari] = useState<Record<string, GiornataCartellino[]>>({});
   const [problemi, setProblemi] = useState<Record<string, ProblemaCartellino[]>>({});
   const [verificando, setVerificando] = useState<string | null>(null);
+  // «Fai il mese»: una conferma sola per tutti invece di quattro clic a testa.
+  // La conferma esplicita del professionista resta obbligatoria, ma la dà una
+  // volta vedendo l'elenco completo, non dodici volte a scatola chiusa.
+  const [lottoAperto, setLottoAperto] = useState(false);
+  const [lottoConfermato, setLottoConfermato] = useState(false);
+  const [lottoInCorso, setLottoInCorso] = useState<string | null>(null);
+  const [lottoEsiti, setLottoEsiti] = useState<Record<string, string> | null>(null);
+  const [pdfInCorso, setPdfInCorso] = useState<number | null>(null);
   const richiesteBoard = useRef(creaSequenziatoreRichieste());
   const scopeCorrente = azienda ? `${azienda.id}:${anno}-${mese}` : null;
   const scopeCorrenteRef = useRef(scopeCorrente);
@@ -212,6 +220,9 @@ export function Presenze() {
       setCalendari(Object.fromEntries(
         b.righe.filter((r) => r.giornate.length > 0).map((r) => [r.rapportoId, r.giornate])));
       setProblemi({});
+      setLottoAperto(false);
+      setLottoConfermato(false);
+      setLottoEsiti(null);
     } finally {
       if (richiesta.attiva()) setCaricamento(false);
     }
@@ -243,6 +254,8 @@ export function Presenze() {
       [rapportoId]: { ...(correnti[rapportoId] ?? vuoto), [chiave]: valore },
     }));
     setConfermato((correnti) => ({ ...correnti, [rapportoId]: false }));
+    // Cambiati i dati, la conferma data prima non vale più.
+    setLottoConfermato(false);
   }
 
   function preparaCambioPeriodo() {
@@ -388,6 +401,93 @@ export function Presenze() {
     }
   }
 
+  /** Chi può entrare nel lotto: nel mese, non ancora elaborato, senza problemi bloccanti. */
+  const daElaborare = (boardCorrente?.righe ?? []).filter((r) =>
+    !r.elaborato && !(problemi[r.rapportoId] ?? []).some((p) => p.bloccante));
+
+  /**
+   * Elabora in sequenza tutte le buste del mese dopo un'unica conferma.
+   * Regole invariate: niente ricalcolo forzato in blocco — un mese con F24 già
+   * inviato viene saltato e segnalato, si corregge uno per uno.
+   */
+  async function elaboraLotto() {
+    const scopeOperazione = scopeCorrente;
+    if (!scopeOperazione || scopeBoard !== scopeOperazione) return;
+    if (!lottoConfermato) {
+      setErrore("Spunta la conferma: le buste paga non partono senza il tuo controllo.");
+      return;
+    }
+    setErrore(null);
+    setAvviso(null);
+    const esiti: Record<string, string> = {};
+    let fatte = 0;
+    const avvisi: string[] = [];
+
+    for (const riga of daElaborare) {
+      if (scopeCorrenteRef.current !== scopeOperazione) return;
+      setLottoInCorso(riga.rapportoId);
+      try {
+        const cedolino = await api.archiviaCedolino(riga.rapportoId, corpo(riga.rapportoId));
+        esiti[riga.rapportoId] = "fatta";
+        fatte += 1;
+        const sottoZero = [
+          (cedolino.ferieResidue ?? 0) < 0 && "ferie",
+          (cedolino.permessiResidui ?? 0) < 0 && "permessi",
+        ].filter(Boolean).join(" e ");
+        if (sottoZero) avvisi.push(`${riga.nominativo}: ${sottoZero} sotto zero`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "errore";
+        esiti[riga.rapportoId] = msg.includes("ricalcolo forzato")
+          ? "saltata: mese con F24 già inviato, correggila da «Compila»"
+          : `non fatta: ${msg}`;
+      }
+    }
+
+    setLottoInCorso(null);
+    if (scopeCorrenteRef.current !== scopeOperazione) return;
+    setLottoEsiti(esiti);
+    setLottoConfermato(false);
+    if (avvisi.length > 0)
+      setAvviso(`Buste valide, ma controlla le assenze: ${avvisi.join(" · ")}.`);
+    const saltate = daElaborare.length - fatte;
+    if (saltate > 0)
+      setErrore(`${fatte} buste elaborate, ${saltate} no: guarda il motivo accanto al nome.`);
+    await carica();
+    if (scopeCorrenteRef.current === scopeOperazione) {
+      setLottoEsiti(esiti);
+      setAperto(null);
+    }
+  }
+
+  /**
+   * Scarica in fila tutte le buste del mese. Il browser chiede una volta il
+   * permesso per più file; su telefono ogni PDF passa dal foglio di condivisione.
+   */
+  async function scaricaTutti() {
+    const scopeDownload = scopeCorrente;
+    if (!scopeDownload || scopeBoard !== scopeDownload) return;
+    const elaborati = (boardCorrente?.righe ?? []).filter((r) => r.elaborato);
+    if (elaborati.length === 0) return;
+    setErrore(null);
+    const falliti: string[] = [];
+    for (let i = 0; i < elaborati.length; i += 1) {
+      if (scopeCorrenteRef.current !== scopeDownload) break;
+      setPdfInCorso(i + 1);
+      try {
+        const cedolini = await api.cedoliniArchiviati(elaborati[i].rapportoId);
+        const cedolino = cedolini.find((c) => c.anno === anno && c.mese === mese);
+        if (!cedolino) throw new Error("non trovato in archivio");
+        const { blob, filename } = await api.cedolinoPdf(cedolino.id);
+        await scaricaBlob(blob, filename);
+      } catch {
+        falliti.push(elaborati[i].nominativo || "senza nome");
+      }
+    }
+    setPdfInCorso(null);
+    if (scopeCorrenteRef.current === scopeDownload && falliti.length > 0)
+      setErrore(`Non sono riuscito a scaricare: ${falliti.join(", ")}.`);
+  }
+
   async function scaricaPdf(rapportoId: string) {
     const scopeDownload = scopeCorrente;
     if (!scopeDownload || scopeBoard !== scopeDownload) return;
@@ -496,6 +596,91 @@ export function Presenze() {
               ) : !boardCorrente || boardCorrente.righe.length === 0 ? (
                 <div className="empty-state">Nessun dipendente. Aggiungine uno in Dipendenti.</div>
               ) : (
+                <>
+                <section className="fai-mese" aria-label="Fai le buste paga del mese">
+                  <div className="fai-mese-testa">
+                    <div>
+                      <strong>
+                        {boardCorrente.elaborati === boardCorrente.totale
+                          ? `Mese completo: ${boardCorrente.totale} buste paga fatte`
+                          : `${boardCorrente.elaborati} buste su ${boardCorrente.totale}`}
+                      </strong>
+                      <small>
+                        {daElaborare.length > 0
+                          ? `${daElaborare.length} da elaborare · ${mesi[mese]} ${anno}`
+                          : `${mesi[mese]} ${anno}`}
+                      </small>
+                    </div>
+                    <div className="fai-mese-bottoni">
+                      {daElaborare.length > 0 && !lottoAperto && (
+                        <button className="btn primary" type="button" onClick={() => setLottoAperto(true)}>
+                          Fai le {daElaborare.length} buste del mese
+                        </button>
+                      )}
+                      {boardCorrente.elaborati > 0 && (
+                        <button
+                          className="btn secondary"
+                          type="button"
+                          disabled={pdfInCorso !== null}
+                          onClick={() => { void scaricaTutti(); }}
+                        >
+                          <Download size={16} aria-hidden="true" />
+                          {pdfInCorso !== null
+                            ? `Scarico ${pdfInCorso} di ${boardCorrente.elaborati}…`
+                            : `Scarica le ${boardCorrente.elaborati} buste in PDF`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {lottoAperto && daElaborare.length > 0 && (
+                    <div className="fai-mese-conferma">
+                      <p>
+                        Controlla il riepilogo di ognuno. Chi ha assenze o casi particolari va
+                        sistemato prima con «Compila»: qui elaboro i dati che vedi.
+                      </p>
+                      <ul className="fai-mese-elenco">
+                        {daElaborare.map((r) => (
+                          <li key={r.rapportoId}>
+                            <b>{r.nominativo || "-"}</b>
+                            <span data-aurora-private>{descrizione(dati[r.rapportoId] ?? vuoto)}</span>
+                            {lottoInCorso === r.rapportoId && <em>in corso…</em>}
+                          </li>
+                        ))}
+                      </ul>
+                      <label className="fai-mese-spunta">
+                        <input
+                          type="checkbox"
+                          checked={lottoConfermato}
+                          disabled={lottoInCorso !== null}
+                          onChange={(e) => setLottoConfermato(e.target.checked)}
+                        />
+                        <span>Ho controllato i dati di tutti e {daElaborare.length} e confermo l'elaborazione.</span>
+                      </label>
+                      <div className="fai-mese-bottoni">
+                        <button
+                          className="btn primary"
+                          type="button"
+                          disabled={!lottoConfermato || lottoInCorso !== null}
+                          onClick={() => { void elaboraLotto(); }}
+                        >
+                          {lottoInCorso !== null
+                            ? "Elaborazione in corso…"
+                            : `Elabora ${daElaborare.length} buste paga`}
+                        </button>
+                        <button
+                          className="btn"
+                          type="button"
+                          disabled={lottoInCorso !== null}
+                          onClick={() => { setLottoAperto(false); setLottoConfermato(false); }}
+                        >
+                          Annulla
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+
                 <div className="table-wrap">
                   <table className="data-table spacious presence-table">
                     <thead><tr><th>Dipendente</th><th>Riepilogo mese</th><th>Stato</th><th className="right">Netto</th><th className="right">Azioni</th></tr></thead>
@@ -510,9 +695,14 @@ export function Presenze() {
                               <td className="presence-summary" data-aurora-private>
                                 {descrizione(cartellino)}
                               </td>
-                              <td><span className={`status-pill ${r.elaborato ? "green" : confermato[r.rapportoId] ? "blue" : "amber"}`}>
-                                {r.elaborato ? "Elaborato" : confermato[r.rapportoId] ? "Pronto" : "Da controllare"}
-                              </span></td>
+                              <td>
+                                <span className={`status-pill ${r.elaborato ? "green" : confermato[r.rapportoId] ? "blue" : "amber"}`}>
+                                  {r.elaborato ? "Elaborato" : confermato[r.rapportoId] ? "Pronto" : "Da controllare"}
+                                </span>
+                                {lottoEsiti?.[r.rapportoId] && lottoEsiti[r.rapportoId] !== "fatta" && (
+                                  <small className="esito-lotto">{lottoEsiti[r.rapportoId]}</small>
+                                )}
+                              </td>
                               <td className="right num">{r.elaborato ? `${euro(r.netto)} EUR` : "-"}</td>
                               <td className="right">
                                 <div className="actions-row" style={{ justifyContent: "flex-end" }}>
@@ -729,6 +919,7 @@ export function Presenze() {
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
               {errore && <p className="errore">{errore}</p>}
               {avviso && (

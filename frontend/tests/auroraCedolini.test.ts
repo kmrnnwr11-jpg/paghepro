@@ -4,7 +4,9 @@ import {
   ambitoControlloCedolini,
   DIMENSIONE_LOTTO_CEDOLINI_AURORA,
   contaStatiCedolini,
+  LETTURE_PREPARAZIONE_MESE,
   richiestaControlloCedolini,
+  richiestaPreparazioneMese,
   stessoAmbitoControlloCedolini,
 } from "../src/auroraCedolini.ts";
 import type { RigaCedolinoMeseAi } from "../src/api.ts";
@@ -72,4 +74,21 @@ test("il preflight vale soltanto per la stessa azienda e lo stesso mese", () => 
     false,
   );
   assert.equal(stessoAmbitoControlloCedolini(approvato, null), false);
+});
+
+test("il mandato Prepara il mese chiede permessi espliciti, mai il prodotto cartesiano", () => {
+  const r = richiestaPreparazioneMese("azienda-a", "2026-08");
+  assert.equal(r.purposeCode, "PREPARAZIONE_MESE_PAGHE");
+  assert.equal(r.scopeLevel, "S2");
+  assert.deepEqual(r.operazioni, ["read", "draft", "apply_reversible"]);
+  const permessi = (r.permessi ?? []).map((p) => `${p.risorsa}|${p.operazione}`);
+  // Ogni lettura richiesta dagli strumenti A3, e draft/apply SOLO su Cartellini e Cedolini.
+  for (const risorsa of LETTURE_PREPARAZIONE_MESE)
+    assert.ok(permessi.includes(`${risorsa}|read`), `manca ${risorsa}|read`);
+  assert.ok(permessi.includes("Cartellini|draft"));
+  assert.ok(permessi.includes("Cartellini|apply_reversible"));
+  assert.ok(permessi.includes("Cedolini|draft"));
+  assert.ok(permessi.includes("Cedolini|apply_reversible"));
+  assert.equal(permessi.filter((p) => p.endsWith("|draft") || p.endsWith("|apply_reversible")).length, 4);
+  assert.equal(permessi.length, LETTURE_PREPARAZIONE_MESE.length + 4);
 });

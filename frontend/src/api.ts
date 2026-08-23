@@ -1109,6 +1109,9 @@ export const api = {
 
   // --- Governor AI (G2): mandati, accessi governati, revoca, trasparenza ---
 
+  aiCatalogoA3: (signal?: AbortSignal) =>
+    req<CatalogoA3>("/api/ai/governor/catalogo", { signal }),
+
   aiPreflight: (richiesta: RichiestaGrantAi, signal?: AbortSignal) =>
     req<EsitoPreflightAi>("/api/ai/governor/preflight", {
       method: "POST",
@@ -1254,6 +1257,15 @@ export interface RichiestaGrantAi {
   operazioni: string[];
   durataMinuti?: number;
   maxLetture?: number;
+  maxProposte?: number;
+  maxEffetti?: number;
+  /** Coppie esplicite risorsa/operazione per i mandati A3 (niente prodotto cartesiano). */
+  permessi?: { risorsa: string; operazione: string }[];
+}
+
+/** La parte del catalogo Governor che serve alla UI: il rollout A3 per l'utente corrente. */
+export interface CatalogoA3 {
+  a3: { proposte: boolean; conferma: boolean };
 }
 
 export interface ManifestGrantAi {

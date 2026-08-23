@@ -40,6 +40,39 @@ export function richiestaControlloCedolini(
   };
 }
 
+/** Le letture di cui gli strumenti di modifica hanno bisogno (stesse dipendenze dei tool A3). */
+export const LETTURE_PREPARAZIONE_MESE = [
+  "Aziende", "Dipendenti", "Rapporti", "Cartellini", "Cedolini", "PraticheF24",
+] as const;
+
+/**
+ * Mandato «Prepara il mese»: letture governate più modifiche con conferma (presenze e
+ * cedolino bozza). I permessi sono coppie esplicite risorsa/operazione: il Governor vieta
+ * il prodotto cartesiano, quindi draft e apply valgono SOLO su Cartellini e Cedolini.
+ */
+export function richiestaPreparazioneMese(
+  aziendaId: string,
+  periodo: string,
+): RichiestaGrantAi {
+  return {
+    purposeCode: "PREPARAZIONE_MESE_PAGHE",
+    modalita: "Guidata",
+    scopeLevel: "S2",
+    aziendaId,
+    periodo,
+    risorse: [...LETTURE_PREPARAZIONE_MESE],
+    operazioni: ["read", "draft", "apply_reversible"],
+    durataMinuti: 60,
+    permessi: [
+      ...LETTURE_PREPARAZIONE_MESE.map((risorsa) => ({ risorsa, operazione: "read" })),
+      { risorsa: "Cartellini", operazione: "draft" },
+      { risorsa: "Cartellini", operazione: "apply_reversible" },
+      { risorsa: "Cedolini", operazione: "draft" },
+      { risorsa: "Cedolini", operazione: "apply_reversible" },
+    ],
+  };
+}
+
 export function contaStatiCedolini(righe: RigaCedolinoMeseAi[]) {
   return righe.reduce<Record<RigaCedolinoMeseAi["stato"], number>>(
     (totali, riga) => ({ ...totali, [riga.stato]: totali[riga.stato] + 1 }),

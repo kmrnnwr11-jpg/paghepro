@@ -45,6 +45,9 @@ public sealed class BustaPagaRealeIrpefTests
     [InlineData(1642.92, 377.87)] // aprile
     [InlineData(1632.44, 375.46)] // marzo
     [InlineData(1518.89, 349.34)] // febbraio
+    // Somministrazione, Operatore logistico liv. 6 — Zucchetti — marzo 2026
+    // (archivio del consulente 23/08/2026, busta 03 in docs/buste-reali/):
+    [InlineData(1629.94, 374.89)]
     // Edilizia (Cassa Edile), Operaio comune — Zucchetti — gennaio 2026:
     [InlineData(184.38, 42.41)]
     // Metalmeccanico/cavi (turni notturni), Operaio liv. H — Zucchetti — 2025/2026:

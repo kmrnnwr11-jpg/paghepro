@@ -47,17 +47,24 @@ services:
       - key: Sdi__Provider
         value: Simulato
 
-      # Fail-closed: il modello resta spento finché il profilo G1 non è approvato; A2 resta
-      # comunque un gate di rollout. Il controllo deterministico dei cedolini non usa provider.
+      # Aurora accesa su DeepSeek per decisione esplicita del titolare (23 agosto 2026), con il
+      # gate G1-SaaS ancora aperto: i dati che gli strumenti governati leggono escono verso
+      # api.deepseek.com. Per rispegnerla basta riportare Ai__Provider a "Spento".
+      # Il calcolo dei cedolini resta deterministico e non passa dal provider.
       - key: Ai__Provider
-        value: Spento
-      # Difesa in profondità: vieta provider remoti anche in caso di configurazione parziale.
+        value: DeepSeek
+      # Chiave del provider: segreto, si inserisce nel dashboard Render, mai nel repository.
+      - key: Ai__ApiKey
+        sync: false
       - key: Ai__SoloLocale
-        value: "true"
-      - key: Ai__ProviderCloudApprovato
         value: "false"
+      - key: Ai__ProviderCloudApprovato
+        value: "true"
+      # Resta falso: riguarda solo il runtime locale Ollama, che su Render non gira.
       - key: Ai__GateLocaleG1Verificato
         value: "false"
+      # A2 = chat e letture governate. Le scritture (A3) richiedono anche Ai__ModalitaA3
+      # e la coppia esatta tenant:utente in Ai__CoppieShadowA3__0.
       - key: Ai__GateAurora
         value: A2
       - key: Ai__ModalitaA3

@@ -44,3 +44,6 @@ tmp/
 frontend/mobile-plugins/**/android/.gradle/
 frontend/mobile-plugins/**/android/build/
 frontend/mobile-plugins/**/.swiftpm/
+
+# Chiavi locali dei provider AI: mai nel repository
+.chiavi/

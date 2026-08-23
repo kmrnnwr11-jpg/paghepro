@@ -362,7 +362,9 @@ public sealed class ProfessionalQueryBroker(
                 "gia_elaborato" => "Esiste già una bozza del cedolino.",
                 "bloccato" => "Completare posizione INPS, PAT INAIL e CCNL dell'azienda.",
                 "da_compilare" => "Cartellino del mese non ancora compilato.",
-                _ => "Controllo preliminare: cartellino presente. Il motore applicherà gli altri blocchi prima del calcolo.",
+                // Formulazione senza ambiguità: «applicherà i blocchi» veniva letto (anche
+                // dal modello) come «mese bloccato». Qui il mese è lavorabile.
+                _ => "Cartellino del mese presente: nessun cedolino elaborato, presenze modificabili.",
             };
             return new RigaCedolinoMese(r.Id, r.Nominativo, stato, motivo, cedolino?.Id, cedolino?.Stato);
         }).ToList();

@@ -1,5 +1,8 @@
 # Busta di riferimento 03 — Somministrazione, Operatore logistico liv. 6, Marzo 2026
 
+> **Confermata dal consulente il 23/08/2026** (estrazione voci e confronto). Resta aperta la
+> sola nota sul ragguaglio mensile della detrazione, in fondo alla scheda.
+
 Busta paga **reale** (Zucchetti, agenzia di somministrazione, utilizzatrice logistica del freddo).
 Dati personali rimossi (GDPR): si conservano solo inquadramento e numeri.
 Archivio di provenienza: cartella di validazione del consulente, 23/08/2026 (file 016).
@@ -39,11 +42,21 @@ Archivio di provenienza: cartella di validazione del consulente, 23/08/2026 (fil
 | **Netto** | **1.576,00** | — | |
 
 ## Nota sulla detrazione (l'unica vera divergenza di calcolo)
-La formula di legge annua/12 dà 223,55; Zucchetti espone 259,72 (progressivo detrazioni 659,75
-su progressivo imponibile 4.048,06). Ipotesi: ragguaglio Zucchetti su reddito previsionale
-progressivo, oppure componente 2026 del taglio del cuneo esposta dentro la detrazione. Il
-conguaglio di dicembre riallinea comunque al valore annuo di legge. **Da chiarire con il
-consulente prima di adeguare il motore.**
+La formula di legge annua/12 dà 223,55; Zucchetti espone 259,72. L'analisi dei **sei mesi
+consecutivi della stessa lavoratrice** (gen–giu 2026) mostra detrazioni mensili che non sono
+funzione del solo imponibile del mese (166,04 compare sia a gennaio con 777,46 sia a maggio
+con 1.333,91): Zucchetti applica un **ragguaglio previsionale progressivo** riallineato mese
+per mese, legittimo e riassorbito dal conguaglio di dicembre. Il nostro conguaglio annuale
+produce lo stesso risultato di legge a fine anno; la differenza è solo nel sentiero mensile.
+
+Nella seconda serie dell'archivio (magazziniere D1, reddito previsionale sopra 20.000) compare
+inoltre la colonna **ULTER. DETR. ~84,93/mese ≈ 1.000 €/anno**: è l'ulteriore detrazione del
+taglio del cuneo (L.207/2024) per i redditi 20.000–40.000 — **istituto oggi non modellato nel
+nostro motore** e necessario per il netto esatto di quei casi.
+
+**Evidenza positiva dalla stessa serie**: giugno (imponibile 3.140,30) conferma al centesimo
+il **secondo scaglione 2026 al 33%** già presente nei nostri parametri — primo golden test
+reale oltre i 28.000 annualizzati.
 
 ## Cosa manca per riprodurla al centesimo
 1. **CCNL somministrazione** (paga oraria per livello, indennità integrativa, maggiorazioni).

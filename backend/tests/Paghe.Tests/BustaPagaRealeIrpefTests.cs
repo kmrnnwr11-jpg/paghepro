@@ -45,9 +45,15 @@ public sealed class BustaPagaRealeIrpefTests
     [InlineData(1642.92, 377.87)] // aprile
     [InlineData(1632.44, 375.46)] // marzo
     [InlineData(1518.89, 349.34)] // febbraio
-    // Somministrazione, Operatore logistico liv. 6 — Zucchetti — marzo 2026
-    // (archivio del consulente 23/08/2026, busta 03 in docs/buste-reali/):
-    [InlineData(1629.94, 374.89)]
+    // Somministrazione, Operatore logistico liv. 6 — Zucchetti — 2026, sei mesi consecutivi
+    // della stessa lavoratrice (archivio del consulente 23/08/2026, busta 03 in docs/buste-reali/).
+    // Giugno è il PRIMO caso reale nel secondo scaglione (33% oltre 28.000 annualizzati):
+    [InlineData(777.46, 178.82)]  // gennaio (mese parziale)
+    [InlineData(1640.66, 377.35)] // febbraio
+    [InlineData(1629.94, 374.89)] // marzo
+    [InlineData(1757.26, 404.17)] // aprile
+    [InlineData(1333.91, 306.80)] // maggio
+    [InlineData(3140.30, 802.97)] // giugno — secondo scaglione 33%
     // Edilizia (Cassa Edile), Operaio comune — Zucchetti — gennaio 2026:
     [InlineData(184.38, 42.41)]
     // Metalmeccanico/cavi (turni notturni), Operaio liv. H — Zucchetti — 2025/2026:

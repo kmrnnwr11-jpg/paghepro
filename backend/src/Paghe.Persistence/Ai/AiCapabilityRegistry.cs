@@ -50,6 +50,11 @@ public static class AiCapabilityRegistry
             ["PREPARAZIONE_MESE_PAGHE"],
             EffettiEsterni: false, GateRichiesto: "A3"),
 
+        new("elabora.cedolino.bozza_mese", "Paghe", "reversible_write",
+            ["guided"], ["Dipendenti", "Rapporti", "Cartellini", "Cedolini", "PraticheF24"],
+            ["PREPARAZIONE_MESE_PAGHE"],
+            EffettiEsterni: false, GateRichiesto: "A3"),
+
         // Richiedono un modello: restano spente finché l'isolamento G1 e il gate G3 non sono provati.
         new("spiegazione.calcolo.cedolino", "Paghe", "unavailable",
             ["strict", "guided"], ["Cedolini", "Rapporti", "Ccnl", "ParametriNormativi"], ["SPIEGAZIONE_CALCOLO"],

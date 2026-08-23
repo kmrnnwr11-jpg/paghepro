@@ -176,7 +176,8 @@ public sealed class AuroraRuntimeTests : IDisposable
         var registry = new AiToolRegistry(strumenti);
         var store = new AiRuntimeStore(db, _opzioniProposta, _orologio);
         return (new AuroraAgentRuntime(
-                chat, registry, governor, esecutoreLetture ?? new EsecutoreLettureAurora(broker),
+                chat, registry, governor,
+                esecutoreLetture ?? new EsecutoreLettureAurora(broker, db, new UniEmensService(db)),
                 store, new ConsumoAiService(db),
                 new AiOptions { LimiteMensileChiamate = 100 }, timeoutStrumento),
             store, governor, registry);

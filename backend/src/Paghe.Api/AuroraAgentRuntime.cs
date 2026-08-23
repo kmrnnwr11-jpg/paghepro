@@ -463,6 +463,9 @@ public sealed class AuroraAgentRuntime(
             if (string.Equals(descrittore.Nome, "compila_presenze", StringComparison.Ordinal))
                 return CompilaPresenzeAuroraService.ProvaNormalizzaArgomentiModello(
                     json, out canonico, out motivo);
+            if (string.Equals(descrittore.Nome, "elabora_cedolino", StringComparison.Ordinal))
+                return ElaboraCedolinoAuroraService.ProvaNormalizzaArgomentiModello(
+                    json, out canonico, out motivo);
             motivo = "Strumento A3 non incluso nell'allowlist del runtime.";
             return false;
         }

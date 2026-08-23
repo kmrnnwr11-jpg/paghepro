@@ -423,30 +423,6 @@ public sealed class CompilaPresenzeAuroraService(
         JsonSerializer.Deserialize<T>(json, Json)
         ?? throw new InvalidOperationException("Payload server-side della proposta non leggibile.");
 
-    internal static string HashCartellino(Cartellino cartellino)
-    {
-        var canonico = JsonSerializer.Serialize(cartellino, JsonHash);
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonico)));
-    }
-
-    // L'hash di pre/postcondizione confronta un cartellino in memoria con la rilettura dal
-    // database, e il roundtrip può cambiare la SCALA dei decimali (0 → 0.0 su SQLite) senza
-    // cambiarne il valore. Il canone dell'hash normalizza quindi ogni decimale al valore puro.
-    private static readonly JsonSerializerOptions JsonHash = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new DecimalCanonicoJson() },
-    };
-
-    private sealed class DecimalCanonicoJson : System.Text.Json.Serialization.JsonConverter<decimal>
-    {
-        public override decimal Read(
-            ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-            reader.GetDecimal();
-
-        public override void Write(
-            Utf8JsonWriter writer, decimal value, JsonSerializerOptions options) =>
-            writer.WriteNumberValue(decimal.Parse(
-                value.ToString("G29", CultureInfo.InvariantCulture),
-                NumberStyles.Float, CultureInfo.InvariantCulture));
-    }
+    internal static string HashCartellino(Cartellino cartellino) =>
+        CanoneAurora.Hash(cartellino);
 }

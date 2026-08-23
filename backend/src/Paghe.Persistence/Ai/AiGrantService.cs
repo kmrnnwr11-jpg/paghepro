@@ -221,7 +221,9 @@ public sealed class AiGrantService
             OperazioniAmmesse = string.Join(",", v.Operazioni),
             PermessiAmmessi = string.Join(",", v.Permessi),
             StrumentiAmmessi = RichiedeA3(richiesta)
-                ? $"compila_presenze@{CompilaPresenzeAuroraService.VersioneStrumento}"
+                ? string.Join(",",
+                    $"compila_presenze@{CompilaPresenzeAuroraService.VersioneStrumento}",
+                    $"elabora_cedolino@{ElaboraCedolinoAuroraService.VersioneStrumento}")
                 : "",
             SlotA3Attivo = RichiedeA3(richiesta) ? "ATTIVA" : null,
             AutonomiaMax = v.Operazioni.Contains("apply_reversible")

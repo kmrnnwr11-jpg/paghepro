@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Paghe.Core.AdeTelematico;
 using Paghe.Core.Calcolo;
 using Paghe.Core.Domain;
+using Paghe.Core.Parametri;
 using Paghe.Persistence.Cedolini;
 using Paghe.Persistence.Entities;
 using Paghe.Persistence.Gdpr;
@@ -26,11 +27,43 @@ public sealed class CedoliniService
         _clock = clock ?? TimeProvider.System;
     }
 
+    /// <summary>Risultato del solo calcolo, senza alcuna scrittura: per anteprime e proposte.</summary>
+    public sealed record AnteprimaCedolino(Cedolino Cedolino, Cartellino Cartellino);
+
+    /// <summary>
+    /// Esegue l'intero calcolo del mese (motore, progressivi ferie/permessi, conguaglio di
+    /// dicembre) senza persistere nulla. È lo stesso percorso dell'archiviazione: un'anteprima
+    /// confermata produce per costruzione gli stessi importi.
+    /// </summary>
+    public async Task<AnteprimaCedolino> CalcolaAnteprimaAsync(
+        Guid tenantId, Guid rapportoId, Cartellino cartellino, CancellationToken ct = default)
+    {
+        var calcolo = await CalcolaInternoAsync(tenantId, rapportoId, cartellino, ct, forzaRicalcolo: false);
+        return new(calcolo.Cedolino, calcolo.Cartellino);
+    }
+
+    private sealed record CalcoloInterno(
+        RapportoLavoroEntity Rapporto,
+        AziendaEntity? Azienda,
+        ParametriNormativi Parametri,
+        Ccnl Ccnl,
+        Cartellino Cartellino,
+        Cedolino Cedolino,
+        decimal ConguaglioDicembre);
+
     /// <param name="forzaRicalcolo">true = l'utente ha confermato il ricalcolo di un mese con
     /// F24 già inviato (correzione di un errore); le altre regole restano attive.</param>
     public async Task<CedolinoEntity> CalcolaEArchiviaAsync(
         Guid tenantId, Guid rapportoId, Cartellino cartellino, CancellationToken ct = default,
         bool forzaRicalcolo = false)
+    {
+        var calcolo = await CalcolaInternoAsync(tenantId, rapportoId, cartellino, ct, forzaRicalcolo);
+        return await ArchiviaAsync(tenantId, rapportoId, calcolo, ct);
+    }
+
+    private async Task<CalcoloInterno> CalcolaInternoAsync(
+        Guid tenantId, Guid rapportoId, Cartellino cartellino, CancellationToken ct,
+        bool forzaRicalcolo)
     {
         RegoleCartellino.Valida(cartellino);
         RegoleCartellino.BloccaPeriodoFuturo(cartellino, _clock);
@@ -120,6 +153,14 @@ public sealed class CedoliniService
             ConguaglioFiscale.ApplicaACedolino(cedolino, esito.Conguaglio);
             conguaglioDicembre = esito.Conguaglio;
         }
+
+        return new(rapporto, aziendaDelRapporto, parametri, ccnl, cartellino, cedolino, conguaglioDicembre);
+    }
+
+    private async Task<CedolinoEntity> ArchiviaAsync(
+        Guid tenantId, Guid rapportoId, CalcoloInterno calcolo, CancellationToken ct)
+    {
+        var (rapporto, aziendaDelRapporto, parametri, ccnl, cartellino, cedolino, conguaglioDicembre) = calcolo;
 
         // Ricalcolo: rimuove cartellino e cedolino esistenti per lo stesso periodo.
         await RimuoviEsistenti(tenantId, rapportoId, cartellino.Anno, cartellino.Mese, ct);

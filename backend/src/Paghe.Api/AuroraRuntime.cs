@@ -162,11 +162,14 @@ public sealed class AiToolRegistry
     public bool A3ConfermaAbilitataPer(Guid tenantId, Guid utenteId) =>
         _rollout.EffettiAbilitati(tenantId, utenteId);
 
+    /// <summary>Allowlist chiusa dei tool A3 offribili al modello: il resto non esiste per lui.</summary>
+    private static readonly string[] StrumentiA3Offribili = ["compila_presenze", "elabora_cedolino"];
+
     private bool GateConsentito(
         DescrittoreStrumento descrittore, Guid tenantId, Guid utenteId) =>
         string.Equals(descrittore.Gate, "A2", StringComparison.Ordinal)
         || (string.Equals(descrittore.Gate, "A3", StringComparison.Ordinal)
-            && string.Equals(descrittore.Nome, "compila_presenze", StringComparison.Ordinal)
+            && StrumentiA3Offribili.Contains(descrittore.Nome, StringComparer.Ordinal)
             && A3AbilitatoPer(tenantId, utenteId));
 
     /// <summary>Traduzione del descrittore nel formato function-calling del provider.</summary>

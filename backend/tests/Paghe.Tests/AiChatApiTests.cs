@@ -203,10 +203,13 @@ public sealed class AiChatApiTests : IDisposable
         Assert.NotNull(_providerFinto.UltimoCorpo);
         using (var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!))
         {
-            var strumenti = inviato.RootElement.GetProperty("tools");
-            Assert.Single(strumenti.EnumerateArray());
-            Assert.Equal("stato_cedolini_mese",
-                strumenti[0].GetProperty("function").GetProperty("name").GetString());
+            // Con la sola risorsa Cedolini in lettura il mandato offre esattamente i due
+            // strumenti compatibili: lo stato del mese e la sintesi UniEmens (bozza).
+            var nomi = inviato.RootElement.GetProperty("tools").EnumerateArray()
+                .Select(t => t.GetProperty("function").GetProperty("name").GetString())
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(["sintesi_uniemens", "stato_cedolini_mese"], nomi);
         }
 
         await using var verifica = _factory.Services.CreateAsyncScope();

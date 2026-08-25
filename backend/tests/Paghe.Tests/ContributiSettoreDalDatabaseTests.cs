@@ -40,7 +40,7 @@ public sealed class ContributiSettoreDalDatabaseTests : IDisposable
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
-            RagioneSociale = "Pulizie Beta Srl", PartitaIva = "01234567897",
+            RagioneSociale = "Pulizie Beta Srl", PartitaIva = "01234561007",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             OltreQuindiciDipendenti = oltreQuindici,
             ContributiFondiSettore = fondiSettore,
@@ -109,20 +109,39 @@ public sealed class ContributiSettoreDalDatabaseTests : IDisposable
         // Il client manda un calendario con 3 giorni di ferie e, per sbaglio o per malizia,
         // dichiara zero ferie nei totali: deve vincere il calendario.
         var giornate = new List<GiornataCartellino>();
+        decimal progressivo = 0m;
         for (int g = 1; g <= 31; g++)
         {
             var data = new DateOnly(2026, 5, g);
+            if (data.DayOfWeek == DayOfWeek.Monday)
+                progressivo = 0m;
+            decimal ore = data.DayOfWeek == DayOfWeek.Sunday || g is 4 or 5 or 6 ? 0m : 8m;
+            progressivo += ore;
             giornate.Add(new GiornataCartellino
             {
                 Data = data,
                 Causale = data.DayOfWeek == DayOfWeek.Sunday ? CausaleGiornata.RiposoSettimanale
                     : g is 4 or 5 or 6 ? CausaleGiornata.Ferie
                     : CausaleGiornata.Lavorata,
-                OreOrdinarie = data.DayOfWeek == DayOfWeek.Sunday || g is 4 or 5 or 6 ? 0m : 8m,
+                OreOrdinarie = ore,
+                ProgressivoOreSettimanali = progressivo,
             });
         }
 
         await using var db = NuovoContesto();
+        // Maggio 2026 comincia di venerdì: il riporto della prima settimana arriva dal
+        // cartellino di aprile (27-30/04 in ferie: zero ore lavorate pregresse).
+        db.Cartellini.Add(new CartellinoEntity
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, RapportoLavoroId = rapportoId,
+            Anno = 2026, Mese = 4,
+            Giornate = Enumerable.Range(27, 4).Select(g => new GiornataCartellino
+            {
+                Data = new DateOnly(2026, 4, g), Causale = CausaleGiornata.Ferie,
+                ProgressivoOreSettimanali = 0m,
+            }).ToList(),
+        });
+        await db.SaveChangesAsync();
         var svc = new CedoliniService(db, new ParametriNormativiService(db),
             new OrologioFisso(new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero)));
         var cedolino = await svc.CalcolaEArchiviaAsync(tenant, rapportoId, new Cartellino
@@ -130,7 +149,7 @@ public sealed class ContributiSettoreDalDatabaseTests : IDisposable
             Anno = 2026, Mese = 5, GiorniFerie = 0m, Giornate = giornate,
         });
 
-        var cartellino = await db.Cartellini.SingleAsync(c => c.Id != Guid.Empty);
+        var cartellino = await db.Cartellini.SingleAsync(c => c.Mese == 5);
         Assert.Equal(3m, cartellino.GiorniFerie);       // derivate dal calendario, non lo zero inviato
         Assert.Equal(31, cartellino.Giornate.Count);    // e il calendario resta archiviato
         Assert.True(cedolino.NettoInBusta > 0m);

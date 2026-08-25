@@ -356,15 +356,8 @@ export function AuroraPanel({
     setBolle((prima) => scopeChat === scopeRichiesto ? [...prima, bollaUtente] : [bollaUtente]);
     setScopeChat(scopeRichiesto);
     setBozza("");
-    if (!lease || !grantIdQuota) {
-      setBolle((prima) => [...prima, {
-        id: prossimoId.current++,
-        chi: "aurora",
-        testo: "Prima mostra e avvia il controllo in sola lettura: Aurora può rispondere soltanto con un mandato valido per questa azienda e questo mese.",
-      }]);
-      setBozza(messaggio);
-      return;
-    }
+    // Senza mandato Aurora conversa liberamente (nessuno strumento, nessuna lettura
+    // d'archivio): il server applica comunque i suoi limiti. Il mandato serve per i dati veri.
     const richiesta = richiesteChat.current.apri();
     richiesteQuota.current.invalida();
     setQuotaConfermata(null);
@@ -406,7 +399,7 @@ export function AuroraPanel({
         testo: `Non riesco a parlare con l'assistente: ${e instanceof Error ? e.message : "errore"}.`,
       }]);
     } finally {
-      await riconciliaQuotaChat(grantIdQuota, scopeQuotaRichiesto);
+      if (grantIdQuota) await riconciliaQuotaChat(grantIdQuota, scopeQuotaRichiesto);
       if (richiesta.attiva()) setInCorso(false);
     }
   };

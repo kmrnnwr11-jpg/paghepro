@@ -77,9 +77,32 @@ public sealed class CedoliniService
         Guid tenantId, Guid rapportoId, Cartellino cartellino,
         CancellationToken ct = default, bool forzaRicalcolo = false)
     {
+        // Un rapporto agricolo va rifiutato per primo: i requisiti del flusso ordinario
+        // non hanno senso per un motore che non deve proprio partire.
+        await RapportoOrdinarioAsync(tenantId, rapportoId, ct);
         await _requisiti.RichiediCompletiAsync(tenantId, rapportoId, cartellino, ct);
         return await CalcolaEArchiviaAsync(
             tenantId, rapportoId, cartellino, ct, forzaRicalcolo);
+    }
+
+    /// <summary>
+    /// Carica il rapporto del tenant e rifiuta quello agricolo: ha ore e giornate distinte,
+    /// tariffa provinciale e contributi propri. Farlo passare dal motore mensile ordinario
+    /// produrrebbe ferie, ROL, TFR e flussi successivi non attendibili: resta separato finché
+    /// non esiste l'archivio PosAgri completo.
+    /// </summary>
+    private async Task<RapportoLavoroEntity> RapportoOrdinarioAsync(
+        Guid tenantId, Guid rapportoId, CancellationToken ct)
+    {
+        var rapporto = await _db.Rapporti
+            .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct)
+            ?? throw new ArgumentException("Rapporto di lavoro non trovato per il tenant indicato.");
+        if (string.Equals(
+                rapporto.CodiceCcnl, "AGRICOLTURA_OPERAI", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                "Il rapporto e agricolo: usa l'anteprima agricola dedicata. "
+                + "L'archiviazione definitiva e il workflow PosAgri non sono ancora disponibili.");
+        return rapporto;
     }
 
     private async Task<CalcoloInterno> CalcolaInternoAsync(
@@ -89,18 +112,7 @@ public sealed class CedoliniService
         RegoleCartellino.Valida(cartellino);
         RegoleCartellino.BloccaPeriodoFuturo(cartellino, _clock);
 
-        var rapporto = await _db.Rapporti
-            .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct)
-            ?? throw new ArgumentException("Rapporto di lavoro non trovato per il tenant indicato.");
-
-        // Il rapporto agricolo ha ore e giornate distinte, tariffa provinciale e contributi
-        // propri. Farlo passare dal motore mensile ordinario produrrebbe ferie, ROL, TFR e flussi
-        // successivi non attendibili: resta separato finché non esiste l'archivio PosAgri completo.
-        if (string.Equals(
-                rapporto.CodiceCcnl, "AGRICOLTURA_OPERAI", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException(
-                "Il rapporto e agricolo: usa l'anteprima agricola dedicata. "
-                + "L'archiviazione definitiva e il workflow PosAgri non sono ancora disponibili.");
+        var rapporto = await RapportoOrdinarioAsync(tenantId, rapportoId, ct);
 
         // Quando arriva il calendario giorno per giorno è lui la verità: i totali del mese li
         // ricalcola il server dalle giornate, non li prende dal client. Così cedolino, Libro

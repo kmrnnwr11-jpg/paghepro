@@ -51,14 +51,14 @@ public sealed class CertificazioneUnicaTests : IDisposable
         {
             var az = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
             {
-                RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
+                RagioneSociale = "Alfa Srl", PartitaIva = "01234561007",
                 Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             });
             aziendaId = az.Id;
         }
 
         var conCedolini = await CreaRapportoAsync(tenant, aziendaId, "RSSMRA80A01F205X", "Rossi");
-        await CreaRapportoAsync(tenant, aziendaId, "VRDLGI85A01F205Y", "Verdi"); // senza cedolini
+        await CreaRapportoAsync(tenant, aziendaId, "VRDLGI85A01F205M", "Verdi"); // senza cedolini
 
         await using (var db = NuovoContesto())
         {

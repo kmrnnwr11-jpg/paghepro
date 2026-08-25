@@ -44,6 +44,26 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Aurora conversa senza mandato + riparazione repository e suite (26 agosto 2026)**: la chat
+  `/api/ai/chat` senza lease ora esegue un **turno di conversazione libera** — nessuno strumento,
+  nessuna lettura d'archivio, istruzioni «solo spiegazione», contatore `ConsumiAi` dello studio,
+  filtro segreti e limiti messaggio invariati; una tool-call spontanea del provider viene ignorata
+  (coperto da `Chat_SenzaLease_ConversaSenzaStrumentiENonToccaIlDominio`). La SPA invia i messaggi
+  anche senza mandato; il mandato resta necessario per leggere l'archivio e per «Prepara il mese».
+  Contesto: il deploy Render falliva perché i commit del 23-25/8 avevano dimenticato **77 file
+  nuovi** (riparato con `19f1ae5`), e il lavoro non committato aveva lasciato **131 test rossi**.
+  Riallineati ai criteri della revisione consulente: P.IVA/CF di prova con checksum e codice
+  ufficio validi, profilo contributivo completo nelle fixture (stesse aliquote del seed, totali
+  invariati), progressivi settimanali e riporto autorevole nei calendari di test, golden del
+  motore aggiornati ai valori veri verificati per composizione (lordo liv.3 1.983,91 =
+  1.453,94+527,90+2,07; Milano 1.993,20; trattenute con Fondo Est 2,00 + EBiTer 0,99; costo con fondi
+  datoriali e solidarietà 16,28; conguaglio dicembre a credito col cuneo). Due difetti veri
+  corretti nel codice: `AnagraficheLavoroService` accettava solo CF a 16 caratteri (ora ammette
+  il numerico provvisorio a 11 cifre e il CF assente dell'import guidato, che resta nei
+  «daCompletare»); il rifiuto del rapporto agricolo ora precede il gate requisiti in
+  `CalcolaEArchiviaVerificatoAsync` (helper `RapportoOrdinarioAsync`). Pacchetto locale macOS in
+  `~/PaghePro` (self-contained arm64, SQLite, backup automatico, Aurora cloud-connessa).
+
 - **Stato autorevole Officina Nord / luglio 2026 (25 agosto 2026)**: il caso resta una
   **simulazione non validabile**, non un LUL. La revisione corrente sostituisce i numeri delle
   revisioni storiche sotto: fisso H011 livello III **2.015,15 €** (1.453,94 paga base + 527,90

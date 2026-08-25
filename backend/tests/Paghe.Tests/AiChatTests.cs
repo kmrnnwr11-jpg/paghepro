@@ -491,7 +491,7 @@ public sealed class AiChatTests : IDisposable
         var aziende = new AziendeService(db);
         await aziende.CreaAsync(_tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "12345678903",
+            RagioneSociale = "Alfa Srl", PartitaIva = "00000001008",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
         });
         await aziende.CreaAsync(Guid.NewGuid(), new AziendaEntity
@@ -513,7 +513,7 @@ public sealed class AiChatTests : IDisposable
     {
         await using var db = NuovoContesto();
         var proposta = await NuoviStrumenti(db).PreparaScritturaAsync(_tenant, "registra_azienda",
-            """{"ragioneSociale":"Gamma Srl","partitaIva":"12345678903"}""");
+            """{"ragioneSociale":"Gamma Srl","partitaIva":"00000001008"}""");
 
         Assert.False(proposta.PuoProcedere);
         Assert.Contains(proposta.Campi, c => c.Etichetta == "Denominazione" && c.Valore == "Gamma Srl");
@@ -529,7 +529,7 @@ public sealed class AiChatTests : IDisposable
         await using var db = NuovoContesto();
         var proposta = await NuoviStrumenti(db).PreparaScritturaAsync(_tenant, "registra_azienda",
             """
-            {"ragioneSociale":"Delta Srl","partitaIva":"12345678903","indirizzo":"Via Verdi 3",
+            {"ragioneSociale":"Delta Srl","partitaIva":"00000001008","indirizzo":"Via Verdi 3",
              "cap":"20100","comune":"Milano","provincia":"MI"}
             """);
 
@@ -544,7 +544,7 @@ public sealed class AiChatTests : IDisposable
         var (riuscita, messaggio, _) = await NuoviStrumenti(db).EseguiScritturaAsync(
             _tenant, "registra_azienda",
             """
-            {"ragioneSociale":"Epsilon Srl","partitaIva":"12345678903","indirizzo":"Via Dante 5",
+            {"ragioneSociale":"Epsilon Srl","partitaIva":"00000001008","indirizzo":"Via Dante 5",
              "cap":"20100","comune":"Milano","provincia":"MI","pec":"epsilon@pec.it"}
             """);
 
@@ -553,7 +553,7 @@ public sealed class AiChatTests : IDisposable
         Assert.Contains("matricolaInps", messaggio); // i dati contributivi restano da completare
 
         var salvata = Assert.Single(await db.Aziende.Where(a => a.TenantId == _tenant).ToListAsync());
-        Assert.Equal("12345678903", salvata.PartitaIva);
+        Assert.Equal("00000001008", salvata.PartitaIva);
         Assert.Equal("MI", salvata.Provincia);
     }
 
@@ -563,7 +563,7 @@ public sealed class AiChatTests : IDisposable
         await using var db = NuovoContesto();
         var strumenti = NuoviStrumenti(db);
         const string dati = """
-            {"ragioneSociale":"Zeta Srl","partitaIva":"12345678903","indirizzo":"Via Po 1",
+            {"ragioneSociale":"Zeta Srl","partitaIva":"00000001008","indirizzo":"Via Po 1",
              "cap":"10100","comune":"Torino","provincia":"TO"}
             """;
         await strumenti.EseguiScritturaAsync(_tenant, "registra_azienda", dati);
@@ -571,7 +571,7 @@ public sealed class AiChatTests : IDisposable
         var (riuscita, messaggio, _) = await strumenti.EseguiScritturaAsync(_tenant, "registra_azienda", dati);
 
         Assert.False(riuscita);
-        Assert.Contains("12345678903", messaggio);
+        Assert.Contains("00000001008", messaggio);
         Assert.Single(await db.Aziende.Where(a => a.TenantId == _tenant).ToListAsync());
     }
 

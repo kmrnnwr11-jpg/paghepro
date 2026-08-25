@@ -39,7 +39,7 @@ public sealed class UnilavTestoIncollatoTests : IDisposable
           * **Data e Luogo di Nascita:** 10/09/1982 in INDIA (Z222)
 
         **Dati del Lavoratore**
-          * **Codice Fiscale:** 55123449005
+          * **Codice Fiscale:** 55123441002
           * **Nome e Cognome:** SINGH KARANJIT
           * **Sesso:** M
           * **Data e Luogo di Nascita:** 30/01/2000 in INDIA (Z222)
@@ -92,7 +92,7 @@ public sealed class UnilavTestoIncollatoTests : IDisposable
 
         // Lavoratore: nel testo incollato nome e cognome erano su un campo unico, si divide
         // seguendo l'ordine dell'etichetta (l'utente lo conferma dopo, vedi dati da completare).
-        Assert.Equal("55123449005", r.Lavoratore.CodiceFiscale);
+        Assert.Equal("55123441002", r.Lavoratore.CodiceFiscale);
         Assert.Equal("SINGH", r.Lavoratore.Nome);
         Assert.Equal("KARANJIT", r.Lavoratore.Cognome);
 
@@ -141,7 +141,7 @@ public sealed class UnilavTestoIncollatoTests : IDisposable
         Assert.Contains(esito.DaCompletare, c => c.Campo.StartsWith("Qualifica contrattuale"));
 
         // Lavoratore.
-        Assert.Equal("55123449005", esito.Rapporto.Dipendente!.CodiceFiscale);
+        Assert.Equal("55123441002", esito.Rapporto.Dipendente!.CodiceFiscale);
         Assert.Equal("SINGH", esito.Rapporto.Dipendente!.Nome);
         Assert.Equal("KARANJIT", esito.Rapporto.Dipendente!.Cognome);
     }

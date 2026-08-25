@@ -186,7 +186,7 @@ public sealed class TrasmissioneSdiTests : IDisposable
         var azienda = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
             RagioneSociale = "Alfa Srl",
-            PartitaIva = "01234567897",
+            PartitaIva = "01234561007",
             Indirizzo = "Via Roma 1",
             Cap = "20100",
             Comune = "Milano",
@@ -201,7 +201,7 @@ public sealed class TrasmissioneSdiTests : IDisposable
         var cliente = new DatiAnagrafici
         {
             Denominazione = "Beta Spa",
-            PartitaIva = clienteConIdentificativo ? "09876543217" : null,
+            PartitaIva = clienteConIdentificativo ? "09876541005" : null,
             Indirizzo = "Via Po 2",
             Cap = "10100",
             Comune = "Torino",

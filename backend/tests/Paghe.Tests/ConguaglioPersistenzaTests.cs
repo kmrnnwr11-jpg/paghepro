@@ -40,7 +40,7 @@ public sealed class ConguaglioPersistenzaTests : IDisposable
         await using var db = NuovoContesto();
         var az = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
+            RagioneSociale = "Alfa Srl", PartitaIva = "01234561007",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
         });
         var rapporto = await new AnagraficheLavoroService(db).CreaDipendenteERapportoAsync(
@@ -124,7 +124,13 @@ public sealed class ConguaglioPersistenzaTests : IDisposable
             decimal imponibileAnnuo = cedolini.Sum(c => c.ImponibileIrpef);
             decimal presuntivaAnnua = gennaio.IrpefNetta * 12m;
             var parametri = await new ParametriNormativiService(db).CaricaParametriAsync(2026);
-            decimal detrazioni = CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(imponibileAnnuo, 365);
+            // Il conguaglio applica anche l'ulteriore detrazione cuneo L. 207/2024
+            // (revisione consulente 24-25/08/2026), come il motore.
+            decimal detrazioni = CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(imponibileAnnuo, 365)
+                + CalcoloIrpef.UlterioreDetrazioneCuneoAnnua(
+                    imponibileAnnuo, 365,
+                    parametri.CuneoUlterioreDetrazioneAnnua, parametri.CuneoRedditoOltre,
+                    parametri.CuneoRedditoFinoA, parametri.CuneoRedditoAzzeramento);
             var atteso = ConguaglioFiscale.Calcola(
                 imponibileAnnuo, presuntivaAnnua, detrazioni, parametri.ScaglioniIrpef);
 

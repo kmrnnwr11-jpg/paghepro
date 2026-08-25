@@ -34,7 +34,7 @@ public sealed class PersistenzaFattureTests : IDisposable
 
     private static DatiAnagrafici Cliente() => new()
     {
-        Denominazione = "Beta Spa", PartitaIva = "09876543217",
+        Denominazione = "Beta Spa", PartitaIva = "09876541005",
         Indirizzo = "Via Po 2", Cap = "10100", Comune = "Torino", Provincia = "TO",
     };
 
@@ -44,7 +44,7 @@ public sealed class PersistenzaFattureTests : IDisposable
         var svc = new AziendeService(db);
         var azienda = await svc.CreaAsync(tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
+            RagioneSociale = "Alfa Srl", PartitaIva = "01234561007",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
         });
         return azienda.Id;

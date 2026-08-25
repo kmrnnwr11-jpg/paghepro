@@ -94,7 +94,7 @@ public sealed class CertificazioneUnicaModelloTests : IDisposable
         {
             var az = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
             {
-                RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
+                RagioneSociale = "Alfa Srl", PartitaIva = "01234561007",
                 Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
                 CodiceAteco = "620100", MatricolaInps = "4971234567",
                 Email = "paghe@alfa.it", Telefono = "02 123456",
@@ -149,7 +149,7 @@ public sealed class CertificazioneUnicaModelloTests : IDisposable
         Assert.Equal(2026, cu.AnnoRedditi);
 
         // Sostituto: senza CF usa la P.IVA.
-        Assert.Equal("01234567897", cu.Sostituto.CodiceFiscale);
+        Assert.Equal("01234561007", cu.Sostituto.CodiceFiscale);
         Assert.Equal("Alfa Srl", cu.Sostituto.Denominazione);
 
         // Percipiente: sesso/nascita dal CF, domicilio fiscale dal comune delle addizionali.
@@ -200,7 +200,7 @@ public sealed class CertificazioneUnicaModelloTests : IDisposable
         AnnoRedditi = 2025,
         Sostituto = new SostitutoCu
         {
-            CodiceFiscale = "01234567897", Denominazione = "Rossi Impianti Srl",
+            CodiceFiscale = "01234561007", Denominazione = "Rossi Impianti Srl",
             Comune = "Modena", Provincia = "MO", Cap = "41121", Indirizzo = "Via Emilia Est 120",
             CodiceAttivita = "432101",
         },
@@ -239,7 +239,7 @@ public sealed class CertificazioneUnicaModelloTests : IDisposable
         // Pagina anagrafica: modello intatto + dati di sostituto e percipiente.
         string p1 = doc.GetPage(1).Text;
         Assert.Contains("DATI ANAGRAFICI", p1);
-        Assert.Contains("01234567897", p1);
+        Assert.Contains("01234561007", p1);
         Assert.Contains("ROSSI IMPIANTI SRL", p1);
         Assert.Contains("RSSMRA85T10F257K", p1);
         Assert.Contains("2025", p1); // riquadro "RELATIVA ALL'ANNO"

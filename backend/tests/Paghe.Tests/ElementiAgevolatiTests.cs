@@ -258,6 +258,7 @@ public class ElementiAgevolatiTests
         Assert.Equal(0m, c.TotaleEsenti);
         Assert.Equal(0m, c.PremioRisultatoAgevolato);
         Assert.Equal(0m, c.ImpostaSostitutivaPremio);
-        Assert.Equal(1340.99m, c.TotaleCompetenze);
+        // Paga base 1453,94 + contingenza 527,90 + terzo elemento 2,07 (revisione consulente).
+        Assert.Equal(1983.91m, c.TotaleCompetenze);
     }
 }

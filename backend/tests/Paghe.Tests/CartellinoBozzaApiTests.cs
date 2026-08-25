@@ -143,7 +143,8 @@ public sealed class CartellinoBozzaApiTests : IDisposable
         {
             Id = Guid.NewGuid(), TenantId = tenant.Id, AziendaId = azienda.Id,
             DipendenteId = dipendente.Id, CodiceCcnl = "COMMERCIO_TERZIARIO",
-            Livello = "3", Qualifica = "Impiegato", DataAssunzione = new DateOnly(2024, 1, 1),
+            // Assunto il 1° luglio: il primo mese non richiede il riporto ore dal mese prima.
+            Livello = "3", Qualifica = "Impiegato", DataAssunzione = new DateOnly(2025, 7, 1),
             OreSettimanali = 40m,
         };
         db.Tenants.AddRange(tenant, tenantAltro);
@@ -206,23 +207,35 @@ public sealed class CartellinoBozzaApiTests : IDisposable
         int anno, int mese, IReadOnlyCollection<int>? assenzeNonRetribuite = null)
     {
         assenzeNonRetribuite ??= [];
-        return Enumerable.Range(1, DateTime.DaysInMonth(anno, mese)).Select(giorno =>
+        var giornate = new List<GiornataCartellino>();
+        decimal progressivo = 0m;
+        for (int giorno = 1; giorno <= DateTime.DaysInMonth(anno, mese); giorno++)
         {
             var data = new DateOnly(anno, mese, giorno);
+            if (data.DayOfWeek == DayOfWeek.Monday)
+                progressivo = 0m;
             if (assenzeNonRetribuite.Contains(giorno))
-                return new GiornataCartellino
+            {
+                giornate.Add(new GiornataCartellino
                 {
                     Data = data, Causale = CausaleGiornata.AssenzaNonRetribuita,
                     OreAssenzaNonRetribuita = 8m,
-                };
+                    ProgressivoOreSettimanali = progressivo,
+                });
+                continue;
+            }
             bool riposo = data.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
-            return new GiornataCartellino
+            decimal ore = riposo ? 0m : 8m;
+            progressivo += ore;
+            giornate.Add(new GiornataCartellino
             {
                 Data = data,
                 Causale = riposo ? CausaleGiornata.RiposoSettimanale : CausaleGiornata.Lavorata,
-                OreOrdinarie = riposo ? 0m : 8m,
-            };
-        }).ToArray();
+                OreOrdinarie = ore,
+                ProgressivoOreSettimanali = progressivo,
+            });
+        }
+        return giornate;
     }
 
     private static UtenteEntity Utente(Guid tenantId, string ruolo) => new()

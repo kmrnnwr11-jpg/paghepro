@@ -33,7 +33,7 @@ public sealed class PersistenzaCedoliniTests : IDisposable
         await using var db = NuovoContesto();
         var az = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
+            RagioneSociale = "Alfa Srl", PartitaIva = "01234561007",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
         });
         return (tenant, az.Id);
@@ -73,7 +73,9 @@ public sealed class PersistenzaCedoliniTests : IDisposable
                 new Cartellino { Anno = 2026, Mese = 6 });
             cedolinoId = c.Id;
             nettoCalcolato = c.NettoInBusta;
-            Assert.Equal(1340.99m, c.TotaleCompetenze); // le competenze non dipendono dalle addizionali
+            // Paga base 1453,94 + contingenza 527,90 + terzo elemento Milano 11,36 = 1993,20
+            // (revisione consulente 24-25/08/2026); le competenze non dipendono dalle addizionali.
+            Assert.Equal(1993.20m, c.TotaleCompetenze);
             Assert.True(c.NettoInBusta > 0m && c.NettoInBusta < c.TotaleCompetenze);
         }
 

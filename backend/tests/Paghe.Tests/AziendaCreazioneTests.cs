@@ -36,8 +36,8 @@ public sealed class AziendaCreazioneTests : IDisposable
         var azienda = await svc.CreaAsync(_tenantA, new AziendaEntity
         {
             RagioneSociale = "  Azienda Alfa Srl  ",
-            PartitaIva = "12345678903",
-            CodiceFiscale = "12345678903",
+            PartitaIva = "00000001008",
+            CodiceFiscale = "00000001008",
             Indirizzo = "Via Roma 100",
             Cap = "00100",
             Comune = "Roma",
@@ -53,6 +53,12 @@ public sealed class AziendaCreazioneTests : IDisposable
             PatInail = "12345678/90",
             CcnlDefault = "COMMERCIO",
             LivelloDefault = "3",
+            CodiciAutorizzazioneInps = "NESSUNO",
+            CodiceFondoIntegrazioneSalariale = "NESSUNO",
+            CodiceAgevolazioneContributiva = "NESSUNA",
+            AliquotaInpsDipendente = 0.0919m,
+            AliquotaInpsDatore = 0.2788m,
+            FonteProfiloContributivo = "Circolare INPS di prova",
             Iban = "IT60X0542811101000000123456",
             LegaleRappresentanteNome = "Mario",
             LegaleRappresentanteCognome = "Rossi",
@@ -62,8 +68,8 @@ public sealed class AziendaCreazioneTests : IDisposable
 
         Assert.NotEqual(Guid.Empty, azienda.Id);
         Assert.Equal("Azienda Alfa Srl", azienda.RagioneSociale);
-        Assert.Equal("12345678903", azienda.PartitaIva);
-        Assert.Equal("12345678903", azienda.CodiceFiscale);
+        Assert.Equal("00000001008", azienda.PartitaIva);
+        Assert.Equal("00000001008", azienda.CodiceFiscale);
         Assert.Equal("RM", azienda.Provincia);
         Assert.Equal("H501", azienda.CodiceCatastale);
         Assert.Equal("0000000", azienda.CodiceDestinatarioSdi);
@@ -94,7 +100,7 @@ public sealed class AziendaCreazioneTests : IDisposable
         await svc1.CreaAsync(_tenantA, new AziendaEntity
         {
             RagioneSociale = "Azienda Uno",
-            PartitaIva = "11111111115",
+            PartitaIva = "11111111008",
             Indirizzo = "Via Test 1",
             Cap = "20100", Comune = "Milano", Provincia = "MI"
         });
@@ -106,12 +112,12 @@ public sealed class AziendaCreazioneTests : IDisposable
             svc2.CreaAsync(_tenantA, new AziendaEntity
             {
                 RagioneSociale = "Azienda Due Duplicata",
-                PartitaIva = "11111111115",
+                PartitaIva = "11111111008",
                 Indirizzo = "Via Test 2",
                 Cap = "20100", Comune = "Milano", Provincia = "MI"
             }));
 
-        Assert.Contains("11111111115", ex.Message);
+        Assert.Contains("11111111008", ex.Message);
     }
 
     [Fact]
@@ -123,7 +129,7 @@ public sealed class AziendaCreazioneTests : IDisposable
         var a1 = await svc1.CreaAsync(_tenantA, new AziendaEntity
         {
             RagioneSociale = "Azienda Tenant A",
-            PartitaIva = "22222222220",
+            PartitaIva = "22222220208",
             Indirizzo = "Via A 1", Cap = "10100", Comune = "Torino", Provincia = "TO"
         });
 
@@ -133,13 +139,13 @@ public sealed class AziendaCreazioneTests : IDisposable
         var a2 = await svc2.CreaAsync(_tenantB, new AziendaEntity
         {
             RagioneSociale = "Azienda Tenant B",
-            PartitaIva = "22222222220",
+            PartitaIva = "22222220208",
             Indirizzo = "Via B 2", Cap = "10100", Comune = "Torino", Provincia = "TO"
         });
 
         Assert.NotEqual(a1.TenantId, a2.TenantId);
-        Assert.Equal("22222222220", a1.PartitaIva);
-        Assert.Equal("22222222220", a2.PartitaIva);
+        Assert.Equal("22222220208", a1.PartitaIva);
+        Assert.Equal("22222220208", a2.PartitaIva);
     }
 
     [Fact]
@@ -151,7 +157,7 @@ public sealed class AziendaCreazioneTests : IDisposable
         var azienda = await svc.CreaAsync(_tenantA, new AziendaEntity
         {
             RagioneSociale = "Azienda Incompleta Srl",
-            PartitaIva = "33333333335",
+            PartitaIva = "33333330307",
             Indirizzo = "Via Dante 1", Cap = "50100", Comune = "Firenze", Provincia = "FI"
             // MatricolaInps, CcnlDefault non valorizzati
         });
@@ -174,7 +180,7 @@ public sealed class AziendaCreazioneTests : IDisposable
         var azienda = await svc.CreaAsync(_tenantA, new AziendaEntity
         {
             RagioneSociale = "Azienda Agricola Prova Srl",
-            PartitaIva = "44444444440",
+            PartitaIva = "44444440406",
             Indirizzo = "Via Campo 4", Cap = "52100", Comune = "Arezzo", Provincia = "AR",
             Settore = "AGRICOLTURA", CodiceAteco = "01.46.00", HaDipendenti = true,
             MatricolaInps = "000000", CodiceSedeInps = "000000", CscInps = "00000",

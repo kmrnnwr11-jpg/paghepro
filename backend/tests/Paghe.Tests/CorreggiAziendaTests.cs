@@ -32,7 +32,7 @@ public sealed class CorreggiAziendaTests : IDisposable
         // Dati "letti male" dall'OCR della visura, da correggere.
         var a = await new AziendeService(db).CreaAsync(_tenant, new AziendaEntity
         {
-            RagioneSociale = "TECN0EDIL C0STRUZIONI SRL", PartitaIva = "12345678903",
+            RagioneSociale = "TECN0EDIL C0STRUZIONI SRL", PartitaIva = "00000001008",
             Indirizzo = "VIA GIUSEPPE VERD1 15", Cap = "20121", Comune = "MILAN0", Provincia = "MI",
         });
         return a.Id;
@@ -59,7 +59,7 @@ public sealed class CorreggiAziendaTests : IDisposable
             Assert.Equal("Via Giuseppe Verdi 15", a.Indirizzo);
             Assert.Equal("Milano", a.Comune);
             // Non indicati: invariati.
-            Assert.Equal("12345678903", a.PartitaIva);
+            Assert.Equal("00000001008", a.PartitaIva);
             Assert.Equal("20121", a.Cap);
             Assert.Equal("MI", a.Provincia);
         }

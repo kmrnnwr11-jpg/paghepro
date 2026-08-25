@@ -1308,7 +1308,7 @@ export const api = {
   aiChat: (
     messaggio: string,
     storia: MessaggioChatAi[],
-    lease: string,
+    lease: string | null,
     aziendaId?: string | null,
     contestoSelezionato?: ContestoSelezionatoAi | null,
     sezioneUi?: string | null,

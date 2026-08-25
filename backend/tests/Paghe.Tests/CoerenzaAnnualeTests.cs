@@ -46,11 +46,16 @@ public sealed class CoerenzaAnnualeTests : IDisposable
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(_tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "01234567897", CodiceFiscale = "01234567897",
+            RagioneSociale = "Alfa Srl", PartitaIva = "01234561007", CodiceFiscale = "01234561007",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             Settore = "COMMERCIO_SERVIZI", CodiceAteco = "47.91.10",
             MatricolaInps = "1234567890", CodiceSedeInps = "7100", CscInps = "10101",
             PatInail = "12345678/90", CcnlDefault = "COMMERCIO_TERZIARIO", LivelloDefault = "3",
+            // Profilo contributivo completo (stesse aliquote del seed: i totali non cambiano).
+            CodiciAutorizzazioneInps = "NESSUNO", CodiceFondoIntegrazioneSalariale = "NESSUNO",
+            CodiceAgevolazioneContributiva = "NESSUNA",
+            AliquotaInpsDipendente = 0.0919m, AliquotaInpsDatore = 0.2788m,
+            FonteProfiloContributivo = "Tabella di esempio (test)",
         });
         _aziendaId = azienda.Id;
 
@@ -68,7 +73,7 @@ public sealed class CoerenzaAnnualeTests : IDisposable
 
         var partTime = await anagrafiche.CreaDipendenteERapportoAsync(
             _tenant, _aziendaId,
-            new DipendenteEntity { CodiceFiscale = "VRDLGI85B02F205Y", Nome = "Luigi", Cognome = "Verdi" },
+            new DipendenteEntity { CodiceFiscale = "VRDLGI85B02F205Q", Nome = "Luigi", Cognome = "Verdi" },
             new RapportoLavoroEntity
             {
                 CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "4", Qualifica = "Impiegato",
@@ -190,9 +195,19 @@ public sealed class CoerenzaAnnualeTests : IDisposable
             var delMese = cedolini.Where(c => c.Mese == mese).ToList();
             var f24 = await svc.GeneraF24DelMeseAsync(_tenant, _aziendaId, Anno, mese, "1234567890");
 
-            // Erario 1001 = somma IRPEF dei cedolini del mese (già al centesimo).
-            var voce1001 = Assert.Single(f24.Erario, v => v.CodiceTributo == "1001");
-            Assert.Equal(delMese.Sum(c => c.IrpefNetta), voce1001.ImportoDebito);
+            // Erario 1001 = somma IRPEF dei cedolini del mese (già al centesimo). Il conguaglio
+            // di dicembre (ulteriore detrazione cuneo) può chiudere il mese a credito: in quel
+            // caso l'F24 non espone alcun 1001 a debito.
+            decimal irpefMese = delMese.Sum(c => c.IrpefNetta);
+            if (irpefMese > 0m)
+            {
+                var voce1001 = Assert.Single(f24.Erario, v => v.CodiceTributo == "1001");
+                Assert.Equal(irpefMese, voce1001.ImportoDebito);
+            }
+            else
+            {
+                Assert.DoesNotContain(f24.Erario, v => v.CodiceTributo == "1001");
+            }
 
             // Addizionali del mese (unica regione/comune nello scenario).
             Assert.Equal(delMese.Sum(c => c.AddizionaleRegionale), f24.Regioni.Sum(v => v.ImportoDebito));
@@ -202,7 +217,8 @@ public sealed class CoerenzaAnnualeTests : IDisposable
             Assert.Equal(delMese.Sum(c => c.ContributiDipendente + c.ContributiDatore),
                 f24.Inps.Sum(v => v.ImportoDebito));
 
-            irpefVersata += voce1001.ImportoDebito;
+            // Somma algebrica: il credito del conguaglio di dicembre riduce l'operato annuo.
+            irpefVersata += irpefMese;
             addRegVersata += f24.Regioni.Sum(v => v.ImportoDebito);
             addComVersata += f24.TributiLocali.Sum(v => v.ImportoDebito);
             inpsVersati += f24.Inps.Sum(v => v.ImportoDebito);

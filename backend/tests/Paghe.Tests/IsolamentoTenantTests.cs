@@ -38,11 +38,16 @@ public sealed class IsolamentoTenantTests : IDisposable
         await using var db = NuovoContesto();
         var az = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
+            RagioneSociale = "Alfa Srl", PartitaIva = "01234561007",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             Settore = "COMMERCIO_SERVIZI", CodiceAteco = "47.91.10",
             MatricolaInps = "1234567890", CodiceSedeInps = "7100", CscInps = "10101",
             PatInail = "12345678/90", CcnlDefault = "COMMERCIO_TERZIARIO", LivelloDefault = "3",
+            // Profilo contributivo completo (stesse aliquote del seed: i totali non cambiano).
+            CodiciAutorizzazioneInps = "NESSUNO", CodiceFondoIntegrazioneSalariale = "NESSUNO",
+            CodiceAgevolazioneContributiva = "NESSUNA",
+            AliquotaInpsDipendente = 0.0919m, AliquotaInpsDatore = 0.2788m,
+            FonteProfiloContributivo = "Tabella di esempio (test)",
         });
         return az.Id;
     }
@@ -95,7 +100,7 @@ public sealed class IsolamentoTenantTests : IDisposable
                 Data: new DateOnly(2026, 6, 26),
                 Cessionario: new DatiAnagrafici
                 {
-                    Denominazione = "Beta Spa", PartitaIva = "09876543217",
+                    Denominazione = "Beta Spa", PartitaIva = "09876541005",
                     Indirizzo = "Via Po 2", Cap = "10100", Comune = "Torino", Provincia = "TO",
                 },
                 Righe: new[]

@@ -32,10 +32,12 @@ public class CalcoloInversoNettoTests
     [Fact]
     public void TrovaIlSuperminimoCheProduceIlNettoVoluto()
     {
-        var esito = CalcoloInversoNetto.Calcola(Motore(), Impiegato3Liv(), Giugno(), 1500m);
+        // Sopra il netto del minimo tabellare (1653,33 dopo la revisione consulente):
+        // il superminimo cercato deve esistere ed essere positivo.
+        var esito = CalcoloInversoNetto.Calcola(Motore(), Impiegato3Liv(), Giugno(), 1750m);
 
         Assert.True(esito.Raggiungibile);
-        Assert.InRange(esito.NettoOttenuto, 1499.98m, 1500.02m);
+        Assert.InRange(esito.NettoOttenuto, 1749.98m, 1750.02m);
         Assert.True(esito.SuperminimoNecessario > 0m);
     }
 

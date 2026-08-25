@@ -36,7 +36,7 @@ public sealed class BloccoPeriodiFuturiTests : IDisposable
     private PagheDbContext NuovoContesto() =>
         new(new DbContextOptionsBuilder<PagheDbContext>().UseSqlite(_connection).Options);
 
-    private async Task<Guid> SeedAziendaAsync(Guid tenant, string nome = "Alfa Srl", string piva = "01234567897")
+    private async Task<Guid> SeedAziendaAsync(Guid tenant, string nome = "Alfa Srl", string piva = "01234561007")
     {
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
@@ -268,7 +268,7 @@ public sealed class BloccoPeriodiFuturiTests : IDisposable
         await SeedRapportoAsync(tenant, aziendaA);
 
         // Stessa persona ma altra azienda dello studio: ammesso (es. due part-time).
-        var aziendaB = await SeedAziendaAsync(tenant, "Beta Srl", "09876543217");
+        var aziendaB = await SeedAziendaAsync(tenant, "Beta Srl", "09876541005");
         var rapportoB = await SeedRapportoAsync(tenant, aziendaB);
 
         // Ogni busta paga resta agganciata all'azienda del proprio rapporto di assunzione.

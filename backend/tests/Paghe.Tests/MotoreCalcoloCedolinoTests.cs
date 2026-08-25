@@ -27,29 +27,32 @@ public class MotoreCalcoloCedolinoTests
             Impiegato3Liv(),
             new Cartellino { Anno = 2026, Mese = 6 });
 
-        // Competenze: minimo 1330,66 + EDR 10,33 = 1340,99
-        Assert.Equal(1340.99m, cedolino.TotaleCompetenze);
-        Assert.Equal(1340.99m, cedolino.ImponibileInps);
+        // Competenze (revisione consulente 24-25/08/2026): paga base 1453,94
+        // + contingenza EDR incluso 527,90 + terzo elemento nazionale 2,07 = 1983,91
+        Assert.Equal(1983.91m, cedolino.TotaleCompetenze);
+        Assert.Equal(1983.91m, cedolino.ImponibileInps);
 
-        // Contributi c/dipendente: 1340,99 * 9,19% = 123,24
-        Assert.Equal(123.24m, cedolino.ContributiDipendente);
+        // Contributi c/dipendente: 1983,91 * 9,19% = 182,32
+        Assert.Equal(182.32m, cedolino.ContributiDipendente);
 
-        // Imponibile fiscale: 1340,99 - 123,24 = 1217,75
-        Assert.Equal(1217.75m, cedolino.ImponibileIrpef);
+        // Imponibile fiscale: 1983,91 - 182,32 = 1801,59
+        Assert.Equal(1801.59m, cedolino.ImponibileIrpef);
 
-        // IRPEF lorda del mese: scaglioni ragguagliati sull'ordinario 1217,75 × 12 = 14613 -> 23% /12 = 280,08
-        Assert.Equal(280.08m, cedolino.IrpefLorda);
-        // Detrazione sul reddito presunto CON le 14 mensilità del contratto (revisione
-        // consulente 24/08/2026): 14613 + 1217,75 × 2 = 17048,50 → 2912,48 annui /12 = 242,71
-        Assert.Equal(242.71m, cedolino.DetrazioniLavoroDipendente);
-        Assert.Equal(37.37m, cedolino.IrpefNetta);
+        // IRPEF lorda del mese: scaglioni ragguagliati sull'ordinario 1801,59 × 12 = 21619,08 -> 23% /12 = 414,37
+        Assert.Equal(414.37m, cedolino.IrpefLorda);
+        // Detrazione art. 13 proiettata sulle mensilità contrattuali (revisione consulente)
+        // e ulteriore detrazione cuneo L. 207/2024 in casella separata: 1000/12 = 83,33.
+        Assert.Equal(185.77m, cedolino.DetrazioniLavoroDipendente);
+        Assert.Equal(83.33m, cedolino.UlterioreDetrazioneCuneo);
+        Assert.Equal(145.27m, cedolino.IrpefNetta);
 
-        // Addizionali sullo stesso presunto: 17048,50 * 1,23% /12 = 17,47 ; * 0,80% /12 = 11,37
-        Assert.Equal(17.47m, cedolino.AddizionaleRegionale);
-        Assert.Equal(11.37m, cedolino.AddizionaleComunale);
+        // Addizionali a rate dal conguaglio: senza importi annui caricati sul rapporto
+        // non c'è nulla da trattenere nel mese (resta la sola anteprima informativa).
+        Assert.Equal(0m, cedolino.AddizionaleRegionale);
+        Assert.Equal(0m, cedolino.AddizionaleComunale);
 
-        // Netto: 1340,99 - (123,24 + 37,37 + 17,47 + 11,37) = 1151,54
-        Assert.Equal(1151.54m, cedolino.NettoInBusta);
+        // Netto: 1983,91 - (182,32 + 145,27 + Fondo Est 2,00 + EBiTer 0,99) = 1653,33
+        Assert.Equal(1653.33m, cedolino.NettoInBusta);
     }
 
     [Fact]
@@ -63,8 +66,13 @@ public class MotoreCalcoloCedolinoTests
     public void Calcola_TrattenuteUgualiSommaComponenti()
     {
         var c = Motore().Calcola(Impiegato3Liv(), new Cartellino { Anno = 2026, Mese = 6 });
+        // Oltre a contributi e imposte, il CCNL Terziario trattiene le quote lavoratore
+        // dei fondi contrattuali (Fondo Est ed EBiTer).
+        decimal fondiContrattuali = Math.Abs(c.Righe
+            .Where(r => r.Codice is "FONDO_SAN" or "ENTE_BIL")
+            .Sum(r => r.Importo));
         decimal sommaComponenti = c.ContributiDipendente + c.IrpefNetta
-            + c.AddizionaleRegionale + c.AddizionaleComunale;
+            + c.AddizionaleRegionale + c.AddizionaleComunale + fondiContrattuali;
         Assert.Equal(sommaComponenti, c.TotaleTrattenute);
     }
 
@@ -72,8 +80,13 @@ public class MotoreCalcoloCedolinoTests
     public void Calcola_CostoAzienda_LordoPiuContributiDatorePiuTfr()
     {
         var c = Motore().Calcola(Impiegato3Liv(), new Cartellino { Anno = 2026, Mese = 6 });
+        // Il costo comprende anche i fondi contrattuali c/azienda e il contributo di
+        // solidarietà 10% sul fondo sanitario (revisione consulente 25/08/2026).
+        decimal fondiDatoriali = c.Righe
+            .Where(r => r.Codice is "FONDO_SAN_DATORE" or "ENTE_BIL_DATORE" or "SOLIDARIETA_FONDI")
+            .Sum(r => r.Importo);
         Assert.Equal(
-            Math.Round(c.TotaleCompetenze + c.ContributiDatore + c.QuotaTfr, 2),
+            Math.Round(c.TotaleCompetenze + c.ContributiDatore + c.QuotaTfr + fondiDatoriali, 2),
             c.CostoAzienda);
         Assert.True(c.QuotaTfr > 0m, "La quota TFR deve essere positiva.");
         Assert.True(c.ContributiDatore > c.ContributiDipendente, "I contributi c/datore superano quelli c/dipendente.");
@@ -89,9 +102,9 @@ public class MotoreCalcoloCedolinoTests
         Assert.True(con.TotaleCompetenze > senza.TotaleCompetenze);
         Assert.Contains(con.Righe, r => r.Codice == "STRAORD");
 
-        // 10 ore * (1340,99/168) * 1,15 = 10 * 7,98208 * 1,15 = 91,79 (circa)
+        // 10 ore * (1983,91/168) * 1,15 = 10 * 11,80899 * 1,15 = 135,80 (circa)
         var riga = con.Righe.First(r => r.Codice == "STRAORD");
-        Assert.Equal(91.79m, riga.Importo, 1);
+        Assert.Equal(135.80m, riga.Importo, 1);
     }
 
     [Fact]

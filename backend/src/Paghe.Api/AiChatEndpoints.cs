@@ -84,7 +84,7 @@ public static class AiChatEndpoints
         app.MapPost("/api/ai/chat", async (
             RichiestaChatAi richiesta, AiChatClient chat,
             AiOptions opzioni,
-            AiGrantService governor, AuroraAgentRuntime runtime,
+            AiGrantService governor, AuroraAgentRuntime runtime, ConsumoAiService consumi,
             ClaimsPrincipal user, CancellationToken ct) =>
         {
             var selezione = NormalizzaContesto(richiesta.ContestoSelezionato);
@@ -113,10 +113,51 @@ public static class AiChatEndpoints
             var tenantId = Tenant(user);
             var utenteId = UtenteCorrente(user);
             if (string.IsNullOrWhiteSpace(richiesta.Lease))
-                return Results.Ok(new RispostaChatEndpoint(
-                    "Per parlare con Aurora devi prima avviare il mandato dal pannello. "
-                    + "Così azienda, periodo, strumenti e revoca restano sempre visibili e controllabili.",
-                    selezione is null ? storiaRipulita : [], null, false));
+            {
+                // Conversazione libera: nessuno strumento, nessuna lettura d'archivio. Il modello
+                // riceve solo ciò che l'utente scrive; per i dati veri serve ancora il mandato.
+                if (!await consumi.ProvaConsumaAsync(tenantId, opzioni.LimiteMensileChiamate, ct))
+                    return Results.Ok(new RispostaChatEndpoint(
+                        "Lo studio ha esaurito le chiamate AI incluse per questo mese: "
+                        + "Aurora torna disponibile con il nuovo mese.",
+                        selezione is null ? storiaRipulita : [], null, false));
+                string? sezioneLibera = NormalizzaSezione(richiesta.SezioneUi);
+                var conversazione = new List<MessaggioChatAi>
+                {
+                    new()
+                    {
+                        Ruolo = "system",
+                        Contenuto = Istruzioni(sezioneLibera, conStrumenti: false),
+                    },
+                };
+                if (selezione is null)
+                    conversazione.AddRange(storiaRipulita);
+                conversazione.Add(new MessaggioChatAi
+                {
+                    Ruolo = "user",
+                    Contenuto = ComponiMessaggioModello(messaggio, selezione),
+                });
+                try
+                {
+                    var risposta = await chat.ParlaAsync(conversazione, [], ct);
+                    string testo = risposta.Testo ?? "";
+                    return Results.Ok(new RispostaChatEndpoint(
+                        testo,
+                        selezione is null
+                            ? StoriaPubblica(richiesta.Storia, messaggio, testo)
+                            : [],
+                        null, true));
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Results.Ok(new RispostaChatEndpoint(
+                        ex.Message,
+                        selezione is null
+                            ? StoriaPubblica(richiesta.Storia, messaggio, ex.Message)
+                            : [],
+                        null, false));
+                }
+            }
 
             // La lease viene validata prima di contare o inviare alcunché al provider. Il
             // runtime la ricontrolla poi a ogni giro per chiudere le finestre di revoca.

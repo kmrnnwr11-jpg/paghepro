@@ -95,7 +95,7 @@ public sealed class AiChatApiTests : IDisposable
     }
 
     [Fact]
-    public async Task Chat_SenzaLease_NonChiamaProviderENonConsumaQuota()
+    public async Task Chat_SenzaLease_ConversaSenzaStrumentiENonToccaIlDominio()
     {
         using var client = await NuovoClientAutenticatoAsync();
         var tenant = _tenantCorrente;
@@ -111,23 +111,32 @@ public sealed class AiChatApiTests : IDisposable
         });
 
         Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
-        Assert.Equal(0, _providerFinto.Chiamate);
-        Assert.Null(_providerFinto.UltimoIndirizzo);
-        Assert.Null(_providerFinto.UltimoCorpo);
+        // Conversazione libera: un solo giro al provider e nessun catalogo strumenti.
+        Assert.Equal(1, _providerFinto.Chiamate);
+        Assert.NotNull(_providerFinto.UltimoCorpo);
+        using (var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!))
+        {
+            Assert.False(inviato.RootElement.TryGetProperty("tools", out _));
+            Assert.Contains("stai solo spiegando",
+                inviato.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
+        }
 
         using (var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync()))
         {
             Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("azione").ValueKind);
-            Assert.Contains(
-                "avviare il mandato",
-                ricevuto.RootElement.GetProperty("testo").GetString(),
-                StringComparison.OrdinalIgnoreCase);
+            Assert.True(ricevuto.RootElement.GetProperty("ok").GetBoolean());
         }
 
+        // Il dominio resta intatto; cambia soltanto il contatore dei consumi AI dello studio.
         var dopo = await FotografaDominioAsync(tenant);
-        Assert.Equal(prima, dopo);
+        Assert.Equal(prima with { ConsumiAi = dopo.ConsumiAi }, dopo);
 
         await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+        Assert.Equal(1, await db.ConsumiAi.AsNoTracking()
+            .Where(c => c.TenantId == tenant)
+            .Select(c => c.Chiamate)
+            .SingleAsync());
         Assert.Null(scope.ServiceProvider.GetService<AiChatStrumenti>());
     }
 

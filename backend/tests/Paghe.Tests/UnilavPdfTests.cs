@@ -20,7 +20,7 @@ public sealed class UnilavPdfTests : IDisposable
         COMUNICAZIONE OBBLIGATORIA - UNILAV
         Datore di lavoro
         Denominazione: Alfa Srl
-        Codice fiscale: 01234567897
+        Codice fiscale: 01234561007
         Lavoratore
         Codice fiscale: RSSMRA80A01F205X
         Cognome: Rossi
@@ -64,7 +64,7 @@ public sealed class UnilavPdfTests : IDisposable
     {
         var r = ImportazioneUnilavPdf.Importa(TestoUnilav);
 
-        Assert.Equal("01234567897", r.Datore.CodiceFiscale);
+        Assert.Equal("01234561007", r.Datore.CodiceFiscale);
         Assert.Equal("Alfa Srl", r.Datore.Denominazione);
 
         Assert.Equal("RSSMRA80A01F205X", r.Lavoratore.CodiceFiscale);
@@ -105,7 +105,7 @@ public sealed class UnilavPdfTests : IDisposable
 
         Assert.True(esito.AziendaCreata);
         Assert.Equal("Alfa Srl", esito.Azienda.RagioneSociale);
-        Assert.Equal("01234567897", esito.Azienda.PartitaIva); // 11 cifre -> P.IVA
+        Assert.Equal("01234561007", esito.Azienda.PartitaIva); // 11 cifre -> P.IVA
         Assert.False(esito.LavoratoreEsistente);
         Assert.Equal("Rossi", esito.Rapporto.Dipendente!.Cognome);
         Assert.Equal("RSSMRA80A01F205X", esito.Rapporto.Dipendente!.CodiceFiscale);

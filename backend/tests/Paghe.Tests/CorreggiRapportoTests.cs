@@ -31,7 +31,7 @@ public sealed class CorreggiRapportoTests : IDisposable
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(_tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
+            RagioneSociale = "Alfa Srl", PartitaIva = "01234561007",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
         });
         var rapporto = await new AnagraficheLavoroService(db).CreaDipendenteERapportoAsync(
@@ -121,7 +121,7 @@ public sealed class CorreggiRapportoTests : IDisposable
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(_tenant, new AziendaEntity
         {
-            RagioneSociale = "Beta Srl", PartitaIva = "09876543217",
+            RagioneSociale = "Beta Srl", PartitaIva = "09876541005",
             Indirizzo = "Via Roma 2", Cap = "20100", Comune = "Milano", Provincia = "MI",
         });
         await Assert.ThrowsAsync<ArgumentException>(() =>

@@ -107,7 +107,7 @@ public sealed class BilancioPersistenzaTests : IDisposable
         var azienda = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
             RagioneSociale = "Alfa Srls",
-            PartitaIva = "01234567897",
+            PartitaIva = "01234561007",
             Indirizzo = "Via Roma 1",
             Cap = "20100",
             Comune = "Milano",

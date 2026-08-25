@@ -25,8 +25,11 @@ public sealed class AnagraficheLavoroService
         // Se la persona esiste già nell'archivio (stesso CF nel tenant) si riusa la sua
         // anagrafica e si crea solo il nuovo rapporto: può lavorare per due clienti dello
         // studio, e ogni busta paga nasce dal rapporto della propria azienda di assunzione.
+        // Il CF può mancare (import guidato: finisce tra i dati da completare) o essere il
+        // numerico provvisorio a 11 cifre; se presente, però, il checksum deve tornare.
         string cf = dipendente.CodiceFiscale?.Trim().ToUpperInvariant() ?? "";
-        if (!Paghe.Core.AdeTelematico.ValidatoreFiscale.CodiceFiscalePersonaFisicaValido(cf))
+        if (cf.Length > 0
+            && !Paghe.Core.AdeTelematico.ValidatoreFiscale.CodiceFiscaleValido(cf))
             throw new ArgumentException(
                 "Codice fiscale del lavoratore formalmente errato: il checksum non coincide.");
         dipendente.CodiceFiscale = cf;

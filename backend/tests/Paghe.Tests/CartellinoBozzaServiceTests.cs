@@ -51,7 +51,8 @@ public sealed class CartellinoBozzaServiceTests : IDisposable
         await using (var verifica = NuovoContesto())
         {
             var entita = await verifica.Cartellini.SingleAsync(c =>
-                c.TenantId == scenario.TenantId && c.RapportoLavoroId == scenario.RapportoId);
+                c.TenantId == scenario.TenantId && c.RapportoLavoroId == scenario.RapportoId
+                && c.Mese == 7);
             Assert.Equal(24m, entita.OreAssenzaNonRetribuita);
             Assert.Equal(1, entita.Versione);
             Assert.Empty(verifica.Cedolini.Where(c => c.TenantId == scenario.TenantId));
@@ -178,7 +179,7 @@ public sealed class CartellinoBozzaServiceTests : IDisposable
                 new SalvaCartellinoBozza(
                     NuovoCartellino(2026, 7, CalendarioCompleto(2026, 7)), null, 0)));
             Assert.Contains("F24", ex.Message);
-            Assert.Empty(db.Cartellini.Where(c => c.TenantId == scenario.TenantId));
+            Assert.Empty(db.Cartellini.Where(c => c.TenantId == scenario.TenantId && c.Mese == 7));
         }
     }
 
@@ -207,7 +208,7 @@ public sealed class CartellinoBozzaServiceTests : IDisposable
                 NuovoCartellino(2026, 9, CalendarioCompleto(2026, 9)), null, 0)));
         Assert.Contains("futuro", futuro.Message, StringComparison.OrdinalIgnoreCase);
 
-        Assert.Empty(db.Cartellini.Where(c => c.TenantId == scenario.TenantId));
+        Assert.Empty(db.Cartellini.Where(c => c.TenantId == scenario.TenantId && c.Mese == 7));
     }
 
     [Fact]
@@ -237,7 +238,7 @@ public sealed class CartellinoBozzaServiceTests : IDisposable
                 null, 0)));
 
         Assert.Contains("numero progressivo", ex.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(db.Cartellini.Where(c => c.TenantId == scenario.TenantId));
+        Assert.Empty(db.Cartellini.Where(c => c.TenantId == scenario.TenantId && c.Mese == 7));
     }
 
     [Fact]
@@ -272,7 +273,7 @@ public sealed class CartellinoBozzaServiceTests : IDisposable
                 }, null, 0)));
         Assert.Contains("fringe benefit", importoNegativo.Message, StringComparison.OrdinalIgnoreCase);
 
-        Assert.Empty(db.Cartellini.Where(c => c.TenantId == scenario.TenantId));
+        Assert.Empty(db.Cartellini.Where(c => c.TenantId == scenario.TenantId && c.Mese == 7));
     }
 
     private CartellinoBozzaService Servizio(PagheDbContext db) =>
@@ -300,6 +301,26 @@ public sealed class CartellinoBozzaServiceTests : IDisposable
             CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3", Qualifica = "Impiegato",
             DataAssunzione = new DateOnly(2024, 1, 1), OreSettimanali = 40m,
         });
+        // Luglio 2026 comincia di mercoledì: il riporto autorevole della prima settimana
+        // arriva dal cartellino di giugno (29-30/06 in ferie: zero ore lavorate pregresse).
+        db.Cartellini.Add(new CartellinoEntity
+        {
+            Id = Guid.NewGuid(), TenantId = scenario.TenantId,
+            RapportoLavoroId = scenario.RapportoId, Anno = 2026, Mese = 6,
+            Giornate =
+            [
+                new GiornataCartellino
+                {
+                    Data = new DateOnly(2026, 6, 29), Causale = CausaleGiornata.Ferie,
+                    ProgressivoOreSettimanali = 0m,
+                },
+                new GiornataCartellino
+                {
+                    Data = new DateOnly(2026, 6, 30), Causale = CausaleGiornata.Ferie,
+                    ProgressivoOreSettimanali = 0m,
+                },
+            ],
+        });
         await db.SaveChangesAsync();
         return scenario;
     }
@@ -317,29 +338,39 @@ public sealed class CartellinoBozzaServiceTests : IDisposable
         int anno, int mese, IReadOnlyCollection<int>? assenzeNonRetribuite = null)
     {
         assenzeNonRetribuite ??= [];
-        return Enumerable.Range(1, DateTime.DaysInMonth(anno, mese))
-            .Select(giorno =>
+        var giornate = new List<GiornataCartellino>();
+        decimal progressivo = 0m;
+        for (int giorno = 1; giorno <= DateTime.DaysInMonth(anno, mese); giorno++)
+        {
+            var data = new DateOnly(anno, mese, giorno);
+            if (data.DayOfWeek == DayOfWeek.Monday)
+                progressivo = 0m;
+            if (assenzeNonRetribuite.Contains(giorno))
             {
-                var data = new DateOnly(anno, mese, giorno);
-                if (assenzeNonRetribuite.Contains(giorno))
-                    return new GiornataCartellino
-                    {
-                        Data = data,
-                        Causale = CausaleGiornata.AssenzaNonRetribuita,
-                        OreAssenzaNonRetribuita = 8m,
-                    };
-
-                bool domenica = data.DayOfWeek == DayOfWeek.Sunday;
-                return new GiornataCartellino
+                giornate.Add(new GiornataCartellino
                 {
                     Data = data,
-                    Causale = domenica
-                        ? CausaleGiornata.RiposoSettimanale
-                        : CausaleGiornata.Lavorata,
-                    OreOrdinarie = domenica ? 0m : 8m,
-                };
-            })
-            .ToArray();
+                    Causale = CausaleGiornata.AssenzaNonRetribuita,
+                    OreAssenzaNonRetribuita = 8m,
+                    ProgressivoOreSettimanali = progressivo,
+                });
+                continue;
+            }
+
+            bool domenica = data.DayOfWeek == DayOfWeek.Sunday;
+            decimal ore = domenica ? 0m : 8m;
+            progressivo += ore;
+            giornate.Add(new GiornataCartellino
+            {
+                Data = data,
+                Causale = domenica
+                    ? CausaleGiornata.RiposoSettimanale
+                    : CausaleGiornata.Lavorata,
+                OreOrdinarie = ore,
+                ProgressivoOreSettimanali = progressivo,
+            });
+        }
+        return giornate;
     }
 
     private sealed record Scenario(

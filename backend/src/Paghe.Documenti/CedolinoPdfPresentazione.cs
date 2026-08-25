@@ -14,7 +14,9 @@ internal sealed record CedolinoPresentazione(
     ContestoEmissioneCedolino Emissione,
     string Periodo,
     IReadOnlyList<RigaCedolinoPresentata> Righe,
-    string? IbanMascherato);
+    IReadOnlyList<RigaFigurativaPresentata> RigheFigurativeRilevanti,
+    string? IbanMascherato,
+    ProgressiviAnnui? Progressivi = null);
 
 internal sealed record RigaCedolinoPresentata(
     string Codice,
@@ -24,15 +26,26 @@ internal sealed record RigaCedolinoPresentata(
     decimal? Competenza,
     decimal? Trattenuta);
 
+internal sealed record RigaFigurativaPresentata(
+    string Codice,
+    string Descrizione,
+    decimal? Base,
+    decimal Importo);
+
 internal static class CedolinoPdfPresentazione
 {
     private static readonly CultureInfo It = CultureInfo.GetCultureInfo("it-IT");
+
+    internal const string TitoloSimulazione =
+        "PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL";
+    internal const string AvvisoNonCertificato = "BOZZA / NON CERTIFICATO";
 
     internal static CedolinoPresentazione Crea(
         Cedolino cedolino,
         IntestazioneCedolino intestazione,
         Cartellino? cartellino,
-        ContestoEmissioneCedolino? emissione = null)
+        ContestoEmissioneCedolino? emissione = null,
+        ProgressiviAnnui? progressivi = null)
     {
         emissione ??= ContestoEmissioneCedolino.Bozza;
         string periodo = cedolino.Mese is >= 1 and <= 12
@@ -52,6 +65,15 @@ internal static class CedolinoPdfPresentazione
                     Competenza: riga.Importo, Trattenuta: null))
             .ToList();
 
+        // Le righe figurative non confluiscono mai nelle colonne economiche. Si espongono
+        // soltanto quelle richieste per comprendere TFR, fondi contrattuali e prestazioni
+        // recuperabili, mantenendo codice, base e segno prodotti dal motore.
+        var righeFigurative = cedolino.Righe
+            .Where(riga => riga.Tipo == TipoVoce.Figurativa && ÈFigurativaRilevante(riga.Codice))
+            .Select(riga => new RigaFigurativaPresentata(
+                riga.Codice, riga.Descrizione, riga.Base, riga.Importo))
+            .ToList();
+
         return new CedolinoPresentazione(
             cedolino,
             intestazione,
@@ -59,8 +81,15 @@ internal static class CedolinoPdfPresentazione
             emissione,
             periodo,
             righe,
-            MascheraIban(intestazione.IbanDipendente));
+            righeFigurative,
+            MascheraIban(intestazione.IbanDipendente),
+            progressivi);
     }
+
+    private static bool ÈFigurativaRilevante(string codice) =>
+        codice.StartsWith("TFR_", StringComparison.Ordinal)
+        || codice is "FONDO_SAN_DATORE" or "ENTE_BIL_DATORE" or "SOLIDARIETA_FONDI"
+            or "PREST_RECUPERABILI" or "QUATTORDICESIMA_SEPARATA";
 
     internal static string? MascheraIban(string? iban)
     {

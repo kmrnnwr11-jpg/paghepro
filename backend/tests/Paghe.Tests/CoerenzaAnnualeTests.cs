@@ -46,7 +46,7 @@ public sealed class CoerenzaAnnualeTests : IDisposable
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(_tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "01234567890", CodiceFiscale = "01234567890",
+            RagioneSociale = "Alfa Srl", PartitaIva = "01234567897", CodiceFiscale = "01234567897",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             Settore = "COMMERCIO_SERVIZI", CodiceAteco = "47.91.10",
             MatricolaInps = "1234567890", CodiceSedeInps = "7100", CscInps = "10101",

@@ -741,7 +741,13 @@ export function AuroraPanel({
         <div className="au-identita">
           <strong>Aurora</strong>
           <small>
-            {stato?.attiva ? `${stato.provider} · ${stato.modello}` : "controllo deterministico"}
+            {stato?.attiva
+              ? `${stato.provider} · ${stato.modello}${stato.providerSecondario
+                ? stato.providerSecondarioAttivo
+                  ? ` → ${stato.providerSecondario} · ${stato.modelloSecondario}`
+                  : ` · ${stato.providerSecondario} da configurare`
+                : ""}`
+              : "controllo deterministico"}
           </small>
         </div>
         <button
@@ -924,6 +930,13 @@ export function AuroraPanel({
           <div className="au-stato avviso">
             <strong>Assistente non ancora configurato</strong>
             <span>{stato.messaggio}</span>
+          </div>
+        )}
+
+        {stato?.attiva && stato.messaggioProviderSecondario && (
+          <div className="au-stato avviso">
+            <strong>Provider di riserva da configurare</strong>
+            <span>{stato.messaggioProviderSecondario}</span>
           </div>
         )}
 
@@ -1142,8 +1155,10 @@ export function AuroraPanel({
         </p>
         <p>
           {stato?.attiva ? (
-            <>Le domande scritte qui vengono inviate al provider <b>{stato.provider}</b> per
-            generare la risposta: non incollare dati che non vuoi condividere.</>
+            <>Le domande scritte qui vengono inviate al provider <b>{stato.provider}</b>
+            {stato.providerSecondarioAttivo && stato.providerSecondario
+              ? <> e, soltanto se non risponde, al provider di riserva <b>{stato.providerSecondario}</b></>
+              : null} per generare la risposta: non incollare dati che non vuoi condividere.</>
           ) : (
             <>Nessun testo lascia il server: i provider AI sono spenti e il controllo
             cedolini resta interamente dentro PaghePro.</>

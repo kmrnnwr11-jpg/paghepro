@@ -37,7 +37,7 @@ public sealed class FotografiaCedolinoTests : IDisposable
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(_tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "01234567890",
+            RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
         });
         var rapporto = await new AnagraficheLavoroService(db).CreaDipendenteERapportoAsync(
@@ -73,6 +73,8 @@ public sealed class FotografiaCedolinoTests : IDisposable
         Assert.Equal(archiviato.TotaleCompetenze, perPdf.Cedolino.TotaleCompetenze);
         Assert.Equal(archiviato.ContributiDipendente, perPdf.Cedolino.ContributiDipendente);
         Assert.Equal(archiviato.QuotaTfr, perPdf.Cedolino.QuotaTfr);
+        Assert.Equal(archiviato.CostoAzienda, perPdf.Cedolino.CostoAzienda);
+        Assert.Equal(archiviato.CostoMedioAnnualizzato, perPdf.Cedolino.CostoMedioAnnualizzato);
     }
 
     [Fact]

@@ -35,6 +35,9 @@ internal static class CedolinoSnapshotCodec
         p.RegimiAddizionaleComunale.TryGetValue(rapporto.CodiceCatastaleComune, out var regimeComunale);
         p.RegoleCcnl.TryGetValue(ccnl.Codice, out var regoleCcnl);
         var livello = ccnl.Livello(rapporto.Livello);
+        var provinciaLavoro = string.IsNullOrWhiteSpace(rapporto.ProvinciaLavoro)
+            ? azienda?.Provincia
+            : rapporto.ProvinciaLavoro;
 
         var payload = new
         {
@@ -67,6 +70,10 @@ internal static class CedolinoSnapshotCodec
             p.OrePermessiMese,
             p.TfrDivisore,
             p.TfrContributoFondo,
+            p.CuneoUlterioreDetrazioneAnnua,
+            p.CuneoRedditoOltre,
+            p.CuneoRedditoFinoA,
+            p.CuneoRedditoAzzeramento,
             p.TrasfertaItaliaEsenteGiorno,
             p.TrasfertaEsteroEsenteGiorno,
             p.FringeBenefitSogliaAnnua,
@@ -84,6 +91,11 @@ internal static class CedolinoSnapshotCodec
                 ccnl.Fonte,
                 livello,
                 regole = regoleCcnl,
+                terzoElementoApplicato = ccnl.TerzoElemento(provinciaLavoro),
+                terzoElementoProvinciale = ccnl.TerzoElementoProvinciale
+                    .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(x => new { provincia = x.Key, x.Value })
+                    .ToList(),
             },
             rapporto = new
             {
@@ -92,11 +104,24 @@ internal static class CedolinoSnapshotCodec
                 rapporto.NumeroMensilita,
                 rapporto.ScattiAnzianita,
                 rapporto.Superminimo,
+                rapporto.DataAssunzione,
+                ProvinciaLavoro = provinciaLavoro,
+                rapporto.DetrazioniLavoroDipendente,
+                rapporto.GiorniDetrazioneAnno,
+                rapporto.DataDecorrenzaDomicilioFiscale,
+                rapporto.RiferimentoProgressiviFiscaliPregressi,
             },
             azienda = new
             {
                 OltreQuindiciDipendenti = azienda?.OltreQuindiciDipendenti ?? false,
                 ContributiFondiSettore = azienda?.ContributiFondiSettore ?? 0m,
+                azienda?.CscInps,
+                azienda?.CodiciAutorizzazioneInps,
+                azienda?.CodiceFondoIntegrazioneSalariale,
+                azienda?.CodiceAgevolazioneContributiva,
+                azienda?.AliquotaInpsDipendente,
+                azienda?.AliquotaInpsDatore,
+                azienda?.FonteProfiloContributivo,
             },
         };
 
@@ -115,10 +140,18 @@ internal static class CedolinoSnapshotCodec
                 c.AddizionaleRegionale, c.AddizionaleComunale, c.NettoInBusta,
                 c.TotaleEsenti, c.PremioRisultatoAgevolato, c.ImpostaSostitutivaPremio,
                 c.QuotaTfr, c.CostoAzienda, c.FerieMaturate, c.FerieGodute, c.FerieResidue,
-                c.PermessiMaturati, c.PermessiGoduti, c.PermessiResidui),
+                c.PermessiMaturati, c.PermessiGoduti, c.PermessiResidui,
+                c.CostoMedioAnnualizzato,
+                c.UlterioreDetrazioneCuneo,
+                c.RetribuzioneFissa, c.TariffaOraria, c.TariffaGiornaliera,
+                c.PrestazioniRecuperabili,
+                c.RolSaldoPrecedente, c.RolMaturati, c.RolGoduti, c.RolResidui,
+                c.ExFestivitaSaldoPrecedente, c.ExFestivitaMaturate,
+                c.ExFestivitaGodute, c.ExFestivitaResidue),
             dati.Intestazione,
             dati.Cartellino,
-            parametriApplicatiJson);
+            parametriApplicatiJson,
+            dati.Progressivi);
         return JsonSerializer.Serialize(payload, Json);
     }
 
@@ -135,6 +168,9 @@ internal static class CedolinoSnapshotCodec
         {
             Anno = d.Anno,
             Mese = d.Mese,
+            RetribuzioneFissa = d.RetribuzioneFissa ?? 0m,
+            TariffaOraria = d.TariffaOraria ?? 0m,
+            TariffaGiornaliera = d.TariffaGiornaliera ?? 0m,
             TotaleCompetenze = d.TotaleCompetenze,
             TotaleTrattenute = d.TotaleTrattenute,
             ImponibileInps = d.ImponibileInps,
@@ -151,16 +187,27 @@ internal static class CedolinoSnapshotCodec
             PremioRisultatoAgevolato = d.PremioRisultatoAgevolato,
             ImpostaSostitutivaPremio = d.ImpostaSostitutivaPremio,
             QuotaTfr = d.QuotaTfr,
+            PrestazioniRecuperabili = d.PrestazioniRecuperabili ?? 0m,
             CostoAzienda = d.CostoAzienda,
+            CostoMedioAnnualizzato = d.CostoMedioAnnualizzato ?? 0m,
+            UlterioreDetrazioneCuneo = d.UlterioreDetrazioneCuneo ?? 0m,
             FerieMaturate = d.FerieMaturate,
             FerieGodute = d.FerieGodute,
             FerieResidue = d.FerieResidue,
             PermessiMaturati = d.PermessiMaturati,
             PermessiGoduti = d.PermessiGoduti,
             PermessiResidui = d.PermessiResidui,
+            RolSaldoPrecedente = d.RolSaldoPrecedente ?? 0m,
+            RolMaturati = d.RolMaturati ?? 0m,
+            RolGoduti = d.RolGoduti ?? 0m,
+            RolResidui = d.RolResidui ?? 0m,
+            ExFestivitaSaldoPrecedente = d.ExFestivitaSaldoPrecedente ?? 0m,
+            ExFestivitaMaturate = d.ExFestivitaMaturate ?? 0m,
+            ExFestivitaGodute = d.ExFestivitaGodute ?? 0m,
+            ExFestivitaResidue = d.ExFestivitaResidue ?? 0m,
         };
         cedolino.Righe.AddRange(d.Righe);
-        return new CedolinoPerPdf(cedolino, payload.Intestazione, payload.Cartellino);
+        return new CedolinoPerPdf(cedolino, payload.Intestazione, payload.Cartellino, payload.Progressivi);
     }
 
     internal static string HashTesto(string testo) => Hash(Encoding.UTF8.GetBytes(testo));
@@ -172,7 +219,10 @@ internal static class CedolinoSnapshotCodec
         DatiCedolinoV1 Cedolino,
         IntestazioneCedolino Intestazione,
         Cartellino Cartellino,
-        string ParametriApplicatiJson);
+        string ParametriApplicatiJson,
+        // Congelati al controllo, come il resto della fotografia. Facoltativi: gli snapshot
+        // creati prima restano leggibili e mostrano i progressivi come non disponibili.
+        ProgressiviAnnui? Progressivi = null);
 
     private sealed record DatiCedolinoV1(
         int Anno,
@@ -200,5 +250,21 @@ internal static class CedolinoSnapshotCodec
         decimal FerieResidue,
         decimal PermessiMaturati,
         decimal PermessiGoduti,
-        decimal PermessiResidui);
+        decimal PermessiResidui,
+        // Campi aggiunti in modo opzionale: gli snapshot V1 creati prima delle revisioni
+        // restano deserializzabili e mostrano i dati mancanti come non disponibili.
+        decimal? CostoMedioAnnualizzato = null,
+        decimal? UlterioreDetrazioneCuneo = null,
+        decimal? RetribuzioneFissa = null,
+        decimal? TariffaOraria = null,
+        decimal? TariffaGiornaliera = null,
+        decimal? PrestazioniRecuperabili = null,
+        decimal? RolSaldoPrecedente = null,
+        decimal? RolMaturati = null,
+        decimal? RolGoduti = null,
+        decimal? RolResidui = null,
+        decimal? ExFestivitaSaldoPrecedente = null,
+        decimal? ExFestivitaMaturate = null,
+        decimal? ExFestivitaGodute = null,
+        decimal? ExFestivitaResidue = null);
 }

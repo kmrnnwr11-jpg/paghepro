@@ -4,10 +4,12 @@ import { caricaComuni, cercaComuni, type Comune } from "./dati";
 interface Props {
   valore: string;
   onSelect: (c: Comune) => void;
+  onInputChange?: (valore: string) => void;
   placeholder?: string;
+  required?: boolean;
 }
 
-export function ComuneAutocomplete({ valore, onSelect, placeholder }: Props) {
+export function ComuneAutocomplete({ valore, onSelect, onInputChange, placeholder, required }: Props) {
   const [tutti, setTutti] = useState<Comune[]>([]);
   const [testo, setTesto] = useState(valore);
   const [suggerimenti, setSuggerimenti] = useState<Comune[]>([]);
@@ -18,6 +20,7 @@ export function ComuneAutocomplete({ valore, onSelect, placeholder }: Props) {
 
   function aggiorna(v: string) {
     setTesto(v);
+    onInputChange?.(v);
     setSuggerimenti(cercaComuni(tutti, v));
     setAperto(true);
   }
@@ -38,6 +41,7 @@ export function ComuneAutocomplete({ valore, onSelect, placeholder }: Props) {
         onFocus={() => setSuggerimenti(cercaComuni(tutti, testo))}
         onBlur={() => setTimeout(() => setAperto(false), 150)}
         autoComplete="off"
+        required={required}
       />
       {aperto && suggerimenti.length > 0 && (
         <ul className="suggerimenti">

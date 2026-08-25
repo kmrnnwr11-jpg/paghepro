@@ -53,9 +53,11 @@ internal static class CedolinoProfessionalePdf
             colonna.Item().ShowEntire().Element(c => FasciaFiscale(c, dati.Cedolino));
             colonna.Item().ShowEntire().Element(c => FasciaNetto(c, dati.Cedolino));
             colonna.Item().ShowEntire().Element(c => FasciaRatei(c, dati.Cedolino));
+            if (dati.RigheFigurativeRilevanti.Count > 0)
+                colonna.Item().ShowEntire().Element(c => DettaglioFigurativo(c, dati.RigheFigurativeRilevanti));
             colonna.Item().ShowEntire().Element(c => FasciaStatistici(c, dati));
             colonna.Item().ShowEntire().Element(c => FasciaDetrazioni(c, dati.Cedolino));
-            colonna.Item().ShowEntire().Element(c => FasciaProgressivi(c));
+            colonna.Item().ShowEntire().Element(c => FasciaProgressivi(c, dati.Progressivi));
             colonna.Item().ShowEntire().Element(c => PagamentoEFirme(c, dati));
         });
         pagina.Footer().Element(c => Piede(c, dati));
@@ -65,37 +67,45 @@ internal static class CedolinoProfessionalePdf
 
     private static void TestataDitta(IContainer contenitore, CedolinoPresentazione dati)
     {
-        contenitore.BorderBottom(1.2f).BorderColor(Bordo).PaddingBottom(4).Row(riga =>
+        contenitore.Column(testata =>
         {
-            riga.RelativeItem(6).Column(ditta =>
+            testata.Item().Background(Avviso).PaddingVertical(3).PaddingHorizontal(5).Row(avviso =>
             {
-                ditta.Item().Text("Ditta").FontSize(6.2f).SemiBold().FontColor(Secondario);
-                ditta.Item().PaddingLeft(10).Column(dati2 =>
-                {
-                    dati2.Item().Text(Valore(dati.Intestazione.Azienda).ToUpperInvariant())
-                        .FontSize(9.5f).SemiBold().FontColor(Inchiostro);
-                    dati2.Item().Text(UnisciRiga(
-                            dati.Intestazione.AziendaIndirizzo, dati.Intestazione.AziendaComune))
-                        .FontSize(6.4f).FontColor(Secondario);
-                    dati2.Item().Text(TestoFiscaleAzienda(dati.Intestazione))
-                        .FontSize(6.4f).FontColor(Secondario);
-                });
+                avviso.RelativeItem().Text(CedolinoPdfPresentazione.TitoloSimulazione)
+                    .FontSize(8.8f).SemiBold().FontColor(Bianco);
+                avviso.AutoItem().PaddingLeft(8).Text(CedolinoPdfPresentazione.AvvisoNonCertificato)
+                    .FontSize(8.8f).SemiBold().FontColor(Bianco);
             });
 
-            riga.RelativeItem(4).AlignRight().Column(documento =>
+            testata.Item().PaddingTop(3).BorderBottom(1.2f).BorderColor(Bordo).PaddingBottom(4).Row(riga =>
             {
-                if (dati.Intestazione.Logo is { Length: > 0 } logo)
-                    documento.Item().AlignRight().Height(26).Image(logo).FitArea();
-                documento.Item().AlignRight().Text("CEDOLINO PAGA")
-                    .FontSize(13).SemiBold().FontColor(Inchiostro);
-                documento.Item().AlignRight().Text(
-                        "Prospetto paga - non costituisce Libro unico del lavoro")
-                    .FontSize(5.8f).FontColor(Secondario);
-                documento.Item().AlignRight().Text(
-                        string.IsNullOrWhiteSpace(dati.Emissione.RiferimentoDocumento)
-                            ? Capitalizza(dati.Periodo)
-                            : $"{Capitalizza(dati.Periodo)} - Foglio n. {dati.Emissione.RiferimentoDocumento}")
-                    .FontSize(7.4f).SemiBold().FontColor(Inchiostro);
+                riga.RelativeItem(6).Column(ditta =>
+                {
+                    ditta.Item().Text("Ditta").FontSize(6.2f).SemiBold().FontColor(Secondario);
+                    ditta.Item().PaddingLeft(10).Column(dati2 =>
+                    {
+                        dati2.Item().Text(Valore(dati.Intestazione.Azienda).ToUpperInvariant())
+                            .FontSize(9.5f).SemiBold().FontColor(Inchiostro);
+                        dati2.Item().Text(UnisciRiga(
+                                dati.Intestazione.AziendaIndirizzo, dati.Intestazione.AziendaComune))
+                            .FontSize(6.4f).FontColor(Secondario);
+                        dati2.Item().Text(TestoFiscaleAzienda(dati.Intestazione))
+                            .FontSize(6.4f).FontColor(Secondario);
+                    });
+                });
+
+                riga.RelativeItem(4).AlignRight().Column(documento =>
+                {
+                    if (dati.Intestazione.Logo is { Length: > 0 } logo)
+                        documento.Item().AlignRight().Height(26).Image(logo).FitArea();
+                    documento.Item().AlignRight().Text("PROSPETTO RETRIBUTIVO MENSILE")
+                        .FontSize(7.5f).SemiBold().FontColor(Secondario);
+                    documento.Item().AlignRight().Text(
+                            string.IsNullOrWhiteSpace(dati.Emissione.RiferimentoDocumento)
+                                ? Capitalizza(dati.Periodo)
+                                : $"{Capitalizza(dati.Periodo)} - Foglio n. {dati.Emissione.RiferimentoDocumento}")
+                        .FontSize(7.4f).SemiBold().FontColor(Inchiostro);
+                });
             });
         });
     }
@@ -163,22 +173,27 @@ internal static class CedolinoProfessionalePdf
     {
         var righe = dati.Righe;
         decimal? pagaBase = CompetenzaVoce(righe, "PAGA_BASE");
+        // Contingenza (EDR storico incluso) e terzo elemento provinciale: voci fisse distinte
+        // in busta dopo la revisione del consulente; il totale mensile le comprende.
+        decimal? contingenza = CompetenzaVoce(righe, "CONTINGENZA");
+        decimal? terzoElemento = CompetenzaVoce(righe, "TERZO_EL");
         decimal? edr = CompetenzaVoce(righe, "EDR");
         decimal? superminimo = CompetenzaVoce(righe, "SUPERMIN");
         decimal? scatti = CompetenzaVoce(righe, "SCATTI");
-        decimal? totale = pagaBase is null && edr is null && superminimo is null && scatti is null
-            ? null
-            : (pagaBase ?? 0m) + (edr ?? 0m) + (superminimo ?? 0m) + (scatti ?? 0m);
-
         contenitore.Border(0.8f).BorderColor(Bordo).Row(riga =>
         {
             CasellaNumerica(riga, 1.2f, "PAGA BASE", Importo(pagaBase));
+            CasellaNumerica(riga, 1.1f, "CONTINGENZA", Importo(contingenza));
+            CasellaNumerica(riga, 1f, "TERZO ELEM.", Importo(terzoElemento));
             CasellaNumerica(riga, 1f, "E.D.R.", Importo(edr));
             CasellaNumerica(riga, 1.1f, "SUPERMINIMO", Importo(superminimo));
             CasellaNumerica(riga, 1.1f, "SCATTI ANZ.", Importo(scatti));
-            CasellaNumerica(riga, 1.2f, "TOTALE MENSILE", Importo(totale), evidenza: true);
-            CasellaNumerica(riga, 1.3f, "RETR. ORARIA CONTR.", Importo4(BaseVoce(righe, "ROL", "ASSENZA")));
-            CasellaNumerica(riga, 1.3f, "RETR. GIORN. CONTR.", Importo(BaseVoce(righe, "FERIE")), ultimo: true);
+            CasellaNumerica(riga, 1.25f, "RETRIBUZIONE FISSA",
+                Importo4(dati.Cedolino.RetribuzioneFissa), evidenza: true);
+            CasellaNumerica(riga, 1.25f, "TARIFFA ORARIA",
+                Importo4(dati.Cedolino.TariffaOraria));
+            CasellaNumerica(riga, 1.25f, "TARIFFA GIORNALIERA",
+                Importo4(dati.Cedolino.TariffaGiornaliera), ultimo: true);
         });
     }
 
@@ -220,8 +235,8 @@ internal static class CedolinoProfessionalePdf
         {
             tabella.ColumnsDefinition(colonne =>
             {
-                colonne.RelativeColumn(1.5f);   // codice
-                colonne.RelativeColumn(4.0f);   // descrizione
+                colonne.RelativeColumn(1.65f);  // codice: evita di spezzare QUATTORDICESIMA
+                colonne.RelativeColumn(3.85f);  // descrizione
                 colonne.RelativeColumn(1.1f);   // ore / giorni
                 colonne.RelativeColumn(1.25f);  // base
                 colonne.RelativeColumn(1.4f);   // competenze
@@ -303,6 +318,20 @@ internal static class CedolinoProfessionalePdf
     private static void StrisciaCalendario(IContainer contenitore, Cartellino? cartellino)
     {
         bool disponibile = cartellino is { Giornate.Count: > 0 };
+        if (!disponibile)
+        {
+            // Un calendario assente non viene simulato con 31 righe vuote: l'assenza del dato
+            // resta evidente e il prospetto non suggerisce presenze mai acquisite.
+            contenitore.Border(0.8f).BorderColor(Bordo).Column(colonna =>
+            {
+                colonna.Item().Background(Fondo).PaddingVertical(2.5f).PaddingHorizontal(3)
+                    .Text("CALENDARIO GIORNALIERO").FontSize(4.8f).SemiBold().FontColor(Inchiostro);
+                colonna.Item().Padding(5).Text("NON DISPONIBILE")
+                    .FontSize(5.5f).SemiBold().FontColor(Avviso);
+            });
+            return;
+        }
+
         var perGiorno = disponibile
             ? cartellino!.Giornate.ToDictionary(giorno => giorno.Data.Day)
             : new Dictionary<int, GiornataCartellino>();
@@ -336,10 +365,6 @@ internal static class CedolinoProfessionalePdf
                     CellaCalendario(tabella, trovato ? Sigla(dato!.Causale) : "", sfondo, ultimo: true);
                 }
             });
-
-            if (!disponibile)
-                colonna.Item().BorderTop(0.5f).BorderColor(Bordo).Background(Fondo).Padding(3)
-                    .Text("NON DISPONIBILE").FontSize(4.8f).SemiBold().FontColor(Avviso);
         });
     }
 
@@ -385,7 +410,8 @@ internal static class CedolinoProfessionalePdf
         {
             CasellaNumerica(riga, 1.3f, "IMPONIBILE IRPEF", Importo(cedolino.ImponibileIrpef));
             CasellaNumerica(riga, 1.1f, "IRPEF LORDA", Importo(cedolino.IrpefLorda));
-            CasellaNumerica(riga, 1.3f, "TOT. DETRAZIONI", Importo(cedolino.DetrazioniLavoroDipendente));
+            CasellaNumerica(riga, 1.3f, "TOT. DETRAZIONI",
+                Importo(cedolino.DetrazioniLavoroDipendente + cedolino.UlterioreDetrazioneCuneo));
             CasellaNumerica(riga, 1.2f, "IRPEF NETTA", Importo(cedolino.IrpefNetta), evidenza: true);
             CasellaNumerica(riga, 1.3f, "PREMIO AGEVOLATO", Importo(cedolino.PremioRisultatoAgevolato));
             CasellaNumerica(riga, 1.3f, "IMPOSTA SOSTITUTIVA", Importo(cedolino.ImpostaSostitutivaPremio), ultimo: true);
@@ -401,7 +427,7 @@ internal static class CedolinoProfessionalePdf
             riga.RelativeItem(1.9f).Background(Fondo).PaddingVertical(3).PaddingHorizontal(5)
                 .Column(netto =>
                 {
-                    netto.Item().Text("NETTO BUSTA").FontSize(5.2f).SemiBold().FontColor(Inchiostro);
+                    netto.Item().Text("NETTO SIMULATO").FontSize(5.2f).SemiBold().FontColor(Inchiostro);
                     netto.Item().AlignRight().Text(Importo(cedolino.NettoInBusta))
                         .FontSize(13f).SemiBold().FontColor(Inchiostro);
                 });
@@ -418,18 +444,25 @@ internal static class CedolinoProfessionalePdf
                 EtichettaColonna(riga, 1f, "GODUTO", destra: true);
                 EtichettaColonna(riga, 1f, "RESIDUO", destra: true, ultimo: true);
             });
-            RigaRateo(colonna, "FERIE (giorni)", cedolino.FerieMaturate, cedolino.FerieGodute, cedolino.FerieResidue);
-            RigaRateo(colonna, "PERMESSI ROL / EX FESTIVITÀ (ore)",
-                cedolino.PermessiMaturati, cedolino.PermessiGoduti, cedolino.PermessiResidui);
+            RigaRateo(colonna, "FERIE (giorni)", saldoPrecedente: null,
+                cedolino.FerieMaturate, cedolino.FerieGodute, cedolino.FerieResidue);
+            RigaRateo(colonna, "ROL (ore)", cedolino.RolSaldoPrecedente,
+                cedolino.RolMaturati, cedolino.RolGoduti, cedolino.RolResidui);
+            RigaRateo(colonna, "EX FESTIVITÀ (ore)", cedolino.ExFestivitaSaldoPrecedente,
+                cedolino.ExFestivitaMaturate, cedolino.ExFestivitaGodute, cedolino.ExFestivitaResidue);
+            colonna.Item().BorderTop(0.4f).BorderColor(BordoTenue).PaddingVertical(2)
+                .PaddingHorizontal(3.5f).Text(
+                    "Saldo precedente ferie: dato non disponibile nel modello del cedolino.")
+                .FontSize(5.2f).FontColor(Secondario);
         });
 
     private static void RigaRateo(
         ColumnDescriptor colonna, string istituto,
-        decimal maturato, decimal goduto, decimal residuo) =>
+        decimal? saldoPrecedente, decimal maturato, decimal goduto, decimal residuo) =>
         colonna.Item().BorderTop(0.4f).BorderColor(BordoTenue).Row(riga =>
         {
             ValoreColonna(riga, 2.2f, istituto);
-            ValoreColonna(riga, 1f, "", destra: true);
+            ValoreColonna(riga, 1f, Numero(saldoPrecedente), destra: true);
             ValoreColonna(riga, 1f, Numero(maturato), destra: true);
             ValoreColonna(riga, 1f, Numero(goduto), destra: true);
             ValoreColonna(riga, 1f, Numero(residuo), destra: true, evidenza: true, ultimo: true);
@@ -442,8 +475,49 @@ internal static class CedolinoProfessionalePdf
             CasellaNumerica(riga, 1f, "ORE LAVORATE", OreLavorate(dati.Cartellino) ?? "");
             CasellaNumerica(riga, 1.4f, "IMPONIBILE INPS", Importo(dati.Cedolino.ImponibileInps));
             CasellaNumerica(riga, 1.2f, "TFR MESE *", Importo(dati.Cedolino.QuotaTfr));
-            CasellaNumerica(riga, 1.4f, "COSTO AZIENDA *", Importo(dati.Cedolino.CostoAzienda), ultimo: true);
+            CasellaNumerica(riga, 1.5f, "COSTO PARZIALE STIMATO DEL MESE",
+                Importo(dati.Cedolino.CostoAzienda));
+            // Costo medio annualizzato (retribuzione annua con 13ª/14ª + contributi + TFR, /12):
+            // è un numero diverso dal costo del mese. Vuoto sui cedolini archiviati prima del dato.
+            CasellaNumerica(riga, 1.7f, "COSTO MEDIO PARZIALE STIMATO ANNUO/12",
+                dati.Cedolino.CostoMedioAnnualizzato > 0m
+                    ? Importo(dati.Cedolino.CostoMedioAnnualizzato)
+                    : "", ultimo: true);
         });
+
+    private static void DettaglioFigurativo(
+        IContainer contenitore, IReadOnlyList<RigaFigurativaPresentata> righe)
+    {
+        contenitore.Border(0.8f).BorderColor(Bordo).Table(tabella =>
+        {
+            tabella.ColumnsDefinition(colonne =>
+            {
+                colonne.RelativeColumn(1.7f);
+                colonne.RelativeColumn(4.5f);
+                colonne.RelativeColumn(1.4f);
+                colonne.RelativeColumn(1.4f);
+            });
+            tabella.Header(header =>
+            {
+                header.Cell().ColumnSpan(4).Background(Fondo).PaddingVertical(2.5f).PaddingHorizontal(3.5f)
+                    .Text("DETTAGLIO FIGURATIVO TFR / FONDI / PRESTAZIONI RECUPERABILI")
+                    .FontSize(4.9f).SemiBold().FontColor(Inchiostro);
+                IntestazioneVoci(header, "CODICE");
+                IntestazioneVoci(header, "DESCRIZIONE");
+                IntestazioneVoci(header, "BASE", destra: true);
+                IntestazioneVoci(header, "IMPORTO", destra: true, ultimo: true);
+            });
+            for (int indice = 0; indice < righe.Count; indice++)
+            {
+                var voce = righe[indice];
+                string sfondo = indice % 2 == 0 ? Bianco : FondoRiga;
+                CellaVoce(tabella, voce.Codice, sfondo, piccolo: true);
+                CellaVoce(tabella, voce.Descrizione, sfondo);
+                CellaVoce(tabella, Importo4(voce.Base), sfondo, destra: true);
+                CellaVoce(tabella, Importo(voce.Importo), sfondo, destra: true, ultimo: true);
+            }
+        });
+    }
 
     private static void FasciaDetrazioni(IContainer contenitore, Cedolino cedolino) =>
         contenitore.Border(0.8f).BorderColor(Bordo).Row(riga =>
@@ -453,20 +527,42 @@ internal static class CedolinoProfessionalePdf
             CasellaNumerica(riga, 1f, "DETR. FIGLI", "");
             CasellaNumerica(riga, 1.2f, "DETR. ALTRI CARICHI", "");
             CasellaNumerica(riga, 1f, "ONERI DEDUCIBILI", "");
-            CasellaNumerica(riga, 1.2f, "ULTERIORE DETRAZ.", "", ultimo: true);
+            // Ulteriore detrazione cuneo (L. 207/2024): casella distinta dalla detrazione da
+            // lavoro dipendente, non vanno sommate insieme (revisione consulente 25/08/2026).
+            CasellaNumerica(riga, 1.2f, "ULTERIORE DETRAZ.",
+                cedolino.UlterioreDetrazioneCuneo > 0m
+                    ? Importo(cedolino.UlterioreDetrazioneCuneo)
+                    : "", ultimo: true);
         });
 
-    private static void FasciaProgressivi(IContainer contenitore) =>
-        contenitore.Border(0.8f).BorderColor(Bordo).Background(FondoRiga)
-            .PaddingVertical(3).PaddingHorizontal(4).Column(colonna =>
-            {
-                colonna.Item().Text("PROGRESSIVI ANNUI").FontSize(4.9f).SemiBold().FontColor(Inchiostro);
-                colonna.Item().Text(
-                        "Imponibile previdenziale, imponibile IRPEF, IRPEF pagata e detrazioni progressive: " +
-                        "non disponibili in questo documento. Le caselle senza valore non sono azzerate: " +
-                        "il dato non è stato calcolato.")
-                    .FontSize(5.6f).FontColor(Secondario);
-            });
+    private static void FasciaProgressivi(IContainer contenitore, ProgressiviAnnui? progressivi)
+    {
+        // Senza il dato la fascia resta onesta: il valore non è stato calcolato, non è zero.
+        if (progressivi is null)
+        {
+            contenitore.Border(0.8f).BorderColor(Bordo).Background(FondoRiga)
+                .PaddingVertical(3).PaddingHorizontal(4).Column(colonna =>
+                {
+                    colonna.Item().Text("PROGRESSIVI ANNUI").FontSize(4.9f).SemiBold().FontColor(Inchiostro);
+                    colonna.Item().Text(
+                            "Imponibile previdenziale, imponibile IRPEF, IRPEF pagata e detrazioni progressive: " +
+                            "non disponibili in questo documento. Le caselle senza valore non sono azzerate: " +
+                            "il dato non è stato calcolato.")
+                        .FontSize(5.6f).FontColor(Secondario);
+                });
+            return;
+        }
+
+        // Somme dei mesi elaborati dell'anno fino a questo (compreso), lette dall'archivio.
+        contenitore.Border(0.8f).BorderColor(Bordo).Row(riga =>
+        {
+            CasellaNumerica(riga, 1.4f, "IMPONIB. PREV. PROGR.", Importo(progressivi.ImponibileInps));
+            CasellaNumerica(riga, 1.4f, "IMPONIB. IRPEF PROGR.", Importo(progressivi.ImponibileIrpef));
+            CasellaNumerica(riga, 1.3f, "IRPEF PAGATA PROGR.", Importo(progressivi.IrpefNetta));
+            CasellaNumerica(riga, 1.3f, "DETRAZIONI PROGR.", Importo(progressivi.Detrazioni));
+            CasellaNumerica(riga, 1.2f, "MESI ELABORATI", progressivi.MesiCompresi.ToString(It), ultimo: true);
+        });
+    }
 
     private static void EtichettaColonna(
         RowDescriptor riga, float peso, string testo, bool destra = false, bool ultimo = false)
@@ -614,8 +710,18 @@ internal static class CedolinoProfessionalePdf
     {
         null => "Dati presenze non disponibili in questo documento",
         { Giornate.Count: > 0 } => "Calendario giornaliero riportato a lato",
+        // Un cartellino a totali con tutte le variabili a zero non dice nulla su ore e
+        // giorni: dichiarare «acquisito» accanto a caselle vuote era contraddittorio.
+        _ when SenzaVariabiliMensili(cartellino) =>
+            "Nessuna variabile mensile registrata: ore e giorni lavorati non disponibili",
         _ => "Cartellino acquisito a totali mensili",
     };
+
+    private static bool SenzaVariabiliMensili(Cartellino c) =>
+        c.OreStraordinario == 0m && c.OreStraordinarioNotturno == 0m
+        && c.OreStraordinarioFestivo == 0m && c.GiorniFerie == 0m && c.OrePermessi == 0m
+        && c.OreExFestivita == 0m && c.GiorniMalattia == 0m && c.GiorniInfortunio == 0m
+        && c.OreAssenzaNonRetribuita == 0m;
 
     private static string EtichettaAnf(Cartellino? cartellino) => cartellino?.StatoAssegniFamiliari switch
     {
@@ -636,11 +742,11 @@ internal static class CedolinoProfessionalePdf
 
     private static string NotaStato(string? stato) => stato?.Trim().ToLowerInvariant() switch
     {
-        "preworkflow" => "RICOSTRUZIONE DA ARCHIVIO PRE-WORKFLOW NON DEFINITIVA - importi archiviati, dati accessori e impaginazione correnti; nessuna attestazione retroattiva.",
-        "validata" => "VALIDAZIONE REGISTRATA - non equivale a conservazione a norma.",
-        "chiusa" => "CEDOLINO CHIUSO - consegna, pagamento e conservazione restano operazioni separate.",
-        "controllata" => "DATI CONGELATI - validazione professionale ancora da registrare.",
-        _ => "BOZZA DA VALIDARE - documento non certificato.",
+        "preworkflow" => "BOZZA / NON CERTIFICATO - Ricostruzione da archivio pre-workflow non definitiva.",
+        "validata" => "BOZZA / NON CERTIFICATO - Stato workflow: validazione registrata.",
+        "chiusa" => "BOZZA / NON CERTIFICATO - Stato workflow: chiusa; consegna e pagamento restano separati.",
+        "controllata" => "BOZZA / NON CERTIFICATO - Stato workflow: dati congelati, validazione da registrare.",
+        _ => "BOZZA / NON CERTIFICATO - Documento di simulazione da sottoporre al professionista.",
     };
 
     private static string TestoFiscaleAzienda(IntestazioneCedolino dati)
@@ -656,9 +762,7 @@ internal static class CedolinoProfessionalePdf
     private static string Importo(decimal valore) => valore.ToString("N2", It);
     private static string Importo(decimal? valore) => valore is decimal v ? Importo(v) : "";
     private static string Importo4(decimal? valore) => valore is decimal v ? v.ToString("N4", It) : "";
-    private static string Importo4Breve(decimal? valore) => valore is decimal v
-        ? v.ToString(v != 0m && Math.Abs(v) < 100m ? "N4" : "N2", It)
-        : "";
+    private static string Importo4Breve(decimal? valore) => Importo4(valore);
     private static string ImportoEconomico(decimal? valore) => valore is decimal v && v != 0m
         ? v.ToString("N2", It)
         : "";

@@ -25,6 +25,16 @@ public sealed class Cartellino
     /// <summary>Giorni di inabilità temporanea per infortunio sul lavoro INAIL.</summary>
     public decimal GiorniInfortunio { get; init; }
 
+    // Fotografia aggregata dell'unico evento sanitario rappresentabile dal motore corrente.
+    // CalendarioCartellino.Compila la ricava dalle giornate dopo averne verificato coerenza e
+    // sequenza. I nullable mantengono compatibili simulazioni e payload storici senza eventi.
+
+    public string? IdentificativoEvento { get; init; }
+    public DateOnly? DataInizioEvento { get; init; }
+    public decimal? RetribuzioneMediaGiornalieraPrecedente { get; init; }
+    public decimal? RateiGiornalieri { get; init; }
+    public decimal? CoefficienteLordizzazione { get; init; }
+
     /// <summary>Ore di assenza non retribuita (decurtano la retribuzione mensile).</summary>
     public decimal OreAssenzaNonRetribuita { get; init; }
 
@@ -79,11 +89,19 @@ public sealed class Cartellino
     /// <summary>Reddito di lavoro dipendente dell'anno precedente: sopra il tetto niente agevolazione.</summary>
     public decimal RedditoAnnoPrecedente { get; init; }
 
+    /// <summary>
+    /// Identificativo del prospetto separato con cui e stata erogata la quattordicesima.
+    /// Nel mese di luglio il cedolino ordinario non la incorpora automaticamente: il percorso
+    /// archiviabile richiede questo riferimento e la data del pagamento.
+    /// </summary>
+    public string? RiferimentoQuattordicesimaSeparata { get; init; }
+
+    public DateOnly? DataPagamentoQuattordicesima { get; init; }
+
     // ---- Calendario giornaliero -----------------------------------------------------
-    // Vuoto = cartellino compilato a totali, come nella prima versione: il motore continua
-    // a leggere i campi qui sopra e nulla cambia. Quando c'è, i totali sono stati derivati
-    // dalle giornate (vedi CalendarioCartellino.Compila) e il calendario resta allegato,
-    // perché LUL, denunce e agricoltura ragionano sul giorno, non sul mese.
+    // Il motore puro puo ancora ricevere una lista vuota per simulazioni isolate. Il percorso
+    // archiviabile e il workflow, invece, la trattano come dato mancante bloccante: LUL,
+    // denunce ed eventi tutelati ragionano sul giorno, non sul solo totale mensile.
 
     /// <summary>Le giornate del mese, se il cartellino è stato compilato giorno per giorno.</summary>
     public IReadOnlyList<GiornataCartellino> Giornate { get; init; } = [];

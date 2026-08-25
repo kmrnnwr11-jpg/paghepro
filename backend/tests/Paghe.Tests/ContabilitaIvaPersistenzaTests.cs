@@ -121,7 +121,7 @@ public sealed class ContabilitaIvaPersistenzaTests : IDisposable
         var azienda = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
             RagioneSociale = "Alfa Srl",
-            PartitaIva = "01234567890",
+            PartitaIva = "01234567897",
             Indirizzo = "Via Roma 1",
             Cap = "20100",
             Comune = "Milano",
@@ -133,7 +133,7 @@ public sealed class ContabilitaIvaPersistenzaTests : IDisposable
     private static DatiAnagrafici Cliente() => new()
     {
         Denominazione = "Beta Spa",
-        PartitaIva = "09876543210",
+        PartitaIva = "09876543217",
         Indirizzo = "Via Po 2",
         Cap = "10100",
         Comune = "Torino",

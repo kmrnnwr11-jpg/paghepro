@@ -2,6 +2,7 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.AdeTelematico;
 using Paghe.Core.Domain;
+using Paghe.Persistence.Cedolini;
 using Paghe.Persistence.Entities;
 
 namespace Paghe.Persistence;
@@ -132,8 +133,12 @@ public sealed class CartellinoBozzaService
                 + "quietanzato: la bozza presenze resta bloccata.");
 
         // Le giornate sono la fonte: i totali del mese vengono sempre ricalcolati dal dominio.
+        decimal? riportoPrimaSettimana = await RiportoOreSettimanaliService.CalcolaAsync(
+            _db, tenantId, rapportoId, cartellino.Anno, cartellino.Mese,
+            rapporto.DataAssunzione, ct);
         var normalizzato = CalendarioCartellino.Compila(
-            cartellino, cartellino.Giornate, rapporto.OreSettimanali / 5m);
+            cartellino, cartellino.Giornate, rapporto.OreSettimanali / 5m,
+            oreLavoratePregressePrimaSettimana: riportoPrimaSettimana);
         // Alcune regole (per esempio il numero progressivo dell'evento di malattia) dipendono
         // dai totali derivati dal calendario e quindi possono essere verificate soltanto ora.
         RegoleCartellino.Valida(normalizzato);

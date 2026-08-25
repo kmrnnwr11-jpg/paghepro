@@ -6,6 +6,14 @@ import {
   type GiornataCartellino, type PresenzeMese, type ProblemaCartellino,
 } from "../api";
 import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
+import {
+  calendarioIniziale,
+  applicaProgressiviSettimanali,
+  campoOre,
+  cambiaCausaleGiornata,
+  causaleConsenteStraordinario,
+  validaCalendarioArchiviabile,
+} from "../cartellinoCalendario";
 import { creaSequenziatoreRichieste } from "../ultimaRichiesta";
 
 const oggi = new Date();
@@ -27,6 +35,7 @@ const vuoto: DatiCartellino = {
   giorniMalattia: 0, numeroEventoMalattiaAnno: 1, giorniInfortunio: 0,
   oreAssenzaNonRetribuita: 0,
   statoAssegniFamiliari: "DaVerificare", importoAssegniFamiliari: 0,
+  riferimentoQuattordicesimaSeparata: "", dataPagamentoQuattordicesima: "",
 };
 
 function dalRiepilogo(r: PresenzeMese["righe"][number]): DatiCartellino {
@@ -43,14 +52,15 @@ function dalRiepilogo(r: PresenzeMese["righe"][number]): DatiCartellino {
     oreAssenzaNonRetribuita: r.oreAssenzaNonRetribuita,
     statoAssegniFamiliari: r.statoAssegniFamiliari,
     importoAssegniFamiliari: r.importoAssegniFamiliari,
+    riferimentoQuattordicesimaSeparata: r.riferimentoQuattordicesimaSeparata ?? "",
+    dataPagamentoQuattordicesima: r.dataPagamentoQuattordicesima ?? "",
   };
 }
 
-// Diritto residuo del dipendente dall'ultimo cedolino elaborato: guida chi inserisce
-// ferie e permessi senza bloccare (le ferie anticipate restano possibili e segnalate).
-function DirittiFeriePermessi({ riga, cartellino }: {
+// Mantiene visibile il controllo sui residui anche con il calendario obbligatorio.
+function DirittiFeriePermessi({ riga, giornate }: {
   riga: PresenzeMese["righe"][number];
-  cartellino: DatiCartellino;
+  giornate: GiornataCartellino[];
 }) {
   if (riga.ferieResidue == null || riga.permessiResidui == null
     || riga.saldiAnno == null || riga.saldiMese == null) {
@@ -60,8 +70,12 @@ function DirittiFeriePermessi({ riga, cartellino }: {
       </p>
     );
   }
-  const permessiChiesti = cartellino.orePermessi + cartellino.oreExFestivita;
-  const ferieOltre = cartellino.giorniFerie > riga.ferieResidue;
+  const ferieChieste = giornate.filter((giornata) => giornata.causale === "Ferie").length;
+  const permessiChiesti = giornate.reduce(
+    (totale, giornata) => totale + giornata.orePermessi + giornata.oreExFestivita,
+    0,
+  );
+  const ferieOltre = ferieChieste > riga.ferieResidue;
   const permessiOltre = permessiChiesti > riga.permessiResidui;
   return (
     <div aria-live="polite">
@@ -73,7 +87,7 @@ function DirittiFeriePermessi({ riga, cartellino }: {
       </p>
       {ferieOltre && (
         <p><span className="status-pill amber">
-          Ferie oltre il residuo: {cartellino.giorniFerie} gg su {riga.ferieResidue.toLocaleString("it-IT")} disponibili (anticipate)
+          Ferie oltre il residuo: {ferieChieste} gg su {riga.ferieResidue.toLocaleString("it-IT")} disponibili (anticipate)
         </span></p>
       )}
       {permessiOltre && (
@@ -99,38 +113,14 @@ const CAUSALI: { valore: CausaleGiornata; etichetta: string }[] = [
   { valore: "Festivita", etichetta: "Festività" },
 ];
 
-/** Il campo ore che quella causale riempie; null = giornata intera, non si misura a ore. */
-function campoOre(causale: CausaleGiornata): keyof GiornataCartellino | null {
-  switch (causale) {
-    case "Lavorata": return "oreOrdinarie";
-    case "PermessoRetribuito": return "orePermessi";
-    case "ExFestivita": return "oreExFestivita";
-    case "AssenzaNonRetribuita": return "oreAssenzaNonRetribuita";
-    default: return null;
-  }
-}
-
-function giornataVuota(data: string, causale: CausaleGiornata, ore: number): GiornataCartellino {
-  const g: GiornataCartellino = {
-    data, causale,
-    oreOrdinarie: 0, orePermessi: 0, oreExFestivita: 0, oreAssenzaNonRetribuita: 0,
-    oreStraordinario: 0, oreStraordinarioNotturno: 0, oreStraordinarioFestivo: 0,
-  };
-  const campo = campoOre(causale);
-  return campo ? { ...g, [campo]: ore } : g;
-}
-
-/** Mese precompilato: feriali lavorati alle ore contrattuali, domeniche a riposo. */
-function calendarioIniziale(anno: number, mese: number, oreGiorno: number): GiornataCartellino[] {
-  const giorni = new Date(anno, mese, 0).getDate();
-  return Array.from({ length: giorni }, (_, i) => {
-    const data = new Date(anno, mese - 1, i + 1);
-    const iso = `${anno}-${String(mese).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`;
-    return data.getDay() === 0
-      ? giornataVuota(iso, "RiposoSettimanale", 0)
-      : giornataVuota(iso, "Lavorata", oreGiorno);
-  });
-}
+const CAMPI_STRAORDINARIO: {
+  chiave: "oreStraordinario" | "oreStraordinarioNotturno" | "oreStraordinarioFestivo";
+  etichetta: string;
+}[] = [
+  { chiave: "oreStraordinario", etichetta: "Str. ord." },
+  { chiave: "oreStraordinarioNotturno", etichetta: "Str. nott." },
+  { chiave: "oreStraordinarioFestivo", etichetta: "Str. fest." },
+];
 
 const GIORNI_SETTIMANA = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
 
@@ -161,8 +151,9 @@ export function Presenze() {
   const [scaricando, setScaricando] = useState<string | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
   const [avviso, setAvviso] = useState<string | null>(null);
-  // Calendario giorno per giorno: presente solo per i dipendenti in cui è stato aperto.
+  // Senza calendario completo il cedolino resta non elaborabile.
   const [calendari, setCalendari] = useState<Record<string, GiornataCartellino[]>>({});
+  const [riportiPrimaSettimana, setRiportiPrimaSettimana] = useState<Record<string, number | null>>({});
   const [problemi, setProblemi] = useState<Record<string, ProblemaCartellino[]>>({});
   const [verificando, setVerificando] = useState<string | null>(null);
   // «Fai il mese»: una conferma sola per tutti invece di quattro clic a testa.
@@ -208,6 +199,7 @@ export function Presenze() {
     setDati({});
     setConfermato({});
     setCalendari({});
+    setRiportiPrimaSettimana({});
     setProblemi({});
     try {
       const b = await api.presenzeMese(azienda.id, anno, mese, richiesta.signal);
@@ -215,10 +207,23 @@ export function Presenze() {
       setBoard(b);
       setScopeBoard(scopeRichiesto);
       setDati(Object.fromEntries(b.righe.map((r) => [r.rapportoId, dalRiepilogo(r)])));
-      setConfermato(Object.fromEntries(b.righe.map((r) => [r.rapportoId, r.elaborato])));
-      // Il calendario riappare solo se era già stato compilato: chi lavora a totali non se lo trova.
+      setConfermato(Object.fromEntries(b.righe.map((r) => [r.rapportoId, false])));
+      // I vecchi cartellini a soli totali restano visibili, ma vanno convertiti in calendario
+      // prima di poter creare una nuova versione archiviata.
       setCalendari(Object.fromEntries(
         b.righe.filter((r) => r.giornate.length > 0).map((r) => [r.rapportoId, r.giornate])));
+      setRiportiPrimaSettimana(Object.fromEntries(
+        b.righe.filter((r) => r.giornate.length > 0).map((r) => {
+          const prima = r.giornate[0];
+          const giorno = new Date(`${prima.data}T00:00:00`).getDay();
+          const orePrima = prima.oreOrdinarie + prima.oreStraordinario
+            + prima.oreStraordinarioNotturno + prima.oreStraordinarioFestivo;
+          return [r.rapportoId, giorno === 1
+            ? 0
+            : prima.progressivoOreSettimanali == null
+              ? null
+              : prima.progressivoOreSettimanali - orePrima];
+        })));
       setProblemi({});
       setLottoAperto(false);
       setLottoConfermato(false);
@@ -254,6 +259,7 @@ export function Presenze() {
       [rapportoId]: { ...(correnti[rapportoId] ?? vuoto), [chiave]: valore },
     }));
     setConfermato((correnti) => ({ ...correnti, [rapportoId]: false }));
+    setProblemi(({ [rapportoId]: _rimosso, ...resto }) => resto);
     // Cambiati i dati, la conferma data prima non vale più.
     setLottoConfermato(false);
   }
@@ -266,6 +272,7 @@ export function Presenze() {
     setDati({});
     setConfermato({});
     setCalendari({});
+    setRiportiPrimaSettimana({});
     setProblemi({});
     setAperto(null);
     setErrore(null);
@@ -287,63 +294,129 @@ export function Presenze() {
       },
     }));
     setConfermato((correnti) => ({ ...correnti, [rapportoId]: false }));
+    setProblemi(({ [rapportoId]: _rimosso, ...resto }) => resto);
+    setLottoConfermato(false);
   }
 
-  /** Il cartellino da mandare: col calendario aperto vincono le giornate, i totali li fa il server. */
+  /** Il calendario vince sui riepiloghi e il server ne ricava i totali. */
   function corpo(rapportoId: string): Cartellino {
-    const giornate = calendari[rapportoId];
+    const giornateOriginali = calendari[rapportoId];
+    const giornate = giornateOriginali
+      ? applicaProgressiviSettimanali(
+          giornateOriginali,
+          riportiPrimaSettimana[rapportoId] ?? null,
+        )
+      : undefined;
     const base = { anno, mese, ...(dati[rapportoId] ?? vuoto) };
     return giornate ? { ...base, giornate } : base;
   }
 
   function apriCalendario(rapportoId: string, oreGiorno: number) {
-    setCalendari((c) => ({ ...c, [rapportoId]: calendarioIniziale(anno, mese, oreGiorno) }));
+    const calendario = calendarioIniziale(anno, mese, oreGiorno);
+    const cominciaLunedi = new Date(`${calendario[0].data}T00:00:00`).getDay() === 1;
+    setRiportiPrimaSettimana((c) => ({ ...c, [rapportoId]: cominciaLunedi ? 0 : null }));
+    setCalendari((c) => ({ ...c, [rapportoId]: calendario }));
     setConfermato((c) => ({ ...c, [rapportoId]: false }));
-  }
-
-  function chiudiCalendario(rapportoId: string) {
-    setCalendari(({ [rapportoId]: _tolto, ...resto }) => resto);
-    setProblemi(({ [rapportoId]: _via, ...resto }) => resto);
+    setProblemi(({ [rapportoId]: _rimosso, ...resto }) => resto);
+    setLottoConfermato(false);
   }
 
   function aggiornaGiornata(rapportoId: string, indice: number, modifica: Partial<GiornataCartellino>) {
     setCalendari((correnti) => {
       const giornate = correnti[rapportoId];
       if (!giornate) return correnti;
-      const nuove = giornate.map((g, i) => (i === indice ? { ...g, ...modifica } : g));
+      const modificate = giornate.map((g, i) => (i === indice ? { ...g, ...modifica } : g));
+      const nuove = applicaProgressiviSettimanali(
+        modificate,
+        riportiPrimaSettimana[rapportoId] ?? null,
+      );
       return { ...correnti, [rapportoId]: nuove };
     });
     setConfermato((c) => ({ ...c, [rapportoId]: false }));
+    setProblemi(({ [rapportoId]: _rimosso, ...resto }) => resto);
+    setLottoConfermato(false);
   }
 
-  /** Cambio causale: azzera le ore dell'altra causale, così non restano valori orfani. */
+  function aggiornaRiportoPrimaSettimana(rapportoId: string, valore: number | null) {
+    setRiportiPrimaSettimana((correnti) => ({ ...correnti, [rapportoId]: valore }));
+    setCalendari((correnti) => {
+      const giornate = correnti[rapportoId];
+      return giornate ? {
+        ...correnti,
+        [rapportoId]: applicaProgressiviSettimanali(giornate, valore),
+      } : correnti;
+    });
+    setConfermato((correnti) => ({ ...correnti, [rapportoId]: false }));
+    setProblemi(({ [rapportoId]: _rimosso, ...resto }) => resto);
+    setLottoConfermato(false);
+  }
+
+  function aggiornaTesto(
+    rapportoId: string,
+    chiave: "riferimentoQuattordicesimaSeparata" | "dataPagamentoQuattordicesima",
+    valore: string,
+  ) {
+    setDati((correnti) => ({
+      ...correnti,
+      [rapportoId]: { ...(correnti[rapportoId] ?? vuoto), [chiave]: valore },
+    }));
+    setConfermato((correnti) => ({ ...correnti, [rapportoId]: false }));
+    setProblemi(({ [rapportoId]: _rimosso, ...resto }) => resto);
+    setLottoConfermato(false);
+  }
+
+  /** Cambio causale: il normalizzatore azzera ore e straordinari incompatibili. */
   function cambiaCausale(
     rapportoId: string, indice: number, causale: CausaleGiornata, oreGiorno: number,
   ) {
     const giornate = calendari[rapportoId];
     if (!giornate) return;
-    const precedente = giornate[indice];
-    const ore = campoOre(causale)
-      ? (campoOre(precedente.causale) ? Number(precedente[campoOre(precedente.causale)!]) : oreGiorno)
-      : 0;
-    aggiornaGiornata(rapportoId, indice, {
-      ...giornataVuota(precedente.data, causale, ore),
-      // Gli straordinari sopravvivono al cambio causale: sono un dato a parte.
-      oreStraordinario: precedente.oreStraordinario,
-      oreStraordinarioNotturno: precedente.oreStraordinarioNotturno,
-      oreStraordinarioFestivo: precedente.oreStraordinarioFestivo,
-    });
+    aggiornaGiornata(
+      rapportoId,
+      indice,
+      cambiaCausaleGiornata(giornate[indice], causale, oreGiorno),
+    );
+  }
+
+  function problemiCalendario(rapportoId: string): ProblemaCartellino[] {
+    return validaCalendarioArchiviabile(anno, mese, calendari[rapportoId]);
+  }
+
+  function calendarioVerificato(rapportoId: string): boolean {
+    const esitoServer = problemi[rapportoId];
+    return problemiCalendario(rapportoId).length === 0
+      && esitoServer !== undefined
+      && !esitoServer.some((problema) => problema.bloccante);
+  }
+
+  function anfCompleto(rapportoId: string): boolean {
+    const cartellino = dati[rapportoId] ?? vuoto;
+    return cartellino.statoAssegniFamiliari !== "DaVerificare"
+      && (cartellino.statoAssegniFamiliari !== "Spettanti"
+        || cartellino.importoAssegniFamiliari > 0);
   }
 
   async function verifica(rapportoId: string) {
     const scopeVerifica = scopeCorrente;
     if (!scopeVerifica || scopeBoard !== scopeVerifica) return;
+    const locali = problemiCalendario(rapportoId);
+    if (locali.length > 0) {
+      setErrore(locali[0].messaggio);
+      return;
+    }
     setVerificando(rapportoId);
     setErrore(null);
     try {
       const esito = await api.verificaCartellino(rapportoId, corpo(rapportoId));
       if (scopeCorrenteRef.current !== scopeVerifica) return;
-      setProblemi((p) => ({ ...p, [rapportoId]: esito.problemi }));
+      const problemiServer = !esito.elaborabile
+        && !esito.problemi.some((problema) => problema.bloccante)
+        ? [...esito.problemi, {
+            messaggio: "Il controllo del server non considera elaborabile questo calendario.",
+            bloccante: true,
+          }]
+        : esito.problemi;
+      setProblemi((p) => ({ ...p, [rapportoId]: problemiServer }));
     } catch (e) {
       if (scopeCorrenteRef.current === scopeVerifica)
         setErrore(e instanceof Error ? e.message : "Impossibile controllare il mese.");
@@ -357,6 +430,24 @@ export function Presenze() {
     if (!scopeOperazione || scopeBoard !== scopeOperazione
       || !boardCorrente?.righe.some((r) => r.rapportoId === rapportoId)) {
       setErrore("Il periodo è cambiato: attendi il caricamento del cartellino corretto.");
+      return;
+    }
+    const locali = problemiCalendario(rapportoId);
+    if (locali.length > 0) {
+      setErrore(locali[0].messaggio);
+      return;
+    }
+    if (problemi[rapportoId] === undefined) {
+      setErrore("Controlla il calendario del mese prima di elaborare il cedolino.");
+      return;
+    }
+    const bloccante = problemi[rapportoId].find((problema) => problema.bloccante);
+    if (bloccante) {
+      setErrore(`Correggi il calendario prima di elaborare: ${bloccante.messaggio}`);
+      return;
+    }
+    if (!anfCompleto(rapportoId)) {
+      setErrore("Completa la verifica degli assegni familiari prima di elaborare il cedolino.");
       return;
     }
     if (!confermato[rapportoId]) {
@@ -401,9 +492,11 @@ export function Presenze() {
     }
   }
 
-  /** Chi può entrare nel lotto: nel mese, non ancora elaborato, senza problemi bloccanti. */
+  /** Nel lotto entrano solo calendari completi, controllati e con ANF definito. */
   const daElaborare = (boardCorrente?.righe ?? []).filter((r) =>
-    !r.elaborato && !(problemi[r.rapportoId] ?? []).some((p) => p.bloccante));
+    !r.elaborato && calendarioVerificato(r.rapportoId) && anfCompleto(r.rapportoId));
+  const daPreparare = (boardCorrente?.righe ?? []).filter((r) => !r.elaborato).length
+    - daElaborare.length;
 
   /**
    * Elabora in sequenza tutte le buste del mese dopo un'unica conferma.
@@ -606,9 +699,11 @@ export function Presenze() {
                           : `${boardCorrente.elaborati} buste su ${boardCorrente.totale}`}
                       </strong>
                       <small>
-                        {daElaborare.length > 0
-                          ? `${daElaborare.length} da elaborare · ${mesi[mese]} ${anno}`
-                          : `${mesi[mese]} ${anno}`}
+                        {[
+                          daElaborare.length > 0 ? `${daElaborare.length} da elaborare` : null,
+                          daPreparare > 0 ? `${daPreparare} da compilare o controllare` : null,
+                          `${mesi[mese]} ${anno}`,
+                        ].filter(Boolean).join(" · ")}
                       </small>
                     </div>
                     <div className="fai-mese-bottoni">
@@ -688,6 +783,13 @@ export function Presenze() {
                       {boardCorrente.righe.map((r) => {
                         const cartellino = dati[r.rapportoId] ?? vuoto;
                         const espanso = aperto === r.rapportoId;
+                        const problemiLocali = problemiCalendario(r.rapportoId);
+                        const esitoServer = problemi[r.rapportoId];
+                        const problemiVisibili = [
+                          ...problemiLocali,
+                          ...(esitoServer ?? []),
+                        ];
+                        const meseControllato = calendarioVerificato(r.rapportoId);
                         return (
                           <Fragment key={r.rapportoId}>
                             <tr>
@@ -718,7 +820,16 @@ export function Presenze() {
                                       <span>{scaricando === r.rapportoId ? "Download..." : "PDF"}</span>
                                     </button>
                                   )}
-                                  <button className="mini-action icon-command" type="button" title="Compila cartellino" onClick={() => setAperto(espanso ? null : r.rapportoId)}>
+                                  <button className="mini-action icon-command" type="button" title="Compila cartellino" onClick={() => {
+                                    if (espanso) {
+                                      setAperto(null);
+                                      return;
+                                    }
+                                    if (!calendari[r.rapportoId]) {
+                                      apriCalendario(r.rapportoId, r.oreGiornaliere);
+                                    }
+                                    setAperto(r.rapportoId);
+                                  }}>
                                     {espanso ? <X size={14} /> : <Pencil size={14} />}<span>{espanso ? "Chiudi" : "Compila"}</span>
                                   </button>
                                 </div>
@@ -728,46 +839,59 @@ export function Presenze() {
                               <tr className="presence-editor-row" data-aurora-private><td colSpan={5}>
                                 <div className="presence-editor">
                                   <div className="presence-section calendario-testa">
-                                    <h3>Come vuoi compilare il mese</h3>
-                                    <div className="actions-row">
-                                      <button
-                                        className={`mini-action icon-command${calendari[r.rapportoId] ? "" : " attivo"}`}
-                                        type="button"
-                                        onClick={() => chiudiCalendario(r.rapportoId)}
-                                      >
-                                        <Pencil size={14} /><span>A totali</span>
-                                      </button>
-                                      <button
-                                        className={`mini-action icon-command${calendari[r.rapportoId] ? " attivo" : ""}`}
-                                        type="button"
-                                        onClick={() => apriCalendario(r.rapportoId, r.oreGiornaliere)}
-                                      >
-                                        <CalendarDays size={14} /><span>Giorno per giorno</span>
-                                      </button>
-                                    </div>
+                                    <h3><CalendarDays size={16} aria-hidden="true" /> Calendario giornaliero obbligatorio</h3>
                                     <p className="muto">
-                                      {calendari[r.rapportoId]
-                                        ? "I totali del mese li ricava il programma dalle giornate: quello che scrivi qui sotto è ciò che finisce in busta, nel Libro Unico e nelle denunce."
-                                        : "Stai compilando i totali del mese. Il giorno per giorno serve per il Libro Unico, per la malattia nel nuovo UniEmens e per chi si paga a giornate."}
+                                      I totali sono ricavati esclusivamente dalle giornate. Senza tutti i giorni del mese
+                                      compilati e controllati non è possibile archiviare il cedolino.
                                     </p>
                                   </div>
 
                                   {calendari[r.rapportoId] ? (
                                     <div className="presence-section">
                                       <h3>Calendario di {mesi[mese]} {anno}</h3>
+                                      {new Date(`${calendari[r.rapportoId][0].data}T00:00:00`).getDay() !== 1 && (
+                                        <div className="presence-fields" style={{ marginBottom: 10 }}>
+                                          <label>
+                                            <span>Ore già lavorate nella prima settimana</span>
+                                            <input
+                                              type="number" min={0} step={0.5}
+                                              placeholder="Somma dei giorni del mese precedente"
+                                              value={riportiPrimaSettimana[r.rapportoId] ?? ""}
+                                              onChange={(e) => aggiornaRiportoPrimaSettimana(
+                                                r.rapportoId,
+                                                e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
+                                              )}
+                                            />
+                                            <small className="muto">
+                                              Il mese inizia a settimana già avviata: inserisci il progressivo
+                                              ricavato dal cartellino precedente, anche quando è zero.
+                                            </small>
+                                          </label>
+                                        </div>
+                                      )}
                                       <div className="table-wrap calendario-mese">
                                         <table className="data-table">
                                           <thead><tr>
                                             <th>Giorno</th><th>Che cosa è stato</th>
-                                            <th className="right">Ore</th><th className="right">Straordinario</th>
+                                            <th className="right">Ore</th>
+                                            <th className="right">Progressivo sett.</th>
+                                            {CAMPI_STRAORDINARIO.map((campoStraordinario) => (
+                                              <th className="right" key={campoStraordinario.chiave}>
+                                                {campoStraordinario.etichetta}
+                                              </th>
+                                            ))}
                                           </tr></thead>
                                           <tbody>
                                             {calendari[r.rapportoId].map((g, i) => {
                                               const data = new Date(g.data + "T00:00:00");
-                                              const festivo = data.getDay() === 0;
+                                              const festivo = data.getDay() === 0 || data.getDay() === 6;
                                               const campo = campoOre(g.causale);
+                                              const straordinarioConsentito = causaleConsenteStraordinario(g.causale);
+                                              const eventoSanitario = g.causale === "Malattia"
+                                                || g.causale === "Infortunio";
                                               return (
-                                                <tr key={g.data} className={festivo ? "giorno-riposo" : undefined}>
+                                                <Fragment key={g.data}>
+                                                <tr className={festivo ? "giorno-riposo" : undefined}>
                                                   <td>
                                                     <strong>{data.getDate()}</strong>{" "}
                                                     <span className="muto">{GIORNI_SETTIMANA[data.getDay()]}</span>
@@ -796,22 +920,92 @@ export function Presenze() {
                                                       />
                                                     ) : <span className="muto">—</span>}
                                                   </td>
-                                                  <td className="right">
-                                                    <input
-                                                      type="number" min={0} step={0.5}
-                                                      value={g.oreStraordinario}
-                                                      onChange={(e) => aggiornaGiornata(
-                                                        r.rapportoId, i,
-                                                        { oreStraordinario: Math.max(0, Number(e.target.value)) })}
-                                                      onFocus={(e) => e.currentTarget.select()}
-                                                    />
+                                                  <td className="right num">
+                                                    {g.progressivoOreSettimanali == null
+                                                      ? <span className="status-pill red">manca</span>
+                                                      : `${g.progressivoOreSettimanali.toLocaleString("it-IT")} h`}
                                                   </td>
+                                                  {CAMPI_STRAORDINARIO.map((campoStraordinario) => (
+                                                    <td className="right" key={campoStraordinario.chiave}>
+                                                      {straordinarioConsentito ? (
+                                                        <input
+                                                          type="number" min={0} step={0.5}
+                                                          aria-label={`${campoStraordinario.etichetta} del ${g.data}`}
+                                                          value={g[campoStraordinario.chiave]}
+                                                          onChange={(e) => aggiornaGiornata(
+                                                            r.rapportoId,
+                                                            i,
+                                                            { [campoStraordinario.chiave]: Math.max(0, Number(e.target.value)) },
+                                                          )}
+                                                          onFocus={(e) => e.currentTarget.select()}
+                                                        />
+                                                      ) : g[campoStraordinario.chiave] > 0 ? (
+                                                        <button className="mini-action" type="button"
+                                                          title={`Rimuovi ${campoStraordinario.etichetta} incompatibile con ${g.causale}`}
+                                                          onClick={() => aggiornaGiornata(r.rapportoId, i, {
+                                                            [campoStraordinario.chiave]: 0,
+                                                          })}>
+                                                          Azzera
+                                                        </button>
+                                                      ) : <span className="muto">—</span>}
+                                                    </td>
+                                                  ))}
                                                 </tr>
+                                                {eventoSanitario && (
+                                                  <tr className="presence-editor-row">
+                                                    <td colSpan={7}>
+                                                      <div className="presence-fields">
+                                                        <label><span>Numero/protocollo evento</span>
+                                                          <input value={g.identificativoEvento ?? ""}
+                                                            onChange={(e) => aggiornaGiornata(
+                                                              r.rapportoId, i,
+                                                              { identificativoEvento: e.target.value })} />
+                                                        </label>
+                                                        <label><span>Data inizio evento</span>
+                                                          <input type="date" max={g.data}
+                                                            value={g.dataInizioEvento ?? ""}
+                                                            onChange={(e) => aggiornaGiornata(
+                                                              r.rapportoId, i,
+                                                              { dataInizioEvento: e.target.value || null })} />
+                                                        </label>
+                                                        <label><span>RMG mese precedente €</span>
+                                                          <input type="number" min={0.01} step={0.0001}
+                                                            value={g.retribuzioneMediaGiornalieraPrecedente ?? ""}
+                                                            onChange={(e) => aggiornaGiornata(
+                                                              r.rapportoId, i,
+                                                              { retribuzioneMediaGiornalieraPrecedente:
+                                                                e.target.value === "" ? null : Number(e.target.value) })} />
+                                                        </label>
+                                                        <label><span>Ratei giornalieri €</span>
+                                                          <input type="number" min={0} step={0.0001}
+                                                            value={g.rateiGiornalieri ?? ""}
+                                                            onChange={(e) => aggiornaGiornata(
+                                                              r.rapportoId, i,
+                                                              { rateiGiornalieri:
+                                                                e.target.value === "" ? null : Number(e.target.value) })} />
+                                                        </label>
+                                                        <label><span>Coefficiente lordizzazione</span>
+                                                          <input type="number" min={0.0001} step={0.0001}
+                                                            value={g.coefficienteLordizzazione ?? ""}
+                                                            onChange={(e) => aggiornaGiornata(
+                                                              r.rapportoId, i,
+                                                              { coefficienteLordizzazione:
+                                                                e.target.value === "" ? null : Number(e.target.value) })} />
+                                                        </label>
+                                                      </div>
+                                                    </td>
+                                                  </tr>
+                                                )}
+                                                </Fragment>
                                               );
                                             })}
                                           </tbody>
                                         </table>
                                       </div>
+                                      <DirittiFeriePermessi
+                                        riga={r}
+                                        giornate={calendari[r.rapportoId]}
+                                      />
                                       {calendari[r.rapportoId].some((g) => g.causale === "Malattia") && (
                                         <div className="presence-fields" style={{ marginTop: 10 }}>
                                           {campo(r.rapportoId, "Evento di malattia nell'anno", "numeroEventoMalattiaAnno", "numero")}
@@ -820,49 +1014,68 @@ export function Presenze() {
                                       <div className="actions-row" style={{ marginTop: 10 }}>
                                         <button
                                           className="btn secondary" type="button"
-                                          disabled={verificando === r.rapportoId}
+                                          disabled={verificando === r.rapportoId || problemiLocali.length > 0}
                                           onClick={() => { void verifica(r.rapportoId); }}
                                         >
                                           {verificando === r.rapportoId ? "Controllo..." : "Controlla il mese"}
                                         </button>
                                       </div>
-                                      {problemi[r.rapportoId] && (
-                                        problemi[r.rapportoId].length === 0 ? (
-                                          <p><span className="status-pill green">Mese in ordine</span></p>
-                                        ) : (
-                                          <ul className="calendario-problemi">
-                                            {problemi[r.rapportoId].map((p, i) => (
-                                              <li key={i} className={p.bloccante ? "bloccante" : undefined}>
-                                                <span className={`status-pill ${p.bloccante ? "red" : "amber"}`}>
-                                                  {p.bloccante ? "Da correggere" : "Attenzione"}
-                                                </span>{" "}
-                                                {p.messaggio}
-                                              </li>
-                                            ))}
-                                          </ul>
-                                        )
+                                      {problemiVisibili.length > 0 ? (
+                                        <ul className="calendario-problemi">
+                                          {problemiVisibili.map((p, i) => (
+                                            <li key={`${p.messaggio}-${i}`} className={p.bloccante ? "bloccante" : undefined}>
+                                              <span className={`status-pill ${p.bloccante ? "red" : "amber"}`}>
+                                                {p.bloccante ? "Da correggere" : "Attenzione"}
+                                              </span>{" "}
+                                              {p.messaggio}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : esitoServer !== undefined ? (
+                                          <p><span className="status-pill green">Calendario in ordine</span></p>
+                                      ) : (
+                                        <p><span className="status-pill amber">Controllo del mese non ancora eseguito</span></p>
                                       )}
                                     </div>
                                   ) : (
-                                  <>
-                                  <div className="presence-section"><h3>Ferie e permessi retribuiti</h3><div className="presence-fields">
-                                    {campo(r.rapportoId, "Ferie godute", "giorniFerie", "giorni")}
-                                    {campo(r.rapportoId, "Permessi ROL", "orePermessi", "ore")}
-                                    {campo(r.rapportoId, "Ex festivita", "oreExFestivita", "ore")}
-                                  </div><DirittiFeriePermessi riga={r} cartellino={cartellino} /></div>
-                                  {/* segue: sezioni a totali, usate solo senza calendario */}
-                                  <div className="presence-section"><h3>Malattia e infortunio</h3><div className="presence-fields">
-                                    {campo(r.rapportoId, "Malattia", "giorniMalattia", "giorni")}
-                                    {campo(r.rapportoId, "Evento nell'anno", "numeroEventoMalattiaAnno", "numero")}
-                                    {campo(r.rapportoId, "Infortunio INAIL", "giorniInfortunio", "giorni")}
-                                  </div></div>
-                                  <div className="presence-section"><h3>Assenze e lavoro aggiuntivo</h3><div className="presence-fields">
-                                    {campo(r.rapportoId, "Assenza non retribuita", "oreAssenzaNonRetribuita", "ore")}
-                                    {campo(r.rapportoId, "Straordinario", "oreStraordinario", "ore")}
-                                    {campo(r.rapportoId, "Straordinario notturno", "oreStraordinarioNotturno", "ore")}
-                                    {campo(r.rapportoId, "Straordinario festivo", "oreStraordinarioFestivo", "ore")}
-                                  </div></div>
-                                  </>
+                                    <div className="presence-section">
+                                      <p><span className="status-pill red">Calendario mancante</span></p>
+                                      <p className="muto">La compilazione a soli totali non può creare un cedolino archiviabile.</p>
+                                      <button className="btn secondary" type="button"
+                                        onClick={() => apriCalendario(r.rapportoId, r.oreGiornaliere)}>
+                                        <CalendarDays size={16} /> Crea calendario lunedì-venerdì
+                                      </button>
+                                    </div>
+                                  )}
+                                  {mese === 7 && (
+                                    <div className="presence-section">
+                                      <h3>Quattordicesima del 1° luglio</h3>
+                                      <p className="muto">
+                                        Il prospetto ordinario non incorpora la quattordicesima: indica il
+                                        documento separato e la sua data di pagamento.
+                                      </p>
+                                      <div className="presence-fields">
+                                        <label><span>Riferimento prospetto separato</span>
+                                          <input
+                                            placeholder="es. 14A-2026-000123"
+                                            value={cartellino.riferimentoQuattordicesimaSeparata ?? ""}
+                                            onChange={(e) => aggiornaTesto(
+                                              r.rapportoId,
+                                              "riferimentoQuattordicesimaSeparata",
+                                              e.target.value,
+                                            )}
+                                          />
+                                        </label>
+                                        <label><span>Data di pagamento</span>
+                                          <input type="date" value={cartellino.dataPagamentoQuattordicesima ?? ""}
+                                            onChange={(e) => aggiornaTesto(
+                                              r.rapportoId,
+                                              "dataPagamentoQuattordicesima",
+                                              e.target.value,
+                                            )} />
+                                        </label>
+                                      </div>
+                                    </div>
                                   )}
                                   <div className="presence-section">
                                     <h3>Assegni familiari (ANF)</h3>
@@ -895,11 +1108,14 @@ export function Presenze() {
                                     </div>
                                   </div>
                                   <div className="presence-confirm">
-                                    <label><input type="checkbox" checked={Boolean(confermato[r.rapportoId])} onChange={(e) => setConfermato((c) => ({ ...c, [r.rapportoId]: e.target.checked }))} />
+                                    <label><input type="checkbox" checked={Boolean(confermato[r.rapportoId])}
+                                      disabled={!meseControllato}
+                                      onChange={(e) => setConfermato((c) => ({ ...c, [r.rapportoId]: e.target.checked }))} />
                                       <span>Ho controllato presenze, ferie, permessi, malattia, infortunio e assenze del mese.</span>
                                     </label>
                                     <button className="btn primary" type="button"
                                       disabled={!confermato[r.rapportoId]
+                                        || !meseControllato
                                         || scopeBoard !== scopeCorrente
                                         || caricamento
                                         || cartellino.statoAssegniFamiliari === "DaVerificare"

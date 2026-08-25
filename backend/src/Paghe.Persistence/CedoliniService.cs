@@ -19,12 +19,18 @@ public sealed class CedoliniService
     private readonly PagheDbContext _db;
     private readonly ParametriNormativiService _parametri;
     private readonly TimeProvider _clock;
+    private readonly RequisitiCedolinoService _requisiti;
 
-    public CedoliniService(PagheDbContext db, ParametriNormativiService parametri, TimeProvider? clock = null)
+    public CedoliniService(
+        PagheDbContext db,
+        ParametriNormativiService parametri,
+        TimeProvider? clock = null,
+        RequisitiCedolinoService? requisiti = null)
     {
         _db = db;
         _parametri = parametri;
         _clock = clock ?? TimeProvider.System;
+        _requisiti = requisiti ?? new RequisitiCedolinoService(db);
     }
 
     /// <summary>Risultato del solo calcolo, senza alcuna scrittura: per anteprime e proposte.</summary>
@@ -61,6 +67,21 @@ public sealed class CedoliniService
         return await ArchiviaAsync(tenantId, rapportoId, calcolo, ct);
     }
 
+    /// <summary>
+    /// Percorso di produzione fail-closed: prima di scrivere richiede calendario, identita,
+    /// domicilio, progressivi, posizione/profilo contributivo e le evidenze specifiche del CCNL.
+    /// <see cref="CalcolaEArchiviaAsync"/> resta il percorso interno compatibile per test e
+    /// migrazioni; gli endpoint utente devono chiamare questo metodo.
+    /// </summary>
+    public async Task<CedolinoEntity> CalcolaEArchiviaVerificatoAsync(
+        Guid tenantId, Guid rapportoId, Cartellino cartellino,
+        CancellationToken ct = default, bool forzaRicalcolo = false)
+    {
+        await _requisiti.RichiediCompletiAsync(tenantId, rapportoId, cartellino, ct);
+        return await CalcolaEArchiviaAsync(
+            tenantId, rapportoId, cartellino, ct, forzaRicalcolo);
+    }
+
     private async Task<CalcoloInterno> CalcolaInternoAsync(
         Guid tenantId, Guid rapportoId, Cartellino cartellino, CancellationToken ct,
         bool forzaRicalcolo)
@@ -72,13 +93,28 @@ public sealed class CedoliniService
             .FirstOrDefaultAsync(r => r.Id == rapportoId && r.TenantId == tenantId, ct)
             ?? throw new ArgumentException("Rapporto di lavoro non trovato per il tenant indicato.");
 
+        // Il rapporto agricolo ha ore e giornate distinte, tariffa provinciale e contributi
+        // propri. Farlo passare dal motore mensile ordinario produrrebbe ferie, ROL, TFR e flussi
+        // successivi non attendibili: resta separato finché non esiste l'archivio PosAgri completo.
+        if (string.Equals(
+                rapporto.CodiceCcnl, "AGRICOLTURA_OPERAI", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                "Il rapporto e agricolo: usa l'anteprima agricola dedicata. "
+                + "L'archiviazione definitiva e il workflow PosAgri non sono ancora disponibili.");
+
         // Quando arriva il calendario giorno per giorno è lui la verità: i totali del mese li
         // ricalcola il server dalle giornate, non li prende dal client. Così cedolino, Libro
         // Unico e denunce non possono raccontare mesi diversi, e i controlli sul calendario
         // (giorni scoperti, causali senza ore, malattia con straordinari) fermano qui l'elaborazione.
         if (cartellino.Giornate.Count > 0)
+        {
+            decimal? riportoPrimaSettimana = await RiportoOreSettimanaliService.CalcolaAsync(
+                _db, tenantId, rapportoId, cartellino.Anno, cartellino.Mese,
+                rapporto.DataAssunzione, ct);
             cartellino = CalendarioCartellino.Compila(
-                cartellino, cartellino.Giornate, rapporto.OreSettimanali / 5m);
+                cartellino, cartellino.Giornate, rapporto.OreSettimanali / 5m,
+                oreLavoratePregressePrimaSettimana: riportoPrimaSettimana);
+        }
 
         // Il calendario può derivare totali (incluse le giornate di malattia) diversi dai
         // campi mensili ricevuti: le invarianti che dipendono da quei totali vanno rieseguite.
@@ -132,6 +168,25 @@ public sealed class CedoliniService
             + cartellino.OrePermessi + cartellino.OreExFestivita;
         cedolino.PermessiResidui = rapporto.PermessiResiduiIniziali
             + cedolino.PermessiMaturati - cedolino.PermessiGoduti;
+        if (cedolino.RolMaturati > 0m || cedolino.ExFestivitaMaturate > 0m
+            || rapporto.RolResiduiIniziali is not null
+            || rapporto.ExFestivitaResidueIniziali is not null)
+        {
+            cedolino.RolSaldoPrecedente = rapporto.RolResiduiIniziali ?? 0m;
+            cedolino.RolGoduti = cartelliniPrecedenti.Sum(c => c.OrePermessi)
+                + cartellino.OrePermessi;
+            cedolino.RolResidui = cedolino.RolSaldoPrecedente
+                + cedolino.RolMaturati - cedolino.RolGoduti;
+
+            cedolino.ExFestivitaSaldoPrecedente = rapporto.ExFestivitaResidueIniziali ?? 0m;
+            cedolino.ExFestivitaGodute = cartelliniPrecedenti.Sum(c => c.OreExFestivita)
+                + cartellino.OreExFestivita;
+            cedolino.ExFestivitaResidue = cedolino.ExFestivitaSaldoPrecedente
+                + cedolino.ExFestivitaMaturate - cedolino.ExFestivitaGodute;
+
+            cedolino.PermessiGoduti = cedolino.RolGoduti + cedolino.ExFestivitaGodute;
+            cedolino.PermessiResidui = cedolino.RolResidui + cedolino.ExFestivitaResidue;
+        }
 
         // Dicembre: conguaglio fiscale di fine anno applicato in busta (IRPEF annua effettiva vs
         // presuntiva trattenuta nei mesi 1-11 archiviati + dicembre corrente). Riarchiviare dicembre
@@ -147,6 +202,10 @@ public sealed class CedoliniService
             decimal irpefTrattenuta = precedenti.Sum(c => c.IrpefNetta) + cedolino.IrpefNetta;
             decimal detrazioni = rapporto.DetrazioniLavoroDipendente
                 ? CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(imponibileAnnuo, rapporto.GiorniDetrazioneAnno)
+                  + CalcoloIrpef.UlterioreDetrazioneCuneoAnnua(
+                      imponibileAnnuo, rapporto.GiorniDetrazioneAnno,
+                      parametri.CuneoUlterioreDetrazioneAnnua, parametri.CuneoRedditoOltre,
+                      parametri.CuneoRedditoFinoA, parametri.CuneoRedditoAzzeramento)
                 : 0m;
             var esito = ConguaglioFiscale.Calcola(
                 imponibileAnnuo, irpefTrattenuta, detrazioni, parametri.ScaglioniIrpef);
@@ -193,6 +252,8 @@ public sealed class CedoliniService
             BuonoPastoElettronico = cartellino.BuonoPastoElettronico,
             PremioRisultato = cartellino.PremioRisultato,
             RedditoAnnoPrecedente = cartellino.RedditoAnnoPrecedente,
+            RiferimentoQuattordicesimaSeparata = cartellino.RiferimentoQuattordicesimaSeparata,
+            DataPagamentoQuattordicesima = cartellino.DataPagamentoQuattordicesima,
             Giornate = cartellino.Giornate,
         });
 
@@ -203,6 +264,9 @@ public sealed class CedoliniService
         {
             Id = cedolinoId, TenantId = tenantId, AziendaId = rapporto.AziendaId,
             RapportoLavoroId = rapportoId, Anno = cedolino.Anno, Mese = cedolino.Mese,
+            RetribuzioneFissa = cedolino.RetribuzioneFissa,
+            TariffaOraria = cedolino.TariffaOraria,
+            TariffaGiornaliera = cedolino.TariffaGiornaliera,
             TotaleCompetenze = cedolino.TotaleCompetenze,
             TotaleTrattenute = cedolino.TotaleTrattenute,
             ImponibileInps = cedolino.ImponibileInps,
@@ -211,6 +275,7 @@ public sealed class CedoliniService
             ImponibileIrpef = cedolino.ImponibileIrpef,
             IrpefLorda = cedolino.IrpefLorda,
             DetrazioniLavoroDipendente = cedolino.DetrazioniLavoroDipendente,
+            UlterioreDetrazioneCuneo = cedolino.UlterioreDetrazioneCuneo,
             IrpefNetta = cedolino.IrpefNetta,
             AddizionaleRegionale = cedolino.AddizionaleRegionale,
             AddizionaleComunale = cedolino.AddizionaleComunale,
@@ -219,13 +284,23 @@ public sealed class CedoliniService
             PremioRisultatoAgevolato = cedolino.PremioRisultatoAgevolato,
             ImpostaSostitutivaPremio = cedolino.ImpostaSostitutivaPremio,
             QuotaTfr = cedolino.QuotaTfr,
+            PrestazioniRecuperabili = cedolino.PrestazioniRecuperabili,
             CostoAzienda = cedolino.CostoAzienda,
+            CostoMedioAnnualizzato = cedolino.CostoMedioAnnualizzato,
             FerieMaturate = cedolino.FerieMaturate,
             FerieGodute = cedolino.FerieGodute,
             FerieResidue = cedolino.FerieResidue,
             PermessiMaturati = cedolino.PermessiMaturati,
             PermessiGoduti = cedolino.PermessiGoduti,
             PermessiResidui = cedolino.PermessiResidui,
+            RolSaldoPrecedente = cedolino.RolSaldoPrecedente,
+            RolMaturati = cedolino.RolMaturati,
+            RolGoduti = cedolino.RolGoduti,
+            RolResidui = cedolino.RolResidui,
+            ExFestivitaSaldoPrecedente = cedolino.ExFestivitaSaldoPrecedente,
+            ExFestivitaMaturate = cedolino.ExFestivitaMaturate,
+            ExFestivitaGodute = cedolino.ExFestivitaGodute,
+            ExFestivitaResidue = cedolino.ExFestivitaResidue,
             ConguaglioIrpef = conguaglioDicembre,
             CodiceCnel = ccnl.CodiceCnel,
             DescrizioneCcnl = ccnl.Descrizione,
@@ -316,11 +391,15 @@ public sealed class CedoliniService
 
         decimal imponibileAnnuo = cedolini.Sum(c => c.ImponibileIrpef);
         decimal irpefTrattenuta = cedolini.Sum(c => c.IrpefNetta);
-        decimal detrazioni = rapporto.DetrazioniLavoroDipendente
-            ? CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(imponibileAnnuo, rapporto.GiorniDetrazioneAnno)
-            : 0m;
 
         var parametri = await _parametri.CaricaParametriAsync(anno, ct);
+        decimal detrazioni = rapporto.DetrazioniLavoroDipendente
+            ? CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(imponibileAnnuo, rapporto.GiorniDetrazioneAnno)
+              + CalcoloIrpef.UlterioreDetrazioneCuneoAnnua(
+                  imponibileAnnuo, rapporto.GiorniDetrazioneAnno,
+                  parametri.CuneoUlterioreDetrazioneAnnua, parametri.CuneoRedditoOltre,
+                  parametri.CuneoRedditoFinoA, parametri.CuneoRedditoAzzeramento)
+            : 0m;
         return ConguaglioFiscale.Calcola(imponibileAnnuo, irpefTrattenuta, detrazioni, parametri.ScaglioniIrpef);
     }
 
@@ -447,7 +526,30 @@ public sealed class CedoliniService
             intestazione,
             cartellino is null
                 ? new Cartellino { Anno = archiviato.Anno, Mese = archiviato.Mese }
-                : ToDominio(cartellino));
+                : ToDominioCartellino(cartellino),
+            await CalcolaProgressiviAsync(tenantId, archiviato, ct));
+    }
+
+    /// <summary>
+    /// Progressivi annui del rapporto fino al mese del cedolino indicato (compreso): il
+    /// cedolino stesso più i mesi precedenti dell'anno chiusi o storici pre-workflow — le
+    /// bozze in lavorazione non entrano nei progressivi di un prospetto. Le detrazioni
+    /// comprendono anche l'ulteriore detrazione cuneo.
+    /// </summary>
+    public async Task<ProgressiviAnnui> CalcolaProgressiviAsync(
+        Guid tenantId, CedolinoEntity cedolino, CancellationToken ct = default)
+    {
+        var precedenti = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.RapportoLavoroId == cedolino.RapportoLavoroId
+                && c.Anno == cedolino.Anno && c.Mese < cedolino.Mese)
+            .ToListAsync(ct);
+        return new ProgressiviAnnui(
+            MesiCompresi: precedenti.Count + 1,
+            ImponibileInps: precedenti.Sum(c => c.ImponibileInps) + cedolino.ImponibileInps,
+            ImponibileIrpef: precedenti.Sum(c => c.ImponibileIrpef) + cedolino.ImponibileIrpef,
+            IrpefNetta: precedenti.Sum(c => c.IrpefNetta) + cedolino.IrpefNetta,
+            Detrazioni: precedenti.Sum(c => c.DetrazioniLavoroDipendente + (c.UlterioreDetrazioneCuneo ?? 0m))
+                + cedolino.DetrazioniLavoroDipendente + (cedolino.UlterioreDetrazioneCuneo ?? 0m));
     }
 
     /// <summary>Alias storico: il metodo non ricalcola più alcun importo.</summary>
@@ -466,6 +568,9 @@ public sealed class CedoliniService
         {
             Anno = e.Anno,
             Mese = e.Mese,
+            RetribuzioneFissa = e.RetribuzioneFissa,
+            TariffaOraria = e.TariffaOraria,
+            TariffaGiornaliera = e.TariffaGiornaliera,
             TotaleCompetenze = e.TotaleCompetenze,
             TotaleTrattenute = e.TotaleTrattenute,
             ImponibileInps = e.ImponibileInps,
@@ -474,6 +579,7 @@ public sealed class CedoliniService
             ImponibileIrpef = e.ImponibileIrpef,
             IrpefLorda = e.IrpefLorda,
             DetrazioniLavoroDipendente = e.DetrazioniLavoroDipendente,
+            UlterioreDetrazioneCuneo = e.UlterioreDetrazioneCuneo ?? 0m,
             IrpefNetta = e.IrpefNetta,
             AddizionaleRegionale = e.AddizionaleRegionale,
             AddizionaleComunale = e.AddizionaleComunale,
@@ -482,13 +588,23 @@ public sealed class CedoliniService
             PremioRisultatoAgevolato = e.PremioRisultatoAgevolato,
             ImpostaSostitutivaPremio = e.ImpostaSostitutivaPremio,
             QuotaTfr = e.QuotaTfr,
+            PrestazioniRecuperabili = e.PrestazioniRecuperabili,
             CostoAzienda = e.CostoAzienda,
+            CostoMedioAnnualizzato = e.CostoMedioAnnualizzato ?? 0m,
             FerieMaturate = e.FerieMaturate,
             FerieGodute = e.FerieGodute,
             FerieResidue = e.FerieResidue,
             PermessiMaturati = e.PermessiMaturati,
             PermessiGoduti = e.PermessiGoduti,
             PermessiResidui = e.PermessiResidui,
+            RolSaldoPrecedente = e.RolSaldoPrecedente,
+            RolMaturati = e.RolMaturati,
+            RolGoduti = e.RolGoduti,
+            RolResidui = e.RolResidui,
+            ExFestivitaSaldoPrecedente = e.ExFestivitaSaldoPrecedente,
+            ExFestivitaMaturate = e.ExFestivitaMaturate,
+            ExFestivitaGodute = e.ExFestivitaGodute,
+            ExFestivitaResidue = e.ExFestivitaResidue,
         };
 
         foreach (var v in e.Voci.OrderBy(v => v.Ordine))
@@ -543,18 +659,31 @@ public sealed class CedoliniService
         PartTime = e.PartTime,
         PercentualePartTime = e.PercentualePartTime,
         ScattiAnzianita = e.ScattiAnzianita,
+        DataAssunzione = e.DataAssunzione == default ? null : e.DataAssunzione,
         Superminimo = e.Superminimo,
         Regione = e.Regione,
         CodiceCatastaleComune = e.CodiceCatastaleComune,
+        // Unità operativa del rapporto se indicata, altrimenti la sede dell'azienda.
+        ProvinciaLavoro = string.IsNullOrWhiteSpace(e.ProvinciaLavoro)
+            ? azienda?.Provincia
+            : e.ProvinciaLavoro,
         DetrazioniLavoroDipendente = e.DetrazioniLavoroDipendente,
         GiorniDetrazioneAnno = e.GiorniDetrazioneAnno,
         AziendaOltre15Dipendenti = azienda?.OltreQuindiciDipendenti ?? false,
         ContributiFondiSettore = azienda?.ContributiFondiSettore ?? 0m,
+        AliquotaInpsDatoreProfilo = azienda?.AliquotaInpsDatore,
+        AliquotaInpsDipendenteProfilo = azienda?.AliquotaInpsDipendente,
+        AderisceFondiContrattuali = azienda?.AderisceFondiContrattuali ?? true,
+        AddizionaleRegionaleConguaglioAnnuo = e.AddizionaleRegionaleConguaglioAnnuo,
+        AddizionaleComunaleSaldoAnnuo = e.AddizionaleComunaleSaldoAnnuo,
+        AddizionaleComunaleAccontoAnnuo = e.AddizionaleComunaleAccontoAnnuo,
         FerieResidueIniziali = e.FerieResidueIniziali,
         PermessiResiduiIniziali = e.PermessiResiduiIniziali,
+        RolResiduiIniziali = e.RolResiduiIniziali,
+        ExFestivitaResidueIniziali = e.ExFestivitaResidueIniziali,
     };
 
-    private static Cartellino ToDominio(CartellinoEntity e) => new()
+    internal static Cartellino ToDominioCartellino(CartellinoEntity e) => new()
     {
         Anno = e.Anno,
         Mese = e.Mese,
@@ -589,6 +718,8 @@ public sealed class CedoliniService
         BuonoPastoElettronico = e.BuonoPastoElettronico,
         PremioRisultato = e.PremioRisultato,
         RedditoAnnoPrecedente = e.RedditoAnnoPrecedente,
+        RiferimentoQuattordicesimaSeparata = e.RiferimentoQuattordicesimaSeparata,
+        DataPagamentoQuattordicesima = e.DataPagamentoQuattordicesima,
         Giornate = e.Giornate,
     };
 }
@@ -597,7 +728,8 @@ public sealed class CedoliniService
 public sealed record CedolinoPerPdf(
     Cedolino Cedolino,
     IntestazioneCedolino Intestazione,
-    Cartellino Cartellino);
+    Cartellino Cartellino,
+    ProgressiviAnnui? Progressivi = null);
 
 /// <summary>Esito della rivalutazione annua del fondo TFR di un rapporto.</summary>
 public sealed record RivalutazioneTfrAnnuale(

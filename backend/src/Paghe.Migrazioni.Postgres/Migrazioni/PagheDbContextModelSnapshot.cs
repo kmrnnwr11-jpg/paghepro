@@ -695,6 +695,19 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AderisceFondiContrattuali")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<decimal?>("AliquotaInpsDatore")
+                        .HasPrecision(8, 6)
+                        .HasColumnType("numeric(8,6)");
+
+                    b.Property<decimal?>("AliquotaInpsDipendente")
+                        .HasPrecision(8, 6)
+                        .HasColumnType("numeric(8,6)");
+
                     b.Property<bool>("AssoggettataIva")
                         .HasColumnType("boolean");
 
@@ -706,6 +719,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasColumnType("text");
 
                     b.Property<string>("CcnlDefault")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CodiceAgevolazioneContributiva")
                         .HasColumnType("text");
 
                     b.Property<string>("CodiceAteco")
@@ -720,7 +736,13 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<string>("CodiceFiscale")
                         .HasColumnType("text");
 
+                    b.Property<string>("CodiceFondoIntegrazioneSalariale")
+                        .HasColumnType("text");
+
                     b.Property<string>("CodiceSedeInps")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CodiciAutorizzazioneInps")
                         .HasColumnType("text");
 
                     b.Property<string>("Comune")
@@ -737,6 +759,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasColumnType("text");
 
                     b.Property<string>("FirmaSiglaTimbroProtetta")
+                        .HasColumnType("text");
+
+                    b.Property<string>("FonteProfiloContributivo")
                         .HasColumnType("text");
 
                     b.Property<bool>("HaDipendenti")
@@ -795,7 +820,20 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("RiferimentoTerzoElementoTerritoriale")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RiferimentoVerificaApplicabilitaCcnl")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RiferimentoVisuraCamerale")
+                        .HasColumnType("text");
+
                     b.Property<string>("Settore")
+                        .HasColumnType("text");
+
+                    b.Property<string>("StatoAlboArtigiani")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Telefono")
@@ -947,6 +985,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<bool>("BuonoPastoElettronico")
                         .HasColumnType("boolean");
 
+                    b.Property<DateOnly?>("DataPagamentoQuattordicesima")
+                        .HasColumnType("date");
+
                     b.Property<string>("DatiSaluteProtetti")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1018,6 +1059,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
 
                     b.Property<decimal>("RedditoAnnoPrecedente")
                         .HasColumnType("numeric");
+
+                    b.Property<string>("RiferimentoQuattordicesimaSeparata")
+                        .HasColumnType("text");
 
                     b.Property<decimal>("RimborsiSpeseDocumentate")
                         .HasColumnType("numeric");
@@ -1130,6 +1174,10 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<decimal?>("Contingenza")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
                     b.Property<string>("Descrizione")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1156,6 +1204,35 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .IsUnique();
 
                     b.ToTable("CcnlLivelli");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.CcnlTerzoElementoEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CcnlCodice")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Importo")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<string>("Provincia")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CcnlCodice", "Anno", "Provincia")
+                        .IsUnique();
+
+                    b.ToTable("CcnlTerzoElemento");
                 });
 
             modelBuilder.Entity("Paghe.Persistence.Entities.CcnlVersioneEntity", b =>
@@ -1281,6 +1358,10 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)");
 
+                    b.Property<decimal?>("CostoMedioAnnualizzato")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
                     b.Property<string>("DatiValidazioneProtetti")
                         .HasColumnType("text");
 
@@ -1289,6 +1370,22 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasColumnType("text");
 
                     b.Property<decimal>("DetrazioniLavoroDipendente")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("ExFestivitaGodute")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("ExFestivitaMaturate")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("ExFestivitaResidue")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("ExFestivitaSaldoPrecedente")
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)");
 
@@ -1352,6 +1449,10 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)");
 
+                    b.Property<decimal>("PrestazioniRecuperabili")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
                     b.Property<decimal>("QuotaTfr")
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)");
@@ -1359,9 +1460,37 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<Guid>("RapportoLavoroId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("RetribuzioneFissa")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("RolGoduti")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("RolMaturati")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("RolResidui")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("RolSaldoPrecedente")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
                     b.Property<string>("Stato")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<decimal>("TariffaGiornaliera")
+                        .HasPrecision(15, 6)
+                        .HasColumnType("numeric(15,6)");
+
+                    b.Property<decimal>("TariffaOraria")
+                        .HasPrecision(15, 6)
+                        .HasColumnType("numeric(15,6)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -1375,6 +1504,10 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasColumnType("numeric(15,2)");
 
                     b.Property<decimal>("TotaleTrattenute")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal?>("UlterioreDetrazioneCuneo")
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)");
 
@@ -1542,6 +1675,45 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.ToTable("ConsumiAi");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.ContributoAgricoloEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("ACaricoDipendente")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("Aliquota")
+                        .HasPrecision(8, 5)
+                        .HasColumnType("numeric(8,5)");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Codice")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Descrizione")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Ordine")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Provincia")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Anno", "Provincia", "Codice")
+                        .IsUnique();
+
+                    b.ToTable("ContributiAgricoli");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.DelegaEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1643,6 +1815,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
 
                     b.Property<string>("Nome")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Sesso")
                         .HasColumnType("text");
 
                     b.Property<Guid>("TenantId")
@@ -2084,6 +2259,35 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.ToTable("MessaggiEmail");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.ParametriAgricoliEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AliquotaContributiDeducibili")
+                        .HasPrecision(8, 5)
+                        .HasColumnType("numeric(8,5)");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Fonte")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Provincia")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Anno", "Provincia")
+                        .IsUnique();
+
+                    b.ToTable("ParametriAgricoli");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.ParametriAnnoEntity", b =>
                 {
                     b.Property<int>("Anno")
@@ -2097,6 +2301,22 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
 
                     b.Property<decimal?>("BuonoPastoElettronicoEsenteGiorno")
                         .HasColumnType("numeric");
+
+                    b.Property<decimal?>("CuneoRedditoAzzeramento")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal?>("CuneoRedditoFinoA")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal?>("CuneoRedditoOltre")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal?>("CuneoUlterioreDetrazioneAnnua")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
 
                     b.Property<decimal>("DivisoreOrario")
                         .HasPrecision(12, 5)
@@ -2127,6 +2347,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasColumnType("numeric");
 
                     b.Property<decimal?>("PremioRisultatoRedditoMassimo")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("SolidarietaFondiAliquota")
                         .HasColumnType("numeric");
 
                     b.Property<decimal>("TfrContributoFondo")
@@ -2633,8 +2856,23 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<decimal?>("AddizionaleComunaleAccontoAnnuo")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal?>("AddizionaleComunaleSaldoAnnuo")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal?>("AddizionaleRegionaleConguaglioAnnuo")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
                     b.Property<Guid>("AziendaId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("CittadinanzaInps")
+                        .HasColumnType("text");
 
                     b.Property<string>("CodiceCatastaleComune")
                         .IsRequired()
@@ -2650,11 +2888,18 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<DateOnly?>("DataCessazione")
                         .HasColumnType("date");
 
+                    b.Property<DateOnly?>("DataDecorrenzaDomicilioFiscale")
+                        .HasColumnType("date");
+
                     b.Property<bool>("DetrazioniLavoroDipendente")
                         .HasColumnType("boolean");
 
                     b.Property<Guid>("DipendenteId")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal?>("ExFestivitaResidueIniziali")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
 
                     b.Property<decimal>("FerieResidueIniziali")
                         .ValueGeneratedOnAdd()
@@ -2695,13 +2940,26 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasColumnType("numeric(15,2)")
                         .HasDefaultValue(0m);
 
+                    b.Property<string>("ProvinciaLavoro")
+                        .HasColumnType("text");
+
                     b.Property<string>("Qualifica")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("QualificaProfessionaleIstat")
                         .HasColumnType("text");
 
                     b.Property<string>("Regione")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("RiferimentoProgressiviFiscaliPregressi")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("RolResiduiIniziali")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
 
                     b.Property<int>("ScattiAnzianita")
                         .HasColumnType("integer");
@@ -2715,6 +2973,12 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
 
                     b.Property<string>("TipoContratto")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TipoContribuzioneInps")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TipoPartTimeInps")
                         .HasColumnType("text");
 
                     b.HasKey("Id");
@@ -2735,6 +2999,14 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<int>("Anno")
                         .HasColumnType("integer");
 
+                    b.Property<decimal?>("AssistenzaSanitariaDatoreMese")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("numeric(8,2)");
+
+                    b.Property<decimal?>("AssistenzaSanitariaLavoratoreMese")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("numeric(8,2)");
+
                     b.Property<string>("CcnlCodice")
                         .IsRequired()
                         .HasColumnType("text");
@@ -2746,6 +3018,14 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<decimal>("DivisoreOrario")
                         .HasPrecision(8, 2)
                         .HasColumnType("numeric(8,2)");
+
+                    b.Property<decimal?>("EnteBilateraleAliquotaDatore")
+                        .HasPrecision(8, 5)
+                        .HasColumnType("numeric(8,5)");
+
+                    b.Property<decimal?>("EnteBilateraleAliquotaLavoratore")
+                        .HasPrecision(8, 5)
+                        .HasColumnType("numeric(8,5)");
 
                     b.Property<string>("Fonte")
                         .HasColumnType("text");
@@ -2766,9 +3046,47 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasPrecision(6, 4)
                         .HasColumnType("numeric(6,4)");
 
+                    b.Property<int?>("MeseErogazioneQuattordicesima")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MeseErogazioneTredicesima")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MesiAnzianitaRolRidotto")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MesiAnzianitaSenzaRol")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("OreExFestivitaAnno")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("numeric(8,4)");
+
                     b.Property<decimal?>("OrePermessiMese")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("numeric(8,2)");
+                        .HasPrecision(8, 4)
+                        .HasColumnType("numeric(8,4)");
+
+                    b.Property<decimal?>("OrePermessiMeseOltre15")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("numeric(8,4)");
+
+                    b.Property<decimal?>("OreRolAnno")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("numeric(8,4)");
+
+                    b.Property<decimal?>("OreRolAnnoOltre15")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("numeric(8,4)");
+
+                    b.Property<decimal?>("PercentualeRolRidotta")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("numeric(6,4)");
+
+                    b.Property<int?>("ScattiMassimo")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ScattiOgniMesi")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -3044,6 +3362,43 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.HasIndex("TenantId", "AziendaId", "Data");
 
                     b.ToTable("Spese");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.TariffaAgricolaEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Descrizione")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Livello")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Provincia")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("SalarioProvincialeOrario")
+                        .HasPrecision(12, 5)
+                        .HasColumnType("numeric(12,5)");
+
+                    b.Property<decimal>("TerzoElementoOrario")
+                        .HasPrecision(12, 5)
+                        .HasColumnType("numeric(12,5)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Anno", "Provincia", "Livello")
+                        .IsUnique();
+
+                    b.ToTable("TariffeAgricole");
                 });
 
             modelBuilder.Entity("Paghe.Persistence.Entities.TenantEntity", b =>

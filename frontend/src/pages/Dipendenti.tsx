@@ -4,6 +4,7 @@ import { api, type Azienda, type Cedolino, type DipendenteRapporto, type Livello
 import { CaricaUnilav } from "./CaricaUnilav";
 import { ComuneAutocomplete } from "../ComuneAutocomplete";
 import { salvaAziendaCorrenteId, scegliAziendaPreferita } from "../aziendaCorrente";
+import { preparaDatiGateRapporto } from "../rapportoFiscaleForm";
 import { creaSequenziatoreRichieste } from "../ultimaRichiesta";
 
 const DEFAULT_CCNL = "COMMERCIO_TERZIARIO";
@@ -57,9 +58,12 @@ const oggiIso = new Date().toISOString().slice(0, 10);
 const formVuoto = {
   codiceFiscale: "", nome: "", cognome: "", livello: DEFAULT_LIVELLO, iban: "", qualifica: "Impiegato",
   regione: "", codiceCatastaleComune: "", comuneNome: "",
+  dataDecorrenzaDomicilioFiscale: "", riferimentoProgressiviFiscaliPregressi: "",
   dataAssunzione: oggiIso, tipoContratto: "Tempo indeterminato", oreSettimanali: "40",
   numeroMensilita: "14", percentualePartTime: "100", scattiAnzianita: "0", superminimo: "0",
-  ferieResidueIniziali: "0", permessiResiduiIniziali: "0",
+  ferieResidueIniziali: "0", rolResiduiIniziali: "", exFestivitaResidueIniziali: "",
+  addizionaleRegionaleConguaglioAnnuo: "", addizionaleComunaleSaldoAnnuo: "",
+  addizionaleComunaleAccontoAnnuo: "",
 };
 
 export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void }) {
@@ -193,8 +197,13 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
       setErrore("Prima aggiungi un'azienda oppure importa un UNILAV: ogni dipendente deve essere collegato a un datore di lavoro.");
       return;
     }
-    setSalvataggio(true);
     setErrore(null);
+    const datiGate = preparaDatiGateRapporto(form);
+    if (!datiGate.ok) {
+      setErrore(`Completa i dati richiesti prima di salvare. ${datiGate.errori.join(" ")}`);
+      return;
+    }
+    setSalvataggio(true);
     try {
       await api.creaDipendente(azienda.id, {
         codiceFiscale: form.codiceFiscale.trim().toUpperCase(),
@@ -204,8 +213,7 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
         livello: form.livello || livelloAzienda(azienda),
         iban: form.iban.trim() || undefined,
         qualifica: form.qualifica,
-        regione: form.regione || undefined,
-        codiceCatastaleComune: form.codiceCatastaleComune || undefined,
+        ...datiGate.valore,
         dataAssunzione: form.dataAssunzione || undefined,
         tipoContratto: form.tipoContratto,
         oreSettimanali: Number(form.oreSettimanali) || 40,
@@ -215,7 +223,6 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
         scattiAnzianita: Number(form.scattiAnzianita) || 0,
         superminimo: Number(form.superminimo) || 0,
         ferieResidueIniziali: Number(form.ferieResidueIniziali) || 0,
-        permessiResiduiIniziali: Number(form.permessiResiduiIniziali) || 0,
       });
       if (aziendaCorrenteRef.current !== azienda.id) return;
       await caricaLista(azienda);
@@ -406,14 +413,43 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
             <span>IBAN <small>(facoltativo)</small></span>
             <input value={form.iban} onChange={set("iban")} placeholder="IT.." />
           </label>
+
+          <h3 className="wide-field">Domicilio fiscale e progressivi</h3>
           <label className="wide-field">
-            <span>Comune di residenza <small>(per le addizionali regionale e comunale)</small></span>
+            <span>Comune del domicilio fiscale <small>(seleziona un risultato)</small></span>
             <ComuneAutocomplete
               valore={form.comuneNome}
               placeholder="Es. Milano"
+              required
+              onInputChange={(valore) => setForm((f) => ({
+                ...f,
+                comuneNome: valore,
+                regione: "",
+                codiceCatastaleComune: "",
+              }))}
               onSelect={(c) =>
                 setForm((f) => ({ ...f, comuneNome: c.nome, codiceCatastaleComune: c.cat, regione: c.reg }))}
             />
+          </label>
+          <label>
+            <span>Regione del domicilio fiscale</span>
+            <input value={form.regione} onChange={set("regione")} required />
+          </label>
+          <label>
+            <span>Codice catastale del comune</span>
+            <input value={form.codiceCatastaleComune} onChange={set("codiceCatastaleComune")}
+              maxLength={4} placeholder="Es. F205" required />
+          </label>
+          <label>
+            <span>Decorrenza domicilio fiscale</span>
+            <input type="date" value={form.dataDecorrenzaDomicilioFiscale}
+              onChange={set("dataDecorrenzaDomicilioFiscale")} required />
+          </label>
+          <label>
+            <span>Fonte progressivi fiscali <small>(o assenza pregressi)</small></span>
+            <input value={form.riferimentoProgressiviFiscaliPregressi}
+              onChange={set("riferimentoProgressiviFiscaliPregressi")}
+              placeholder="CU provvisoria / import certificato / assunzione nel mese" required />
           </label>
 
           <h3 className="wide-field">Inquadramento e retribuzione</h3>
@@ -462,9 +498,38 @@ export function Dipendenti({ onApri }: { onApri: (rapportoId: string) => void })
               onChange={set("ferieResidueIniziali")} />
           </label>
           <label>
-            <span>ROL/ex festività riportati al 1° gennaio <small>(ore)</small></span>
-            <input type="number" step="0.01" value={form.permessiResiduiIniziali}
-              onChange={set("permessiResiduiIniziali")} />
+            <span>ROL riportati al 1° gennaio <small>(ore; indica anche 0)</small></span>
+            <input type="number" step="0.01" value={form.rolResiduiIniziali}
+              onChange={set("rolResiduiIniziali")} required />
+          </label>
+          <label>
+            <span>Ex festività riportate al 1° gennaio <small>(ore; indica anche 0)</small></span>
+            <input type="number" step="0.01" value={form.exFestivitaResidueIniziali}
+              onChange={set("exFestivitaResidueIniziali")} required />
+          </label>
+
+          <h3 className="wide-field">Addizionali dal conguaglio</h3>
+          <p className="hint wide-field">
+            Compila tutti gli importi annui. Digita 0 quando il conguaglio certifica zero:
+            un campo lasciato vuoto blocca il cedolino archiviabile.
+          </p>
+          <label>
+            <span>Addizionale regionale anno precedente €</span>
+            <input type="number" min={0} step="0.01"
+              value={form.addizionaleRegionaleConguaglioAnnuo}
+              onChange={set("addizionaleRegionaleConguaglioAnnuo")} required />
+          </label>
+          <label>
+            <span>Addizionale comunale, saldo €</span>
+            <input type="number" min={0} step="0.01"
+              value={form.addizionaleComunaleSaldoAnnuo}
+              onChange={set("addizionaleComunaleSaldoAnnuo")} required />
+          </label>
+          <label>
+            <span>Addizionale comunale, acconto €</span>
+            <input type="number" min={0} step="0.01"
+              value={form.addizionaleComunaleAccontoAnnuo}
+              onChange={set("addizionaleComunaleAccontoAnnuo")} required />
           </label>
 
           <AnteprimaRetribuzione

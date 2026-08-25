@@ -32,15 +32,34 @@ public static class RegoleCcnlDataset
                     CcnlCodice = v.Codice,
                     Anno = v.Anno,
                     DivisoreOrario = v.DivisoreOrario,
-                    // Il dataset non riporta il divisore giornaliero né la maturazione di ferie
-                    // e permessi: restano nulli e vale il default dell'anno, finché non arriva
-                    // il dato vero del contratto.
-                    DivisoreGiornaliero = null,
+                    // Dove il dataset non riporta il dato la colonna resta nulla e vale il
+                    // default dell'anno, finché non arriva il dato vero del contratto.
+                    DivisoreGiornaliero = v.DivisoreGiornaliero,
                     MaggiorazioneStraordinario = m.StraordinarioDiurno,
                     MaggiorazioneStraordinarioNotturno = m.StraordinarioNotturno,
                     MaggiorazioneStraordinarioFestivo = m.StraordinarioFestivo,
-                    GiorniFerieMese = null,
-                    OrePermessiMese = null,
+                    GiorniFerieMese = v.GiorniFerieMese,
+                    OrePermessiMese = v.OrePermessiMese,
+                    OrePermessiMeseOltre15 = v.OrePermessiMeseOltre15,
+                    ScattiOgniMesi = v.Scatti?.Periodicita.Trim().ToLowerInvariant() switch
+                    {
+                        "biennale" => 24,
+                        "triennale" => 36,
+                        _ => null,
+                    },
+                    ScattiMassimo = v.Scatti?.NumeroMassimo,
+                    MeseErogazioneTredicesima = v.MeseErogazioneTredicesima,
+                    MeseErogazioneQuattordicesima = v.MeseErogazioneQuattordicesima,
+                    AssistenzaSanitariaLavoratoreMese = v.AssistenzaSanitariaLavoratoreMese,
+                    AssistenzaSanitariaDatoreMese = v.AssistenzaSanitariaDatoreMese,
+                    EnteBilateraleAliquotaLavoratore = v.EnteBilateraleAliquotaLavoratore,
+                    EnteBilateraleAliquotaDatore = v.EnteBilateraleAliquotaDatore,
+                    OreRolAnno = v.OreRolAnno,
+                    OreRolAnnoOltre15 = v.OreRolAnnoOltre15,
+                    OreExFestivitaAnno = v.OreExFestivitaAnno,
+                    MesiAnzianitaSenzaRol = v.MesiAnzianitaSenzaRol,
+                    MesiAnzianitaRolRidotto = v.MesiAnzianitaRolRidotto,
+                    PercentualeRolRidotta = v.PercentualeRolRidotta,
                     Fonte = v.Fonte,
                 });
             }

@@ -88,7 +88,15 @@ public sealed record CreaDipendenteRequest(
     int OreSettimanali = 40,
     string TipoContratto = "Tempo indeterminato",
     decimal FerieResidueIniziali = 0m,
-    decimal PermessiResiduiIniziali = 0m);
+    decimal PermessiResiduiIniziali = 0m,
+    string? Sesso = null,
+    DateOnly? DataDecorrenzaDomicilioFiscale = null,
+    string? RiferimentoProgressiviFiscaliPregressi = null,
+    decimal? RolResiduiIniziali = null,
+    decimal? ExFestivitaResidueIniziali = null,
+    decimal? AddizionaleRegionaleConguaglioAnnuo = null,
+    decimal? AddizionaleComunaleSaldoAnnuo = null,
+    decimal? AddizionaleComunaleAccontoAnnuo = null);
 
 /// <summary>Richiesta di riclassificazione bilancio: piano dei conti + saldi.</summary>
 public sealed record RiclassificaRequest(
@@ -199,7 +207,18 @@ public sealed record CreaAziendaRequest(
     string? TipoContribuente = null,
     bool AssoggettataIva = true,
     bool OltreQuindiciDipendenti = false,
-    decimal ContributiFondiSettore = 0m);
+    decimal ContributiFondiSettore = 0m,
+    decimal? AliquotaInpsDatore = null,
+    bool AderisceFondiContrattuali = true,
+    string? CodiciAutorizzazioneInps = null,
+    string? CodiceFondoIntegrazioneSalariale = null,
+    string? CodiceAgevolazioneContributiva = null,
+    decimal? AliquotaInpsDipendente = null,
+    string? FonteProfiloContributivo = null,
+    string? RiferimentoVisuraCamerale = null,
+    string StatoAlboArtigiani = "DaVerificare",
+    string? RiferimentoVerificaApplicabilitaCcnl = null,
+    string? RiferimentoTerzoElementoTerritoriale = null);
 
 /// <summary>Correzione anagrafica azienda: solo i campi presenti (non null) vengono cambiati.</summary>
 public sealed record CorreggiAziendaRequest(
@@ -232,7 +251,18 @@ public sealed record CorreggiAziendaRequest(
     string? TipoContribuente = null,
     bool? AssoggettataIva = null,
     bool? OltreQuindiciDipendenti = null,
-    decimal? ContributiFondiSettore = null);
+    decimal? ContributiFondiSettore = null,
+    decimal? AliquotaInpsDatore = null,
+    bool? AderisceFondiContrattuali = null,
+    string? CodiciAutorizzazioneInps = null,
+    string? CodiceFondoIntegrazioneSalariale = null,
+    string? CodiceAgevolazioneContributiva = null,
+    decimal? AliquotaInpsDipendente = null,
+    string? FonteProfiloContributivo = null,
+    string? RiferimentoVisuraCamerale = null,
+    string? StatoAlboArtigiani = null,
+    string? RiferimentoVerificaApplicabilitaCcnl = null,
+    string? RiferimentoTerzoElementoTerritoriale = null);
 
 public sealed record EliminaAziendeBulkRequest(List<Guid> Ids);
 

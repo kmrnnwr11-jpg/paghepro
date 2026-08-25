@@ -79,6 +79,7 @@ builder.Services.AddScoped<ParametriNormativiService>();
 builder.Services.AddScoped<AnagraficheLavoroService>();
 builder.Services.AddScoped<CedoliniService>();
 builder.Services.AddScoped<CedolinoWorkflowService>();
+builder.Services.AddScoped<RequisitiCedolinoService>();
 builder.Services.AddScoped<PraticheF24Service>();
 builder.Services.AddScoped<PraticheInailService>();
 builder.Services.AddScoped<PraticheAperturaPartitaIvaService>();
@@ -126,7 +127,7 @@ builder.Configuration.GetSection("Firma").Bind(firmaOptions);
 builder.Services.AddSingleton(firmaOptions);
 
 // Livello AI di lettura documenti (sezione "Ai"): default "Spento" (nessuna chiamata esterna).
-// Provider a scelta: "Claude" (SDK ufficiale Anthropic), "DeepSeek", "Glm" o "Compatibile"
+// Provider a scelta: "Claude" (SDK ufficiale Anthropic), "DeepSeek", "Gemini", "Glm" o "Compatibile"
 // (qualsiasi endpoint OpenAI-compatibile, anche Ollama in locale). Regola architetturale:
 // l'AI legge e PROPONE soltanto — la conferma resta all'utente, i calcoli nel codice.
 var aiOptions = new AiOptions();
@@ -147,6 +148,7 @@ switch (aiOptions.Provider.ToLowerInvariant())
         builder.Services.AddSingleton<IEstrattoreAiDocumenti, EstrattoreAiAnthropic>();
         break;
     case "deepseek":
+    case "gemini":
     case "glm":
     case "compatibile":
         builder.Services.AddHttpClient<IEstrattoreAiDocumenti, EstrattoreAiCompatibile>()
@@ -1497,12 +1499,27 @@ secured.MapPost("/api/aziende", async (CreaAziendaRequest req, AziendeService sv
             AssoggettataIva = req.AssoggettataIva,
             OltreQuindiciDipendenti = req.OltreQuindiciDipendenti,
             ContributiFondiSettore = req.ContributiFondiSettore,
+            AliquotaInpsDatore = req.AliquotaInpsDatore is > 0m ? req.AliquotaInpsDatore : null,
+            AliquotaInpsDipendente = req.AliquotaInpsDipendente is > 0m ? req.AliquotaInpsDipendente : null,
+            AderisceFondiContrattuali = req.AderisceFondiContrattuali,
+            CodiciAutorizzazioneInps = req.CodiciAutorizzazioneInps,
+            CodiceFondoIntegrazioneSalariale = req.CodiceFondoIntegrazioneSalariale,
+            CodiceAgevolazioneContributiva = req.CodiceAgevolazioneContributiva,
+            FonteProfiloContributivo = req.FonteProfiloContributivo,
+            RiferimentoVisuraCamerale = req.RiferimentoVisuraCamerale,
+            StatoAlboArtigiani = req.StatoAlboArtigiani,
+            RiferimentoVerificaApplicabilitaCcnl = req.RiferimentoVerificaApplicabilitaCcnl,
+            RiferimentoTerzoElementoTerritoriale = req.RiferimentoTerzoElementoTerritoriale,
         });
         return Results.Created($"/api/aziende/{azienda.Id}", new { azienda.Id, azienda.RagioneSociale });
     }
     catch (InvalidOperationException ex)
     {
         return Results.Conflict(new { errore = ex.Message });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
     }
 });
 
@@ -1543,7 +1560,17 @@ secured.MapPatch("/api/aziende/{id:guid}", async (
             req.LivelloDefault, req.Iban,
             req.LegaleRappresentanteNome, req.LegaleRappresentanteCognome,
             req.LegaleRappresentanteCodiceFiscale,
-            req.OltreQuindiciDipendenti, req.ContributiFondiSettore));
+            req.OltreQuindiciDipendenti, req.ContributiFondiSettore,
+            req.AliquotaInpsDatore, req.AderisceFondiContrattuali,
+            req.CodiciAutorizzazioneInps,
+            req.CodiceFondoIntegrazioneSalariale,
+            req.CodiceAgevolazioneContributiva,
+            req.AliquotaInpsDipendente,
+            req.FonteProfiloContributivo,
+            req.RiferimentoVisuraCamerale,
+            req.StatoAlboArtigiani,
+            req.RiferimentoVerificaApplicabilitaCcnl,
+            req.RiferimentoTerzoElementoTerritoriale));
     return a is null
         ? Results.NotFound(new { errore = "Azienda non trovata per il tenant indicato." })
         : Results.Ok(new { a.Id, a.RagioneSociale });
@@ -1844,6 +1871,7 @@ secured.MapPost("/api/aziende/{aziendaId:guid}/dipendenti",
             Nome = req.Nome,
             Cognome = req.Cognome,
             Iban = req.Iban,
+            Sesso = req.Sesso,
         };
         var rapporto = new Paghe.Persistence.Entities.RapportoLavoroEntity
         {
@@ -1864,6 +1892,13 @@ secured.MapPost("/api/aziende/{aziendaId:guid}/dipendenti",
             TipoContratto = req.TipoContratto,
             FerieResidueIniziali = req.FerieResidueIniziali,
             PermessiResiduiIniziali = req.PermessiResiduiIniziali,
+            RolResiduiIniziali = req.RolResiduiIniziali,
+            ExFestivitaResidueIniziali = req.ExFestivitaResidueIniziali,
+            DataDecorrenzaDomicilioFiscale = req.DataDecorrenzaDomicilioFiscale,
+            RiferimentoProgressiviFiscaliPregressi = req.RiferimentoProgressiviFiscaliPregressi,
+            AddizionaleRegionaleConguaglioAnnuo = req.AddizionaleRegionaleConguaglioAnnuo,
+            AddizionaleComunaleSaldoAnnuo = req.AddizionaleComunaleSaldoAnnuo,
+            AddizionaleComunaleAccontoAnnuo = req.AddizionaleComunaleAccontoAnnuo,
         };
         var creato = await svc.CreaDipendenteERapportoAsync(TenantCorrente(user), aziendaId, dipendente, rapporto);
         return Results.Created($"/api/rapporti/{creato.Id}",
@@ -2024,7 +2059,7 @@ secured.MapPost("/api/rapporti/{rapportoId:guid}/cedolini",
 {
     try
     {
-        var c = await svc.CalcolaEArchiviaAsync(
+        var c = await svc.CalcolaEArchiviaVerificatoAsync(
             TenantCorrente(user), rapportoId, cartellino, forzaRicalcolo: forza);
         return Results.Created($"/api/cedolini/{c.Id}",
             new
@@ -2034,6 +2069,7 @@ secured.MapPost("/api/rapporti/{rapportoId:guid}/cedolini",
                 c.Mese,
                 c.NettoInBusta,
                 c.CostoAzienda,
+                c.CostoMedioAnnualizzato,
                 c.FerieResidue,
                 c.PermessiResidui,
                 c.Stato,
@@ -2116,18 +2152,23 @@ secured.MapPost("/api/aziende/{aziendaId:guid}/uniemens/mese",
 {
     try
     {
-        var flusso = await svc.GeneraDelMeseAsync(
+        var esito = await svc.GeneraDelMeseAsync(
             TenantCorrente(user), aziendaId, req.Anno, req.Mese, req.MatricolaInps);
-        var xml = Paghe.Core.AdeTelematico.UniEmens.UniEmensXmlWriter.GeneraStringa(flusso);
+        var lavoratori = esito.Flusso.Azienda.Posizione.Lavoratori;
         return Results.Ok(new
         {
             req.Anno,
             req.Mese,
-            lavoratori = flusso.Lavoratori.Count,
-            totaleImponibile = flusso.Lavoratori.Sum(l => l.Imponibile),
-            totaleContributo = flusso.Lavoratori.Sum(l => l.Contributo),
-            avvertenza = "Bozza UniEmens NON validata: passare dal software di controllo ufficiale INPS prima dell'invio.",
-            xml,
+            lavoratori = lavoratori.Count,
+            totaleImponibile = lavoratori.Sum(l => l.Retribuzione.Imponibile),
+            totaleContributo = lavoratori.Sum(l => l.Retribuzione.Contributo),
+            // Conforme allo schema ufficiale INPS non significa accettato: i controlli di
+            // merito del software INPS sono un passaggio in più, che resta obbligatorio.
+            conformeSchemaUfficiale = esito.ErroriSchema.Count == 0,
+            erroriSchema = esito.ErroriSchema,
+            daCompletare = esito.DaCompletare,
+            avvertenza = "Prima dell'invio far passare il file dal software di controllo ufficiale INPS.",
+            xml = esito.Xml,
         });
     }
     catch (ArgumentException ex)
@@ -2241,7 +2282,10 @@ secured.MapPost("/api/cedolini/pdf", async (CedolinoPdfRequest req, ParametriNor
             cedolino,
             new IntestazioneCedolino { Azienda = req.Azienda, Dipendente = req.Dipendente },
             req.Cartellino);
-        return Results.File(pdf, "application/pdf", $"cedolino-{cedolino.Anno}-{cedolino.Mese:00}.pdf");
+        return Results.File(
+            pdf,
+            "application/pdf",
+            $"prospetto-paga-simulazione-non-lul-{cedolino.Anno}-{cedolino.Mese:00}.pdf");
     }
     catch (ArgumentException ex)
     {
@@ -2678,6 +2722,7 @@ app.MapImportUnilavTesto(); // UNILAV: incolla il testo → stessi dati registra
 app.MapImportVisuraPdf(); // Visura camerale: carica il PDF → estrae i dati azienda (da confermare)
 app.MapModuli();          // archivio Persone + modello ufficiale AA7/10 compilato (PDF AdE)
 app.MapCcnl();            // elenco dei CCNL configurati (menu busta paga)
+app.MapAgricoltura();     // tabelle salariali provinciali e busta dell'operaio agricolo
 app.MapCedoliniWorkflow();// controllo, validazione, chiusura e snapshot immutabile cedolini
 app.MapRegistroAttivita(); // registro GDPR: accessi e modifiche, consultabile solo dall'admin
 app.MapRetention();        // policy, blocchi, anteprime e ricevute di conservazione GDPR

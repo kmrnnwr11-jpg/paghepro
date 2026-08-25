@@ -8,7 +8,7 @@ namespace Paghe.Tests;
 /// <summary>
 /// Verifica approfondita "a tappeto" del motore cedolino, con formule di controllo
 /// <b>riscritte in modo indipendente nel test</b> (scaglioni IRPEF, aliquote INPS,
-/// addizionali) e invarianti contabili su tutti i livelli, qualifiche, regioni e i 12 mesi.
+/// addizionali) e invarianti contabili su tutti i livelli, qualifiche e i 12 mesi.
 /// Scopo: dare confidenza che i conti tornino in tanti scenari diversi, non su un solo caso.
 /// </summary>
 public sealed class VerificaApprofonditaTests
@@ -21,7 +21,10 @@ public sealed class VerificaApprofonditaTests
 
     private static RapportoLavoro Rapporto(
         string livello, Qualifica q = Qualifica.Impiegato,
-        string regione = "", string comune = "") => new()
+        string regione = "", string comune = "",
+        decimal? addizionaleRegionaleAnnua = 0m,
+        decimal? addizionaleComunaleSaldoAnnuo = 0m,
+        decimal? addizionaleComunaleAccontoAnnuo = 0m) => new()
     {
         CodiceCcnl = "COMMERCIO_TERZIARIO",
         Livello = livello,
@@ -29,6 +32,10 @@ public sealed class VerificaApprofonditaTests
         NumeroMensilita = 14,
         Regione = regione,
         CodiceCatastaleComune = comune,
+        AddizionaleRegionaleConguaglioAnnuo = addizionaleRegionaleAnnua,
+        AddizionaleComunaleSaldoAnnuo = addizionaleComunaleSaldoAnnuo,
+        AddizionaleComunaleAccontoAnnuo = addizionaleComunaleAccontoAnnuo,
+        AderisceFondiContrattuali = false,
     };
 
     // ---- Formule di controllo indipendenti (scritte a mano qui nel test) ------------------
@@ -117,11 +124,10 @@ public sealed class VerificaApprofonditaTests
             Assert.True(c.IrpefNetta >= 0m, "IRPEF netta mai negativa");
             Assert.True(c.NettoInBusta > 0m && c.NettoInBusta < c.TotaleCompetenze, "Netto tra 0 e lordo");
             Assert.True(c.ContributiDatore > c.ContributiDipendente, "Datore > dipendente");
-            // (e) addizionali presenti solo se c'è la residenza fiscale
-            if (reg == "") Assert.Equal(0m, c.AddizionaleRegionale);
-            if (com == "") Assert.Equal(0m, c.AddizionaleComunale);
-            if (reg != "") Assert.True(c.AddizionaleRegionale > 0m, "Con regione, addizionale > 0");
-            if (com != "") Assert.True(c.AddizionaleComunale > 0m, "Con comune, addizionale > 0");
+            // Il domicilio identifica l'ente, ma non genera mai una trattenuta diretta sul mese.
+            // Qui il conguaglio e stato acquisito esplicitamente a zero.
+            Assert.Equal(0m, c.AddizionaleRegionale);
+            Assert.Equal(0m, c.AddizionaleComunale);
         }
 
         Assert.Equal(8 * 4 * 12, scenari); // 384 cedolini verificati
@@ -144,50 +150,54 @@ public sealed class VerificaApprofonditaTests
     }
 
     // =======================================================================================
-    // 4) ADDIZIONALI su ANNO INTERO: ogni mese = ricalcolo indipendente, somma 12 mesi coerente
+    // 4) ADDIZIONALI: esclusivamente rate di importi gia determinati al conguaglio
     // =======================================================================================
     [Theory]
     [InlineData("Lombardia", "F205")] // Milano
     [InlineData("Lazio", "H501")]     // Roma
     [InlineData("Campania", "F839")]  // Napoli
     [InlineData("Veneto", "L736")]    // Venezia
-    public void Addizionali_AnnoIntero_CoerentiConAliquote(string regione, string comune)
+    public void Addizionali_AnnoIntero_RateizzanoGliImportiDiConguaglio(string regione, string comune)
     {
-        decimal aliqReg = P.AddizionaleRegionale[regione];
-        decimal aliqCom = P.AddizionaleComunale[comune];
-
+        const decimal regionaleAnnua = 355.94m;
+        const decimal comunaleSaldoAnnuo = 206.81m;
+        const decimal comunaleAccontoAnnuo = 62.04m;
         decimal sommaReg = 0m, sommaCom = 0m;
-        decimal redditoAnnuo = 0m;
 
         for (int mese = 1; mese <= 12; mese++)
         {
-            var c = Motore().Calcola(Rapporto("3", Qualifica.Impiegato, regione, comune),
+            var c = Motore().Calcola(Rapporto(
+                    "3", Qualifica.Impiegato, regione, comune,
+                    regionaleAnnua, comunaleSaldoAnnuo, comunaleAccontoAnnuo),
                 new Cartellino { Anno = 2026, Mese = mese });
-
-            redditoAnnuo = c.ImponibileIrpef * 12m; // base presuntiva (uguale ogni mese)
-            decimal attesoReg = Arrotondamento.Euro(redditoAnnuo * aliqReg / 12m);
-            decimal attesoCom = Arrotondamento.Euro(redditoAnnuo * aliqCom / 12m);
-
-            Assert.Equal(attesoReg, c.AddizionaleRegionale);
-            Assert.Equal(attesoCom, c.AddizionaleComunale);
 
             sommaReg += c.AddizionaleRegionale;
             sommaCom += c.AddizionaleComunale;
         }
 
-        // La somma dei 12 mesi ricade sull'addizionale annua dovuta (tolleranza arrotondamenti).
-        Assert.True(Math.Abs(sommaReg - redditoAnnuo * aliqReg) <= 0.20m,
-            $"Add. regionale annua: somma 12 mesi {sommaReg:F2} vs attesa {redditoAnnuo * aliqReg:F2}");
-        Assert.True(Math.Abs(sommaCom - redditoAnnuo * aliqCom) <= 0.20m,
-            $"Add. comunale annua: somma 12 mesi {sommaCom:F2} vs attesa {redditoAnnuo * aliqCom:F2}");
+        // Gli arrotondamenti sono compensati sull'ultima rata; dicembre non inventa addebiti.
+        Assert.Equal(regionaleAnnua, sommaReg);
+        Assert.Equal(comunaleSaldoAnnuo + comunaleAccontoAnnuo, sommaCom);
+
+        var dicembre = Motore().Calcola(Rapporto(
+                "3", Qualifica.Impiegato, regione, comune,
+                regionaleAnnua, comunaleSaldoAnnuo, comunaleAccontoAnnuo),
+            new Cartellino { Anno = 2026, Mese = 12 });
+        Assert.Equal(0m, dicembre.AddizionaleRegionale);
+        Assert.Equal(0m, dicembre.AddizionaleComunale);
     }
 
     [Fact]
     public void Addizionali_ZeroSenzaResidenzaFiscale()
     {
-        var c = Motore().Calcola(Rapporto("3"), new Cartellino { Anno = 2026, Mese = 6 });
+        var c = Motore().Calcola(Rapporto(
+            "3", addizionaleRegionaleAnnua: null,
+            addizionaleComunaleSaldoAnnuo: null,
+            addizionaleComunaleAccontoAnnuo: null), new Cartellino { Anno = 2026, Mese = 6 });
         Assert.Equal(0m, c.AddizionaleRegionale);
         Assert.Equal(0m, c.AddizionaleComunale);
+        Assert.Contains(c.Righe, r => r.Codice == "ADD_REG_MANCANTE");
+        Assert.Contains(c.Righe, r => r.Codice == "ADD_COM_MANCANTE");
     }
 
     // =======================================================================================

@@ -7,11 +7,23 @@ namespace Paghe.Api;
 public sealed record RapportoDettaglioDto(
     string RapportoId, string DipendenteId,
     string Nome, string Cognome, string CodiceFiscale, string? Iban, bool Anonimizzato,
-    string CodiceCcnl, string Livello, string Qualifica,
+    string CodiceCcnl, string Livello, string Qualifica, string TipoContratto,
     int NumeroMensilita, bool PartTime, decimal PercentualePartTime,
-    int ScattiAnzianita, decimal Superminimo, string Regione, string DataAssunzione,
+    int ScattiAnzianita, decimal Superminimo, string Regione, string CodiceCatastaleComune,
+    string DataAssunzione,
     decimal FerieResidueIniziali, decimal PermessiResiduiIniziali,
-    string? DataCessazione);
+    string? DataCessazione,
+    string? TipoPartTimeInps, string? CittadinanzaInps,
+    string? QualificaProfessionaleIstat, string? TipoContribuzioneInps,
+    string? ProvinciaLavoro,
+    decimal? AddizionaleRegionaleConguaglioAnnuo,
+    decimal? AddizionaleComunaleSaldoAnnuo,
+    decimal? AddizionaleComunaleAccontoAnnuo,
+    string? Sesso,
+    string? DataDecorrenzaDomicilioFiscale,
+    string? RiferimentoProgressiviFiscaliPregressi,
+    decimal? RolResiduiIniziali,
+    decimal? ExFestivitaResidueIniziali);
 
 /// <summary>Correzione della scheda dipendente: solo i campi presenti (non null) vengono cambiati.</summary>
 public sealed record CorreggiRapportoRequest(
@@ -22,7 +34,18 @@ public sealed record CorreggiRapportoRequest(
     string? Regione, string? CodiceCatastaleComune, string? DataAssunzione,
     decimal? FondoTfrIniziale,
     decimal? FerieResidueIniziali, decimal? PermessiResiduiIniziali,
-    string? DataCessazione, bool? RimuoviDataCessazione);
+    string? DataCessazione, bool? RimuoviDataCessazione,
+    string? TipoPartTimeInps, string? CittadinanzaInps,
+    string? QualificaProfessionaleIstat, string? TipoContribuzioneInps,
+    string? ProvinciaLavoro = null,
+    decimal? AddizionaleRegionaleConguaglioAnnuo = null,
+    decimal? AddizionaleComunaleSaldoAnnuo = null,
+    decimal? AddizionaleComunaleAccontoAnnuo = null,
+    string? Sesso = null,
+    string? DataDecorrenzaDomicilioFiscale = null,
+    string? RiferimentoProgressiviFiscaliPregressi = null,
+    decimal? RolResiduiIniziali = null,
+    decimal? ExFestivitaResidueIniziali = null);
 
 /// <summary>
 /// Endpoint per il dettaglio di un rapporto (scheda dipendente reale), isolato per tenant.
@@ -53,16 +76,31 @@ public static class RapportoEndpoints
                 CodiceCcnl: r.CodiceCcnl,
                 Livello: r.Livello,
                 Qualifica: r.Qualifica,
+                TipoContratto: r.TipoContratto,
                 NumeroMensilita: r.NumeroMensilita,
                 PartTime: r.PartTime,
                 PercentualePartTime: r.PercentualePartTime,
                 ScattiAnzianita: r.ScattiAnzianita,
                 Superminimo: r.Superminimo,
                 Regione: r.Regione,
+                CodiceCatastaleComune: r.CodiceCatastaleComune,
                 DataAssunzione: r.DataAssunzione.ToString("dd/MM/yyyy"),
                 FerieResidueIniziali: r.FerieResidueIniziali,
                 PermessiResiduiIniziali: r.PermessiResiduiIniziali,
-                DataCessazione: r.DataCessazione?.ToString("dd/MM/yyyy")));
+                DataCessazione: r.DataCessazione?.ToString("dd/MM/yyyy"),
+                TipoPartTimeInps: r.TipoPartTimeInps,
+                CittadinanzaInps: r.CittadinanzaInps,
+                QualificaProfessionaleIstat: r.QualificaProfessionaleIstat,
+                TipoContribuzioneInps: r.TipoContribuzioneInps,
+                ProvinciaLavoro: r.ProvinciaLavoro,
+                AddizionaleRegionaleConguaglioAnnuo: r.AddizionaleRegionaleConguaglioAnnuo,
+                AddizionaleComunaleSaldoAnnuo: r.AddizionaleComunaleSaldoAnnuo,
+                AddizionaleComunaleAccontoAnnuo: r.AddizionaleComunaleAccontoAnnuo,
+                Sesso: d?.Sesso,
+                DataDecorrenzaDomicilioFiscale: r.DataDecorrenzaDomicilioFiscale?.ToString("yyyy-MM-dd"),
+                RiferimentoProgressiviFiscaliPregressi: r.RiferimentoProgressiviFiscaliPregressi,
+                RolResiduiIniziali: r.RolResiduiIniziali,
+                ExFestivitaResidueIniziali: r.ExFestivitaResidueIniziali));
         }).RequireAuthorization();
 
         // Correzione della scheda (es. dopo un import UNILAV/OCR letto male): aggiorna solo
@@ -84,6 +122,13 @@ public static class RapportoEndpoints
                     return Results.BadRequest(new { errore = "Data di cessazione non valida (usa il formato AAAA-MM-GG)." });
                 dataCessazione = dc;
             }
+            DateOnly? decorrenzaDomicilio = null;
+            if (!string.IsNullOrWhiteSpace(req.DataDecorrenzaDomicilioFiscale))
+            {
+                if (!DateOnly.TryParse(req.DataDecorrenzaDomicilioFiscale, out var dd))
+                    return Results.BadRequest(new { errore = "Decorrenza domicilio fiscale non valida (usa AAAA-MM-GG)." });
+                decorrenzaDomicilio = dd;
+            }
 
             try
             {
@@ -96,7 +141,18 @@ public static class RapportoEndpoints
                         req.Regione, req.CodiceCatastaleComune, dataAssunzione,
                         req.FondoTfrIniziale,
                         req.FerieResidueIniziali, req.PermessiResiduiIniziali,
-                        dataCessazione, req.RimuoviDataCessazione));
+                        dataCessazione, req.RimuoviDataCessazione,
+                        req.TipoPartTimeInps, req.CittadinanzaInps,
+                        req.QualificaProfessionaleIstat, req.TipoContribuzioneInps,
+                        req.ProvinciaLavoro,
+                        req.AddizionaleRegionaleConguaglioAnnuo,
+                        req.AddizionaleComunaleSaldoAnnuo,
+                        req.AddizionaleComunaleAccontoAnnuo,
+                        req.Sesso,
+                        decorrenzaDomicilio,
+                        req.RiferimentoProgressiviFiscaliPregressi,
+                        req.RolResiduiIniziali,
+                        req.ExFestivitaResidueIniziali));
                 return r is null
                     ? Results.NotFound(new { errore = "Rapporto non trovato per il tenant indicato." })
                     : Results.Ok(new { aggiornato = true });

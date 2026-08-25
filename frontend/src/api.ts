@@ -183,6 +183,20 @@ export interface Azienda {
   oltreQuindiciDipendenti?: boolean;
   /** Fondi di settore a carico del dipendente, come frazione (0,002667 = 0,2667%). */
   contributiFondiSettore?: number;
+  /** Aliquota INPS complessiva c/datore del profilo contributivo reale dell'azienda,
+   *  come frazione (0,293133 = 29,3133%). 0/null = tabella per qualifica (non certificata). */
+  aliquotaInpsDatore?: number | null;
+  /** L'azienda aderisce ai fondi contrattuali del CCNL (Fondo Est, ente bilaterale). */
+  aderisceFondiContrattuali?: boolean;
+  codiciAutorizzazioneInps?: string | null;
+  codiceFondoIntegrazioneSalariale?: string | null;
+  codiceAgevolazioneContributiva?: string | null;
+  aliquotaInpsDipendente?: number | null;
+  fonteProfiloContributivo?: string | null;
+  riferimentoVisuraCamerale?: string | null;
+  statoAlboArtigiani?: "DaVerificare" | "Iscritta" | "NonIscritta" | null;
+  riferimentoVerificaApplicabilitaCcnl?: string | null;
+  riferimentoTerzoElementoTerritoriale?: string | null;
   /** Firma, sigla o timbro autentico caricato e cifrato; l'immagine grezza non viene esposta. */
   haFirmaSiglaTimbro?: boolean;
 }
@@ -194,6 +208,17 @@ export interface NuovaAzienda {
   iban?: string; legaleRappresentanteNome?: string; legaleRappresentanteCognome?: string; legaleRappresentanteCodiceFiscale?: string;
   canalePredefinito?: string; haDipendenti?: boolean; tipoContribuente?: string; assoggettataIva?: boolean;
   oltreQuindiciDipendenti?: boolean; contributiFondiSettore?: number;
+  aliquotaInpsDatore?: number | null;
+  aderisceFondiContrattuali?: boolean;
+  codiciAutorizzazioneInps?: string;
+  codiceFondoIntegrazioneSalariale?: string;
+  codiceAgevolazioneContributiva?: string;
+  aliquotaInpsDipendente?: number | null;
+  fonteProfiloContributivo?: string;
+  riferimentoVisuraCamerale?: string;
+  statoAlboArtigiani?: "DaVerificare" | "Iscritta" | "NonIscritta";
+  riferimentoVerificaApplicabilitaCcnl?: string;
+  riferimentoTerzoElementoTerritoriale?: string;
 }
 export interface EsitoCaricamentoScadenza {
   aziendaTrovata: boolean; ragioneSociale?: string | null;
@@ -214,17 +239,59 @@ export interface Cartellino {
   oreAssenzaNonRetribuita?: number;
   statoAssegniFamiliari?: "DaVerificare" | "NonSpettanti" | "Spettanti";
   importoAssegniFamiliari?: number;
+  riferimentoQuattordicesimaSeparata?: string;
+  dataPagamentoQuattordicesima?: string;
   /** Calendario giorno per giorno: quando c'è, il server ne ricava i totali e ignora quelli qui sopra. */
   giornate?: GiornataCartellino[];
 }
-export interface VoceCedolino { codice: string; descrizione: string; tipo: string; importo: number }
+export interface VoceCedolino {
+  codice: string; descrizione: string; tipo: string; importo: number;
+  quantita?: number | null; base?: number | null;
+}
 export interface Cedolino {
   totaleCompetenze: number; totaleTrattenute: number; nettoInBusta: number;
-  costoAzienda: number; quotaTfr: number; righe: VoceCedolino[];
+  costoAzienda: number; costoMedioAnnualizzato?: number | null;
+  quotaTfr: number; righe: VoceCedolino[];
+  retribuzioneFissa?: number; tariffaOraria?: number; tariffaGiornaliera?: number;
+  prestazioniRecuperabili?: number;
+  ferieMaturate?: number; ferieGodute?: number; ferieResidue?: number;
+  rolSaldoPrecedente?: number; rolMaturati?: number; rolGoduti?: number; rolResidui?: number;
+  exFestivitaSaldoPrecedente?: number; exFestivitaMaturate?: number;
+  exFestivitaGodute?: number; exFestivitaResidue?: number;
+}
+export interface ProvinciaAgricola {
+  anno: number; provincia: string; fonte: string; calcolabile: boolean; motivo?: string | null;
+}
+export interface TariffaAgricola {
+  livello: string; descrizione: string; salarioProvincialeOrario: number;
+  terzoElementoOrario: number; pagaOraria: number;
+}
+export interface TabellaAgricola {
+  anno: number; provincia: string; fonte: string;
+  aliquotaContributiDeducibili: number; aliquotaTotaleDipendente: number;
+  tariffe: TariffaAgricola[];
+  contributi: { codice: string; descrizione: string; aliquota: number; aCaricoDipendente: boolean }[];
+}
+export interface DatiMensiliCedolinoAgricolo {
+  anno: number; mese: number; oreOrdinarie: number; giornateLavorate: number;
+  giorniDetrazione: number; unaTantum: number; detrazioniGiaGoduteAnno: number;
+  arrotondamentoRiportato: number; ultimoCedolino: boolean;
+  redditoPresuntoAnnuo: number | null;
+}
+export interface CedolinoAgricolo extends Cedolino {
+  anno: number; mese: number; imponibileInps: number; contributiDipendente: number;
+  contributiDatore: number; imponibileIrpef: number; irpefLorda: number;
+  detrazioniLavoroDipendente: number; irpefNetta: number;
+  addizionaleRegionale: number; addizionaleComunale: number;
+}
+export interface AnteprimaCedolinoAgricolo {
+  cedolino: CedolinoAgricolo; fonteTabelle: string; provinciaCpl: string;
+  tipoOperaio: "OTD" | "OTI"; livelloTariffa: string;
+  bozzaDaValidare: boolean; archiviato: boolean; avvertenza: string;
 }
 export interface CedolinoArchiviato {
   id: string; anno: number; mese: number;
-  nettoInBusta: number; costoAzienda: number;
+  nettoInBusta: number; costoAzienda: number; costoMedioAnnualizzato?: number | null;
   imponibileIrpef?: number; irpefNetta?: number;
   conguaglioIrpef?: number;
   ferieResidue?: number; permessiResidui?: number;
@@ -276,6 +343,12 @@ export interface GiornataCartellino {
   oreStraordinario: number;
   oreStraordinarioNotturno: number;
   oreStraordinarioFestivo: number;
+  progressivoOreSettimanali?: number | null;
+  identificativoEvento?: string | null;
+  dataInizioEvento?: string | null;
+  retribuzioneMediaGiornalieraPrecedente?: number | null;
+  rateiGiornalieri?: number | null;
+  coefficienteLordizzazione?: number | null;
 }
 
 export interface ProblemaCartellino { messaggio: string; bloccante: boolean }
@@ -296,6 +369,8 @@ export interface PresenzaRiga {
   // Saldi dall'ultimo cedolino elaborato prima del mese (null senza storico).
   ferieResidue?: number | null; permessiResidui?: number | null;
   saldiAnno?: number | null; saldiMese?: number | null;
+  riferimentoQuattordicesimaSeparata?: string | null;
+  dataPagamentoQuattordicesima?: string | null;
   /** Ore contrattuali della giornata piena: precompila il calendario. */
   oreGiornaliere: number;
   /** Calendario già salvato per il mese; vuoto = cartellino a totali. */
@@ -338,10 +413,26 @@ export interface RapportoDettaglio {
   rapportoId: string; dipendenteId: string;
   nome: string; cognome: string; codiceFiscale: string; iban?: string | null; anonimizzato: boolean;
   codiceCcnl: string; livello: string; qualifica: string;
+  tipoContratto: string;
   numeroMensilita: number; partTime: boolean; percentualePartTime: number;
-  scattiAnzianita: number; superminimo: number; regione: string; dataAssunzione: string;
+  scattiAnzianita: number; superminimo: number; regione: string;
+  codiceCatastaleComune: string; dataAssunzione: string;
   ferieResidueIniziali: number; permessiResiduiIniziali: number;
   dataCessazione?: string | null;
+  /** Inquadramento contributivo richiesto dalla denuncia UniEmens. */
+  tipoPartTimeInps?: string | null; cittadinanzaInps?: string | null;
+  qualificaProfessionaleIstat?: string | null; tipoContribuzioneInps?: string | null;
+  provinciaLavoro?: string | null;
+  dataDecorrenzaDomicilioFiscale?: string | null;
+  riferimentoProgressiviFiscaliPregressi?: string | null;
+  rolResiduiIniziali?: number | null;
+  exFestivitaResidueIniziali?: number | null;
+  /** Addizionali dal conguaglio dell'anno precedente: se caricate, in busta vanno le rate vere. */
+  addizionaleRegionaleConguaglioAnnuo?: number | null;
+  addizionaleComunaleSaldoAnnuo?: number | null;
+  addizionaleComunaleAccontoAnnuo?: number | null;
+  /** Sesso anagrafico M/F: verificato contro il codice fiscale al salvataggio. */
+  sesso?: string | null;
 }
 /** Campi correggibili della scheda dipendente: solo quelli presenti vengono cambiati. */
 export interface CorrezioneRapporto {
@@ -353,6 +444,17 @@ export interface CorrezioneRapporto {
   fondoTfrIniziale?: number;
   ferieResidueIniziali?: number; permessiResiduiIniziali?: number;
   dataCessazione?: string; rimuoviDataCessazione?: boolean;
+  tipoPartTimeInps?: string; cittadinanzaInps?: string;
+  qualificaProfessionaleIstat?: string; tipoContribuzioneInps?: string;
+  provinciaLavoro?: string;
+  dataDecorrenzaDomicilioFiscale?: string;
+  riferimentoProgressiviFiscaliPregressi?: string;
+  rolResiduiIniziali?: number;
+  exFestivitaResidueIniziali?: number;
+  addizionaleRegionaleConguaglioAnnuo?: number;
+  addizionaleComunaleSaldoAnnuo?: number;
+  addizionaleComunaleAccontoAnnuo?: number;
+  sesso?: string;
 }
 export interface Fattura {
   id: string; numero: string; anno?: number; data?: string;
@@ -629,6 +731,40 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ rapporto, cartellino }),
     }),
+  provinceAgricole: () => req<ProvinciaAgricola[]>("/api/agricoltura/province"),
+  tabellaAgricola: (anno: number, provincia: string) =>
+    req<TabellaAgricola>(`/api/agricoltura/tabelle/${anno}/${encodeURIComponent(provincia)}`),
+  anteprimaCedolinoAgricolo: (rapportoId: string, dati: DatiMensiliCedolinoAgricolo) =>
+    req<AnteprimaCedolinoAgricolo>(
+      `/api/agricoltura/rapporti/${rapportoId}/cedolino/anteprima`,
+      { method: "POST", body: JSON.stringify(dati) },
+    ),
+  cedolinoAgricoloPdf: async (
+    rapportoId: string,
+    dati: DatiMensiliCedolinoAgricolo,
+  ): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetchAutenticata(
+      `/api/agricoltura/rapporti/${rapportoId}/cedolino/pdf`,
+      { method: "POST", body: JSON.stringify(dati) },
+    );
+    if (!res.ok) {
+      let messaggio = `Errore ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.errore) messaggio = body.errore as string;
+      } catch {
+        /* corpo non JSON */
+      }
+      throw new Error(messaggio);
+    }
+    const dispo = res.headers.get("Content-Disposition") ?? "";
+    const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(dispo);
+    return {
+      blob: await res.blob(),
+      filename: decodeURIComponent(match?.[1]?.replace(/"$/, "")
+        ?? `busta-agricola-${dati.anno}-${String(dati.mese).padStart(2, "0")}-bozza.pdf`),
+    };
+  },
   // Cedolini archiviati per dipendente (rapporto): alimentano CU e 770.
   cedoliniArchiviati: (rapportoId: string) =>
     req<CedolinoArchiviato[]>(`/api/rapporti/${rapportoId}/cedolini`),
@@ -1423,6 +1559,10 @@ export interface StatoChatAi {
   attiva: boolean;
   provider: string;
   modello: string;
+  providerSecondario: string | null;
+  modelloSecondario: string | null;
+  providerSecondarioAttivo: boolean;
+  messaggioProviderSecondario: string | null;
   messaggio: string | null;
 }
 
@@ -1504,6 +1644,13 @@ export interface CreaDipendente {
   numeroMensilita?: number; partTime?: boolean; percentualePartTime?: number;
   scattiAnzianita?: number; superminimo?: number;
   ferieResidueIniziali?: number; permessiResiduiIniziali?: number;
+  dataDecorrenzaDomicilioFiscale?: string;
+  riferimentoProgressiviFiscaliPregressi?: string;
+  rolResiduiIniziali?: number;
+  exFestivitaResidueIniziali?: number;
+  addizionaleRegionaleConguaglioAnnuo?: number;
+  addizionaleComunaleSaldoAnnuo?: number;
+  addizionaleComunaleAccontoAnnuo?: number;
 }
 
 /** Un dato che manca (o va confermato) dopo l'import, con dove completarlo e dove trovarlo. */

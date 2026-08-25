@@ -186,16 +186,28 @@ public sealed class CedoliniWorkflowApiTests : IDisposable
         var azienda = await new AziendeService(db).CreaAsync(tenant.Id, new AziendaEntity
         {
             RagioneSociale = "Alfa Workflow Srl",
-            PartitaIva = "01234567890",
-            CodiceFiscale = "01234567890",
+            PartitaIva = "01234560017",
+            CodiceFiscale = "01234560017",
             Indirizzo = "Via Roma 1",
             Cap = "20100",
             Comune = "Milano",
             Provincia = "MI",
             MatricolaInps = "1234567890",
             CodiceSedeInps = "0001",
+            CscInps = "70708",
+            CodiciAutorizzazioneInps = "NESSUNO",
+            CodiceFondoIntegrazioneSalariale = "FIS",
+            CodiceAgevolazioneContributiva = "NESSUNA",
+            AliquotaInpsDipendente = 0.0949m,
+            AliquotaInpsDatore = 0.2788m,
+            FonteProfiloContributivo = "Fixture API workflow: profilo verificato",
             PatInail = "12345678",
             CcnlDefault = "COMMERCIO_TERZIARIO",
+            CodiceAteco = "45.20.10",
+            RiferimentoVisuraCamerale = "VISURA-API-WORKFLOW-2026",
+            StatoAlboArtigiani = "NonIscritta",
+            RiferimentoVerificaApplicabilitaCcnl = "VERIFICA-H011-API-WORKFLOW",
+            RiferimentoTerzoElementoTerritoriale = "FONTE-TERRITORIALE-MI-API-WORKFLOW",
         });
         var rapporto = await new AnagraficheLavoroService(db).CreaDipendenteERapportoAsync(
             tenant.Id,
@@ -215,7 +227,12 @@ public sealed class CedoliniWorkflowApiTests : IDisposable
                 NumeroMensilita = 14,
                 Regione = "Lombardia",
                 CodiceCatastaleComune = "F205",
-                DataAssunzione = new DateOnly(2020, 1, 1),
+                DataDecorrenzaDomicilioFiscale = new DateOnly(2026, 1, 1),
+                AddizionaleRegionaleConguaglioAnnuo = 0m,
+                AddizionaleComunaleSaldoAnnuo = 0m,
+                AddizionaleComunaleAccontoAnnuo = 0m,
+                RiferimentoProgressiviFiscaliPregressi = "IMPORT-API-WORKFLOW-2026",
+                DataAssunzione = new DateOnly(2026, 5, 1),
                 TipoContratto = "Tempo indeterminato",
             });
 
@@ -299,15 +316,21 @@ public sealed class CedoliniWorkflowApiTests : IDisposable
     private static Cartellino CartellinoCompleto(int anno, int mese)
     {
         var giornate = new List<GiornataCartellino>();
+        decimal progressivo = 0m;
         for (int giorno = 1; giorno <= DateTime.DaysInMonth(anno, mese); giorno++)
         {
             var data = new DateOnly(anno, mese, giorno);
             var riposo = data.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+            if (data.DayOfWeek == DayOfWeek.Monday)
+                progressivo = 0m;
+            decimal ore = riposo ? 0m : 8m;
+            progressivo += ore;
             giornate.Add(new GiornataCartellino
             {
                 Data = data,
                 Causale = riposo ? CausaleGiornata.RiposoSettimanale : CausaleGiornata.Lavorata,
-                OreOrdinarie = riposo ? 0m : 8m,
+                OreOrdinarie = ore,
+                ProgressivoOreSettimanali = progressivo,
             });
         }
         return new Cartellino

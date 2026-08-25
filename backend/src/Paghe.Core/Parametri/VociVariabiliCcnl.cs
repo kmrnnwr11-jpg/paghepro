@@ -31,7 +31,23 @@ public sealed record VociVariabiliCcnl(
     int NumeroMensilita = 14,
     MaggiorazioniCcnl? Maggiorazioni = null,
     IReadOnlyList<IndennitaCcnl>? Indennita = null,
-    ScattiCcnl? Scatti = null);
+    ScattiCcnl? Scatti = null,
+    decimal? DivisoreGiornaliero = null,
+    decimal? GiorniFerieMese = null,
+    decimal? OrePermessiMese = null,
+    decimal? OrePermessiMeseOltre15 = null,
+    int? MeseErogazioneTredicesima = null,
+    int? MeseErogazioneQuattordicesima = null,
+    decimal? AssistenzaSanitariaLavoratoreMese = null,
+    decimal? AssistenzaSanitariaDatoreMese = null,
+    decimal? EnteBilateraleAliquotaLavoratore = null,
+    decimal? EnteBilateraleAliquotaDatore = null,
+    decimal? OreRolAnno = null,
+    decimal? OreRolAnnoOltre15 = null,
+    decimal? OreExFestivitaAnno = null,
+    int? MesiAnzianitaSenzaRol = null,
+    int? MesiAnzianitaRolRidotto = null,
+    decimal? PercentualeRolRidotta = null);
 
 /// <summary>Carica le voci variabili dei CCNL dal JSON (formato del "Prompt 2" di raccolta dati).</summary>
 public static class VociVariabiliCcnlJson

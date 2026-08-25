@@ -35,7 +35,7 @@ public sealed class PraticheInailTests : IDisposable
         {
             var az = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
             {
-                RagioneSociale = "Alfa Srl", PartitaIva = "01234567890",
+                RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
                 Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             });
             aziendaId = az.Id;

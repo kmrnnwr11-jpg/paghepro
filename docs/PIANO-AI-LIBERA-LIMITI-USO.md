@@ -167,6 +167,14 @@ Nel profilo personale iniziale:
 - aggiornamento separato, firmato e senza accesso alla cassaforte;
 - nessun training, fine-tuning o apprendimento online sui dati dell'utente.
 
+> **Eccezione operativa del 24 agosto 2026, richiesta separata del titolare:** queste regole
+> restano vincolanti per il profilo personale local-only. Il distinto profilo cloud di collaudo
+> può usare DeepSeek come principale e Google Gemini come fallback dichiarato, sempre dietro
+> Governor, scope, minimizzazione e kill-switch. Il fallback non è silenzioso: compare nello
+> stato UI e viene chiamato soltanto dopo un errore del principale; le immagini vanno direttamente
+> al solo provider con capacità visiva. Questa eccezione non autorizza dati reali prima di DPA,
+> informativa e validazione privacy, e non chiude il gate G1 del profilo locale.
+
 ### 3.3 Dati, calcoli e responsabilità
 
 - ogni query persistita e ogni ricerca semantica filtra obbligatoriamente per `tenantId`;

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Paghe.Core.AdeTelematico;
 using Paghe.Core.Domain;
 using Paghe.Persistence.Entities;
+using Paghe.Persistence.Cedolini;
 
 namespace Paghe.Persistence.Ai;
 
@@ -82,7 +83,10 @@ public sealed class CompilaPresenzeAuroraService(
         var (rapporto, entita, baseCorrente) = await CaricaBaseAsync(
             tenantId, aziendaId, rapportoId, anno, mese, inizio, fine, ct);
         await VerificaBlocchiAsync(tenantId, rapporto, anno, mese, ct);
-        VerificaCalendarioSicuro(baseCorrente, rapporto.OreSettimanali, inizio, fine);
+        decimal? riportoPrimaSettimana = await RiportoOreSettimanaliService.CalcolaAsync(
+            db, tenantId, rapporto.Id, anno, mese, rapporto.DataAssunzione, ct);
+        VerificaCalendarioSicuro(
+            baseCorrente, rapporto.OreSettimanali, inizio, fine, riportoPrimaSettimana);
         VerificaDate(date, anno, mese, baseCorrente, orologio);
 
         var precedenti = date.Select(data =>
@@ -90,15 +94,17 @@ public sealed class CompilaPresenzeAuroraService(
         var nuove = baseCorrente.Giornate.Select(g =>
         {
             if (!date.Contains(g.Data)) return g;
-            return new GiornataCartellino
+            return g with
             {
-                Data = g.Data,
                 Causale = CausaleGiornata.AssenzaNonRetribuita,
+                OreOrdinarie = 0m,
                 OreAssenzaNonRetribuita = g.OreOrdinarie,
             };
         }).ToArray();
+        nuove = RicalcolaProgressivi(nuove, riportoPrimaSettimana);
         var dopo = CalendarioCartellino.Compila(
-            baseCorrente, nuove, rapporto.OreSettimanali / 5m);
+            baseCorrente, nuove, rapporto.OreSettimanali / 5m,
+            oreLavoratePregressePrimaSettimana: riportoPrimaSettimana);
         RegoleCartellino.Valida(dopo);
 
         string preHash = HashCartellino(baseCorrente);
@@ -165,7 +171,10 @@ public sealed class CompilaPresenzeAuroraService(
         var (rapporto, entita, corrente) = await CaricaBaseAsync(
             tenantId, aziendaId, comando.RapportoId, anno, mese, inizio, fine, ct);
         await VerificaBlocchiAsync(tenantId, rapporto, anno, mese, ct);
-        VerificaCalendarioSicuro(corrente, rapporto.OreSettimanali, inizio, fine);
+        decimal? riportoPrimaSettimana = await RiportoOreSettimanaliService.CalcolaAsync(
+            db, tenantId, rapporto.Id, anno, mese, rapporto.DataAssunzione, ct);
+        VerificaCalendarioSicuro(
+            corrente, rapporto.OreSettimanali, inizio, fine, riportoPrimaSettimana);
         if (entita.Id != comando.CartellinoId
             || entita.Versione != comando.VersioneAttesa
             || !string.Equals(HashCartellino(corrente), comando.PrecondizioneHash,
@@ -175,15 +184,17 @@ public sealed class CompilaPresenzeAuroraService(
 
         VerificaDate(comando.Date, anno, mese, corrente, orologio);
         var nuove = corrente.Giornate.Select(g => comando.Date.Contains(g.Data)
-            ? new GiornataCartellino
+            ? g with
             {
-                Data = g.Data,
                 Causale = CausaleGiornata.AssenzaNonRetribuita,
+                OreOrdinarie = 0m,
                 OreAssenzaNonRetribuita = g.OreOrdinarie,
             }
             : g).ToArray();
+        nuove = RicalcolaProgressivi(nuove, riportoPrimaSettimana);
         var modificato = CalendarioCartellino.Compila(
-            corrente, nuove, rapporto.OreSettimanali / 5m);
+            corrente, nuove, rapporto.OreSettimanali / 5m,
+            oreLavoratePregressePrimaSettimana: riportoPrimaSettimana);
         if (!string.Equals(HashCartellino(modificato), comando.PostcondizioneHash,
                 StringComparison.Ordinal))
             throw new OperazioneAuroraNonConsentitaException(
@@ -231,7 +242,10 @@ public sealed class CompilaPresenzeAuroraService(
         var (rapporto, entita, corrente) = await CaricaBaseAsync(
             tenantId, aziendaId, undo.RapportoId, anno, mese, inizio, fine, ct);
         await VerificaBlocchiAsync(tenantId, rapporto, anno, mese, ct);
-        VerificaCalendarioSicuro(corrente, rapporto.OreSettimanali, inizio, fine);
+        decimal? riportoPrimaSettimana = await RiportoOreSettimanaliService.CalcolaAsync(
+            db, tenantId, rapporto.Id, anno, mese, rapporto.DataAssunzione, ct);
+        VerificaCalendarioSicuro(
+            corrente, rapporto.OreSettimanali, inizio, fine, riportoPrimaSettimana);
         if (entita.Id != undo.CartellinoId
             || entita.Versione != undo.VersionePrima + 1
             || !string.Equals(HashCartellino(corrente), undo.PostcondizioneHash,
@@ -243,8 +257,10 @@ public sealed class CompilaPresenzeAuroraService(
         var ripristinate = corrente.Giornate
             .Select(g => perData.TryGetValue(g.Data, out var prima) ? prima : g)
             .ToArray();
+        ripristinate = RicalcolaProgressivi(ripristinate, riportoPrimaSettimana);
         var precedente = CalendarioCartellino.Compila(
-            corrente, ripristinate, rapporto.OreSettimanali / 5m);
+            corrente, ripristinate, rapporto.OreSettimanali / 5m,
+            oreLavoratePregressePrimaSettimana: riportoPrimaSettimana);
         var salvata = await bozze.SalvaAsync(
             tenantId, rapporto.Id,
             new SalvaCartellinoBozza(precedente, entita.Id, entita.Versione), ct);
@@ -308,12 +324,15 @@ public sealed class CompilaPresenzeAuroraService(
     }
 
     private static void VerificaCalendarioSicuro(
-        Cartellino cartellino, decimal oreSettimanali, DateOnly inizio, DateOnly fine)
+        Cartellino cartellino, decimal oreSettimanali, DateOnly inizio, DateOnly fine,
+        decimal? riportoPrimaSettimana)
     {
         if (cartellino.Giornate.Count != fine.DayNumber - inizio.DayNumber + 1
             || CalendarioCartellino.Verifica(
                     cartellino.Anno, cartellino.Mese, cartellino.Giornate,
-                    oreSettimanali / 5m).Any(p => p.Bloccante))
+                    oreSettimanali / 5m,
+                    oreLavoratePregressePrimaSettimana: riportoPrimaSettimana)
+                .Any(p => p.Bloccante))
             throw new OperazioneAuroraNonConsentitaException(
                 "Il calendario non è completo e coerente: correggilo manualmente.");
         if (cartellino.GiorniMalattia != 0m
@@ -324,6 +343,37 @@ public sealed class CompilaPresenzeAuroraService(
                 // Il motivo resta volutamente indistinguibile: il testo arriva al modello
                 // insieme al rapporto e non deve rivelare l'esistenza di dati sanitari D3A.
                 "Il mese non è idoneo alla modifica automatica: usa la pagina Presenze.");
+    }
+
+    private static GiornataCartellino[] RicalcolaProgressivi(
+        IReadOnlyList<GiornataCartellino> giornate,
+        decimal? riportoPrimaSettimana)
+    {
+        var valori = new Dictionary<DateOnly, decimal>();
+        bool primaSettimana = true;
+        foreach (var settimana in giornate.OrderBy(g => g.Data).GroupBy(g =>
+                     (ISOWeek.GetYear(g.Data.ToDateTime(TimeOnly.MinValue)),
+                      ISOWeek.GetWeekOfYear(g.Data.ToDateTime(TimeOnly.MinValue)))))
+        {
+            var primo = settimana.MinBy(g => g.Data)!;
+            decimal progressivo = primo.Data.DayOfWeek == DayOfWeek.Monday
+                ? 0m
+                : primaSettimana
+                    ? riportoPrimaSettimana
+                        ?? throw new OperazioneAuroraNonConsentitaException(
+                            "Manca il riporto autorevole della prima settimana.")
+                    : 0m;
+            foreach (var giornata in settimana.OrderBy(g => g.Data))
+            {
+                progressivo += giornata.TotaleOreLavorate;
+                valori[giornata.Data] = progressivo;
+            }
+            primaSettimana = false;
+        }
+        return giornate.Select(g => g with
+        {
+            ProgressivoOreSettimanali = valori[g.Data],
+        }).ToArray();
     }
 
     private static void VerificaDate(

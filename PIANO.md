@@ -2,7 +2,7 @@
 
 > Documento guida del progetto. Scritto in modo semplice: **non serve essere del mestiere
 > per seguirlo.** Ogni fase dice *cosa fai tu* e *cosa fa l'agente AI (il codice)*.
-> Aggiornato al: 2026-08-22.
+> Aggiornato al: 2026-08-25.
 
 > **Governance AI personale aggiornata il 15 luglio 2026:** per qualunque lavoro sull'AI dentro
 > PaghePro prevale
@@ -12,17 +12,24 @@
 > `docs/PIANO-PERSONALE-PRIVACY-FIRST.md` sono storiche e non eseguibili. Questa precedenza non
 > autorizza codice e non cambia l'ordine delle attività non-AI già presenti qui.
 
-> **Stato Aurora al 22 agosto 2026:** completato e verificato il runtime A2 read-only: chat e
+> **Stato Aurora al 24 agosto 2026:** completato e verificato il runtime A2 read-only: chat e
 > cinque strumenti passano dal Governor con lease S2, scope esatto, proiezioni minimizzate,
 > quota server-side, revoca e SessionLog. Il controllo cedolini legge lotti massimi di 10 dentro
 > un budget di mandato esplicitato dal preflight. La SPA blocca grant concorrenti/orfani e
-> invalida ogni risposta al cambio azienda, periodo o pagina. G1 resta aperto e il provider resta
-> spento; le tre scritture A3 non sono offerte e gli endpoint di applicazione restano `409`.
-> La fondazione del primo effetto A3 è pronta ma non attiva: il cartellino può essere salvato
-> come bozza autonoma con versione ottimistica, senza generare il cedolino, e si blocca davanti a
-> cedolini già esistenti o F24 finali. Verifica tecnica del checkpoint: **901/901 backend**
-> (suite senza il fuzz lungo da 10.000 tentativi), **35/35 frontend**, build Release/SPA verdi,
-> modelli EF SQLite/PostgreSQL allineati e smoke Production fail-closed su copia isolata del database.
+> invalida ogni risposta al cambio azienda, periodo o pagina. Per decisione separata del titolare,
+> il profilo cloud di collaudo usa DeepSeek come provider principale e Google Gemini come riserva
+> automatica; Gemini riceve la richiesta solo se DeepSeek fallisce e legge direttamente le immagini.
+> Le chiavi restano segreti server-side e la UI segnala separatamente quella mancante. La riserva
+> è stata provata davvero (24 agosto 2026) mettendo fuori uso DeepSeek: emerso e corretto un
+> difetto per cui Google rifiutava con 400 i giri con strumenti se non riceveva indietro la
+> propria firma opaca (`thought_signature`); ora Aurora la conserva nel ciclo del server e la
+> rimanda solo a Google. La riserva è fissata su `gemini-3.5-flash` perché `gemini-3.7-flash`
+> rispondeva 503 «high demand». G1/DPA e
+> validazione con dati reali restano aperti. Il primo effetto A3 (`compila_presenze`) è disponibile
+> soltanto per coppie tenant:utente esplicite, con proposta, conferma, transazione e undo; il default
+> di produzione resta A2 e le scritture restano spente senza allowlist. Verifica del supporto
+> dual-provider e dei moduli paghe correnti: **1.012/1.012 backend**, **53/53 frontend** e build
+> Release/SPA verdi.
 
 ---
 
@@ -101,7 +108,10 @@ più avanti nel piano. Sono il collo di bottiglia. Vedi la sezione "Da avviare o
 **Manca per essere un prodotto vero da vendere:**
 - ❌ Invio reale allo SdI (serve account provider).
 - ❌ Certificato di firma reale.
-- ❌ **UniEmens INPS** e **INAIL** (grosso buco lato paghe).
+- ⚠️ **UniEmens INPS**: il flusso mensile ordinario passa il controllo ufficiale INPS (24 agosto
+  2026); mancano i dati di inquadramento contributivo in anagrafica, gli eventi tutelati
+  (malattia, maternità, CIG) e le gestioni speciali. **INAIL**: calcolo e pratica ci sono, manca
+  il tracciato telematico.
 - ❌ Controlli ufficiali AdE eseguiti (Entratel + moduli JAR) su F24/CU/LIPE/770.
 - ❌ Conservazione a norma.
 - ⚠️ GDPR parziale: cifratura dati sensibili e registro di accessi/modifiche fatti; restano
@@ -249,6 +259,24 @@ come ufficiale prima dei controlli e della validazione professionale.
   validare” e non viene qualificato come LUL.
 - [x] 🔧 Corretto il doppio pagamento di malattia/infortunio: la quota ordinaria delle giornate
   viene stornata prima di applicare indennità e integrazioni (ancora da validare per CCNL).
+- [x] 🔧 **Revisione fail-closed Officina Nord, luglio 2026 (25 agosto 2026)**: H011 richiede
+  ATECO, visura e stato Albo artigiani documentati; il livello III espone paga base **1.453,94 €**
+  e contingenza comprensiva di EDR **527,90 €**, uno scatto **21,95 €** dal 01/10/2025 e il
+  terzo elemento Milano **11,36 €** solo con fonte territoriale. Il fisso di simulazione è
+  **2.015,15 €**, tariffa oraria **11,9949 €**, giornaliera **77,5058 €** e TFR per codice
+  **162,40 €**. La quattordicesima resta separata; calendario, progressivi, eventi, domicilio,
+  conguagli e profilo CSC/CA/FIS sono bloccanti. Ferie, ROL (**16,33 h**) ed ex festività
+  (**18,67 h**) sono distinti; prestazioni recuperabili e costi parziali stimati sono separati.
+  CF/P.IVA passano il checksum e tutti i PDF restano sempre «Prospetto paga di simulazione –
+  non costituisce LUL» con «Bozza / non certificato».
+- [x] 🔧 **Anteprima busta agricola OTD (25 agosto 2026)**: pagina SPA dedicata, calcolo
+  collegato al rapporto del tenant e PDF A4 agricolo con ore e giornate INPS distinte, tariffa
+  CPL a cinque decimali, contributi, arrotondamenti, fonte e avviso di bozza. Provincia, livello,
+  tipo e residenza arrivano dal rapporto, non dal browser. OTI è riconosciuto ma resta fail-closed
+  in motore, API e UI: le tabelle/golden oggi validati sono solo OTD e non vengono riusati. Il
+  flusso cedolini ordinario rifiuta
+  `AGRICOLTURA_OPERAI` per non produrre TFR/ROL/UniEmens ordinari errati. Il blocco non archivia,
+  non chiude e non genera LUL, PosAgri o F24 finché non esiste il workflow agricolo completo.
 - [ ] 🔧 **Cartellino giornaliero**: ore ordinarie, causale per data/intervallo, PUC malattia,
   controlli di sovrapposizione e quadratura con l'orario teorico; salvataggio separato dal calcolo.
 - [ ] 🔧 Rendere tutte le regole di maturazione ferie/ROL e malattia/infortunio versionate per
@@ -273,7 +301,23 @@ scelto e validato dal professionista.
 - [x] 🔧 Modello dati e generatore XML **UniEmens** dai cedolini archiviati. *(fatto: prima
   versione — `Paghe.Core/AdeTelematico/UniEmens` + `UniEmensService` + endpoint
   `POST /api/aziende/{id}/uniemens/mese`; bozza da validare, Qualifica/Giorni da affinare)*
-- [ ] 🔧 Far passare il file dal **software di controllo ufficiale INPS** (validazione).
+- [x] 🔧 Far passare il file dal **software di controllo ufficiale INPS** (validazione).
+  *(fatto il 24 agosto 2026: il generatore è stato riscritto sul tracciato ufficiale — radice
+  `DenunceMensili`, schema 4.32.0 incorporato e validato a ogni build — e un flusso prodotto da
+  PaghePro è stato elaborato dal validatore automatico INPS 4.2.0 con esito **RC=OK, 0 errori
+  bloccanti**, con produzione del file `.UniEM` e della ricevuta. Le regole emerse dai controlli
+  reali (unità operativa/produttiva obbligatorie, giorni contribuiti, retribuzione teorica,
+  calendario giornaliero sempre esposto) sono nel codice e nei test. Restano da raccogliere in
+  anagrafica i dati di inquadramento contributivo. Procedura ripetibile in
+  `docs/UNIEMENS-CONTROLLO-UFFICIALE-INPS.md`)*
+- [x] 🔧 **Anagrafica contributiva del lavoratore** *(fatto il 24 agosto 2026: cittadinanza,
+  tipo di part-time, qualifica professionale ISTAT e tipo di contribuzione si registrano nella
+  scheda del dipendente, con i formati validati al salvataggio e migrazioni per SQLite e
+  PostgreSQL. Il codice contratto CNEL arriva dal CCNL dell'anno. Quel che manca resta
+  dichiarato in `daCompletare`, mai inventato. Corretto un difetto emerso dai test: nomi e
+  ragioni sociali vanno nel file in maiuscolo e senza accenti, altrimenti l'INPS li scarta —
+  l'archivio continua a conservare la grafia vera. Restano fuori eventi tutelati, conguagli,
+  gestioni speciali e la schermata SPA)*
 - [x] 🔧 Autoliquidazione **INAIL** (calcolo e file). *(fatto: calcolo già esisteva
   (`AutoliquidazioneInail` + `InailService`, pagina Fine anno); aggiunta la pratica archiviata
   con stato — `PraticaInailEntity`/`PraticheInailService`, endpoint salva/elenco/get/stato/bozza

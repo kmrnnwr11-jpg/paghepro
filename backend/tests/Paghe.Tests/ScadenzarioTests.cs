@@ -211,11 +211,11 @@ public sealed class ScadenzarioTests : IDisposable
     public async Task ParseDocumento_AziendaForzataConPivaDiversa_NonCreaPromemoria()
     {
         var tenant = Guid.NewGuid();
-        await CreaAziendaAsync(tenant, "Alfa Srl", "01234567890");
+        await CreaAziendaAsync(tenant, "Alfa Srl", "01234567897");
         var aziendaScelta = await CreaAziendaAsync(tenant, "Beta Srl", "99999999999");
         const string testo = """
             DURC On Line
-            Partita IVA 01234567890
+            Partita IVA 01234567897
             Numero PROT-2026-001
             Data emissione 01/01/2026
             Scadenza 30/04/2026
@@ -235,7 +235,7 @@ public sealed class ScadenzarioTests : IDisposable
     private async Task<Guid> CreaAziendaAsync(
         Guid tenant,
         string ragioneSociale = "Alfa Srl",
-        string partitaIva = "01234567890")
+        string partitaIva = "01234567897")
     {
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity

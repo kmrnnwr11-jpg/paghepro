@@ -119,7 +119,8 @@ public sealed class ElaboraCedolinoAuroraService(
         CedolinoEntity creato;
         try
         {
-            creato = await cedolini.CalcolaEArchiviaAsync(tenantId, comando.RapportoId, cartellino, ct);
+            creato = await cedolini.CalcolaEArchiviaVerificatoAsync(
+                tenantId, comando.RapportoId, cartellino, ct);
         }
         catch (ArgumentException ex)
         {

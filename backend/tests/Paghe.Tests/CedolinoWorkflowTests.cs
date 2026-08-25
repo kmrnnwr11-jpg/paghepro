@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.Domain;
@@ -27,8 +28,9 @@ public sealed class CedolinoWorkflowTests : IDisposable
     [Fact]
     public async Task FlussoCompleto_CongelaPdf_CifraPayload_EBloccaRicalcolo()
     {
-        var scenario = await CreaScenarioAsync(conFirma: true);
+        var scenario = await CreaScenarioAsync(conFirma: true, mese: 6);
         var attore = Guid.NewGuid();
+        decimal costoMedioAtteso = 0m;
 
         await using (var db = NuovoContesto())
         {
@@ -39,6 +41,8 @@ public sealed class CedolinoWorkflowTests : IDisposable
             Assert.Equal(nameof(StatoCedolino.Bozza), c.Stato);
             Assert.Equal(1, c.Versione);
             Assert.Equal("H011", c.CodiceCnel);
+            Assert.True(c.CostoMedioAnnualizzato > 0m);
+            costoMedioAtteso = c.CostoMedioAnnualizzato!.Value;
             Assert.Equal(expected: c.NettoInBusta, actual: (await calcolo.LeggiPerPdfAsync(
                 scenario.TenantId, c.Id))!.Cedolino.NettoInBusta);
         }
@@ -70,7 +74,7 @@ public sealed class CedolinoWorkflowTests : IDisposable
         {
             var documento = await Workflow(db).LeggiPdfAsync(scenario.TenantId, scenario.CedolinoId);
             Assert.NotNull(documento);
-            Assert.True(documento!.Definitivo);
+            Assert.False(documento!.Definitivo);
             Assert.Equal(StatoCedolino.Chiusa, documento.Stato);
             Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(documento.Dati, 0, 4));
             using (var pdf = PdfDocument.Open(documento.Dati))
@@ -78,6 +82,13 @@ public sealed class CedolinoWorkflowTests : IDisposable
                 var testo = string.Join('\n', pdf.GetPages().Select(p => p.Text));
                 Assert.Contains("Validazione registrata: Dott.ssa Maria Verdi", testo);
                 Assert.Contains("consegna", testo, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains(
+                    "COSTO MEDIO PARZIALE STIMATO ANNUO/12",
+                    testo,
+                    StringComparison.OrdinalIgnoreCase);
+                Assert.Contains(
+                    costoMedioAtteso.ToString("N2", CultureInfo.GetCultureInfo("it-IT")),
+                    testo);
             }
             prima = documento.Dati;
         }
@@ -136,7 +147,7 @@ public sealed class CedolinoWorkflowTests : IDisposable
     [Fact]
     public async Task Transizioni_NonConsentonoSaltiVersioniVecchieONessunTimbro()
     {
-        var scenario = await CreaScenarioAsync(conFirma: false);
+        var scenario = await CreaScenarioAsync(conFirma: false, mese: 7);
         var attore = Guid.NewGuid();
         await using var db = NuovoContesto();
         var calcolo = new CedoliniService(db, new ParametriNormativiService(db));
@@ -166,7 +177,7 @@ public sealed class CedolinoWorkflowTests : IDisposable
     [Fact]
     public async Task CodiceCnelMancante_BloccaIlControlloSenzaCreareSnapshot()
     {
-        var scenario = await CreaScenarioAsync(conFirma: true);
+        var scenario = await CreaScenarioAsync(conFirma: true, mese: 8);
         await using var db = NuovoContesto();
         var versione = await db.CcnlVersioni.SingleAsync(v =>
             v.CcnlCodice == "COMMERCIO_TERZIARIO" && v.Anno == 2026);
@@ -186,7 +197,7 @@ public sealed class CedolinoWorkflowTests : IDisposable
     [Fact]
     public async Task CalendarioMancante_BloccaIlControlloSenzaCreareSnapshot()
     {
-        var scenario = await CreaScenarioAsync(conFirma: true);
+        var scenario = await CreaScenarioAsync(conFirma: true, mese: 5);
         await using var db = NuovoContesto();
         var calcolo = new CedoliniService(db, new ParametriNormativiService(db));
         var c = await calcolo.CalcolaEArchiviaAsync(
@@ -195,7 +206,7 @@ public sealed class CedolinoWorkflowTests : IDisposable
         var errore = await Assert.ThrowsAsync<ArgumentException>(() =>
             Workflow(db).ControllaAsync(scenario.TenantId, c.Id, Guid.NewGuid(), 1));
 
-        Assert.Contains("calendario giorno per giorno", errore.Message);
+        Assert.Contains("calendario giornaliero completo", errore.Message);
         Assert.Empty(await db.CedoliniSnapshot.ToListAsync());
         Assert.Equal(nameof(StatoCedolino.Bozza), c.Stato);
         Assert.Equal(1, c.Versione);
@@ -308,7 +319,7 @@ public sealed class CedolinoWorkflowTests : IDisposable
 
     private async Task<Scenario> CreaCedolinoPreWorkflowAsync(int mese)
     {
-        var scenario = await CreaScenarioAsync(conFirma: false);
+        var scenario = await CreaScenarioAsync(conFirma: false, mese: mese);
         await using var db = NuovoContesto();
         var calcolo = new CedoliniService(db, new ParametriNormativiService(db));
         var cedolino = await calcolo.CalcolaEArchiviaAsync(
@@ -335,15 +346,21 @@ public sealed class CedolinoWorkflowTests : IDisposable
     private static Cartellino CartellinoCompleto(int anno, int mese)
     {
         var giornate = new List<GiornataCartellino>();
+        decimal progressivo = 0m;
         for (int giorno = 1; giorno <= DateTime.DaysInMonth(anno, mese); giorno++)
         {
             var data = new DateOnly(anno, mese, giorno);
             bool riposo = data.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+            if (data.DayOfWeek == DayOfWeek.Monday)
+                progressivo = 0m;
+            decimal ore = riposo ? 0m : 8m;
+            progressivo += ore;
             giornate.Add(new GiornataCartellino
             {
                 Data = data,
                 Causale = riposo ? CausaleGiornata.RiposoSettimanale : CausaleGiornata.Lavorata,
-                OreOrdinarie = riposo ? 0m : 8m,
+                OreOrdinarie = ore,
+                ProgressivoOreSettimanali = progressivo,
             });
         }
 
@@ -352,25 +369,40 @@ public sealed class CedolinoWorkflowTests : IDisposable
             Anno = anno,
             Mese = mese,
             StatoAssegniFamiliari = StatoAssegniFamiliari.NonSpettanti,
+            RiferimentoQuattordicesimaSeparata = mese == 7 ? "Q14-WORKFLOW-2026-07" : null,
+            DataPagamentoQuattordicesima = mese == 7 ? new DateOnly(anno, 7, 1) : null,
             Giornate = giornate,
         };
     }
 
-    private async Task<Scenario> CreaScenarioAsync(bool conFirma)
+    private async Task<Scenario> CreaScenarioAsync(bool conFirma, int mese)
     {
         var tenant = Guid.NewGuid();
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
             RagioneSociale = "Alfa Srl",
-            PartitaIva = "01234567890",
-            CodiceFiscale = "01234567890",
+            PartitaIva = "01234560017",
+            CodiceFiscale = "01234560017",
             Indirizzo = "Via Roma 1",
             Cap = "20100",
             Comune = "Milano",
             Provincia = "MI",
             MatricolaInps = "1234567890",
+            CodiceSedeInps = "7100",
+            CscInps = "70708",
+            CodiciAutorizzazioneInps = "NESSUNO",
+            CodiceFondoIntegrazioneSalariale = "FIS",
+            CodiceAgevolazioneContributiva = "NESSUNA",
+            AliquotaInpsDipendente = 0.0949m,
+            AliquotaInpsDatore = 0.2788m,
+            FonteProfiloContributivo = "Fixture workflow: profilo contributivo verificato",
             PatInail = "12345678",
+            CodiceAteco = "45.20.10",
+            RiferimentoVisuraCamerale = "VISURA-WORKFLOW-2026",
+            StatoAlboArtigiani = "NonIscritta",
+            RiferimentoVerificaApplicabilitaCcnl = "VERIFICA-H011-WORKFLOW",
+            RiferimentoTerzoElementoTerritoriale = "FONTE-TERRITORIALE-MI-WORKFLOW",
             FirmaSiglaTimbro = conFirma ? PngRosso : null,
         });
         var dipendente = new DipendenteEntity
@@ -389,7 +421,12 @@ public sealed class CedolinoWorkflowTests : IDisposable
                 NumeroMensilita = 14,
                 Regione = "Lombardia",
                 CodiceCatastaleComune = "F205",
-                DataAssunzione = new DateOnly(2020, 1, 1),
+                DataDecorrenzaDomicilioFiscale = new DateOnly(2026, 1, 1),
+                AddizionaleRegionaleConguaglioAnnuo = 0m,
+                AddizionaleComunaleSaldoAnnuo = 0m,
+                AddizionaleComunaleAccontoAnnuo = 0m,
+                RiferimentoProgressiviFiscaliPregressi = "IMPORT-WORKFLOW-2026",
+                DataAssunzione = new DateOnly(2026, mese, 1),
                 TipoContratto = "Tempo indeterminato",
             });
         return new Scenario(tenant, azienda.Id, dipendente.Id, rapporto.Id, Guid.Empty);

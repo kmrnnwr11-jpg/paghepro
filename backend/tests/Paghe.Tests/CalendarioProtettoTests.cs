@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.Domain;
@@ -39,23 +41,35 @@ public sealed class CalendarioProtettoTests : IDisposable
         {
             Data = new DateOnly(2026, 4, 1), Causale = CausaleGiornata.Lavorata,
             OreOrdinarie = 8m, OreStraordinario = 2m,
+            ProgressivoOreSettimanali = 10m,
         },
-        new() { Data = new DateOnly(2026, 4, 2), Causale = CausaleGiornata.Malattia },
+        new()
+        {
+            Data = new DateOnly(2026, 4, 2), Causale = CausaleGiornata.Malattia,
+            ProgressivoOreSettimanali = 10m,
+            IdentificativoEvento = "MAL-PROT-2026-001",
+            DataInizioEvento = new DateOnly(2026, 4, 2),
+            RetribuzioneMediaGiornalieraPrecedente = 77.5058m,
+            RateiGiornalieri = 6.25m,
+            CoefficienteLordizzazione = 1.1234m,
+        },
         new()
         {
             Data = new DateOnly(2026, 4, 3), Causale = CausaleGiornata.Lavorata,
             OreOrdinarie = 4m, OrePermessi = 4m,
+            ProgressivoOreSettimanali = 14m,
         },
     ];
 
-    private async Task<Guid> SalvaCartellinoAsync(IReadOnlyList<GiornataCartellino> giornate)
+    private async Task<Guid> SalvaCartellinoAsync(
+        IReadOnlyList<GiornataCartellino> giornate, int anno = 2026, int mese = 4)
     {
         var id = Guid.NewGuid();
         await using var db = NuovoContesto();
         db.Cartellini.Add(new CartellinoEntity
         {
             Id = id, TenantId = _tenant, RapportoLavoroId = Guid.NewGuid(),
-            Anno = 2026, Mese = 4,
+            Anno = anno, Mese = mese,
             GiorniMalattia = 1m, NumeroEventoMalattiaAnno = 1,
             Giornate = giornate,
         });
@@ -73,6 +87,30 @@ public sealed class CalendarioProtettoTests : IDisposable
             ?? throw new InvalidOperationException("Cartellino non trovato nella lettura grezza.");
     }
 
+    private async Task SovrascriviConPayloadLegacyAsync(Guid id, string causale)
+    {
+        var json = JsonSerializer.SerializeToUtf8Bytes(new[]
+        {
+            new
+            {
+                G = 1, C = causale, Ord = 8m, Per = 0m, Exf = 0m, Ass = 0m,
+                Str = 0m, StrN = 0m, StrF = 0m,
+            },
+        });
+        var payload = new byte[8192];
+        BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), json.Length);
+        json.CopyTo(payload.AsSpan(sizeof(int)));
+        string contesto = $"paghe-gdpr:v1|{_tenant:D}|Cartellini|{id:D}|GiornateProtette";
+        string cifrato = _protettore.ProteggiConContesto(
+            Convert.ToBase64String(payload), contesto)!;
+
+        await using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "UPDATE Cartellini SET GiornateProtette = $payload WHERE Id = $id";
+        cmd.Parameters.AddWithValue("$payload", cifrato);
+        cmd.Parameters.AddWithValue("$id", id);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     [Fact]
     public async Task IlCalendarioTornaIdenticoDopoIlSalvataggio()
     {
@@ -86,6 +124,12 @@ public sealed class CalendarioProtettoTests : IDisposable
         Assert.Equal(8m, riletto.Giornate[0].OreOrdinarie);
         Assert.Equal(2m, riletto.Giornate[0].OreStraordinario);
         Assert.Equal(CausaleGiornata.Malattia, riletto.Giornate[1].Causale);
+        Assert.Equal(10m, riletto.Giornate[1].ProgressivoOreSettimanali);
+        Assert.Equal("MAL-PROT-2026-001", riletto.Giornate[1].IdentificativoEvento);
+        Assert.Equal(new DateOnly(2026, 4, 2), riletto.Giornate[1].DataInizioEvento);
+        Assert.Equal(77.5058m, riletto.Giornate[1].RetribuzioneMediaGiornalieraPrecedente);
+        Assert.Equal(6.25m, riletto.Giornate[1].RateiGiornalieri);
+        Assert.Equal(1.1234m, riletto.Giornate[1].CoefficienteLordizzazione);
         Assert.Equal(4m, riletto.Giornate[2].OrePermessi);
     }
 
@@ -99,6 +143,7 @@ public sealed class CalendarioProtettoTests : IDisposable
         Assert.StartsWith(_protettore.PrefissoChiaveCorrente, grezzo);
         Assert.DoesNotContain("Malattia", grezzo, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Lavorata", grezzo, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("MAL-PROT-2026-001", grezzo, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -134,9 +179,66 @@ public sealed class CalendarioProtettoTests : IDisposable
             molti.Add(new GiornataCartellino
             {
                 Data = new DateOnly(2026, 4, g), Causale = CausaleGiornata.Malattia,
+                ProgressivoOreSettimanali = 40m,
+                IdentificativoEvento = new string('P', 100),
+                DataInizioEvento = new DateOnly(2026, 4, 2),
+                RetribuzioneMediaGiornalieraPrecedente = 77.5058m,
+                RateiGiornalieri = 6.25m,
+                CoefficienteLordizzazione = 1.1234m,
             });
         var tanti = await ColonnaGrezzaAsync(await SalvaCartellinoAsync(molti));
 
         Assert.Equal(pochi.Length, tanti.Length);
+    }
+
+    [Fact]
+    public async Task IlPayloadContieneTrentunoGiorniConMetadatiUnicodeAlLimite()
+    {
+        string protocollo = new('\u263A', 100);
+        var giornate = Enumerable.Range(1, 31).Select(giorno => new GiornataCartellino
+        {
+            Data = new DateOnly(2026, 5, giorno),
+            Causale = CausaleGiornata.Malattia,
+            ProgressivoOreSettimanali = 0m,
+            IdentificativoEvento = protocollo,
+            DataInizioEvento = new DateOnly(2026, 5, 1),
+            RetribuzioneMediaGiornalieraPrecedente = 77.5058m,
+            RateiGiornalieri = 6.25m,
+            CoefficienteLordizzazione = 1.1234m,
+        }).ToArray();
+
+        var id = await SalvaCartellinoAsync(giornate, anno: 2026, mese: 5);
+
+        await using var db = NuovoContesto();
+        var riletto = await db.Cartellini.SingleAsync(c => c.Id == id);
+        Assert.Equal(31, riletto.Giornate.Count);
+        Assert.Equal(protocollo, riletto.Giornate[^1].IdentificativoEvento);
+    }
+
+    [Fact]
+    public async Task PayloadLegacySenzaNuoviCampi_RestaLeggibileConDefaultNull()
+    {
+        var id = await SalvaCartellinoAsync([]);
+        await SovrascriviConPayloadLegacyAsync(id, "Lavorata");
+
+        await using var db = NuovoContesto();
+        var riletto = await db.Cartellini.SingleAsync(c => c.Id == id);
+        var giornata = Assert.Single(riletto.Giornate);
+        Assert.Equal(8m, giornata.OreOrdinarie);
+        Assert.Null(giornata.ProgressivoOreSettimanali);
+        Assert.Null(giornata.IdentificativoEvento);
+    }
+
+    [Fact]
+    public async Task PayloadConCausaleSconosciuta_FallisceChiuso()
+    {
+        var id = await SalvaCartellinoAsync([]);
+        await SovrascriviConPayloadLegacyAsync(id, "CausaleFuturaNonSupportata");
+
+        await using var db = NuovoContesto();
+        var errore = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => db.Cartellini.SingleAsync(c => c.Id == id));
+
+        Assert.Contains("causale non riconosciuta", errore.Message);
     }
 }

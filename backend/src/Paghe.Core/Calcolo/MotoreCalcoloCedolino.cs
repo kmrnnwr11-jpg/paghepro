@@ -7,10 +7,9 @@ namespace Paghe.Core.Calcolo;
 /// Motore di calcolo del cedolino: a partire dal rapporto di lavoro, dal cartellino
 /// presenze e dai parametri normativi, produce il cedolino completo (lordo → netto).
 ///
-/// Metodo IRPEF/addizionali (MVP): metodo presuntivo su base 12. L'imponibile del mese
-/// viene annualizzato (× 12), si calcola l'imposta annua e la si riporta al mese (/ 12).
-/// Il conguaglio di fine anno, le mensilità aggiuntive e la rateazione effettiva delle
-/// addizionali sono demandati a una fase successiva.
+/// L'IRPEF ordinaria resta una proiezione nelle simulazioni infrannuali; le addizionali,
+/// invece, sono applicate soltanto come rate di importi annuali gia determinati al conguaglio.
+/// Senza domicilio, progressivi e saldi annuali il percorso archiviabile si arresta.
 /// </summary>
 public sealed class MotoreCalcoloCedolino
 {
@@ -37,36 +36,68 @@ public sealed class MotoreCalcoloCedolino
             ? rapporto.PercentualePartTime / 100m
             : 1m;
 
-        decimal minimo = liv.MinimoTabellare;
+        // Il minimo tabellare è il conglobato: quando la tabella dichiara la contingenza
+        // (EDR storico incluso), paga base e contingenza vanno esposte come voci distinte.
+        decimal contingenza = liv.Contingenza;
+        decimal pagaBase = liv.MinimoTabellare - contingenza;
         decimal edr = liv.Edr;
-        decimal scatti = liv.ImportoScatto * rapporto.ScattiAnzianita;
+        // Terzo elemento della provincia dell'unità operativa (o nazionale): Terziario.
+        decimal terzoElemento = _ccnl.TerzoElemento(rapporto.ProvinciaLavoro);
+        int scattiMaturati = ScattiMaturati(rapporto, cartellino);
+        decimal scatti = liv.ImportoScatto * scattiMaturati;
         decimal superminimo = rapporto.Superminimo;
 
         // Paga oraria e giornaliera (su base full-time/part-time) per straordinari, permessi e assenze.
-        decimal retribuzioneMensileFullTime = minimo + edr + scatti + superminimo;
+        decimal retribuzioneMensileFullTime = liv.MinimoTabellare + edr + terzoElemento + scatti + superminimo;
         decimal retribuzioneMensileEffettiva = Arrotondamento.Euro(retribuzioneMensileFullTime * coeffPt);
         decimal pagaOraria = retribuzioneMensileFullTime / _regole.DivisoreOrario;
-        decimal pagaGiornaliera = Arrotondamento.Euro(
-            retribuzioneMensileEffettiva / _regole.DivisoreGiornaliero);
-        // RMG per indennità INPS (comprensiva dei ratei 13a e 14a su base 30esimi)
-        decimal rmgInps = Arrotondamento.Euro((retribuzioneMensileEffettiva * (rapporto.NumeroMensilita / 12m)) / 30m);
+        // Le tariffe restano alla precisione effettivamente usata nel prodotto. Arrotondarle a
+        // due decimali prima della moltiplicazione rende impossibile riconciliare quantita x
+        // tariffa con l'importo esposto (es. 2.015,15 / 168 = 11,9949...).
+        decimal pagaGiornaliera = retribuzioneMensileEffettiva / _regole.DivisoreGiornaliero;
+        cedolino.RetribuzioneFissa = retribuzioneMensileEffettiva;
+        cedolino.TariffaOraria = pagaOraria;
+        cedolino.TariffaGiornaliera = pagaGiornaliera;
 
         // ---- 2. Competenze ------------------------------------------------------------
-        AggiungiRiga(cedolino, "PAGA_BASE", "Minimo tabellare", TipoVoce.Competenza,
-            importo: Arrotondamento.Euro(minimo * coeffPt));
+        AggiungiRiga(cedolino, "PAGA_BASE", contingenza > 0m ? "Paga base" : "Minimo tabellare",
+            TipoVoce.Competenza, importo: Arrotondamento.Euro(pagaBase * coeffPt));
+
+        if (contingenza > 0m)
+            AggiungiRiga(cedolino, "CONTINGENZA", "Indennità di contingenza (EDR incluso)",
+                TipoVoce.Competenza, importo: Arrotondamento.Euro(contingenza * coeffPt));
 
         if (edr > 0m)
             AggiungiRiga(cedolino, "EDR", "Elemento distinto retribuzione", TipoVoce.Competenza,
                 importo: Arrotondamento.Euro(edr * coeffPt));
 
-        if (rapporto.ScattiAnzianita > 0)
-            AggiungiRiga(cedolino, "SCATTI", $"Scatti di anzianità ({rapporto.ScattiAnzianita})",
-                TipoVoce.Competenza, quantita: rapporto.ScattiAnzianita, @base: liv.ImportoScatto,
+        if (terzoElemento > 0m)
+            AggiungiRiga(cedolino, "TERZO_EL", "Terzo elemento", TipoVoce.Competenza,
+                importo: Arrotondamento.Euro(terzoElemento * coeffPt));
+
+        if (scattiMaturati > 0)
+            AggiungiRiga(cedolino, "SCATTI", $"Scatti di anzianità ({scattiMaturati})",
+                TipoVoce.Competenza, quantita: scattiMaturati, @base: liv.ImportoScatto,
                 importo: Arrotondamento.Euro(scatti * coeffPt));
 
         if (superminimo > 0m)
             AggiungiRiga(cedolino, "SUPERMIN", "Superminimo individuale", TipoVoce.Competenza,
                 importo: Arrotondamento.Euro(superminimo * coeffPt));
+
+        // Le mensilita aggiuntive sono documenti/elaborazioni separati. Non si sommano mai in
+        // automatico al cedolino ordinario: a luglio il percorso archiviabile richiede il
+        // riferimento della quattordicesima pagata il 1° luglio.
+        decimal retribuzioneFissaMese = retribuzioneMensileEffettiva;
+        decimal mensilitaAggiuntivaLorda = 0m;
+        if (_regole.MeseErogazioneQuattordicesima is int meseQuattordicesima
+            && cartellino.Mese == meseQuattordicesima && rapporto.NumeroMensilita >= 14)
+        {
+            AggiungiRiga(cedolino, "QUATTORDICESIMA_SEPARATA",
+                string.IsNullOrWhiteSpace(cartellino.RiferimentoQuattordicesimaSeparata)
+                    ? "Quattordicesima: prospetto separato da documentare"
+                    : $"Quattordicesima: prospetto separato {cartellino.RiferimentoQuattordicesimaSeparata}",
+                TipoVoce.Figurativa, importo: 0m);
+        }
 
         // Ferie e Permessi goduti (voci informative/giustificative)
         if (cartellino.GiorniFerie > 0m)
@@ -76,11 +107,12 @@ public sealed class MotoreCalcoloCedolino
         }
 
         decimal orePermessiTot = cartellino.OrePermessi + cartellino.OreExFestivita;
-        if (orePermessiTot > 0m)
-        {
-            AggiungiRiga(cedolino, "ROL", "Permessi ROL / Ex-festività goduti", TipoVoce.Competenza,
-                quantita: orePermessiTot, @base: pagaOraria, importo: 0m);
-        }
+        if (cartellino.OrePermessi > 0m)
+            AggiungiRiga(cedolino, "ROL", "Permessi ROL goduti", TipoVoce.Competenza,
+                quantita: cartellino.OrePermessi, @base: pagaOraria, importo: 0m);
+        if (cartellino.OreExFestivita > 0m)
+            AggiungiRiga(cedolino, "EX_FEST", "Ex festivita godute", TipoVoce.Competenza,
+                quantita: cartellino.OreExFestivita, @base: pagaOraria, importo: 0m);
 
         // Straordinari
         AggiungiStraordinario(cedolino, "STRAORD", "Lavoro straordinario",
@@ -98,7 +130,7 @@ public sealed class MotoreCalcoloCedolino
             decimal stornoMalattia = Arrotondamento.Euro(cartellino.GiorniMalattia * pagaGiornaliera);
             AggiungiRiga(cedolino, "MAL_STORNO", "Storno retribuzione per malattia", TipoVoce.Competenza,
                 quantita: cartellino.GiorniMalattia, @base: pagaGiornaliera, importo: -stornoMalattia);
-            CalcolaMalattia(cedolino, cartellino.GiorniMalattia, cartellino.NumeroEventoMalattiaAnno, pagaGiornaliera, rmgInps);
+            CalcolaMalattia(cedolino, cartellino, pagaGiornaliera);
         }
 
         // Infortunio INAIL + Integrazione Datore
@@ -109,7 +141,7 @@ public sealed class MotoreCalcoloCedolino
             decimal stornoInfortunio = Arrotondamento.Euro(cartellino.GiorniInfortunio * pagaGiornaliera);
             AggiungiRiga(cedolino, "INF_STORNO", "Storno retribuzione per infortunio", TipoVoce.Competenza,
                 quantita: cartellino.GiorniInfortunio, @base: pagaGiornaliera, importo: -stornoInfortunio);
-            CalcolaInfortunio(cedolino, cartellino.GiorniInfortunio, pagaGiornaliera);
+            CalcolaInfortunio(cedolino, cartellino, pagaGiornaliera);
         }
 
         // Assenze non retribuite: decurtano il lordo.
@@ -139,15 +171,30 @@ public sealed class MotoreCalcoloCedolino
         // ---- 3. Contributi previdenziali ---------------------------------------------
         // Le somme esenti sono escluse dalla base contributiva; il premio di risultato NO:
         // l'agevolazione sostituisce la sola IRPEF, i contributi restano dovuti per intero.
-        decimal imponibileInps = totaleCompetenze - agevolati.TotaleEsenti - assegniFamiliari;
+        // Prestazioni anticipate per conto INPS/INAIL: sono competenze fiscali ma non formano
+        // imponibile contributivo e sono recuperabili dal datore. Restano righe distinte.
+        decimal prestazioniRecuperabili = cedolino.Righe
+            .Where(r => r.Tipo == TipoVoce.Competenza
+                && (r.Codice.StartsWith("MAL_INPS", StringComparison.Ordinal)
+                    || r.Codice.StartsWith("INF_INAIL", StringComparison.Ordinal)))
+            .Sum(r => r.Importo);
+        decimal imponibileInps = totaleCompetenze - agevolati.TotaleEsenti - assegniFamiliari
+            - prestazioniRecuperabili;
         var aliquotaBase = _parametri.AliquotaInps(rapporto.Qualifica);
-        // Quota c/dipendente effettiva: base + 0,30% CIG (>15 dip) + fondi di settore (FIS, FSBS...).
-        var quotaDip = CalcoloContributi.QuotaInpsDipendente(
-            aliquotaBase.Dipendente, rapporto.AziendaOltre15Dipendenti, rapporto.ContributiFondiSettore);
-        var aliquota = aliquotaBase with { Dipendente = quotaDip };
+        // Nel percorso archiviabile entrambe le quote arrivano dal profilo contributivo reale
+        // risolto con CSC, CA, organico, FIS e agevolazioni. Il riferimento per qualifica resta
+        // disponibile soltanto alle simulazioni legacy, mai come scorciatoia per una chiusura.
+        var quotaDip = rapporto.AliquotaInpsDipendenteProfilo
+            ?? CalcoloContributi.QuotaInpsDipendente(
+                aliquotaBase.Dipendente, rapporto.AziendaOltre15Dipendenti,
+                rapporto.ContributiFondiSettore);
+        // Quota c/datore: il profilo contributivo dell'azienda (CSC, autorizzazioni, dimensione)
+        // vince sulla tabella per qualifica, che resta un riferimento non certificato.
+        var quotaDatore = rapporto.AliquotaInpsDatoreProfilo ?? aliquotaBase.Datore;
+        var aliquota = aliquotaBase with { Dipendente = quotaDip, Datore = quotaDatore };
         var (contributiDip, contributiDatore) = CalcoloContributi.Calcola(imponibileInps, aliquota);
 
-        AggiungiRiga(cedolino, "INPS_DIP", $"Contributi INPS c/dipendente ({aliquota.Dipendente:P2})",
+        AggiungiRiga(cedolino, "INPS_DIP", $"Contributi INPS c/dipendente ({Percentuale(aliquota.Dipendente)})",
             TipoVoce.Trattenuta, @base: imponibileInps, importo: -contributiDip);
 
         // ---- 4. IRPEF -----------------------------------------------------------------
@@ -157,30 +204,98 @@ public sealed class MotoreCalcoloCedolino
             agevolati.PremioAgevolato * aliquota.Dipendente);
         decimal premioNettoContributi = agevolati.PremioAgevolato - contributiSuPremio;
 
-        decimal imponibileIrpefMese = imponibileInps - contributiDip - premioNettoContributi;
-        decimal redditoAnnuoPresunto = imponibileIrpefMese * 12m;
+        decimal imponibileIrpefMese = imponibileInps + prestazioniRecuperabili
+            - contributiDip - premioNettoContributi;
 
-        decimal irpefLordaAnnua = CalcoloIrpef.IrpefLordaAnnua(redditoAnnuoPresunto, _parametri.ScaglioniIrpef);
+        // Le mensilità aggiuntive si tassano a parte (art. 23 c.2 DPR 600/73): scaglioni
+        // ragguagliati a mese, senza detrazioni. La parte ordinaria segue il metodo di sempre,
+        // verificato al centesimo su 26 buste reali di 5 gestionali.
+        decimal aggiuntivaNettaContributi = Arrotondamento.Euro(
+            mensilitaAggiuntivaLorda * (1m - aliquota.Dipendente));
+        decimal imponibileOrdinarioMese = imponibileIrpefMese - aggiuntivaNettaContributi;
+
+        // Reddito annuo presunto per detrazioni e addizionali: 12 mensilità ordinarie più le
+        // mensilità aggiuntive del contratto. Proiettare su 12 un contratto a 14 mensilità
+        // gonfia la detrazione (revisione consulente 24/08/2026).
+        decimal redditoAnnuoPresunto = imponibileOrdinarioMese * 12m
+            + Arrotondamento.Euro(retribuzioneFissaMese * (1m - aliquota.Dipendente))
+                * Math.Max(0, rapporto.NumeroMensilita - 12);
+
+        decimal irpefLordaAnnua = CalcoloIrpef.IrpefLordaAnnua(
+            imponibileOrdinarioMese * 12m, _parametri.ScaglioniIrpef);
         decimal irpefLordaMese = Arrotondamento.Euro(irpefLordaAnnua / 12m);
-
-        decimal detrazioneAnnua = rapporto.DetrazioniLavoroDipendente
-            ? CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(redditoAnnuoPresunto, rapporto.GiorniDetrazioneAnno)
+        decimal irpefMensilitaAggiuntiva = aggiuntivaNettaContributi > 0m
+            ? Arrotondamento.Euro(CalcoloIrpef.IrpefLordaAnnua(
+                aggiuntivaNettaContributi * 12m, _parametri.ScaglioniIrpef) / 12m)
             : 0m;
-        decimal detrazioneMese = Arrotondamento.Euro(detrazioneAnnua / 12m);
 
-        decimal irpefNetta = Math.Max(0m, irpefLordaMese - detrazioneMese);
+        // Detrazione art. 13 e ulteriore detrazione cuneo (L. 207/2024) restano DISTINTE:
+        // nel quadro fiscale hanno caselle diverse e sommarle nella stessa casella è un
+        // errore di esposizione (revisione consulente 25/08/2026).
+        decimal detrazioneLavoroAnnua = 0m, cuneoAnnua = 0m;
+        if (rapporto.DetrazioniLavoroDipendente)
+        {
+            detrazioneLavoroAnnua = CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(
+                redditoAnnuoPresunto, rapporto.GiorniDetrazioneAnno);
+            cuneoAnnua = CalcoloIrpef.UlterioreDetrazioneCuneoAnnua(
+                redditoAnnuoPresunto, rapporto.GiorniDetrazioneAnno,
+                _parametri.CuneoUlterioreDetrazioneAnnua, _parametri.CuneoRedditoOltre,
+                _parametri.CuneoRedditoFinoA, _parametri.CuneoRedditoAzzeramento);
+        }
+        decimal detrazioneMese = Arrotondamento.Euro(detrazioneLavoroAnnua / 12m);
+        decimal cuneoMese = Arrotondamento.Euro(cuneoAnnua / 12m);
+
+        decimal irpefNetta = Math.Max(0m, irpefLordaMese - detrazioneMese - cuneoMese)
+            + irpefMensilitaAggiuntiva;
         AggiungiRiga(cedolino, "IRPEF", "IRPEF netta del mese", TipoVoce.Trattenuta,
             @base: imponibileIrpefMese, importo: -irpefNetta);
+        irpefLordaMese += irpefMensilitaAggiuntiva;
 
-        // ---- 5. Addizionali regionale e comunale (a scaglioni + esenzione, dati MEF) --
-        // Metodo presuntivo mensile: addizionale annua dovuta sul reddito annuo presunto, /12.
-        var regimeReg = _parametri.RegimeRegionale(rapporto.Regione);
-        var regimeCom = _parametri.RegimeComunale(rapporto.CodiceCatastaleComune);
+        // ---- 5. Addizionali regionale e comunale ---------------------------------------
+        // Le addizionali sono esclusivamente rate di importi determinati al conguaglio annuale
+        // in base al domicilio fiscale. Mai applicare un'aliquota direttamente al singolo mese.
 
-        decimal addRegMese = Arrotondamento.Euro(
-            CalcoloAddizionali.Dovuta(redditoAnnuoPresunto, regimeReg) / 12m);
-        decimal addComMese = Arrotondamento.Euro(
-            CalcoloAddizionali.Dovuta(redditoAnnuoPresunto, regimeCom) / 12m);
+        decimal addRegMese, addComMese;
+        if (rapporto.AddizionaleRegionaleConguaglioAnnuo is decimal regionaleAnnua)
+        {
+            addRegMese = RataAddizionale(regionaleAnnua, cartellino.Mese, primaRata: 1, rate: 11);
+            if (addRegMese > 0m)
+                AggiungiRiga(cedolino, "ADD_REG",
+                    $"Addizionale regionale {cartellino.Anno - 1} — rata {cartellino.Mese} di 11",
+                    TipoVoce.Trattenuta, importo: -addRegMese);
+        }
+        else
+        {
+            addRegMese = 0m;
+            AggiungiRiga(cedolino, "ADD_REG_MANCANTE",
+                "Addizionale regionale: manca il conguaglio annuale, calcolo definitivo bloccato",
+                TipoVoce.Figurativa, importo: 0m);
+        }
+
+        if (rapporto.AddizionaleComunaleSaldoAnnuo is not null
+            || rapporto.AddizionaleComunaleAccontoAnnuo is not null)
+        {
+            decimal saldo = RataAddizionale(
+                rapporto.AddizionaleComunaleSaldoAnnuo ?? 0m, cartellino.Mese, primaRata: 1, rate: 11);
+            decimal acconto = RataAddizionale(
+                rapporto.AddizionaleComunaleAccontoAnnuo ?? 0m, cartellino.Mese, primaRata: 3, rate: 9);
+            if (saldo > 0m)
+                AggiungiRiga(cedolino, "ADD_COM",
+                    $"Addizionale comunale {cartellino.Anno - 1} (saldo) — rata {cartellino.Mese} di 11",
+                    TipoVoce.Trattenuta, importo: -saldo);
+            if (acconto > 0m)
+                AggiungiRiga(cedolino, "ADD_COM_ACC",
+                    $"Addizionale comunale {cartellino.Anno} (acconto 30%) — rata {cartellino.Mese - 2} di 9",
+                    TipoVoce.Trattenuta, importo: -acconto);
+            addComMese = saldo + acconto;
+        }
+        else
+        {
+            addComMese = 0m;
+            AggiungiRiga(cedolino, "ADD_COM_MANCANTE",
+                "Addizionale comunale: mancano saldo/acconto da conguaglio, calcolo definitivo bloccato",
+                TipoVoce.Figurativa, importo: 0m);
+        }
 
         // Imposta sostitutiva sul premio di risultato (in luogo di IRPEF e addizionali).
         decimal impostaSostitutivaPremio = Arrotondamento.Euro(
@@ -190,22 +305,82 @@ public sealed class MotoreCalcoloCedolino
                 $"Imposta sostitutiva premio di risultato ({_parametri.PremioRisultatoAliquota:P0})",
                 TipoVoce.Trattenuta, @base: premioNettoContributi, importo: -impostaSostitutivaPremio);
 
-        if (addRegMese > 0m)
-            AggiungiRiga(cedolino, "ADD_REG", "Addizionale regionale",
-                TipoVoce.Trattenuta, importo: -addRegMese);
-        if (addComMese > 0m)
-            AggiungiRiga(cedolino, "ADD_COM", "Addizionale comunale",
-                TipoVoce.Trattenuta, importo: -addComMese);
+        // ---- 5-bis. Fondi contrattuali (assistenza sanitaria ed ente bilaterale) -------
+        // Quote previste dal CCNL (Terziario: Fondo Est 2 € lavoratore + 13 € azienda dal
+        // 01/04/2025; EBiTer 0,05% + 0,10% su paga base e contingenza, mensilità aggiuntive
+        // comprese). Le quote lavoratore sono trattenute dal netto senza toccare gli
+        // imponibili (semplificazione dichiarata); il contributo di solidarietà 10% sui
+        // versamenti datoriali resta un punto aperto.
+        decimal baseEnteBilaterale = 0m;
+        if (rapporto.AderisceFondiContrattuali
+            && (_regole.EnteBilateraleAliquotaLavoratore is not null
+                || _regole.EnteBilateraleAliquotaDatore is not null))
+        {
+            decimal basePagaContingenza = Arrotondamento.Euro((pagaBase + contingenza) * coeffPt);
+            baseEnteBilaterale = basePagaContingenza;
+            if (mensilitaAggiuntivaLorda > 0m && retribuzioneFissaMese > 0m)
+                baseEnteBilaterale += Arrotondamento.Euro(
+                    basePagaContingenza * mensilitaAggiuntivaLorda / retribuzioneFissaMese);
+        }
+
+        decimal fondoSanitarioLavoratore = rapporto.AderisceFondiContrattuali
+            ? _regole.AssistenzaSanitariaLavoratoreMese ?? 0m
+            : 0m;
+        if (fondoSanitarioLavoratore > 0m)
+            AggiungiRiga(cedolino, "FONDO_SAN", "Fondo assistenza sanitaria CCNL (quota lavoratore)",
+                TipoVoce.Trattenuta, importo: -fondoSanitarioLavoratore);
+
+        decimal enteBilateraleLavoratore = Arrotondamento.Euro(
+            baseEnteBilaterale * (_regole.EnteBilateraleAliquotaLavoratore ?? 0m));
+        if (enteBilateraleLavoratore > 0m)
+            AggiungiRiga(cedolino, "ENTE_BIL",
+                $"Ente bilaterale — quota lavoratore ({Percentuale(_regole.EnteBilateraleAliquotaLavoratore!.Value)})",
+                TipoVoce.Trattenuta, @base: baseEnteBilaterale, importo: -enteBilateraleLavoratore);
+
+        decimal fondoSanitarioDatore = rapporto.AderisceFondiContrattuali
+            ? _regole.AssistenzaSanitariaDatoreMese ?? 0m
+            : 0m;
+        decimal enteBilateraleDatore = Arrotondamento.Euro(
+            baseEnteBilaterale * (_regole.EnteBilateraleAliquotaDatore ?? 0m));
+
+        // Contributo di solidarietà (art. 9-bis L. 166/1991) sui versamenti datoriali al fondo
+        // di assistenza sanitaria; l'ente bilaterale non vi è soggetto.
+        decimal solidarietaFondi = Arrotondamento.Euro(
+            fondoSanitarioDatore * _parametri.SolidarietaFondiAliquota);
 
         // ---- 6. TFR (figurativo) ------------------------------------------------------
-        decimal retribuzioneUtileTfr = Arrotondamento.Euro(retribuzioneMensileFullTime * coeffPt);
-        decimal quotaTfr = CalcoloTfr.QuotaMensile(
-            retribuzioneUtileTfr, rapporto.NumeroMensilita, _parametri.TfrDivisore, _parametri.TfrContributoFondo);
-        AggiungiRiga(cedolino, "TFR", "Quota TFR del mese", TipoVoce.Figurativa, importo: quotaTfr);
+        var componentiTfr = cedolino.Righe
+            .Where(r => r.Tipo == TipoVoce.Competenza
+                && r.Codice is "PAGA_BASE" or "CONTINGENZA" or "EDR" or "TERZO_EL"
+                    or "SCATTI" or "SUPERMIN")
+            .ToList();
+        decimal quotaTfr = 0m;
+        foreach (var componente in componentiTfr)
+        {
+            decimal quota = CalcoloTfr.QuotaMensile(
+                componente.Importo, rapporto.NumeroMensilita,
+                _parametri.TfrDivisore, _parametri.TfrContributoFondo);
+            quotaTfr += quota;
+            AggiungiRiga(cedolino, $"TFR_{componente.Codice}",
+                $"Quota TFR su {componente.Descrizione} (ratei inclusi)",
+                TipoVoce.Figurativa, @base: componente.Importo, importo: quota);
+        }
+        quotaTfr = Arrotondamento.Euro(quotaTfr);
 
-        // Contributi c/datore (figurativi, ai fini del costo aziendale).
-        AggiungiRiga(cedolino, "INPS_DATORE", $"Contributi INPS c/datore ({aliquota.Datore:P2})",
+        // Contributi e fondi c/datore (figurativi, ai fini del costo aziendale).
+        AggiungiRiga(cedolino, "INPS_DATORE", $"Contributi INPS c/datore ({Percentuale(aliquota.Datore)})",
             TipoVoce.Figurativa, @base: imponibileInps, importo: contributiDatore);
+        if (fondoSanitarioDatore > 0m)
+            AggiungiRiga(cedolino, "FONDO_SAN_DATORE", "Fondo assistenza sanitaria CCNL c/azienda",
+                TipoVoce.Figurativa, importo: fondoSanitarioDatore);
+        if (enteBilateraleDatore > 0m)
+            AggiungiRiga(cedolino, "ENTE_BIL_DATORE",
+                $"Ente bilaterale c/azienda ({Percentuale(_regole.EnteBilateraleAliquotaDatore!.Value)})",
+                TipoVoce.Figurativa, @base: baseEnteBilaterale, importo: enteBilateraleDatore);
+        if (solidarietaFondi > 0m)
+            AggiungiRiga(cedolino, "SOLIDARIETA_FONDI",
+                $"Contributo di solidarietà su fondi sanitari c/azienda ({Percentuale(_parametri.SolidarietaFondiAliquota)})",
+                TipoVoce.Figurativa, @base: fondoSanitarioDatore, importo: solidarietaFondi);
 
         // ---- 7. Totali e Saldi Ferie/Permessi ----------------------------------------
         decimal totaleTrattenute = SommaTrattenute(cedolino);
@@ -218,6 +393,7 @@ public sealed class MotoreCalcoloCedolino
         cedolino.ImponibileIrpef = imponibileIrpefMese;
         cedolino.IrpefLorda = irpefLordaMese;
         cedolino.DetrazioniLavoroDipendente = detrazioneMese;
+        cedolino.UlterioreDetrazioneCuneo = cuneoMese;
         cedolino.IrpefNetta = irpefNetta;
         cedolino.AddizionaleRegionale = addRegMese;
         cedolino.AddizionaleComunale = addComMese;
@@ -226,8 +402,31 @@ public sealed class MotoreCalcoloCedolino
         cedolino.PremioRisultatoAgevolato = agevolati.PremioAgevolato;
         cedolino.ImpostaSostitutivaPremio = impostaSostitutivaPremio;
         cedolino.QuotaTfr = quotaTfr;
+        cedolino.PrestazioniRecuperabili = prestazioniRecuperabili;
+        if (prestazioniRecuperabili > 0m)
+            AggiungiRiga(cedolino, "PREST_RECUPERABILI",
+                "Prestazioni INPS/INAIL anticipate recuperabili (riduzione costo)",
+                TipoVoce.Figurativa, importo: -prestazioniRecuperabili);
         cedolino.CostoAzienda = Arrotondamento.Euro(
-            totaleCompetenze - assegniFamiliari + contributiDatore + quotaTfr);
+            totaleCompetenze - assegniFamiliari - prestazioniRecuperabili
+            + contributiDatore + quotaTfr
+            + fondoSanitarioDatore + enteBilateraleDatore + solidarietaFondi);
+
+        // Costo medio mensile annualizzato: la retribuzione contrattuale annua (mensilità
+        // aggiuntive comprese) con contributi c/datore, TFR e fondi contrattuali, divisa
+        // per 12. Il costo del singolo mese qui sopra non contiene i ratei di 13ª/14ª: sono
+        // due numeri diversi e vanno esposti entrambi (revisione consulente 24/08/2026).
+        // Entrambi restano PARZIALI, dichiarati: mancano INAIL e solidarietà sui fondi.
+        decimal retribuzioneAnnuaContrattuale = retribuzioneFissaMese * rapporto.NumeroMensilita;
+        decimal tfrAnnuoNetto = retribuzioneAnnuaContrattuale / _parametri.TfrDivisore
+            - retribuzioneAnnuaContrattuale * _parametri.TfrContributoFondo;
+        decimal fondiDatoreAnnui = (fondoSanitarioDatore + solidarietaFondi) * 12m
+            + (rapporto.AderisceFondiContrattuali
+                ? Arrotondamento.Euro((pagaBase + contingenza) * coeffPt)
+                    * (_regole.EnteBilateraleAliquotaDatore ?? 0m) * rapporto.NumeroMensilita
+                : 0m);
+        cedolino.CostoMedioAnnualizzato = Arrotondamento.Euro(
+            (retribuzioneAnnuaContrattuale * (1m + aliquota.Datore) + tfrAnnuoNetto + fondiDatoreAnnui) / 12m);
 
         // Saldi Ferie: quanti giorni al mese lo dice il contratto (regole del CCNL).
         // Il residuo può andare sotto zero (ferie anticipate): è un'informazione vera,
@@ -238,14 +437,157 @@ public sealed class MotoreCalcoloCedolino
         cedolino.FerieGodute = ferieGodute;
         cedolino.FerieResidue = ferieMaturate - ferieGodute;
 
-        // Saldi Permessi ROL/Ex-Festività: le ore al mese le dice il contratto.
-        decimal permessiMaturati = Arrotondamento.Euro(_regole.OrePermessiMese * cartellino.Mese * coeffPt);
-        decimal permessiGoduti = orePermessiTot;
-        cedolino.PermessiMaturati = permessiMaturati;
-        cedolino.PermessiGoduti = permessiGoduti;
-        cedolino.PermessiResidui = permessiMaturati - permessiGoduti;
+        CalcolaSaldiRolEdExFestivita(cedolino, rapporto, cartellino, coeffPt);
 
         return cedolino;
+    }
+
+    /// <summary>
+    /// Scatti maturati alla data della busta. Se il contratto dichiara la periodicità e la data
+    /// di assunzione è nota, il conteggio è automatico: lo scatto n-esimo decorre dal primo
+    /// giorno del mese successivo a quello nel quale si compie il periodo: assunto il
+    /// 01/09/2022, primo triennio il 01/09/2025, scatto in paga dal 01/10/2025.
+    /// Altrimenti vale il numero indicato a mano sul rapporto.
+    /// </summary>
+    private int ScattiMaturati(RapportoLavoro rapporto, Cartellino cartellino)
+    {
+        if (_regole.ScattiOgniMesi is not int ogniMesi || ogniMesi <= 0
+            || rapporto.DataAssunzione is not DateOnly assunzione)
+            return rapporto.ScattiAnzianita;
+
+        var primoDelMese = new DateOnly(cartellino.Anno, cartellino.Mese, 1);
+        int scatti = 0;
+        DateOnly Decorrenza(int numero)
+        {
+            var maturazione = assunzione.AddMonths(ogniMesi * numero);
+            return new DateOnly(maturazione.Year, maturazione.Month, 1).AddMonths(1);
+        }
+        while (Decorrenza(scatti + 1) <= primoDelMese)
+            scatti++;
+        return _regole.ScattiMassimo is int massimo && scatti > massimo ? massimo : scatti;
+    }
+
+    /// <summary>
+    /// Aggiunge la voce di una mensilità aggiuntiva maturata per dodicesimi dall'inizio della
+    /// finestra di competenza (o dall'assunzione, se successiva; la frazione di mese di almeno
+    /// 15 giorni conta come mese intero). Restituisce l'importo lordo erogato.
+    /// </summary>
+    private static decimal AggiungiMensilitaAggiuntiva(
+        Cedolino cedolino, string codice, string descrizione,
+        decimal retribuzioneFissaMese, DateOnly? assunzione, DateOnly inizioFinestra)
+    {
+        int mesi = 12;
+        if (assunzione is DateOnly a && a > inizioFinestra)
+        {
+            var fineFinestra = inizioFinestra.AddMonths(11);
+            if (a > fineFinestra.AddDays(DateTime.DaysInMonth(fineFinestra.Year, fineFinestra.Month) - 1))
+                return 0m;
+            mesi = (fineFinestra.Year - a.Year) * 12 + fineFinestra.Month - a.Month;
+            if (a.Day <= 15)
+                mesi += 1;
+            mesi = Math.Clamp(mesi, 0, 12);
+        }
+        if (mesi <= 0)
+            return 0m;
+
+        decimal importo = Arrotondamento.Euro(retribuzioneFissaMese * mesi / 12m);
+        // Niente «12 × 169,76 = 2.037,10»: la base arrotondata al centesimo non riproduce
+        // l'importo (12 × 169,76 = 2.037,12). Si stampa la mensilità intera; nel pro-rata la
+        // frazione sta nella descrizione e nella quantità, senza base arrotondata.
+        AggiungiRiga(cedolino, codice, mesi == 12 ? descrizione : $"{descrizione} ({mesi}/12)",
+            TipoVoce.Competenza, quantita: mesi == 12 ? null : mesi, importo: importo);
+        return importo;
+    }
+
+    /// <summary>
+    /// Rata del mese di un'addizionale da conguaglio: importo annuo diviso per il numero di
+    /// rate a partire da <paramref name="primaRata"/>; l'ultima rata recupera gli
+    /// arrotondamenti anticipati. Zero nei mesi fuori dal piano (dicembre resta libero).
+    /// </summary>
+    private static decimal RataAddizionale(decimal importoAnnuo, int mese, int primaRata, int rate)
+    {
+        if (importoAnnuo <= 0m || mese < primaRata || mese >= primaRata + rate)
+            return 0m;
+        decimal rata = Arrotondamento.Euro(importoAnnuo / rate);
+        return mese == primaRata + rate - 1
+            ? Arrotondamento.Euro(importoAnnuo - rata * (rate - 1))
+            : rata;
+    }
+
+    /// <summary>
+    /// Aliquota in forma leggibile con tutti i decimali significativi (fino a 4): la stampa a
+    /// due decimali di un'aliquota a quattro (9,36% per 9,3567%) non riproduce il calcolo
+    /// (revisione consulente 25/08/2026).
+    /// </summary>
+    private static string Percentuale(decimal aliquota) =>
+        (aliquota * 100m).ToString("0.00##") + "%";
+
+    private void CalcolaSaldiRolEdExFestivita(
+        Cedolino cedolino, RapportoLavoro rapporto, Cartellino cartellino, decimal coeffPt)
+    {
+        if (_regole.OreRolAnno is decimal rolAnno
+            && _regole.OreExFestivitaAnno is decimal exFestAnno)
+        {
+            decimal monteRol = rapporto.AziendaOltre15Dipendenti
+                && _regole.OreRolAnnoOltre15 is decimal oltre15 ? oltre15 : rolAnno;
+            decimal maturatoRol = 0m;
+            decimal maturatoExFest = 0m;
+            for (int mese = 1; mese <= cartellino.Mese; mese++)
+            {
+                var fineMese = new DateOnly(
+                    cartellino.Anno, mese, DateTime.DaysInMonth(cartellino.Anno, mese));
+                decimal fattoreRol = FattoreMaturazioneRol(rapporto.DataAssunzione, fineMese);
+                maturatoRol += monteRol / 12m * fattoreRol * coeffPt;
+                maturatoExFest += exFestAnno / 12m * coeffPt;
+            }
+
+            cedolino.RolSaldoPrecedente = rapporto.RolResiduiIniziali ?? 0m;
+            cedolino.RolMaturati = Arrotondamento.Euro(maturatoRol);
+            cedolino.RolGoduti = cartellino.OrePermessi;
+            cedolino.RolResidui = cedolino.RolSaldoPrecedente
+                + cedolino.RolMaturati - cedolino.RolGoduti;
+
+            cedolino.ExFestivitaSaldoPrecedente = rapporto.ExFestivitaResidueIniziali ?? 0m;
+            cedolino.ExFestivitaMaturate = Arrotondamento.Euro(maturatoExFest);
+            cedolino.ExFestivitaGodute = cartellino.OreExFestivita;
+            cedolino.ExFestivitaResidue = cedolino.ExFestivitaSaldoPrecedente
+                + cedolino.ExFestivitaMaturate - cedolino.ExFestivitaGodute;
+
+            // Totale storico mantenuto per compatibilita con API/report precedenti; la stampa
+            // nuova espone sempre le due famiglie distintamente.
+            cedolino.PermessiMaturati = cedolino.RolMaturati + cedolino.ExFestivitaMaturate;
+            cedolino.PermessiGoduti = cedolino.RolGoduti + cedolino.ExFestivitaGodute;
+            cedolino.PermessiResidui = cedolino.RolResidui + cedolino.ExFestivitaResidue;
+            return;
+        }
+
+        decimal orePermessiMese = rapporto.AziendaOltre15Dipendenti
+            && _regole.OrePermessiMeseOltre15 is decimal orePermessiOltre15
+            ? orePermessiOltre15
+            : _regole.OrePermessiMese;
+        cedolino.PermessiMaturati = Arrotondamento.Euro(
+            orePermessiMese * cartellino.Mese * coeffPt);
+        cedolino.PermessiGoduti = cartellino.OrePermessi + cartellino.OreExFestivita;
+        cedolino.PermessiResidui = cedolino.PermessiMaturati - cedolino.PermessiGoduti;
+    }
+
+    private decimal FattoreMaturazioneRol(DateOnly? assunzione, DateOnly fineMese)
+    {
+        if (assunzione is not DateOnly dataAssunzione)
+            return 1m;
+
+        int mesiAnzianita = (fineMese.Year - dataAssunzione.Year) * 12
+            + fineMese.Month - dataAssunzione.Month;
+        if (fineMese.Day >= dataAssunzione.Day)
+            mesiAnzianita++;
+
+        int senzaRol = _regole.MesiAnzianitaSenzaRol ?? 0;
+        if (mesiAnzianita <= senzaRol)
+            return 0m;
+        int ridotti = _regole.MesiAnzianitaRolRidotto ?? 0;
+        if (mesiAnzianita <= senzaRol + ridotti)
+            return _regole.PercentualeRolRidotta ?? 1m;
+        return 1m;
     }
 
     /// <summary>Esito del blocco agevolati: somme esenti e quota di premio a imposta sostitutiva.</summary>
@@ -342,100 +684,127 @@ public sealed class MotoreCalcoloCedolino
         return new EsitoAgevolati(esenti, premioAgevolato);
     }
 
-    private static void CalcolaMalattia(Cedolino cedolino, decimal giorniMalattia, int nEvento, decimal pagaGiornaliera, decimal rmgInps)
+    private static void CalcolaMalattia(
+        Cedolino cedolino, Cartellino cartellino, decimal pagaGiornaliera)
     {
-        // Percentuale integrazione carenza a carico azienda in base al numero di eventi nell'anno
-        decimal pctCarenzaDatore = nEvento switch
+        decimal baseRmg = (cartellino.RetribuzioneMediaGiornalieraPrecedente
+                ?? pagaGiornaliera)
+            + (cartellino.RateiGiornalieri ?? 0m);
+        decimal lordizzazione = cartellino.CoefficienteLordizzazione ?? 1m;
+        string evento = string.IsNullOrWhiteSpace(cartellino.IdentificativoEvento)
+            ? "evento non documentato"
+            : $"evento {cartellino.IdentificativoEvento}";
+
+        var giorni = GiorniEvento(
+            cartellino, CausaleGiornata.Malattia, cartellino.GiorniMalattia);
+        decimal pctCarenzaDatore = cartellino.NumeroEventoMalattiaAnno switch
         {
-            1 => 1.00m,
-            2 => 1.00m,
+            1 or 2 => 1m,
             3 => 0.66m,
             4 => 0.50m,
-            _ => 0.00m
+            _ => 0m,
         };
 
-        // Carenza (Giorni 1-3)
-        decimal giorniCarenza = Math.Min(giorniMalattia, 3m);
-        if (giorniCarenza > 0m && pctCarenzaDatore > 0m)
+        AggiungiFasciaEvento(cedolino, giorni.Where(g => g <= 3), "MAL_CARENZA",
+            $"Malattia {evento} - carenza azienda ({Percentuale(pctCarenzaDatore)})",
+            pagaGiornaliera * pctCarenzaDatore);
+
+        void Fascia(
+            IEnumerable<int> selezione,
+            string suffisso,
+            decimal percentualeInps,
+            decimal obiettivoCcnl)
         {
-            decimal importoCarenza = Arrotondamento.Euro(giorniCarenza * pagaGiornaliera * pctCarenzaDatore);
-            AggiungiRiga(cedolino, "MAL_CARENZA", $"Malattia - Carenza a carico azienda ({pctCarenzaDatore:P0})", TipoVoce.Competenza,
-                quantita: giorniCarenza, @base: pagaGiornaliera, importo: importoCarenza);
+            var lista = selezione.ToList();
+            if (lista.Count == 0) return;
+            decimal indennitaGiornaliera = baseRmg * percentualeInps;
+            decimal indennitaLordizzata = indennitaGiornaliera * lordizzazione;
+            decimal integrazioneGiornaliera = Math.Max(
+                0m, pagaGiornaliera * obiettivoCcnl - indennitaLordizzata);
+            AggiungiFasciaEvento(cedolino, lista, $"MAL_INPS{suffisso}",
+                $"Malattia {evento} - INPS {Percentuale(percentualeInps)}; "
+                + $"RMG precedente + ratei {baseRmg:0.0000}, lordizzazione {lordizzazione:0.0000}",
+                indennitaGiornaliera);
+            AggiungiFasciaEvento(cedolino, lista, $"MAL_INTEGR{suffisso}",
+                $"Malattia {evento} - integrazione azienda a {Percentuale(obiettivoCcnl)}",
+                integrazioneGiornaliera);
         }
 
-        // Giorni 4-20
-        decimal giorniFascia1 = Math.Min(Math.Max(0m, giorniMalattia - 3m), 17m);
-        if (giorniFascia1 > 0m)
-        {
-            decimal indennitaInpsF1 = Arrotondamento.Euro(giorniFascia1 * rmgInps * 0.50m);
-            decimal targetLordoF1 = giorniFascia1 * pagaGiornaliera * 0.75m * pctCarenzaDatore;
-            decimal integrazioneF1 = Math.Max(0m, Arrotondamento.Euro(targetLordoF1 - indennitaInpsF1));
-
-            AggiungiRiga(cedolino, "MAL_INPS", "Malattia - Indennità INPS (50%)", TipoVoce.Competenza,
-                quantita: giorniFascia1, @base: Arrotondamento.Euro(rmgInps * 0.50m), importo: indennitaInpsF1);
-
-            if (integrazioneF1 > 0m)
-            {
-                AggiungiRiga(cedolino, "MAL_INTEGR", "Malattia - Integrazione azienda (75%)", TipoVoce.Competenza,
-                    quantita: giorniFascia1, importo: integrazioneF1);
-            }
-        }
-
-        // Giorni 21+
-        decimal giorniFascia2 = Math.Max(0m, giorniMalattia - 20m);
-        if (giorniFascia2 > 0m)
-        {
-            decimal indennitaInpsF2 = Arrotondamento.Euro(giorniFascia2 * rmgInps * 0.6666m);
-            decimal targetLordoF2 = giorniFascia2 * pagaGiornaliera * 1.00m * pctCarenzaDatore;
-            decimal integrazioneF2 = Math.Max(0m, Arrotondamento.Euro(targetLordoF2 - indennitaInpsF2));
-
-            AggiungiRiga(cedolino, "MAL_INPS21", "Malattia - Indennità INPS (66,66%)", TipoVoce.Competenza,
-                quantita: giorniFascia2, @base: Arrotondamento.Euro(rmgInps * 0.6666m), importo: indennitaInpsF2);
-
-            if (integrazioneF2 > 0m)
-            {
-                AggiungiRiga(cedolino, "MAL_INTEGR21", "Malattia - Integrazione azienda (100%)", TipoVoce.Competenza,
-                    quantita: giorniFascia2, importo: integrazioneF2);
-            }
-        }
+        Fascia(giorni.Where(g => g is >= 4 and <= 20), "", 0.50m, 0.75m);
+        Fascia(giorni.Where(g => g >= 21), "21", 0.6666m, 1m);
     }
 
-    private static void CalcolaInfortunio(Cedolino cedolino, decimal giorniInfortunio, decimal pagaGiornaliera)
+    private static void CalcolaInfortunio(
+        Cedolino cedolino, Cartellino cartellino, decimal pagaGiornaliera)
     {
-        // Carenza (Giorni 1-3): a carico datore al 60%
-        decimal giorniCarenza = Math.Min(giorniInfortunio, 3m);
-        if (giorniCarenza > 0m)
+        decimal baseInail = (cartellino.RetribuzioneMediaGiornalieraPrecedente
+                ?? pagaGiornaliera)
+            + (cartellino.RateiGiornalieri ?? 0m);
+        string evento = string.IsNullOrWhiteSpace(cartellino.IdentificativoEvento)
+            ? "evento non documentato"
+            : $"evento {cartellino.IdentificativoEvento}";
+        var giorni = GiorniEvento(
+            cartellino, CausaleGiornata.Infortunio, cartellino.GiorniInfortunio);
+
+        // Il giorno dell'evento e retribuito al 100% dal datore; seguono esattamente tre
+        // giorni al 60%. L'INAIL interviene dal quarto giorno successivo all'evento (giorno 5).
+        AggiungiFasciaEvento(cedolino, giorni.Where(g => g == 1), "INF_EVENTO",
+            $"Infortunio {evento} - giorno dell'evento azienda 100%", pagaGiornaliera);
+        AggiungiFasciaEvento(cedolino, giorni.Where(g => g is >= 2 and <= 4), "INF_CARENZA",
+            $"Infortunio {evento} - tre giorni successivi azienda 60%",
+            pagaGiornaliera * 0.60m);
+
+        void Fascia(
+            IEnumerable<int> selezione,
+            string suffisso,
+            decimal percentualeInail,
+            decimal obiettivoCcnl)
         {
-            decimal importoCarenza = Arrotondamento.Euro(giorniCarenza * pagaGiornaliera * 0.60m);
-            AggiungiRiga(cedolino, "INF_CARENZA", "Infortunio INAIL - Carenza azienda (60%)", TipoVoce.Competenza,
-                quantita: giorniCarenza, @base: pagaGiornaliera, importo: importoCarenza);
+            var lista = selezione.ToList();
+            if (lista.Count == 0) return;
+            decimal inailGiornaliera = baseInail * percentualeInail;
+            decimal integrazioneGiornaliera = Math.Max(
+                0m, pagaGiornaliera * obiettivoCcnl - inailGiornaliera);
+            AggiungiFasciaEvento(cedolino, lista, $"INF_INAIL{suffisso}",
+                $"Infortunio {evento} - indennita INAIL {Percentuale(percentualeInail)}",
+                inailGiornaliera);
+            AggiungiFasciaEvento(cedolino, lista, $"INF_INTEGR{suffisso}",
+                $"Infortunio {evento} - integrazione azienda a {Percentuale(obiettivoCcnl)}",
+                integrazioneGiornaliera);
         }
 
-        // Giorni 4-90 (INAIL 60% + Integrazione datore 40%)
-        decimal giorniFascia1 = Math.Min(Math.Max(0m, giorniInfortunio - 3m), 87m);
-        if (giorniFascia1 > 0m)
-        {
-            decimal indennitaInailF1 = Arrotondamento.Euro(giorniFascia1 * pagaGiornaliera * 0.60m);
-            decimal integrazioneF1 = Arrotondamento.Euro(giorniFascia1 * pagaGiornaliera * 0.40m);
+        Fascia(giorni.Where(g => g is >= 5 and <= 20), "", 0.60m, 0.90m);
+        Fascia(giorni.Where(g => g is >= 21 and <= 90), "21", 0.60m, 1m);
+        Fascia(giorni.Where(g => g >= 91), "91", 0.75m, 1m);
+    }
 
-            AggiungiRiga(cedolino, "INF_INAIL", "Infortunio INAIL - Indennità (60%)", TipoVoce.Competenza,
-                quantita: giorniFascia1, @base: Arrotondamento.Euro(pagaGiornaliera * 0.60m), importo: indennitaInailF1);
-            AggiungiRiga(cedolino, "INF_INTEGR", "Infortunio INAIL - Integrazione azienda (40%)", TipoVoce.Competenza,
-                quantita: giorniFascia1, importo: integrazioneF1);
-        }
+    private static IReadOnlyList<int> GiorniEvento(
+        Cartellino cartellino, CausaleGiornata causale, decimal totaleLegacy)
+    {
+        var giornate = cartellino.Giornate
+            .Where(g => g.Causale == causale)
+            .OrderBy(g => g.Data)
+            .ToList();
+        if (giornate.Count > 0 && cartellino.DataInizioEvento is DateOnly inizio)
+            return giornate.Select(g => Math.Max(1, g.Data.DayNumber - inizio.DayNumber + 1)).ToList();
 
-        // Giorni 91+ (INAIL 75% + Integrazione datore 25%)
-        decimal giorniFascia2 = Math.Max(0m, giorniInfortunio - 90m);
-        if (giorniFascia2 > 0m)
-        {
-            decimal indennitaInailF2 = Arrotondamento.Euro(giorniFascia2 * pagaGiornaliera * 0.75m);
-            decimal integrazioneF2 = Arrotondamento.Euro(giorniFascia2 * pagaGiornaliera * 0.25m);
+        int totale = Math.Max(0, decimal.ToInt32(decimal.Truncate(totaleLegacy)));
+        return Enumerable.Range(1, totale).ToList();
+    }
 
-            AggiungiRiga(cedolino, "INF_INAIL91", "Infortunio INAIL - Indennità (75%)", TipoVoce.Competenza,
-                quantita: giorniFascia2, @base: Arrotondamento.Euro(pagaGiornaliera * 0.75m), importo: indennitaInailF2);
-            AggiungiRiga(cedolino, "INF_INTEGR91", "Infortunio INAIL - Integrazione azienda (25%)", TipoVoce.Competenza,
-                quantita: giorniFascia2, importo: integrazioneF2);
-        }
+    private static void AggiungiFasciaEvento(
+        Cedolino cedolino,
+        IEnumerable<int> giorniEvento,
+        string codice,
+        string descrizione,
+        decimal tariffaGiornaliera)
+    {
+        int quantita = giorniEvento.Count();
+        if (quantita == 0 || tariffaGiornaliera <= 0m)
+            return;
+        AggiungiRiga(cedolino, codice, descrizione, TipoVoce.Competenza,
+            quantita: quantita, @base: tariffaGiornaliera,
+            importo: Arrotondamento.Euro(quantita * tariffaGiornaliera));
     }
 
     private static void AggiungiStraordinario(
@@ -447,7 +816,7 @@ public sealed class MotoreCalcoloCedolino
         decimal pagaOrariaMagg = pagaOraria * (1m + maggiorazione);
         decimal importo = Arrotondamento.Euro(ore * pagaOrariaMagg);
         AggiungiRiga(cedolino, codice, $"{descrizione} (+{maggiorazione:P0})", TipoVoce.Competenza,
-            quantita: ore, @base: Arrotondamento.Euro(pagaOrariaMagg), importo: importo);
+            quantita: ore, @base: pagaOrariaMagg, importo: importo);
     }
 
     private static void AggiungiRiga(

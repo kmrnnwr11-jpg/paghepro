@@ -22,7 +22,7 @@ public sealed class AcubeGatewayTests
             });
 
         var risultato = await gateway.TrasmettiAsync(
-            new FatturaDaTrasmettere(Guid.NewGuid(), "IT01234567890_00001.xml", Encoding.UTF8.GetBytes("<xml/>"), Firmato: false));
+            new FatturaDaTrasmettere(Guid.NewGuid(), "IT01234567897_00001.xml", Encoding.UTF8.GetBytes("<xml/>"), Firmato: false));
 
         Assert.Equal(StatoTrasmissioneSdi.Inviata, risultato.Stato);
         Assert.Equal("u-1", risultato.IdentificativoSdi);

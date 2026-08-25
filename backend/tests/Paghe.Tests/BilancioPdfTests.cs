@@ -37,7 +37,7 @@ public sealed class BilancioPdfTests : IDisposable
         await using (var db = NuovoContesto())
             aziendaId = (await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
             {
-                RagioneSociale = "Alfa Srls", PartitaIva = "01234567890",
+                RagioneSociale = "Alfa Srls", PartitaIva = "01234567897",
                 Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             })).Id;
 
@@ -50,7 +50,7 @@ public sealed class BilancioPdfTests : IDisposable
         Assert.True(bilancio.Quadra);
 
         byte[] pdf = BilancioPdf.Genera(
-            bilancio, entity.Anno, "Alfa Srls", "01234567890", entity.Stato,
+            bilancio, entity.Anno, "Alfa Srls", "01234567897", entity.Stato,
             entity.Righe.Select(r => new RigaBilancioPdf(r.Codice, r.Descrizione, r.Voce, r.Importo)).ToList());
 
         Assert.True(pdf.Length > 2000, $"PDF sospettosamente piccolo: {pdf.Length} byte");

@@ -73,7 +73,7 @@ public class PianoAperturaPartitaIvaTests
     public void Variazione_GeneraAdempimentiDiVariazione()
     {
         var piano = PianoAperturaPartitaIvaBuilder.Crea(
-            Pratica(TipoPraticaComUnica.Variazione, partitaIva: "01234567890", inail: true));
+            Pratica(TipoPraticaComUnica.Variazione, partitaIva: "01234567897", inail: true));
 
         Assert.Contains(piano.Adempimenti, a => a.Codice == "AE-VARIAZIONE-IVA");
         Assert.Contains(piano.Adempimenti, a => a.Codice == "COMUNICA");
@@ -85,7 +85,7 @@ public class PianoAperturaPartitaIvaTests
     public void Cessazione_GeneraChiusurePosizioni()
     {
         var piano = PianoAperturaPartitaIvaBuilder.Crea(
-            Pratica(TipoPraticaComUnica.Cessazione, partitaIva: "01234567890", commercio: true));
+            Pratica(TipoPraticaComUnica.Cessazione, partitaIva: "01234567897", commercio: true));
 
         Assert.Contains(piano.Adempimenti, a => a.Codice == "AE-CESSAZIONE-IVA");
         Assert.Contains(piano.Adempimenti, a => a.Codice == "INPS-COM");
@@ -232,8 +232,8 @@ public class LiquidazioneIvaTests
         {
             Numero = "1/2026",
             Data = new DateOnly(2026, 7, 10),
-            Cedente = Soggetto("Alfa Srl", "01234567890"),
-            Cessionario = Soggetto("Beta Spa", "09876543210"),
+            Cedente = Soggetto("Alfa Srl", "01234567897"),
+            Cessionario = Soggetto("Beta Spa", "09876543217"),
             Righe = { new RigaFattura { Descrizione = "Servizi", PrezzoUnitario = 100m, AliquotaIva = 22m } },
         };
         var spesa = new Spesa
@@ -330,13 +330,13 @@ public sealed class PraticheAperturaPartitaIvaServiceTests : IDisposable
 
         await using var db = NuovoContesto();
         var svc = new PraticheAperturaPartitaIvaService(db);
-        var pratica = await svc.CreaAsync(tenant, Input(TipoPraticaComUnica.Cessazione, "01234567890"));
+        var pratica = await svc.CreaAsync(tenant, Input(TipoPraticaComUnica.Cessazione, "01234567897"));
 
         var distinta = await svc.DistintaAsync(tenant, pratica.Id);
 
         Assert.Contains("Rossi Market", distinta);
         Assert.Contains("Cessazione attività", distinta);
-        Assert.Contains("01234567890", distinta);
+        Assert.Contains("01234567897", distinta);
         Assert.Contains("Agenzia Entrate", distinta);
         Assert.Contains("intermediario abilitato", distinta);
     }

@@ -20,22 +20,27 @@ public static class CedolinoPdf
         IntestazioneCedolino intestazione,
         Cartellino? cartellino,
         ContestoEmissioneCedolino? emissione = null,
-        StileCedolino stile = StileCedolino.Classico)
+        StileCedolino stile = StileCedolino.Classico,
+        ProgressiviAnnui? progressivi = null)
     {
         ArgumentNullException.ThrowIfNull(cedolino);
         ArgumentNullException.ThrowIfNull(intestazione);
 
         DocumentiConfig.Inizializza();
         var presentazione = CedolinoPdfPresentazione.Crea(
-            cedolino, intestazione, cartellino, emissione ?? ContestoEmissioneCedolino.Bozza);
-        return stile == StileCedolino.Colori
-            ? CedolinoColoriPdf.Genera(presentazione)
-            : CedolinoProfessionalePdf.Genera(presentazione);
+            cedolino, intestazione, cartellino, emissione ?? ContestoEmissioneCedolino.Bozza,
+            progressivi);
+        return stile switch
+        {
+            StileCedolino.Colori => CedolinoColoriPdf.Genera(presentazione),
+            StileCedolino.Editoriale => CedolinoEditorialePdf.Genera(presentazione),
+            _ => CedolinoProfessionalePdf.Genera(presentazione),
+        };
     }
 }
 
 /// <summary>
-/// Aspetto della busta paga. Il contenuto è identico nei due stili: cambia solo
+/// Aspetto della busta paga. Il contenuto è identico nei tre stili: cambia solo
 /// l'impaginazione, così lo studio sceglie senza che i numeri cambino.
 /// </summary>
 public enum StileCedolino
@@ -45,6 +50,9 @@ public enum StileCedolino
 
     /// <summary>Impaginazione a sezioni numerate con testate blu e riquadro di sintesi.</summary>
     Colori,
+
+    /// <summary>Impaginazione editoriale estesa con prospetto, dettagli e guida di lettura.</summary>
+    Editoriale,
 }
 
 /// <summary>

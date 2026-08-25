@@ -37,7 +37,13 @@ public sealed class VociVariabiliCcnlRealeTests
     {
         var path = Path.Combine(AppContext.BaseDirectory, "dati", "voci-variabili-ccnl-2026.json");
         var lista = VociVariabiliCcnlJson.Carica(File.ReadAllText(path));
-        Assert.Equal(5, lista.Count);
+        // 5 dalle buste reali + il Terziario/Commercio aggiunto con la revisione del 24/08/2026.
+        Assert.Equal(6, lista.Count);
+        var commercio = lista.Single(c => c.Codice == "COMMERCIO_TERZIARIO");
+        Assert.Equal("triennale", commercio.Scatti!.Periodicita);
+        Assert.Equal(10, commercio.Scatti.NumeroMassimo);
+        Assert.Equal(7, commercio.MeseErogazioneQuattordicesima);
+        Assert.Equal(7.3333m, commercio.OrePermessiMese);
     }
 
     [Fact]

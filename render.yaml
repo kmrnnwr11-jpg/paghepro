@@ -56,6 +56,16 @@ services:
       # Chiave del provider: segreto, si inserisce nel dashboard Render, mai nel repository.
       - key: Ai__ApiKey
         sync: false
+      # Google Gemini è la riserva automatica: riceve la richiesta soltanto se DeepSeek non
+      # risponde. Per le immagini viene usato direttamente, perché DeepSeek non ha la vista.
+      - key: Ai__UsaGeminiComeFallback
+        value: "true"
+      - key: Ai__GeminiApiKey
+        sync: false
+      # gemini-3.7-flash ha risposto 503 "high demand" nelle prove del 24 agosto 2026:
+      # la riserva sarebbe muta proprio quando serve. gemini-3.5-flash risponde e vede.
+      - key: Ai__ModelloGemini
+        value: gemini-3.5-flash
       - key: Ai__SoloLocale
         value: "false"
       - key: Ai__ProviderCloudApprovato

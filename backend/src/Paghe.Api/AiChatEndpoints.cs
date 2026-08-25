@@ -57,13 +57,28 @@ public static class AiChatEndpoints
 
     public static IEndpointRouteBuilder MapAiChat(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/ai/chat/stato", (AiChatClient chat, AiOptions opzioni) => Results.Ok(new
+        app.MapGet("/api/ai/chat/stato", (AiChatClient chat, AiOptions opzioni) =>
         {
-            attiva = chat.Attivo,
-            provider = opzioni.Provider,
-            modello = chat.Modello,
-            messaggio = chat.Attivo ? null : CosaManca(opzioni),
-        })).RequireAuthorization();
+            bool fallbackGeminiRichiesto = opzioni.UsaGeminiComeFallback
+                && !chat.Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase);
+            bool fallbackGeminiAttivo = chat.ProviderSecondario?.Equals(
+                "Gemini", StringComparison.OrdinalIgnoreCase) == true;
+            return Results.Ok(new
+            {
+                attiva = chat.Attivo,
+                provider = chat.Attivo ? chat.Provider : opzioni.Provider,
+                modello = chat.Modello,
+                providerSecondario = chat.ProviderSecondario
+                    ?? (fallbackGeminiRichiesto ? "Gemini" : null),
+                modelloSecondario = chat.ModelloSecondario
+                    ?? (fallbackGeminiRichiesto ? CatalogoProviderAiCompatibili.ModelloGemini : null),
+                providerSecondarioAttivo = fallbackGeminiAttivo,
+                messaggioProviderSecondario = fallbackGeminiRichiesto && !fallbackGeminiAttivo
+                    ? "Google Gemini è predisposto ma manca la nuova chiave segreta Ai__GeminiApiKey."
+                    : null,
+                messaggio = chat.Attivo ? null : CosaManca(opzioni),
+            });
+        }).RequireAuthorization();
 
         // Un turno di conversazione.
         app.MapPost("/api/ai/chat", async (
@@ -335,8 +350,13 @@ public static class AiChatEndpoints
         if (!opzioni.SoloLocale && !opzioni.ProviderCloudApprovato)
             return "Il provider cloud resta spento finché non è approvato il gate G1-SaaS "
                 + "(DPA, egress e trasparenza).";
+        if (opzioni.ChiaveMancante && opzioni.ChiaveGeminiMancante)
+            return $"Mancano la chiave {opzioni.Provider} (Ai__ApiKey) e la chiave Google Gemini "
+                + "(Ai__GeminiApiKey).";
         if (opzioni.ChiaveMancante)
             return $"Manca la chiave del provider {opzioni.Provider} (Ai__ApiKey).";
+        if (opzioni.ChiaveGeminiMancante)
+            return "Manca la chiave Google Gemini (Ai__GeminiApiKey).";
         return "Aurora non è disponibile: controlla la configurazione locale.";
     }
 

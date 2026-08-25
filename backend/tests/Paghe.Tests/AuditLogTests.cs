@@ -110,7 +110,7 @@ public sealed class AuditLogTests : IDisposable
     [Fact]
     public async Task ModificaIban_RegistraSoloNomeSemanticoSenzaValoreOCampoTecnico()
     {
-        const string ibanNuovo = "IT91A0300203280123456789012";
+        const string ibanNuovo = "IT91A0300203280123456789712";
         var tenant = Guid.NewGuid();
         var dipendenteId = Guid.NewGuid();
 

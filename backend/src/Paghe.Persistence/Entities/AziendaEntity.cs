@@ -32,6 +32,12 @@ public class AziendaEntity
     public string? MatricolaInps { get; set; }
     public string? CodiceSedeInps { get; set; }
     public string? CscInps { get; set; }
+    /// <summary>Codici di autorizzazione INPS normalizzati, separati da virgola; "NESSUNO" e esplicito.</summary>
+    public string? CodiciAutorizzazioneInps { get; set; }
+    /// <summary>Codice del fondo di integrazione applicato (es. FIS) o "NESSUNO".</summary>
+    public string? CodiceFondoIntegrazioneSalariale { get; set; }
+    /// <summary>Agevolazione contributiva applicata o "NESSUNA".</summary>
+    public string? CodiceAgevolazioneContributiva { get; set; }
     public string? PatInail { get; set; }
     public string? CcnlDefault { get; set; }
     public string? LivelloDefault { get; set; }
@@ -121,6 +127,40 @@ public class AziendaEntity
     /// FSBS 0,15% nella somministrazione. Zero se il CCNL non ne prevede.
     /// </summary>
     public decimal ContributiFondiSettore { get; set; }
+
+    /// <summary>
+    /// Aliquota INPS complessiva a carico del datore secondo il profilo contributivo reale
+    /// dell'azienda (CSC, codici autorizzazione, media dipendenti, FIS/CIGS), come frazione
+    /// (0,293133 = 29,3133%). La determina il professionista: nessuna percentuale datoriale
+    /// va cablata nel codice (revisione consulente 24/08/2026). Null = tabella per qualifica,
+    /// che resta un riferimento non certificato.
+    /// </summary>
+    public decimal? AliquotaInpsDatore { get; set; }
+
+    /// <summary>Aliquota c/dipendente risultante dal profilo CSC/CA/organico/FIS/agevolazioni.</summary>
+    public decimal? AliquotaInpsDipendente { get; set; }
+
+    /// <summary>Fonte e data del profilo contributivo verificato; impedisce aliquote senza provenienza.</summary>
+    public string? FonteProfiloContributivo { get; set; }
+
+    /// <summary>Riferimento della visura camerale usata per verificare attivita prevalente e CCNL.</summary>
+    public string? RiferimentoVisuraCamerale { get; set; }
+
+    /// <summary>DaVerificare, Iscritta o NonIscritta. H011 richiede la verifica esplicita.</summary>
+    public string StatoAlboArtigiani { get; set; } = "DaVerificare";
+
+    /// <summary>Nota/fonte della verifica di applicabilita del CCNL all'attivita prevalente.</summary>
+    public string? RiferimentoVerificaApplicabilitaCcnl { get; set; }
+
+    /// <summary>Fonte territoriale del terzo elemento (necessaria se diverso dal nazionale).</summary>
+    public string? RiferimentoTerzoElementoTerritoriale { get; set; }
+
+    /// <summary>
+    /// L'azienda aderisce ai fondi contrattuali del CCNL (assistenza sanitaria, ente
+    /// bilaterale). Se no, le quote non vanno in busta; gli eventuali elementi retributivi
+    /// sostitutivi previsti dal contratto restano da gestire a parte.
+    /// </summary>
+    public bool AderisceFondiContrattuali { get; set; } = true;
 
     /// <summary>"Artigiano", "Commerciante", "Professionista", "Societa".</summary>
     public string? TipoContribuente { get; set; }

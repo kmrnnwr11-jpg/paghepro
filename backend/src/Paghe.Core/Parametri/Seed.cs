@@ -12,24 +12,32 @@ namespace Paghe.Core.Parametri;
 /// </summary>
 public static class Seed
 {
-    /// <summary>CCNL Commercio/Terziario — minimi tabellari di esempio (mensili, full-time).</summary>
+    /// <summary>
+    /// Fallback di sviluppo H011 2026, allineato al dataset incorporato. Il runtime importa il
+    /// file versionato; questa copia evita che endpoint/test stateless reintroducano l'EDR di
+    /// 10,33 euro o i minimi precedenti.
+    /// </summary>
     public static Ccnl CcnlCommercio2026() => new(
         codice: "COMMERCIO_TERZIARIO",
-        descrizione: "CCNL Terziario, Distribuzione e Servizi (Confcommercio) — valori di esempio",
+        descrizione: "CCNL Terziario, Distribuzione e Servizi (Confcommercio)",
         livelli: new[]
         {
-            //               codice   descrizione        minimo     EDR     scatto
-            new LivelloCcnl("Quadro", "Quadro",          2003.91m, 10.33m, 30.00m),
-            new LivelloCcnl("1",      "Primo livello",   1800.94m, 10.33m, 28.41m),
-            new LivelloCcnl("2",      "Secondo livello", 1556.20m, 10.33m, 25.46m),
-            new LivelloCcnl("3",      "Terzo livello",   1330.66m, 10.33m, 24.84m),
-            new LivelloCcnl("4",      "Quarto livello",  1229.79m, 10.33m, 22.83m),
-            new LivelloCcnl("5",      "Quinto livello",  1141.24m, 10.33m, 21.95m),
-            new LivelloCcnl("6",      "Sesto livello",   1062.39m, 10.33m, 21.01m),
-            new LivelloCcnl("7",      "Settimo livello",  909.78m, 10.33m, 19.92m),
+            new LivelloCcnl("Quadro", "Quadro",          2723.46m, 0m, 25.46m),
+            new LivelloCcnl("1",      "Primo livello",   2504.06m, 0m, 24.84m),
+            new LivelloCcnl("2",      "Secondo livello", 2233.58m, 0m, 22.83m),
+            new LivelloCcnl("3",      "Terzo livello",   1981.84m, 0m, 21.95m, 527.90m),
+            new LivelloCcnl("4",      "Quarto livello",  1781.68m, 0m, 20.66m),
+            new LivelloCcnl("5",      "Quinto livello",  1658.01m, 0m, 20.30m),
+            new LivelloCcnl("6",      "Sesto livello",   1539.70m, 0m, 19.73m),
+            new LivelloCcnl("7",      "Settimo livello", 1390.73m, 0m, 19.47m),
         },
         codiceCnel: "H011",
-        fonte: "Archivio nazionale CNEL — CCNL Terziario, Distribuzione e Servizi (Confcommercio)");
+        fonte: "Archivio nazionale CNEL, accordo 242377; minimi dal 01/11/2025",
+        terzoElemento: new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["*"] = 2.07m,
+            ["MI"] = 11.36m,
+        });
 
     // --- Altri CCNL (minimi tabellari di ESEMPIO, da validare con il Consulente del Lavoro) ---
     // Servono come destinazione della mappatura dei CCNL letti dagli UNILAV dei vari settori.
@@ -110,7 +118,12 @@ public static class Seed
             new ScaglioneIrpef(50000m,  null,   0.43m),
         },
 
-        // Aliquote INPS di esempio (quota dipendente / quota datore).
+        // Aliquote INPS di esempio (quota dipendente / quota datore). La quota dipendente 9,19%
+        // è la sola IVS: CIG 0,30% e fondi di settore si aggiungono dai dati dell'azienda.
+        // La quota datore NON è un valore certificato per nessun settore (revisione consulente
+        // 24/08/2026: per il commercio il riferimento ordinario è 28,98% prima del FIS, ma
+        // dipende da CSC, autorizzazioni e dimensione): il profilo reale si imposta
+        // sull'azienda (AliquotaInpsDatore) e vince su questa tabella.
         AliquoteInps = new Dictionary<Qualifica, AliquotaInps>
         {
             [Qualifica.Operaio]     = new AliquotaInps(0.0919m, 0.2788m),
@@ -159,6 +172,32 @@ public static class Seed
         MaggiorazioneStraordinario = 0.15m,
         MaggiorazioneStraordinarioNotturno = 0.50m,
         MaggiorazioneStraordinarioFestivo = 0.30m,
+        RegoleCcnl = new Dictionary<string, RegoleCcnl>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["COMMERCIO_TERZIARIO"] = new RegoleCcnl(
+                DivisoreOrario: 168m,
+                DivisoreGiornaliero: 26m,
+                MaggiorazioneStraordinario: 0.15m,
+                MaggiorazioneStraordinarioNotturno: 0.50m,
+                MaggiorazioneStraordinarioFestivo: 0.30m,
+                GiorniFerieMese: 2.1667m,
+                OrePermessiMese: 7.3333m,
+                OrePermessiMeseOltre15: 8.6667m,
+                ScattiOgniMesi: 36,
+                ScattiMassimo: 10,
+                MeseErogazioneTredicesima: 12,
+                MeseErogazioneQuattordicesima: 7,
+                AssistenzaSanitariaLavoratoreMese: 2m,
+                AssistenzaSanitariaDatoreMese: 13m,
+                EnteBilateraleAliquotaLavoratore: 0.0005m,
+                EnteBilateraleAliquotaDatore: 0.001m,
+                OreRolAnno: 56m,
+                OreRolAnnoOltre15: 72m,
+                OreExFestivitaAnno: 32m,
+                MesiAnzianitaSenzaRol: 24,
+                MesiAnzianitaRolRidotto: 24,
+                PercentualeRolRidotta: 0.5m),
+        },
         TfrDivisore = 13.5m,
         TfrContributoFondo = 0.005m,
     };

@@ -6,6 +6,59 @@ export interface OpzioniValidazioneAzienda {
   datiContributiviProvvisori?: boolean;
 }
 
+const VALORI_DISPARI_CODICE_FISCALE = [
+  1, 0, 5, 7, 9, 13, 15, 17, 19, 21, 2, 4, 18,
+  20, 11, 3, 6, 8, 12, 14, 16, 10, 22, 25, 24, 23,
+];
+
+function indiceCarattereFiscale(carattere: string): number {
+  return /\d/.test(carattere)
+    ? Number(carattere)
+    : carattere.charCodeAt(0) - "A".charCodeAt(0);
+}
+
+/** Controllo formale P.IVA: check digit mod 10 e codice ufficio ammesso. */
+export function partitaIvaValida(partitaIva?: string | null): boolean {
+  const valore = partitaIva?.trim() ?? "";
+  if (!/^\d{11}$/.test(valore)) return false;
+
+  let somma = 0;
+  for (let indice = 0; indice < 10; indice += 1) {
+    const cifra = Number(valore[indice]);
+    if (indice % 2 === 0) somma += cifra;
+    else {
+      const doppio = cifra * 2;
+      somma += doppio > 9 ? doppio - 9 : doppio;
+    }
+  }
+  const controllo = (10 - (somma % 10)) % 10;
+  if (controllo !== Number(valore[10])) return false;
+
+  const ufficio = Number(valore.slice(7, 10));
+  return (ufficio >= 1 && ufficio <= 100)
+    || ufficio === 120
+    || ufficio === 121
+    || ufficio === 888
+    || ufficio === 999;
+}
+
+/** Controllo del carattere finale per CF personale o del check digit per CF numerico. */
+export function codiceFiscaleValido(codiceFiscale?: string | null): boolean {
+  const valore = codiceFiscale?.trim().toUpperCase() ?? "";
+  if (/^\d{11}$/.test(valore)) return partitaIvaValida(valore);
+  if (!/^[A-Z0-9]{16}$/.test(valore)) return false;
+
+  let somma = 0;
+  for (let indice = 0; indice < 15; indice += 1) {
+    const posizioneDispari = indice % 2 === 0;
+    const valoreCarattere = indiceCarattereFiscale(valore[indice]);
+    somma += posizioneDispari
+      ? VALORI_DISPARI_CODICE_FISCALE[valoreCarattere]
+      : valoreCarattere;
+  }
+  return valore[15] === String.fromCharCode("A".charCodeAt(0) + (somma % 26));
+}
+
 function profiloDaAteco(codiceAteco?: string | null): Partial<NuovaAzienda> {
   const codice = codiceAteco?.trim();
   if (!codice?.startsWith("01.")) return {};
@@ -128,6 +181,15 @@ export function datiContributiviMancanti(a: {
   haDipendenti?: boolean;
   matricolaInps?: string | null; codiceSedeInps?: string | null; cscInps?: string | null;
   patInail?: string | null; ccnlDefault?: string | null; livelloDefault?: string | null;
+  codiciAutorizzazioneInps?: string | null;
+  codiceFondoIntegrazioneSalariale?: string | null;
+  codiceAgevolazioneContributiva?: string | null;
+  aliquotaInpsDipendente?: number | null; aliquotaInpsDatore?: number | null;
+  fonteProfiloContributivo?: string | null;
+  riferimentoVisuraCamerale?: string | null; statoAlboArtigiani?: string | null;
+  riferimentoVerificaApplicabilitaCcnl?: string | null;
+  riferimentoTerzoElementoTerritoriale?: string | null;
+  provincia?: string | null;
 }): string[] {
   if (!a.haDipendenti) return [];
   const mancanti: string[] = [];
@@ -137,6 +199,19 @@ export function datiContributiviMancanti(a: {
   if (!a.patInail?.trim()) mancanti.push("P.A.T. INAIL");
   if (!a.ccnlDefault?.trim()) mancanti.push("CCNL");
   if (!a.livelloDefault?.trim()) mancanti.push("livello CCNL");
+  if (!a.codiciAutorizzazioneInps?.trim()) mancanti.push("codici autorizzazione INPS / NESSUNO");
+  if (!a.codiceFondoIntegrazioneSalariale?.trim()) mancanti.push("FIS o altro fondo / NESSUNO");
+  if (!a.codiceAgevolazioneContributiva?.trim()) mancanti.push("agevolazione / NESSUNA");
+  if (!(a.aliquotaInpsDipendente && a.aliquotaInpsDipendente > 0)) mancanti.push("aliquota INPS dipendente");
+  if (!(a.aliquotaInpsDatore && a.aliquotaInpsDatore > 0)) mancanti.push("aliquota INPS datore");
+  if (!a.fonteProfiloContributivo?.trim()) mancanti.push("fonte profilo contributivo");
+  if (a.ccnlDefault === "COMMERCIO_TERZIARIO") {
+    if (!a.riferimentoVisuraCamerale?.trim()) mancanti.push("visura camerale verificata");
+    if (a.statoAlboArtigiani !== "NonIscritta") mancanti.push("verifica Albo artigiani");
+    if (!a.riferimentoVerificaApplicabilitaCcnl?.trim()) mancanti.push("verifica applicabilità H011");
+    if (a.provincia?.toUpperCase() === "MI" && !a.riferimentoTerzoElementoTerritoriale?.trim())
+      mancanti.push("fonte terzo elemento Milano");
+  }
   return mancanti;
 }
 
@@ -148,8 +223,18 @@ export function validaAzienda(f: NuovaAzienda, opzioni: OpzioniValidazioneAziend
     e.partitaIva = "Inserisci Partita IVA o Codice Fiscale.";
     e.codiceFiscale = "Serve almeno uno tra Partita IVA e Codice Fiscale.";
   }
-  if (f.partitaIva?.trim() && !/^\d{11}$/.test(f.partitaIva.trim())) e.partitaIva = "La Partita IVA deve essere esattamente 11 cifre.";
-  if (f.codiceFiscale?.trim() && !/^(\d{11}|[A-Za-z0-9]{16})$/.test(f.codiceFiscale.trim())) e.codiceFiscale = "Il Codice Fiscale deve essere 11 cifre o 16 caratteri.";
+  const partitaIva = f.partitaIva?.trim();
+  if (partitaIva && !/^\d{11}$/.test(partitaIva)) {
+    e.partitaIva = "La Partita IVA deve essere esattamente 11 cifre.";
+  } else if (partitaIva && !partitaIvaValida(partitaIva)) {
+    e.partitaIva = "La Partita IVA non supera il controllo formale del checksum.";
+  }
+  const codiceFiscale = f.codiceFiscale?.trim();
+  if (codiceFiscale && !/^(\d{11}|[A-Za-z0-9]{16})$/.test(codiceFiscale)) {
+    e.codiceFiscale = "Il Codice Fiscale deve essere 11 cifre o 16 caratteri.";
+  } else if (codiceFiscale && !codiceFiscaleValido(codiceFiscale)) {
+    e.codiceFiscale = "Il Codice Fiscale non supera il controllo formale del checksum.";
+  }
   if (f.codiceDestinatarioSdi?.trim() && !/^[A-Za-z0-9]{7}$/.test(f.codiceDestinatarioSdi.trim())) e.codiceDestinatarioSdi = "Il codice SdI deve essere 7 caratteri.";
   if (!f.settore?.trim()) e.settore = "Scegli il settore attività.";
   if (!f.codiceAteco?.trim()) e.codiceAteco = "Il codice ATECO è obbligatorio.";
@@ -174,6 +259,18 @@ export function validaAzienda(f: NuovaAzienda, opzioni: OpzioniValidazioneAziend
     if (!provvisori && !f.patInail?.trim()) e.patInail = "La P.A.T. INAIL è obbligatoria se ha dipendenti.";
     if (!provvisori && !f.ccnlDefault?.trim()) e.ccnlDefault = "Scegli il CCNL predefinito per creare i dipendenti.";
     if (!provvisori && !f.livelloDefault?.trim()) e.livelloDefault = "Indica il livello base del CCNL.";
+    if (!provvisori && !f.codiciAutorizzazioneInps?.trim())
+      e.codiciAutorizzazioneInps = "Indica i CA effettivi oppure scrivi NESSUNO.";
+    if (!provvisori && !f.codiceFondoIntegrazioneSalariale?.trim())
+      e.codiceFondoIntegrazioneSalariale = "Indica FIS/altro fondo oppure scrivi NESSUNO.";
+    if (!provvisori && !f.codiceAgevolazioneContributiva?.trim())
+      e.codiceAgevolazioneContributiva = "Indica il codice reale oppure scrivi NESSUNA.";
+    if (!provvisori && !(f.aliquotaInpsDipendente && f.aliquotaInpsDipendente > 0))
+      e.aliquotaInpsDipendente = "Inserisci l'aliquota dipendente del profilo contributivo reale.";
+    if (!provvisori && !(f.aliquotaInpsDatore && f.aliquotaInpsDatore > 0))
+      e.aliquotaInpsDatore = "Inserisci l'aliquota datore del profilo contributivo reale.";
+    if (!provvisori && !f.fonteProfiloContributivo?.trim())
+      e.fonteProfiloContributivo = "Indica il documento da cui deriva il profilo contributivo.";
 
     const soloZeri = (valore?: string) => Boolean(valore?.trim() && /^[0/ .-]+$/.test(valore.trim()));
     if (soloZeri(f.matricolaInps)) e.matricolaInps = "Non usare 000000: in modalità prova lascia vuota la matricola INPS.";

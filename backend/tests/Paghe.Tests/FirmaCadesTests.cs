@@ -29,11 +29,11 @@ public class FirmaCadesTests
         using var firmatore = FirmatoreDiProva();
         byte[] documento = Encoding.UTF8.GetBytes("<FatturaElettronica>contenuto di prova</FatturaElettronica>");
 
-        var risultato = firmatore.Firma(documento, "IT01234567890_00001.xml");
+        var risultato = firmatore.Firma(documento, "IT01234567897_00001.xml");
 
         Assert.True(FirmaCades.Verifica(risultato.ContenutoFirmato));
         Assert.Equal(documento, FirmaCades.EstraiContenuto(risultato.ContenutoFirmato));
-        Assert.Equal("IT01234567890_00001.xml.p7m", risultato.NomeFile);
+        Assert.Equal("IT01234567897_00001.xml.p7m", risultato.NomeFile);
         Assert.Equal("SHA-256", risultato.AlgoritmoDigest);
         Assert.Contains("Mario Rossi", risultato.Firmatario);
     }

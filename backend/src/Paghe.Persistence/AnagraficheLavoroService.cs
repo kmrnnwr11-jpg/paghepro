@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Paghe.Core.AdeTelematico.UniEmens;
 using Paghe.Persistence.Entities;
 
 namespace Paghe.Persistence;
@@ -25,7 +26,11 @@ public sealed class AnagraficheLavoroService
         // anagrafica e si crea solo il nuovo rapporto: può lavorare per due clienti dello
         // studio, e ogni busta paga nasce dal rapporto della propria azienda di assunzione.
         string cf = dipendente.CodiceFiscale?.Trim().ToUpperInvariant() ?? "";
+        if (!Paghe.Core.AdeTelematico.ValidatoreFiscale.CodiceFiscalePersonaFisicaValido(cf))
+            throw new ArgumentException(
+                "Codice fiscale del lavoratore formalmente errato: il checksum non coincide.");
         dipendente.CodiceFiscale = cf;
+        dipendente.Sesso = SessoCoerente(dipendente.Sesso, cf);
         var anagrafica = dipendente;
         if (cf.Length > 0)
         {
@@ -81,7 +86,18 @@ public sealed class AnagraficheLavoroService
         string? Regione = null, string? CodiceCatastaleComune = null, DateOnly? DataAssunzione = null,
         decimal? FondoTfrIniziale = null,
         decimal? FerieResidueIniziali = null, decimal? PermessiResiduiIniziali = null,
-        DateOnly? DataCessazione = null, bool? RimuoviDataCessazione = null);
+        DateOnly? DataCessazione = null, bool? RimuoviDataCessazione = null,
+        string? TipoPartTimeInps = null, string? CittadinanzaInps = null,
+        string? QualificaProfessionaleIstat = null, string? TipoContribuzioneInps = null,
+        string? ProvinciaLavoro = null,
+        decimal? AddizionaleRegionaleConguaglioAnnuo = null,
+        decimal? AddizionaleComunaleSaldoAnnuo = null,
+        decimal? AddizionaleComunaleAccontoAnnuo = null,
+        string? Sesso = null,
+        DateOnly? DataDecorrenzaDomicilioFiscale = null,
+        string? RiferimentoProgressiviFiscaliPregressi = null,
+        decimal? RolResiduiIniziali = null,
+        decimal? ExFestivitaResidueIniziali = null);
 
     /// <summary>
     /// Corregge i dati di un dipendente/rapporto (isolato per tenant). Pensato per rivedere ciò che
@@ -100,8 +116,18 @@ public sealed class AnagraficheLavoroService
         var d = r.Dipendente!;
         if (c.Nome is not null) d.Nome = c.Nome.Trim();
         if (c.Cognome is not null) d.Cognome = c.Cognome.Trim();
-        if (c.CodiceFiscale is not null) d.CodiceFiscale = c.CodiceFiscale.Trim().ToUpperInvariant();
+        if (c.CodiceFiscale is not null)
+        {
+            var nuovoCf = c.CodiceFiscale.Trim().ToUpperInvariant();
+            if (!Paghe.Core.AdeTelematico.ValidatoreFiscale.CodiceFiscalePersonaFisicaValido(nuovoCf))
+                throw new ArgumentException(
+                    "Codice fiscale del lavoratore formalmente errato: il checksum non coincide.");
+            d.CodiceFiscale = nuovoCf;
+        }
         if (c.Iban is not null) d.Iban = c.Iban.Trim().Length == 0 ? null : c.Iban.Trim();
+        if (c.Sesso is not null) d.Sesso = c.Sesso;
+        // Riverifica anche quando cambia il solo codice fiscale: la coerenza vale sulla coppia.
+        d.Sesso = SessoCoerente(d.Sesso, d.CodiceFiscale);
 
         if (c.CodiceCcnl is not null) r.CodiceCcnl = c.CodiceCcnl.Trim();
         if (c.Livello is not null) r.Livello = c.Livello.Trim();
@@ -113,12 +139,57 @@ public sealed class AnagraficheLavoroService
         if (c.Superminimo is { } sm) r.Superminimo = sm;
         if (c.Regione is not null) r.Regione = c.Regione.Trim();
         if (c.CodiceCatastaleComune is not null) r.CodiceCatastaleComune = c.CodiceCatastaleComune.Trim().ToUpperInvariant();
+        // Provincia dell'unità operativa: stringa vuota = torna alla sede aziendale.
+        if (c.ProvinciaLavoro is not null)
+            r.ProvinciaLavoro = c.ProvinciaLavoro.Trim().Length == 0
+                ? null
+                : c.ProvinciaLavoro.Trim().ToUpperInvariant();
         if (c.DataAssunzione is { } da) r.DataAssunzione = da;
+
+        // Addizionali da conguaglio dell'anno precedente: un importo negativo non ha senso;
+        // zero è un dato vero («il conguaglio dice zero») e disattiva l'anteprima presuntiva.
+        if (c.AddizionaleRegionaleConguaglioAnnuo is { } addReg)
+            r.AddizionaleRegionaleConguaglioAnnuo = ImportoNonNegativo(addReg,
+                "L'addizionale regionale da conguaglio non può essere negativa.");
+        if (c.AddizionaleComunaleSaldoAnnuo is { } addComSaldo)
+            r.AddizionaleComunaleSaldoAnnuo = ImportoNonNegativo(addComSaldo,
+                "Il saldo dell'addizionale comunale non può essere negativo.");
+        if (c.AddizionaleComunaleAccontoAnnuo is { } addComAcconto)
+            r.AddizionaleComunaleAccontoAnnuo = ImportoNonNegativo(addComAcconto,
+                "L'acconto dell'addizionale comunale non può essere negativo.");
+
         if (c.FondoTfrIniziale is { } ft) r.FondoTfrIniziale = ft;
         if (c.FerieResidueIniziali is { } ferie) r.FerieResidueIniziali = ferie;
         if (c.PermessiResiduiIniziali is { } permessi) r.PermessiResiduiIniziali = permessi;
+        if (c.RolResiduiIniziali is { } rol) r.RolResiduiIniziali = rol;
+        if (c.ExFestivitaResidueIniziali is { } exFest) r.ExFestivitaResidueIniziali = exFest;
+        if (c.DataDecorrenzaDomicilioFiscale is { } domicilio)
+            r.DataDecorrenzaDomicilioFiscale = domicilio;
+        if (c.RiferimentoProgressiviFiscaliPregressi is not null)
+            r.RiferimentoProgressiviFiscaliPregressi =
+                string.IsNullOrWhiteSpace(c.RiferimentoProgressiviFiscaliPregressi)
+                    ? null : c.RiferimentoProgressiviFiscaliPregressi.Trim();
         if (c.RimuoviDataCessazione == true) r.DataCessazione = null;
         else if (c.DataCessazione is { } dc) r.DataCessazione = dc;
+
+        // Inquadramento contributivo UniEmens: stringa vuota = «togli il dato», un codice
+        // scritto male viene rifiutato subito invece di far scartare la denuncia dall'INPS.
+        if (c.TipoPartTimeInps is not null)
+            r.TipoPartTimeInps = Codice(c.TipoPartTimeInps,
+                AnagraficaContributiva.TipoPartTime,
+                "Tipo di part-time non valido: usare P (orizzontale), V (verticale) o M (misto).");
+        if (c.CittadinanzaInps is not null)
+            r.CittadinanzaInps = Codice(c.CittadinanzaInps,
+                AnagraficaContributiva.Cittadinanza,
+                "Cittadinanza non valida: servono le tre cifre della codifica delle Comunicazioni Obbligatorie.");
+        if (c.QualificaProfessionaleIstat is not null)
+            r.QualificaProfessionaleIstat = Codice(c.QualificaProfessionaleIstat,
+                AnagraficaContributiva.QualificaProfessionaleIstat,
+                "Qualifica professionale ISTAT non valida: il formato è del tipo 8.1.3.3.0.2.");
+        if (c.TipoContribuzioneInps is not null)
+            r.TipoContribuzioneInps = Codice(c.TipoContribuzioneInps,
+                AnagraficaContributiva.TipoContribuzione,
+                "Tipo di contribuzione non valido: sono due caratteri della tabella INPS.");
 
         if (r.DataCessazione is { } cessazione && r.DataAssunzione != default && cessazione < r.DataAssunzione)
             throw new ArgumentException(
@@ -127,6 +198,43 @@ public sealed class AnagraficheLavoroService
 
         await _db.SaveChangesAsync(ct);
         return r;
+    }
+
+    /// <summary>
+    /// Normalizza un codice contributivo: vuoto lo cancella, valido lo tiene, sbagliato
+    /// interrompe con un messaggio comprensibile a chi sta compilando la scheda.
+    /// </summary>
+    private static string? Codice(string valore, Func<string?, string?> normalizza, string errore)
+    {
+        if (valore.Trim().Length == 0) return null;
+        return normalizza(valore) ?? throw new ArgumentException(errore);
+    }
+
+    private static decimal ImportoNonNegativo(decimal valore, string errore) =>
+        valore < 0m ? throw new ArgumentException(errore) : valore;
+
+    /// <summary>
+    /// Normalizza il sesso ("M"/"F"; vuoto = non indicato) e lo verifica contro il codice
+    /// fiscale: il giorno di nascita oltre 40 identifica una donna. Un'anagrafica incoerente
+    /// va fermata qui, prima di finire su LUL, CU e denunce (revisione consulente 25/08/2026).
+    /// Il secolo di nascita non incide sulla regola, quindi l'anno di riferimento è quello corrente.
+    /// </summary>
+    private static string? SessoCoerente(string? sesso, string? codiceFiscale)
+    {
+        var s = sesso?.Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(s))
+            return null;
+        if (s is not ("M" or "F"))
+            throw new ArgumentException("Sesso non valido: usare M o F (vuoto = non indicato).");
+
+        var dalCf = Paghe.Core.AdeTelematico.AnagraficaCodiceFiscale
+            .Decodifica(codiceFiscale, DateTime.UtcNow.Year);
+        if (dalCf is not null && dalCf.Sesso != s)
+            throw new ArgumentException(
+                "Il codice fiscale indica una persona di sesso "
+                + (dalCf.Sesso == "F" ? "femminile" : "maschile")
+                + $" e non corrisponde al sesso indicato ({s}): correggere l'uno o l'altro.");
+        return s;
     }
 
     /// <summary>

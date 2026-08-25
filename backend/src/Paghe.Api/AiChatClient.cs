@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Paghe.Api;
 
@@ -29,6 +30,14 @@ public sealed class ChiamataStrumentoAi
     public string Id { get; set; } = "";
     public string Nome { get; set; } = "";
     public string ArgomentiJson { get; set; } = "{}";
+
+    /// <summary>
+    /// Firma opaca ("thought_signature") che Gemini allega a ogni sua chiamata e pretende
+    /// indietro al giro successivo, altrimenti risponde 400. Resta nel ciclo del server:
+    /// non esce verso la SPA e non viene mai rimandata a un provider diverso.
+    /// </summary>
+    [JsonIgnore]
+    public string? FirmaPensiero { get; set; }
 }
 
 /// <summary>Strumento offerto al modello: nome, descrizione e schema JSON dei parametri.</summary>
@@ -48,51 +57,33 @@ public sealed record RispostaChatAi(
 public sealed class AiChatClient
 {
     private readonly HttpClient _http;
-    private readonly AiOptions _opzioni;
+    private readonly IReadOnlyList<ConfigurazioneProviderAiCompatibile> _provider;
 
     public AiChatClient(HttpClient http, AiOptions opzioni)
     {
         _http = http;
-        _opzioni = opzioni;
-
-        var (baseUrlDefault, modelloDefault) = DefaultProvider(opzioni.Provider);
-        string baseUrl = string.IsNullOrWhiteSpace(opzioni.BaseUrl) ? baseUrlDefault : opzioni.BaseUrl;
-        Modello = string.IsNullOrWhiteSpace(opzioni.ModelloChat)
-            ? (string.IsNullOrWhiteSpace(opzioni.Modello) ? modelloDefault : opzioni.Modello!)
-            : opzioni.ModelloChat!;
+        _provider = CatalogoProviderAiCompatibili.AttivePerChat(opzioni);
 
         // Il costruttore non deve mai far fallire l'avvio: se la configurazione non basta,
         // la chat resta spenta e l'endpoint lo spiega in italiano all'utente. Senza chiave
         // un provider remoto risponderebbe 401 a ogni messaggio: meglio dire subito che
         // manca la chiave (un modello in locale, invece, non ne vuole nessuna).
-        Attivo = baseUrl.Length > 0 && Modello.Length > 0
-            && !opzioni.Provider.Equals("Spento", StringComparison.OrdinalIgnoreCase)
-            && !opzioni.ChiaveMancante
-            && opzioni.EndpointConsentito(baseUrl);
+        Attivo = _provider.Count > 0;
         if (!Attivo) return;
 
-        _http.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
         _http.Timeout = TimeSpan.FromSeconds(120);
-        if (!string.IsNullOrWhiteSpace(opzioni.ApiKey))
-            _http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", opzioni.ApiKey);
     }
 
-    public string Modello { get; }
+    public string Modello => _provider.FirstOrDefault()?.ModelloChat ?? "";
+
+    public string Provider => _provider.FirstOrDefault()?.Provider ?? "";
+
+    public string? ProviderSecondario => _provider.Skip(1).FirstOrDefault()?.Provider;
+
+    public string? ModelloSecondario => _provider.Skip(1).FirstOrDefault()?.ModelloChat;
 
     /// <summary>Falso quando il provider non è configurato: la chat lo dice, non esplode.</summary>
     public bool Attivo { get; }
-
-    /// <summary>Endpoint e modello di default dei provider conosciuti.</summary>
-    private static (string BaseUrl, string Modello) DefaultProvider(string provider) =>
-        provider.ToLowerInvariant() switch
-        {
-            // deepseek-chat e deepseek-reasoner sono deprecati dal 24 luglio 2026.
-            // Aurora richiede il function calling, disponibile sul modello Flash corrente.
-            "deepseek" => ("https://api.deepseek.com", "deepseek-v4-flash"),
-            "glm" => ("https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
-            _ => ("", ""),
-        };
 
     /// <summary>Un turno di conversazione: manda la storia + gli strumenti, legge la risposta.</summary>
     public async Task<RispostaChatAi> ParlaAsync(
@@ -103,10 +94,46 @@ public sealed class AiChatClient
             throw new InvalidOperationException(
                 "Aurora non è disponibile: controlla che il modello locale sia configurato e avviato.");
 
+        Exception? ultimoErrore = null;
+        foreach (var provider in _provider)
+        {
+            try
+            {
+                return await InviaAsync(provider, messaggi, strumenti, ct);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                ultimoErrore = new InvalidOperationException(
+                    $"Il provider {provider.Provider} non ha risposto entro il tempo previsto.");
+            }
+            catch (HttpRequestException ex)
+            {
+                ultimoErrore = new InvalidOperationException(
+                    $"Il provider {provider.Provider} non è raggiungibile.", ex);
+            }
+            catch (InvalidOperationException ex)
+            {
+                ultimoErrore = ex;
+            }
+        }
+
+        throw ultimoErrore ?? new InvalidOperationException("Nessun provider AI disponibile.");
+    }
+
+    private async Task<RispostaChatAi> InviaAsync(
+        ConfigurazioneProviderAiCompatibile provider,
+        IReadOnlyList<MessaggioChatAi> messaggi,
+        IReadOnlyList<StrumentoAi> strumenti,
+        CancellationToken ct)
+    {
+
         var corpo = new Dictionary<string, object?>
         {
-            ["model"] = Modello,
-            ["messages"] = messaggi.Select(Serializza).ToArray(),
+            ["model"] = provider.ModelloChat,
+            ["messages"] = messaggi
+                .Select(m => Serializza(m, provider.Provider.Equals(
+                    "Gemini", StringComparison.OrdinalIgnoreCase)))
+                .ToArray(),
             ["temperature"] = 0.2,
         };
         if (strumenti.Count > 0)
@@ -128,49 +155,82 @@ public sealed class AiChatClient
         // a rimandare il reasoning_content integrale; Aurora non lo conserva né lo espone
         // alla SPA. La modalità non-thinking mantiene il protocollo semplice e prevedibile
         // del vecchio deepseek-chat e impedisce il 400 al secondo giro dello strumento.
-        if (_opzioni.Provider.Equals("DeepSeek", StringComparison.OrdinalIgnoreCase))
+        if (provider.Provider.Equals("DeepSeek", StringComparison.OrdinalIgnoreCase))
             corpo["thinking"] = new { type = "disabled" };
 
-        using var richiesta = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
+        using var richiesta = new HttpRequestMessage(
+            HttpMethod.Post, Indirizzo(provider.BaseUrl, "chat/completions"))
         {
             Content = new StringContent(JsonSerializer.Serialize(corpo), Encoding.UTF8, "application/json"),
         };
+        if (!string.IsNullOrWhiteSpace(provider.ApiKey))
+            richiesta.Headers.Authorization = new AuthenticationHeaderValue("Bearer", provider.ApiKey);
+        if (provider.Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+            richiesta.Headers.TryAddWithoutValidation(
+                "x-goog-api-client", "paghepro-openai-compatible/1.0");
+
         using var risposta = await _http.SendAsync(richiesta, ct);
         string json = await risposta.Content.ReadAsStringAsync(ct);
         if (!risposta.IsSuccessStatusCode)
-            throw new InvalidOperationException(DescriviErrore((int)risposta.StatusCode, json));
+            throw new InvalidOperationException(
+                DescriviErrore(provider.Provider, (int)risposta.StatusCode, json));
 
-        return Interpreta(json);
+        var interpretata = Interpreta(json);
+        if (interpretata.Testo is null && interpretata.Chiamate.Count == 0)
+            throw new InvalidOperationException(
+                $"Il provider {provider.Provider} ha restituito una risposta non leggibile.");
+        return interpretata;
     }
 
     /// <summary>Messaggio d'errore in italiano, senza rigirare all'utente il JSON del provider.</summary>
-    private static string DescriviErrore(int stato, string corpo) => stato switch
+    private static string DescriviErrore(string provider, int stato, string corpo) => stato switch
     {
-        401 or 403 => "Il provider AI ha rifiutato la chiave (Ai:ApiKey): controlla che sia valida e attiva.",
-        402 => "Credito del provider AI esaurito: ricarica il conto DeepSeek.",
-        429 => "Troppe richieste al provider AI in questo momento: riprova tra qualche secondo.",
-        >= 500 => "Il provider AI non risponde in questo momento: riprova tra poco.",
-        _ => $"Il provider AI ha risposto con errore {stato}. "
+        401 or 403 => $"Il provider {provider} ha rifiutato la chiave: controlla che sia valida e attiva.",
+        402 => $"Credito del provider {provider} esaurito: controlla il relativo account.",
+        429 => $"Troppe richieste al provider {provider} in questo momento: riprova tra qualche secondo.",
+        >= 500 => $"Il provider {provider} non risponde in questo momento: riprova tra poco.",
+        _ => $"Il provider {provider} ha risposto con errore {stato}. "
             + (corpo.Length > 200 ? corpo[..200] : corpo),
     };
 
+    private static Uri Indirizzo(string baseUrl, string percorso) =>
+        new(new Uri(baseUrl.TrimEnd('/') + "/"), percorso);
+
+    /// <summary>Legge la firma opaca di Gemini, se il provider l'ha allegata alla chiamata.</summary>
+    private static string? FirmaPensiero(JsonElement chiamata) =>
+        chiamata.TryGetProperty("extra_content", out var extra)
+        && extra.ValueKind == JsonValueKind.Object
+        && extra.TryGetProperty("google", out var google)
+        && google.ValueKind == JsonValueKind.Object
+        && google.TryGetProperty("thought_signature", out var firma)
+        && firma.ValueKind == JsonValueKind.String
+            ? firma.GetString()
+            : null;
+
     /// <summary>Traduce un messaggio interno nel formato dell'API. Puro: testabile.</summary>
-    public static object Serializza(MessaggioChatAi m) => m.Ruolo switch
+    public static object Serializza(MessaggioChatAi m, bool includiFirmaPensiero = false) => m.Ruolo switch
     {
         "tool" => (object)new { role = "tool", tool_call_id = m.ChiamataId ?? "", content = m.Contenuto ?? "" },
         "assistant" when m.Chiamate is { Count: > 0 } => new
         {
             role = "assistant",
             content = m.Contenuto ?? "",
-            tool_calls = m.Chiamate.Select(c => new
+            tool_calls = m.Chiamate.Select(c => SerializzaChiamata(c, includiFirmaPensiero)).ToArray(),
+        },
+        _ => new { role = m.Ruolo, content = m.Contenuto ?? "" },
+    };
+
+    /// <summary>La firma torna soltanto al provider che l'ha prodotta: agli altri è ignota.</summary>
+    private static object SerializzaChiamata(ChiamataStrumentoAi c, bool includiFirmaPensiero) =>
+        includiFirmaPensiero && !string.IsNullOrEmpty(c.FirmaPensiero)
+            ? new
             {
                 id = c.Id,
                 type = "function",
                 function = new { name = c.Nome, arguments = c.ArgomentiJson },
-            }).ToArray(),
-        },
-        _ => new { role = m.Ruolo, content = m.Contenuto ?? "" },
-    };
+                extra_content = new { google = new { thought_signature = c.FirmaPensiero } },
+            }
+            : new { id = c.Id, type = "function", function = new { name = c.Nome, arguments = c.ArgomentiJson } };
 
     /// <summary>Legge testo e tool_calls dalla risposta OpenAI-compatibile. Puro: testabile.</summary>
     public static RispostaChatAi Interpreta(string rispostaJson)
@@ -210,6 +270,7 @@ public sealed class AiChatClient
                         Nome = f.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
                         ArgomentiJson = f.TryGetProperty("arguments", out var a)
                             ? (a.GetString() ?? "{}") : "{}",
+                        FirmaPensiero = FirmaPensiero(t),
                     });
                 }
             }

@@ -9,8 +9,8 @@ public sealed class VisuraCameraleParserTests
     private const string VisuraEsempio = """
         REGISTRO DELLE IMPRESE
         Denominazione: ALFA COSTRUZIONI SRL
-        Codice fiscale: 01234567890
-        Partita IVA: 09876543210
+        Codice fiscale: 01234567897
+        Partita IVA: 09876543217
         Indirizzo: VIA ROMA 10 - 20121 MILANO (MI)
         Codice ATECO: 41.20.00
         Rappresentante legale: MARIO ROSSI
@@ -22,8 +22,8 @@ public sealed class VisuraCameraleParserTests
         var d = VisuraCameraleParser.Estrai(VisuraEsempio);
 
         Assert.Equal("ALFA COSTRUZIONI SRL", d.RagioneSociale);
-        Assert.Equal("09876543210", d.PartitaIva);
-        Assert.Equal("01234567890", d.CodiceFiscale);
+        Assert.Equal("09876543217", d.PartitaIva);
+        Assert.Equal("01234567897", d.CodiceFiscale);
         Assert.Equal("20121", d.Cap);
         Assert.Equal("MILANO", d.Comune);
         Assert.Equal("MI", d.Provincia);
@@ -68,7 +68,7 @@ public sealed class VisuraCameraleParserTests
     {
         const string visura = """
             Denominazione: SOCIETA' AGRICOLA ESEMPIO S.R.L.
-            Codice Fiscale / Partita IVA: 12345678901
+            Codice Fiscale / Partita IVA: 12345678903
             Sede Legale: VIA DEL CAMPO 26, 52100 AREZZO (AR)
             Attività Prevalente: Allevamento (Codice ATECO: 01.46.00)
             Amministratore Delegato: BIANCHI LUCA (C.F. BNCLCU91L11D150X)
@@ -77,8 +77,8 @@ public sealed class VisuraCameraleParserTests
         var d = VisuraCameraleParser.Estrai(visura);
 
         Assert.Equal("SOCIETA' AGRICOLA ESEMPIO S.R.L.", d.RagioneSociale);
-        Assert.Equal("12345678901", d.PartitaIva);
-        Assert.Equal("12345678901", d.CodiceFiscale);
+        Assert.Equal("12345678903", d.PartitaIva);
+        Assert.Equal("12345678903", d.CodiceFiscale);
         Assert.Equal("VIA DEL CAMPO 26", d.Indirizzo);
         Assert.Equal("52100", d.Cap);
         Assert.Equal("AREZZO", d.Comune);

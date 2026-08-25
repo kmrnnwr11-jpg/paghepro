@@ -145,6 +145,29 @@ export const aiutoPerSezione: Record<string, SchedaAiuto> = {
     ],
   },
 
+  agricoltura: {
+    titolo: "Anteprima busta agricola",
+    aCosaServe:
+      "Calcola una bozza per operai agricoli OTD usando la tariffa del contratto provinciale e tenendo separate ore e giornate INPS. I rapporti OTI sono riconosciuti ma bloccati finche non esistono tabelle dedicate validate.",
+    passi: [
+      "Scegli un lavoratore con CCNL AGRICOLTURA_OPERAI.",
+      "Controlla anno, provincia CPL e livello: devono avere una tabella disponibile con la fonte indicata.",
+      "Inserisci ore effettive, giornate lavorate, giorni di detrazione e reddito annuo presunto reale.",
+      "Calcola l'anteprima, controlla tutte le voci e scarica il PDF bozza.",
+      "Non usare la bozza come LUL, PosAgri o F24: questi passaggi non sono ancora generati dalla funzione.",
+    ],
+    faq: [
+      {
+        domanda: "Perché servono sia ore sia giornate?",
+        risposta: "Le ore determinano la paga; le giornate sono il dato previdenziale comunicato all'INPS. Non sono la stessa cosa e il programma non le ricava una dall'altra.",
+      },
+      {
+        domanda: "Il costo azienda è completo?",
+        risposta: "No. Il prospetto mostra solo le componenti note; i contributi datoriali definitivi sono determinati dall'INPS dopo la denuncia PosAgri.",
+      },
+    ],
+  },
+
   calcolo: {
     titolo: "Calcolo della busta paga",
     aCosaServe:

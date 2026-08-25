@@ -12,12 +12,12 @@ public enum Qualifica
 
 /// <summary>
 /// Che cosa è stata quella giornata per il lavoratore. È lo stato prevalente del giorno:
-/// le quantità parziali (permessi, straordinari, uscite anticipate) stanno nelle ore della
+/// le quantità parziali (ROL e straordinari) stanno nelle ore della
 /// <see cref="GiornataCartellino"/>, non in una seconda causale.
 /// </summary>
 public enum CausaleGiornata
 {
-    /// <summary>Giornata di lavoro (anche parziale, se ci sono ore di permesso o assenza).</summary>
+    /// <summary>Giornata di lavoro, anche parziale quando completata da ore di ROL.</summary>
     Lavorata,
 
     Ferie,

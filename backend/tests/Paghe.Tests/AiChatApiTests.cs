@@ -69,7 +69,7 @@ public sealed class AiChatApiTests : IDisposable
         {
             strumento = "registra_azienda",
             argomentiJson =
-                """{"ragioneSociale":"Non Deve Nascere Srl","partitaIva":"12345678901"}""",
+                """{"ragioneSociale":"Non Deve Nascere Srl","partitaIva":"12345678903"}""",
             storia = Array.Empty<object>(),
             aziendaId = (Guid?)null,
         });

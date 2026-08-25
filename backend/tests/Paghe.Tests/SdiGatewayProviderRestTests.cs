@@ -80,7 +80,7 @@ public sealed class SdiGatewayProviderRestTests
     }
 
     private static FatturaDaTrasmettere NuovaFattura() =>
-        new(Guid.NewGuid(), "IT01234567890_00001.xml", Encoding.UTF8.GetBytes("<xml/>"), Firmato: false);
+        new(Guid.NewGuid(), "IT01234567897_00001.xml", Encoding.UTF8.GetBytes("<xml/>"), Firmato: false);
 
     private sealed class FakeHandler : HttpMessageHandler
     {

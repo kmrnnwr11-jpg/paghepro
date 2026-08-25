@@ -10,10 +10,12 @@ namespace Paghe.Persistence;
 public static class CcnlDatasetUfficiale
 {
     private sealed record LivelloJson(
-        string Livello, string? Descrizione, decimal? MinimoTabellare, decimal? Edr, decimal? ImportoScatto);
+        string Livello, string? Descrizione, decimal? MinimoTabellare, decimal? Edr,
+        decimal? ImportoScatto, decimal? Contingenza);
+    private sealed record TerzoElementoJson(string Provincia, decimal Importo);
     private sealed record CcnlJson(
         string Codice, string? Descrizione, int Anno, string? CodiceCnel,
-        string? Fonte, List<LivelloJson> Livelli);
+        string? Fonte, List<LivelloJson> Livelli, List<TerzoElementoJson>? TerzoElemento);
 
     /// <summary>Tutti i CCNL del dataset incorporato (tutti gli anni disponibili).</summary>
     public static List<CcnlInput> Carica()
@@ -38,10 +40,14 @@ public static class CcnlDatasetUfficiale
                     .Where(l => l.MinimoTabellare is not null)
                     .Select(l => new LivelloCcnlInput(
                         l.Livello, l.Descrizione ?? l.Livello,
-                        l.MinimoTabellare!.Value, l.Edr ?? 0m, l.ImportoScatto ?? 0m))
+                        l.MinimoTabellare!.Value, l.Edr ?? 0m, l.ImportoScatto ?? 0m,
+                        l.Contingenza))
                     .ToList(),
                 c.CodiceCnel,
-                c.Fonte)));
+                c.Fonte,
+                c.TerzoElemento?
+                    .Select(t => new TerzoElementoInput(t.Provincia, t.Importo))
+                    .ToList())));
         }
 
         return risultato;

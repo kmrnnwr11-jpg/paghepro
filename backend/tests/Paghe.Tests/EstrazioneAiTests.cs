@@ -34,7 +34,7 @@ public sealed class EstrazioneAiTests
 
     // ---- Fusione euristica + AI ----
 
-    private static DatiAziendaDaVisura Euristica(string? piva = "01234567890", string? comune = null) =>
+    private static DatiAziendaDaVisura Euristica(string? piva = "01234567897", string? comune = null) =>
         new("Alfa Srl", piva, null, "Via Roma 1", "20100", comune, null, null, null);
 
     [Fact]
@@ -61,7 +61,7 @@ public sealed class EstrazioneAiTests
         var (dati, dallAi) = CompletamentoVisuraAi.Completa(Euristica(), proposta, 0.6m);
 
         Assert.Equal("Milano", dati.Comune);
-        Assert.Equal("01234567890", dati.PartitaIva); // euristica intatta
+        Assert.Equal("01234567897", dati.PartitaIva); // euristica intatta
         Assert.Null(dati.Provincia);                  // confidenza insufficiente
         Assert.Equal(["comune"], dallAi);
     }
@@ -111,6 +111,28 @@ public sealed class EstrazioneAiTests
         }
     }
 
+    private sealed record RichiestaCompatibile(
+        Uri? Indirizzo, string? Autorizzazione, string? Corpo, bool HeaderGoogle);
+
+    private sealed class HandlerSequenza(params HttpResponseMessage[] risposte) : HttpMessageHandler
+    {
+        private readonly Queue<HttpResponseMessage> _risposte = new(risposte);
+        public List<RichiestaCompatibile> Richieste { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            string? corpo = request.Content is null
+                ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            Richieste.Add(new RichiestaCompatibile(
+                request.RequestUri,
+                request.Headers.Authorization?.Parameter,
+                corpo,
+                request.Headers.Contains("x-goog-api-client")));
+            return _risposte.Dequeue();
+        }
+    }
+
     private static HttpResponseMessage RispostaChat(string contenuto) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(JsonSerializer.Serialize(new
@@ -144,6 +166,88 @@ public sealed class EstrazioneAiTests
         Assert.Contains("visura camerale", handler.UltimoCorpo);
         Assert.Contains("json_object", handler.UltimoCorpo);
         Assert.Contains("\"thinking\":{\"type\":\"disabled\"}", handler.UltimoCorpo);
+    }
+
+    [Fact]
+    public async Task Compatibile_Gemini_Primario_UsaEndpointModelloEVistaGoogle()
+    {
+        var handler = new HandlerFinto(RispostaChat(
+            """{"campi":[{"nome":"comune","valore":"Milano","confidenza":0.9}]}"""));
+        var ai = new EstrattoreAiCompatibile(new HttpClient(handler), new AiOptions
+        {
+            Provider = "Gemini",
+            ApiKey = "chiave-google-prova",
+            ProviderCloudApprovato = true,
+        });
+
+        Assert.True(ai.Attivo);
+        Assert.True(ai.VedeImmagini);
+        Assert.Equal("gemini-3.7-flash", ai.Modello);
+        Assert.Equal("gemini-3.7-flash", ai.ModelloVisione);
+
+        var proposta = await ai.EstraiAsync("visura", "testo", ["comune"]);
+
+        Assert.Equal("Milano", proposta!.Campi[0].Valore);
+        Assert.Equal(
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            handler.UltimaRichiesta!.RequestUri!.ToString());
+        Assert.Equal("chiave-google-prova", handler.UltimaRichiesta.Headers.Authorization!.Parameter);
+        Assert.True(handler.UltimaRichiesta.Headers.Contains("x-goog-api-client"));
+        Assert.Contains("gemini-3.7-flash", handler.UltimoCorpo);
+    }
+
+    [Fact]
+    public async Task Compatibile_DeepSeekFallisce_RiprovaUnaVoltaConGemini()
+    {
+        var handler = new HandlerSequenza(
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable),
+            RispostaChat(
+                """{"campi":[{"nome":"comune","valore":"Roma","confidenza":0.9}]}"""));
+        var ai = new EstrattoreAiCompatibile(new HttpClient(handler), new AiOptions
+        {
+            Provider = "DeepSeek",
+            ApiKey = "chiave-deepseek-prova",
+            UsaGeminiComeFallback = true,
+            GeminiApiKey = "chiave-gemini-prova",
+            ProviderCloudApprovato = true,
+        });
+
+        var proposta = await ai.EstraiAsync("visura", "testo", ["comune"]);
+
+        Assert.Equal("Roma", proposta!.Campi[0].Valore);
+        Assert.Equal(2, handler.Richieste.Count);
+        Assert.Equal("https://api.deepseek.com/chat/completions",
+            handler.Richieste[0].Indirizzo!.ToString());
+        Assert.Equal(
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            handler.Richieste[1].Indirizzo!.ToString());
+        Assert.True(handler.Richieste[1].HeaderGoogle);
+    }
+
+    [Fact]
+    public async Task Compatibile_Immagine_UsaDirettamenteGeminiSenzaInviareADeepSeek()
+    {
+        var handler = new HandlerSequenza(RispostaChat(
+            """{"campi":[{"nome":"partitaIva","valore":"01234567897","confidenza":0.95}]}"""));
+        var ai = new EstrattoreAiCompatibile(new HttpClient(handler), new AiOptions
+        {
+            Provider = "DeepSeek",
+            ApiKey = "chiave-deepseek-prova",
+            UsaGeminiComeFallback = true,
+            GeminiApiKey = "chiave-gemini-prova",
+            ProviderCloudApprovato = true,
+        });
+
+        var proposta = await ai.EstraiDaImmagineAsync(
+            "visura", [1, 2, 3], "image/jpeg", ["partitaIva"]);
+
+        Assert.Equal("01234567897", proposta!.Campi[0].Valore);
+        var richiesta = Assert.Single(handler.Richieste);
+        Assert.Equal(
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            richiesta.Indirizzo!.ToString());
+        Assert.True(richiesta.HeaderGoogle);
+        Assert.Contains("data:image/jpeg;base64,", richiesta.Corpo);
     }
 
     [Fact]
@@ -184,7 +288,7 @@ public sealed class EstrazioneAiTests
     public async Task Compatibile_Glm_HaLaVistaDiDefault_EInviaLaFoto()
     {
         var handler = new HandlerFinto(RispostaChat(
-            """{"campi":[{"nome":"partitaIva","valore":"01234567890","confidenza":0.95}]}"""));
+            """{"campi":[{"nome":"partitaIva","valore":"01234567897","confidenza":0.95}]}"""));
         var ai = new EstrattoreAiCompatibile(new HttpClient(handler),
             new AiOptions { Provider = "Glm", ApiKey = "chiave", ProviderCloudApprovato = true });
 
@@ -195,7 +299,7 @@ public sealed class EstrazioneAiTests
             "visura camerale", [1, 2, 3], "image/jpeg", ["partitaIva"]);
 
         Assert.NotNull(proposta);
-        Assert.Equal("01234567890", proposta.Campi[0].Valore);
+        Assert.Equal("01234567897", proposta.Campi[0].Valore);
         Assert.Contains("glm-4v-flash", handler.UltimoCorpo);
         Assert.Contains("data:image/jpeg;base64,", handler.UltimoCorpo);
         Assert.Contains("image_url", handler.UltimoCorpo);

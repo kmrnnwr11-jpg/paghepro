@@ -30,6 +30,8 @@ public sealed record PresenzaRiga(
     decimal? PermessiResidui,
     int? SaldiAnno,
     int? SaldiMese,
+    string? RiferimentoQuattordicesimaSeparata,
+    DateOnly? DataPagamentoQuattordicesima,
     /// <summary>Ore contrattuali della giornata piena: precompila il calendario giornaliero.</summary>
     decimal OreGiornaliere,
     /// <summary>Calendario già compilato per questo mese; vuoto = cartellino a totali.</summary>
@@ -108,6 +110,8 @@ public sealed class PresenzeService
                     PermessiResidui: precedente?.PermessiResidui,
                     SaldiAnno: precedente?.Anno,
                     SaldiMese: precedente?.Mese,
+                    RiferimentoQuattordicesimaSeparata: cart?.RiferimentoQuattordicesimaSeparata,
+                    DataPagamentoQuattordicesima: cart?.DataPagamentoQuattordicesima,
                     // Cinque giorni a settimana: è l'orario più comune e serve solo a
                     // precompilare la griglia, non a calcolare. L'utente può correggerlo giorno
                     // per giorno, e con l'agricoltura (sei giorni) il valore arriverà dal CCNL.

@@ -31,6 +31,15 @@ public class ParametriAnnoEntity
     public decimal? PremioRisultatoLimiteAnnuo { get; set; }
     public decimal? PremioRisultatoAliquota { get; set; }
     public decimal? PremioRisultatoRedditoMassimo { get; set; }
+
+    // Ulteriore detrazione "cuneo fiscale" (L. 207/2024): importo annuo e soglie di reddito.
+    public decimal? CuneoUlterioreDetrazioneAnnua { get; set; }
+    public decimal? CuneoRedditoOltre { get; set; }
+    public decimal? CuneoRedditoFinoA { get; set; }
+    public decimal? CuneoRedditoAzzeramento { get; set; }
+
+    /// <summary>Contributo di solidarietà sui fondi di assistenza sanitaria c/datore (10%).</summary>
+    public decimal? SolidarietaFondiAliquota { get; set; }
 }
 
 /// <summary>Aliquota contributiva INPS per anno e qualifica.</summary>
@@ -113,6 +122,46 @@ public class RegoleCcnlEntity
     public decimal? GiorniFerieMese { get; set; }
     public decimal? OrePermessiMese { get; set; }
 
+    /// <summary>Ore di permesso mensili nelle aziende oltre i 15 dipendenti, se il CCNL le differenzia.</summary>
+    public decimal? OrePermessiMeseOltre15 { get; set; }
+
+    /// <summary>Periodicità degli scatti di anzianità in mesi (36 = triennale): abilita la maturazione automatica.</summary>
+    public int? ScattiOgniMesi { get; set; }
+
+    /// <summary>Numero massimo di scatti maturabili.</summary>
+    public int? ScattiMassimo { get; set; }
+
+    /// <summary>Mese in cui il contratto eroga la tredicesima (di norma 12).</summary>
+    public int? MeseErogazioneTredicesima { get; set; }
+
+    /// <summary>Mese in cui il contratto eroga la quattordicesima (Terziario: 7).</summary>
+    public int? MeseErogazioneQuattordicesima { get; set; }
+
+    /// <summary>Quota mensile del fondo di assistenza sanitaria a carico del lavoratore (Fondo Est: 2 €).</summary>
+    public decimal? AssistenzaSanitariaLavoratoreMese { get; set; }
+
+    /// <summary>Quota mensile del fondo di assistenza sanitaria a carico dell'azienda (Fondo Est: 13 €).</summary>
+    public decimal? AssistenzaSanitariaDatoreMese { get; set; }
+
+    /// <summary>Aliquota ente bilaterale a carico del lavoratore su paga base + contingenza (EBiTer: 0,0005).</summary>
+    public decimal? EnteBilateraleAliquotaLavoratore { get; set; }
+
+    /// <summary>Aliquota ente bilaterale a carico dell'azienda su paga base + contingenza (EBiTer: 0,0010).</summary>
+    public decimal? EnteBilateraleAliquotaDatore { get; set; }
+
+    /// <summary>Monte ROL annuo a regime fino a 15 dipendenti, separato dalle ex festivita.</summary>
+    public decimal? OreRolAnno { get; set; }
+
+    /// <summary>Monte ROL annuo a regime oltre 15 dipendenti.</summary>
+    public decimal? OreRolAnnoOltre15 { get; set; }
+
+    /// <summary>Monte annuo delle ex festivita.</summary>
+    public decimal? OreExFestivitaAnno { get; set; }
+
+    public int? MesiAnzianitaSenzaRol { get; set; }
+    public int? MesiAnzianitaRolRidotto { get; set; }
+    public decimal? PercentualeRolRidotta { get; set; }
+
     /// <summary>Da dove vengono i numeri (accordo CNEL, tabella…): serve a chi li rivede.</summary>
     public string? Fonte { get; set; }
 }
@@ -128,4 +177,25 @@ public class CcnlLivelloEntity
     public decimal MinimoTabellare { get; set; }
     public decimal Edr { get; set; }
     public decimal ImportoScatto { get; set; }
+
+    /// <summary>
+    /// Quota di contingenza (EDR storico incluso) già compresa nel minimo tabellare, quando la
+    /// scomposizione è nota: in busta va esposta come voce distinta dalla paga base. Null =
+    /// scomposizione non ancora fornita, il minimo resta un'unica voce.
+    /// </summary>
+    public decimal? Contingenza { get; set; }
+}
+
+/// <summary>
+/// Terzo elemento provinciale di un CCNL (Terziario), versionato per anno: importo mensile per
+/// sigla provincia dell'unità operativa; la riga con provincia "*" è il valore nazionale.
+/// Una provincia senza riga usa il nazionale, mai la tabella di un'altra provincia.
+/// </summary>
+public class CcnlTerzoElementoEntity
+{
+    public Guid Id { get; set; }
+    public string CcnlCodice { get; set; } = "";
+    public int Anno { get; set; }
+    public string Provincia { get; set; } = "";
+    public decimal Importo { get; set; }
 }

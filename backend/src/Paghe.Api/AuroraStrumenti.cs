@@ -76,16 +76,18 @@ public sealed class EsecutoreLettureAurora(
             .FirstOrDefaultAsync(ct) ?? "";
         try
         {
-            var flusso = await uniemens.GeneraDelMeseAsync(
+            var esito = await uniemens.GeneraDelMeseAsync(
                 contesto.TenantId, aziendaId, anno, mese, matricola, ct);
             return new(
                 JsonSerializer.Serialize(new
                 {
                     bozzaDisponibile = true,
                     periodo,
-                    posizioni = flusso.Lavoratori.Count,
-                    avvertenza = "BOZZA non validata dal controllo ufficiale INPS: il file XML "
-                        + "si scarica dalla pagina Elaborazioni e va verificato prima dell'invio.",
+                    posizioni = esito.Flusso.Azienda.Posizione.Lavoratori.Count,
+                    conformeSchemaUfficiale = esito.ErroriSchema.Count == 0,
+                    datiDaCompletare = esito.DaCompletare.Count,
+                    avvertenza = "Il file XML si scarica dalla pagina Elaborazioni e va fatto "
+                        + "passare dal software di controllo ufficiale INPS prima dell'invio.",
                 }, Json), Negato: false, null, Righe: 1);
         }
         catch (ArgumentException ex)

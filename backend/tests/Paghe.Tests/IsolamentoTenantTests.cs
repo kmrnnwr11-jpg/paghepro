@@ -38,7 +38,7 @@ public sealed class IsolamentoTenantTests : IDisposable
         await using var db = NuovoContesto();
         var az = await new AziendeService(db).CreaAsync(tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "01234567890",
+            RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             Settore = "COMMERCIO_SERVIZI", CodiceAteco = "47.91.10",
             MatricolaInps = "1234567890", CodiceSedeInps = "7100", CscInps = "10101",
@@ -95,7 +95,7 @@ public sealed class IsolamentoTenantTests : IDisposable
                 Data: new DateOnly(2026, 6, 26),
                 Cessionario: new DatiAnagrafici
                 {
-                    Denominazione = "Beta Spa", PartitaIva = "09876543210",
+                    Denominazione = "Beta Spa", PartitaIva = "09876543217",
                     Indirizzo = "Via Po 2", Cap = "10100", Comune = "Torino", Provincia = "TO",
                 },
                 Righe: new[]

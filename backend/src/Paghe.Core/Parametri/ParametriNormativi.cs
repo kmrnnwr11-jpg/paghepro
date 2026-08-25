@@ -63,6 +63,40 @@ public sealed class ParametriNormativi
     public IReadOnlyDictionary<string, RegoleCcnl> RegoleCcnl { get; init; }
         = new Dictionary<string, RegoleCcnl>(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Minimo di detrazione da lavoro dipendente per i rapporti a tempo indeterminato
+    /// (art. 13 c.1 TUIR): non si rapporta ai giorni di spettanza.
+    /// </summary>
+    public decimal DetrazioneMinimaTempoIndeterminato { get; init; } = 690m;
+
+    /// <summary>
+    /// Minimo di detrazione per i rapporti a tempo determinato (art. 13 c.1 TUIR). È la regola
+    /// che azzera l'IRPEF dello stagionale: pochi mesi di lavoro, detrazione piena da 1.380 €.
+    /// </summary>
+    public decimal DetrazioneMinimaTempoDeterminato { get; init; } = 1380m;
+
+    // ---- Ulteriore detrazione "cuneo fiscale" (L. 207/2024, art. 1 c. 6; Circ. AdE 4/E/2025) --
+    // Spetta ai redditi di lavoro dipendente oltre 20.000 € e fino a 32.000 € per l'importo
+    // pieno, poi decresce fino ad azzerarsi a 40.000 €. Rapportata al periodo di lavoro.
+
+    /// <summary>Importo annuo dell'ulteriore detrazione cuneo fiscale: 1.000 €.</summary>
+    public decimal CuneoUlterioreDetrazioneAnnua { get; init; } = 1000m;
+
+    /// <summary>Reddito oltre il quale spetta l'ulteriore detrazione: 20.000 €.</summary>
+    public decimal CuneoRedditoOltre { get; init; } = 20000m;
+
+    /// <summary>Reddito fino al quale spetta l'importo pieno: 32.000 €.</summary>
+    public decimal CuneoRedditoFinoA { get; init; } = 32000m;
+
+    /// <summary>Reddito al quale la detrazione decrescente si azzera: 40.000 €.</summary>
+    public decimal CuneoRedditoAzzeramento { get; init; } = 40000m;
+
+    /// <summary>
+    /// Contributo di solidarietà sui versamenti datoriali ai fondi di assistenza sanitaria
+    /// integrativa (art. 9-bis L. 166/1991): 10%. Non si applica agli enti bilaterali.
+    /// </summary>
+    public decimal SolidarietaFondiAliquota { get; init; } = 0.10m;
+
     /// <summary>Divisore per la quota annua di TFR (13,5).</summary>
     public decimal TfrDivisore { get; init; } = 13.5m;
 

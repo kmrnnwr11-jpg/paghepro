@@ -71,7 +71,9 @@ public sealed class CompilaPresenzeAuroraServiceTests : IDisposable
             Id = scenario.RapportoId, TenantId = scenario.TenantId,
             AziendaId = scenario.AziendaId, DipendenteId = dipendenteId,
             CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3", Qualifica = "Impiegato",
-            DataAssunzione = new DateOnly(2024, 1, 1), OreSettimanali = 40m,
+            // Lo scenario nasce il primo giorno del periodo: il riporto della prima settimana
+            // e quindi autorevolmente zero, senza inventare un giugno non presente nel fixture.
+            DataAssunzione = new DateOnly(2026, 7, 1), OreSettimanali = 40m,
         });
         await db.SaveChangesAsync();
 
@@ -88,23 +90,58 @@ public sealed class CompilaPresenzeAuroraServiceTests : IDisposable
     }
 
     private static IReadOnlyList<GiornataCartellino> Calendario(
-        int anno, int mese, IReadOnlyCollection<int> giorniMalattia) =>
-        [.. Enumerable.Range(1, DateTime.DaysInMonth(anno, mese)).Select(giorno =>
+        int anno, int mese, IReadOnlyCollection<int> giorniMalattia)
+    {
+        var giornate = new List<GiornataCartellino>();
+        decimal progressivo = 0m;
+        foreach (int giorno in Enumerable.Range(1, DateTime.DaysInMonth(anno, mese)))
         {
             var data = new DateOnly(anno, mese, giorno);
+            if (data.DayOfWeek == DayOfWeek.Monday)
+                progressivo = 0m;
+
             if (giorniMalattia.Contains(giorno))
-                return new GiornataCartellino
+            {
+                giornate.Add(new GiornataCartellino
                 {
                     Data = data, Causale = CausaleGiornata.Malattia,
-                };
+                    ProgressivoOreSettimanali = progressivo,
+                    IdentificativoEvento = "MAL-AURORA-2026-001",
+                    DataInizioEvento = new DateOnly(anno, mese, giorniMalattia.Min()),
+                    RetribuzioneMediaGiornalieraPrecedente = 80m,
+                    RateiGiornalieri = 10m,
+                    CoefficienteLordizzazione = 1m,
+                });
+                continue;
+            }
+
             bool domenica = data.DayOfWeek == DayOfWeek.Sunday;
-            return new GiornataCartellino
+            decimal ore = domenica ? 0m : 8m;
+            progressivo += ore;
+            giornate.Add(new GiornataCartellino
             {
                 Data = data,
                 Causale = domenica ? CausaleGiornata.RiposoSettimanale : CausaleGiornata.Lavorata,
-                OreOrdinarie = domenica ? 0m : 8m,
-            };
+                OreOrdinarie = ore,
+                ProgressivoOreSettimanali = progressivo,
+            });
+        }
+
+        return giornate;
+    }
+
+    private static GiornataCartellino[] RicalcolaProgressivi(
+        IEnumerable<GiornataCartellino> giornate)
+    {
+        decimal progressivo = 0m;
+        return [.. giornate.OrderBy(g => g.Data).Select(g =>
+        {
+            if (g.Data.DayOfWeek == DayOfWeek.Monday)
+                progressivo = 0m;
+            progressivo += g.TotaleOreLavorate;
+            return g with { ProgressivoOreSettimanali = progressivo };
         })];
+    }
 
     // ---------- Intento e applicazione ----------
 
@@ -171,13 +208,14 @@ public sealed class CompilaPresenzeAuroraServiceTests : IDisposable
         // Tra anteprima e conferma qualcuno cambia il cartellino dalla pagina Presenze.
         var corrente = await db.Cartellini.AsNoTracking().SingleAsync(c =>
             c.TenantId == scenario.TenantId && c.RapportoLavoroId == scenario.RapportoId);
-        var giornate = corrente.Giornate.Select(g => g.Data.Day == 20
-            ? new GiornataCartellino
+        var giornate = RicalcolaProgressivi(corrente.Giornate.Select(g => g.Data.Day == 20
+            ? g with
             {
                 Data = g.Data, Causale = CausaleGiornata.AssenzaNonRetribuita,
+                OreOrdinarie = 0m,
                 OreAssenzaNonRetribuita = 8m,
             }
-            : g).ToArray();
+            : g));
         await new CartellinoBozzaService(db, Oggi15Agosto2026).SalvaAsync(
             scenario.TenantId, scenario.RapportoId,
             new SalvaCartellinoBozza(new Cartellino

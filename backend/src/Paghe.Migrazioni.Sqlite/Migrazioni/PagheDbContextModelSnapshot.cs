@@ -690,6 +690,19 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("AderisceFondiContrattuali")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<decimal?>("AliquotaInpsDatore")
+                        .HasPrecision(8, 6)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("AliquotaInpsDipendente")
+                        .HasPrecision(8, 6)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("AssoggettataIva")
                         .HasColumnType("INTEGER");
 
@@ -701,6 +714,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CcnlDefault")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CodiceAgevolazioneContributiva")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CodiceAteco")
@@ -715,7 +731,13 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<string>("CodiceFiscale")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CodiceFondoIntegrazioneSalariale")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("CodiceSedeInps")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CodiciAutorizzazioneInps")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Comune")
@@ -732,6 +754,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FirmaSiglaTimbroProtetta")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FonteProfiloContributivo")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("HaDipendenti")
@@ -790,7 +815,20 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("RiferimentoTerzoElementoTerritoriale")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RiferimentoVerificaApplicabilitaCcnl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RiferimentoVisuraCamerale")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Settore")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StatoAlboArtigiani")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Telefono")
@@ -942,6 +980,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<bool>("BuonoPastoElettronico")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateOnly?>("DataPagamentoQuattordicesima")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DatiSaluteProtetti")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -1012,6 +1053,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("RedditoAnnoPrecedente")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RiferimentoQuattordicesimaSeparata")
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("RimborsiSpeseDocumentate")
@@ -1125,6 +1169,10 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("Contingenza")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Descrizione")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -1151,6 +1199,35 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsUnique();
 
                     b.ToTable("CcnlLivelli");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.CcnlTerzoElementoEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CcnlCodice")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Importo")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provincia")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CcnlCodice", "Anno", "Provincia")
+                        .IsUnique();
+
+                    b.ToTable("CcnlTerzoElemento");
                 });
 
             modelBuilder.Entity("Paghe.Persistence.Entities.CcnlVersioneEntity", b =>
@@ -1276,6 +1353,10 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("CostoMedioAnnualizzato")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DatiValidazioneProtetti")
                         .HasColumnType("TEXT");
 
@@ -1284,6 +1365,22 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("DetrazioniLavoroDipendente")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ExFestivitaGodute")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ExFestivitaMaturate")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ExFestivitaResidue")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ExFestivitaSaldoPrecedente")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
@@ -1347,6 +1444,10 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("PrestazioniRecuperabili")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("QuotaTfr")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
@@ -1354,8 +1455,36 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<Guid>("RapportoLavoroId")
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("RetribuzioneFissa")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("RolGoduti")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("RolMaturati")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("RolResidui")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("RolSaldoPrecedente")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Stato")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("TariffaGiornaliera")
+                        .HasPrecision(15, 6)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("TariffaOraria")
+                        .HasPrecision(15, 6)
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("TenantId")
@@ -1370,6 +1499,10 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("TotaleTrattenute")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("UlterioreDetrazioneCuneo")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
@@ -1537,6 +1670,45 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.ToTable("ConsumiAi");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.ContributoAgricoloEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ACaricoDipendente")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Aliquota")
+                        .HasPrecision(8, 5)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Codice")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Descrizione")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Ordine")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Provincia")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Anno", "Provincia", "Codice")
+                        .IsUnique();
+
+                    b.ToTable("ContributiAgricoli");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.DelegaEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1638,6 +1810,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
 
                     b.Property<string>("Nome")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sesso")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("TenantId")
@@ -2079,6 +2254,35 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.ToTable("MessaggiEmail");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.ParametriAgricoliEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("AliquotaContributiDeducibili")
+                        .HasPrecision(8, 5)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Fonte")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provincia")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Anno", "Provincia")
+                        .IsUnique();
+
+                    b.ToTable("ParametriAgricoli");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.ParametriAnnoEntity", b =>
                 {
                     b.Property<int>("Anno")
@@ -2089,6 +2293,22 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT");
 
                     b.Property<decimal?>("BuonoPastoElettronicoEsenteGiorno")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("CuneoRedditoAzzeramento")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("CuneoRedditoFinoA")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("CuneoRedditoOltre")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("CuneoUlterioreDetrazioneAnnua")
+                        .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("DivisoreOrario")
@@ -2120,6 +2340,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT");
 
                     b.Property<decimal?>("PremioRisultatoRedditoMassimo")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("SolidarietaFondiAliquota")
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("TfrContributoFondo")
@@ -2626,7 +2849,22 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("AddizionaleComunaleAccontoAnnuo")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("AddizionaleComunaleSaldoAnnuo")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("AddizionaleRegionaleConguaglioAnnuo")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("AziendaId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CittadinanzaInps")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CodiceCatastaleComune")
@@ -2643,10 +2881,17 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<DateOnly?>("DataCessazione")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateOnly?>("DataDecorrenzaDomicilioFiscale")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("DetrazioniLavoroDipendente")
                         .HasColumnType("INTEGER");
 
                     b.Property<Guid>("DipendenteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("ExFestivitaResidueIniziali")
+                        .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("FerieResidueIniziali")
@@ -2688,12 +2933,25 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT")
                         .HasDefaultValue(0m);
 
+                    b.Property<string>("ProvinciaLavoro")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Qualifica")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("QualificaProfessionaleIstat")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Regione")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RiferimentoProgressiviFiscaliPregressi")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("RolResiduiIniziali")
+                        .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
                     b.Property<int>("ScattiAnzianita")
@@ -2708,6 +2966,12 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
 
                     b.Property<string>("TipoContratto")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TipoContribuzioneInps")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TipoPartTimeInps")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -2728,6 +2992,14 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<int>("Anno")
                         .HasColumnType("INTEGER");
 
+                    b.Property<decimal?>("AssistenzaSanitariaDatoreMese")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("AssistenzaSanitariaLavoratoreMese")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("CcnlCodice")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -2738,6 +3010,14 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
 
                     b.Property<decimal>("DivisoreOrario")
                         .HasPrecision(8, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("EnteBilateraleAliquotaDatore")
+                        .HasPrecision(8, 5)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("EnteBilateraleAliquotaLavoratore")
+                        .HasPrecision(8, 5)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Fonte")
@@ -2759,9 +3039,47 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(6, 4)
                         .HasColumnType("TEXT");
 
-                    b.Property<decimal?>("OrePermessiMese")
-                        .HasPrecision(8, 2)
+                    b.Property<int?>("MeseErogazioneQuattordicesima")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MeseErogazioneTredicesima")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MesiAnzianitaRolRidotto")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MesiAnzianitaSenzaRol")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("OreExFestivitaAnno")
+                        .HasPrecision(8, 4)
                         .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("OrePermessiMese")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("OrePermessiMeseOltre15")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("OreRolAnno")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("OreRolAnnoOltre15")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("PercentualeRolRidotta")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ScattiMassimo")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ScattiOgniMesi")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -3037,6 +3355,43 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.HasIndex("TenantId", "AziendaId", "Data");
 
                     b.ToTable("Spese");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.TariffaAgricolaEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Descrizione")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Livello")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provincia")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("SalarioProvincialeOrario")
+                        .HasPrecision(12, 5)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("TerzoElementoOrario")
+                        .HasPrecision(12, 5)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Anno", "Provincia", "Livello")
+                        .IsUnique();
+
+                    b.ToTable("TariffeAgricole");
                 });
 
             modelBuilder.Entity("Paghe.Persistence.Entities.TenantEntity", b =>

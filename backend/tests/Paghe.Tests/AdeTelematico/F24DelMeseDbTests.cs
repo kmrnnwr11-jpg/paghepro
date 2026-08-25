@@ -141,7 +141,7 @@ public sealed class F24DelMeseDbTests : IDisposable
             db.Aziende.Add(new AziendaEntity
             {
                 Id = aziendaId, TenantId = tenant, RagioneSociale = "Azienda Prova Srl",
-                PartitaIva = "01987654321", Indirizzo = "Via Test 1", Cap = "20100",
+                PartitaIva = "01987654322", Indirizzo = "Via Test 1", Cap = "20100",
                 Comune = "Milano", Provincia = "MI", Settore = "AGRICOLTURA", CodiceAteco = "01.46.00",
             });
             await db.SaveChangesAsync();
@@ -166,7 +166,7 @@ public sealed class F24DelMeseDbTests : IDisposable
             db.Aziende.Add(new AziendaEntity
             {
                 Id = aziendaId, TenantId = tenant, RagioneSociale = "Azienda Prova Srl",
-                PartitaIva = "01876543210", Indirizzo = "Via Test 2", Cap = "20100",
+                PartitaIva = "01876543214", Indirizzo = "Via Test 2", Cap = "20100",
                 Comune = "Milano", Provincia = "MI", Settore = "AGRICOLTURA", CodiceAteco = "01.46.00",
             });
             await db.SaveChangesAsync();

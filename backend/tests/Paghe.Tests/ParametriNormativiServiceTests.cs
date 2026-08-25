@@ -9,9 +9,8 @@ using Xunit;
 namespace Paghe.Tests;
 
 /// <summary>
-/// Verifica che i parametri normativi caricati dal database coincidano con i dati di
-/// esempio e, soprattutto, che il calcolo del cedolino con i parametri letti dal DB sia
-/// identico a quello ottenuto con i parametri cablati (Seed).
+/// Verifica che i parametri normativi caricati dal database coincidano con il fallback
+/// versionato e, soprattutto, che producano lo stesso calcolo del Seed applicativo.
 /// </summary>
 public sealed class ParametriNormativiServiceTests : IDisposable
 {
@@ -49,7 +48,14 @@ public sealed class ParametriNormativiServiceTests : IDisposable
         await using var db = NuovoContesto();
         var ccnl = await new ParametriNormativiService(db).CaricaCcnlAsync("COMMERCIO_TERZIARIO", 2026);
 
-        Assert.Equal(1330.66m, ccnl.Livello("3").MinimoTabellare);
+        var livello = ccnl.Livello("3");
+        Assert.Equal(1981.84m, livello.MinimoTabellare);
+        Assert.Equal(527.90m, livello.Contingenza);
+        Assert.Equal(0m, livello.Edr);
+        Assert.Equal(21.95m, livello.ImportoScatto);
+        Assert.Equal("H011", ccnl.CodiceCnel);
+        Assert.Equal(11.36m, ccnl.TerzoElemento("MI"));
+        Assert.Equal(2.07m, ccnl.TerzoElemento("RM"));
         Assert.Equal(8, ccnl.Livelli.Count);
     }
 
@@ -61,18 +67,23 @@ public sealed class ParametriNormativiServiceTests : IDisposable
         var parametri = await svc.CaricaParametriAsync(2026);
         var ccnl = await svc.CaricaCcnlAsync("COMMERCIO_TERZIARIO", 2026);
 
-        var motore = new MotoreCalcoloCedolino(parametri, ccnl);
-        var cedolino = motore.Calcola(
-            new RapportoLavoro
-            {
-                CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3", Qualifica = Qualifica.Impiegato,
-                NumeroMensilita = 14, // senza residenza fiscale: confronta il calcolo base DB vs Seed
-            },
-            new Cartellino { Anno = 2026, Mese = 6 });
+        var rapporto = new RapportoLavoro
+        {
+            CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3", Qualifica = Qualifica.Impiegato,
+            NumeroMensilita = 14, AderisceFondiContrattuali = false,
+            AddizionaleRegionaleConguaglioAnnuo = 0m,
+            AddizionaleComunaleSaldoAnnuo = 0m,
+            AddizionaleComunaleAccontoAnnuo = 0m,
+        };
+        var cartellino = new Cartellino { Anno = 2026, Mese = 6 };
+        var dalDatabase = new MotoreCalcoloCedolino(parametri, ccnl).Calcola(rapporto, cartellino);
+        var dalSeed = new MotoreCalcoloCedolino(
+            Seed.Parametri2026(), Seed.CcnlCommercio2026()).Calcola(rapporto, cartellino);
 
-        // Stesso risultato del calcolo col Seed (senza addizionali): netto 1100,59.
-        Assert.Equal(1340.99m, cedolino.TotaleCompetenze);
-        Assert.Equal(1100.59m, cedolino.NettoInBusta);
+        Assert.Equal(dalSeed.TotaleCompetenze, dalDatabase.TotaleCompetenze);
+        Assert.Equal(dalSeed.TotaleTrattenute, dalDatabase.TotaleTrattenute);
+        Assert.Equal(dalSeed.NettoInBusta, dalDatabase.NettoInBusta);
+        Assert.Equal(dalSeed.CostoAzienda, dalDatabase.CostoAzienda);
     }
 
     [Fact]

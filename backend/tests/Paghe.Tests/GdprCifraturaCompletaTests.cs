@@ -219,7 +219,7 @@ public sealed class GdprCifraturaCompletaTests : IDisposable
             tenantA, idA, "IT60X0542811101000000123456");
         await EseguiAsync(
             "UPDATE Dipendenti SET IbanProtetto = NULL, Iban = $legacy WHERE TenantId = $tenant AND Id = $id",
-            tenantB, idB, "IT02L1234512345123456789012");
+            tenantB, idB, "IT02L1234512345123456789032");
 
         await using (var db = NuovoContesto())
             Assert.Equal(1, await new MigrazioneDatiSensibili(db, _protettore).EseguiPerTenantAsync(tenantA));
@@ -384,7 +384,7 @@ public sealed class GdprCifraturaCompletaTests : IDisposable
         var tenantId = Guid.NewGuid();
         var dipendenteId = Guid.NewGuid();
         const string ibanPrima = "IT60X0542811101000000123456";
-        const string ibanConcorrente = "IT02L1234512345123456789012";
+        const string ibanConcorrente = "IT02L1234512345123456789032";
         var rilascioRunner = new ManualResetEventSlim(false);
 
         try

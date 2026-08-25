@@ -1,7 +1,8 @@
-# Aurora: runtime governato, provider ancora spento
+# Aurora: runtime governato con DeepSeek + Google Gemini
 
-> Stato dal 10 agosto 2026: **DeepSeek e gli altri provider cloud sono sospesi**. Il nome di
-> questo file resta per compatibilità con i collegamenti storici.
+> Stato dal 24 agosto 2026: nel profilo cloud autorizzato dal titolare, **DeepSeek è il provider
+> principale e Google Gemini è la riserva automatica**. Gemini legge inoltre foto/scansioni,
+> che DeepSeek non supporta. Nel profilo predefinito senza segreti Aurora resta spenta.
 
 Nell'installazione personale PaghePro può usare il database SQLite locale:
 
@@ -17,8 +18,30 @@ lette tramite un mandato valido potranno entrare nel runtime.
 La configurazione è fail-closed: `Provider=Spento` non può essere riattivato da URL/modello/chiave;
 `Ai:SoloLocale=true` vieta il cloud; `ProviderCloudApprovato=false` blocca il profilo SaaS e
 `GateLocaleG1Verificato=false` blocca Ollama. Gli endpoint compatibili richiedono inoltre una
-allowlist host esatta. Gli handler AI non usano proxy né redirect. `render.yaml` mantiene Aurora
-spenta e disabilita i deploy automatici.
+allowlist host esatta. Gli handler AI non usano proxy né redirect. Per il profilo cloud corrente
+sono ammessi soltanto `api.deepseek.com` e `generativelanguage.googleapis.com`.
+
+## Come vengono usati i due provider
+
+- chat e testo partono da DeepSeek;
+- se DeepSeek risponde correttamente, Gemini non riceve una copia della richiesta;
+- se DeepSeek è irraggiungibile o restituisce errore, Aurora prova una sola volta con Gemini;
+- foto e scansioni vanno direttamente a Gemini, perché è il provider con capacità visiva;
+- tool, mandato, quota, tenant e conferme restano identici: cambiare modello non amplia i permessi;
+- lo stato nel pannello mostra entrambi e segnala separatamente se manca la chiave Gemini.
+
+Gemini usa l'endpoint ufficiale OpenAI-compatible; riferimento:
+<https://ai.google.dev/gemini-api/docs/openai>. Il default del catalogo è `gemini-3.7-flash`,
+ma la configurazione di collaudo e Render usano `Ai__ModelloGemini=gemini-3.5-flash`: il
+24 agosto 2026 `gemini-3.7-flash` ha risposto ripetutamente 503 «high demand», e una riserva
+che non risponde non è una riserva.
+
+Gemini allega a ogni chiamata a strumento una firma opaca (`thought_signature`) e **pretende di
+riceverla indietro** al giro successivo, altrimenti risponde 400. Aurora la conserva soltanto
+dentro il ciclo del server (`ChiamataStrumentoAi.FirmaPensiero`, `[JsonIgnore]`): non esce verso
+la SPA e non viene mai inviata a un provider diverso da quello che l'ha prodotta. Limite noto: se
+DeepSeek cade **a metà** di un giro di strumenti già iniziato, le chiamate già in storia non hanno
+la firma di Google e quel singolo turno fallisce; il turno successivo riparte da Gemini e funziona.
 
 ## Cosa vede l'utente
 
@@ -90,22 +113,30 @@ provati isolamento del processo locale, assenza di egress, vault/chiave reale e 
 Inoltre l'installazione Homebrew di Ollama 0.15.6 presente sul Mac va in crash durante l'avvio e
 deve essere sostituita con l'app macOS ufficiale prima del collaudo.
 
-## Passi cloud ancora manuali
+## Configurazione dei segreti
 
-Il repository non può sospendere un'istanza Render già creata né revocare una chiave sul portale
-DeepSeek. Dopo aver verificato l'eventuale esportazione dei dati online:
+Le chiavi non vanno mai in `appsettings.json`, `render.yaml` o Git.
 
-1. revocare la vecchia chiave DeepSeek dal portale del provider;
-2. nel dashboard Render sospendere il servizio `paghepro`;
-3. solo dopo backup e confronto dei conteggi, sospendere Supabase.
+Per l'avvio locale:
 
-Non cancellare database o servizi cloud prima di aver verificato una copia locale ripristinabile.
+1. salva la chiave DeepSeek in `.chiavi/deepseek.txt`;
+2. salva una **nuova** chiave Google Gemini in `.chiavi/gemini.txt`;
+3. esegui `./scripts/avvia-aurora-collaudo.sh`.
+
+Per Render, imposta i due Secret Environment Variable `Ai__ApiKey` e
+`Ai__GeminiApiKey`. `render.yaml` configura già `Ai__Provider=DeepSeek` e
+`Ai__UsaGeminiComeFallback=true` senza contenere i segreti.
+
+Una chiave incollata in chat, ticket, screenshot o log deve essere revocata e sostituita prima
+dell'uso. Non cancellare database o servizi cloud prima di aver verificato una copia locale
+ripristinabile.
 
 ## File principali
 
 | Funzione | File |
 | --- | --- |
 | Client locale OpenAI-compatible | `backend/src/Paghe.Api/AiChatClient.cs` |
+| Catalogo DeepSeek/Gemini e fallback | `backend/src/Paghe.Api/CatalogoProviderAiCompatibili.cs` |
 | Confini chat, contesto e cronologia | `backend/src/Paghe.Api/AiChatEndpoints.cs` |
 | Filtro segreti pre-modello | `backend/src/Paghe.Api/LocalSecretBoundaryFilter.cs` |
 | Configurazione solo-loopback | `backend/src/Paghe.Api/EstrattoreAiAnthropic.cs` |

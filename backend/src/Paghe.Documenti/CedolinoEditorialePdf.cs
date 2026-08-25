@@ -52,12 +52,16 @@ internal static class CedolinoEditorialePdf
         ConfiguraPagina(pagina);
         pagina.Content().Column(colonna =>
         {
-            colonna.Spacing(14);
+            colonna.Spacing(8);
             colonna.Item().Element(c => TestataCompatta(c, dati, "Dettagli informativi del mese"));
             colonna.Item().Background(RameChiaro).Padding(10).Text(
                     MessaggioAllegato(dati.Emissione))
                 .FontSize(8.5f).SemiBold().FontColor(Inchiostro);
+            colonna.Item().Element(c => RetribuzioneDiRiferimento(c, dati.Cedolino));
             colonna.Item().Element(c => RiepiloghiTecnici(c, dati.Cedolino));
+            colonna.Item().Element(c => CostiStimati(c, dati.Cedolino));
+            if (dati.RigheFigurativeRilevanti.Count > 0)
+                colonna.Item().Element(c => DettaglioFigurativo(c, dati.RigheFigurativeRilevanti));
             colonna.Item().Element(c => FerieEPermessi(c, dati));
             colonna.Item().Element(c => VociInformativeSenzaImporto(c, dati.Righe));
             colonna.Item().Element(c => PresenzeDelMese(c, dati.Cartellino));
@@ -105,49 +109,62 @@ internal static class CedolinoEditorialePdf
 
     private static void TestataPrincipale(IContainer contenitore, CedolinoPresentazione dati)
     {
-        contenitore.Row(riga =>
+        contenitore.Column(testata =>
         {
-            riga.RelativeItem(5.2f).Row(sinistra =>
+            testata.Item().Element(BannerSimulazione);
+            testata.Item().PaddingTop(10).Row(riga =>
             {
-                if (dati.Intestazione.Logo is { Length: > 0 })
-                    sinistra.ConstantItem(54).Height(44).PaddingRight(10)
-                        .Image(dati.Intestazione.Logo).FitArea();
-
-                sinistra.RelativeItem().Column(azienda =>
+                riga.RelativeItem(5.2f).Row(sinistra =>
                 {
-                    azienda.Item().Text(dati.Intestazione.Azienda.ToUpperInvariant())
-                        .FontSize(13).SemiBold().FontColor(Inchiostro);
-                    azienda.Item().PaddingTop(5).Width(34).BorderBottom(1.4f).BorderColor(Rame);
-                    azienda.Item().PaddingTop(7).Text(Valore(dati.Intestazione.AziendaIndirizzo))
-                        .FontSize(8).FontColor(Grafite);
-                    azienda.Item().Text(Valore(dati.Intestazione.AziendaComune))
-                        .FontSize(8).FontColor(Grafite);
-                    azienda.Item().PaddingTop(5).Text(TestoFiscaleAzienda(dati.Intestazione))
-                        .FontSize(7.5f).FontColor(Grafite);
-                    azienda.Item().Text(
-                            $"Posizione INPS {Valore(dati.Intestazione.MatricolaInps)}   ·   " +
-                            $"PAT INAIL {Valore(dati.Intestazione.PatInail)}")
-                        .FontSize(7.5f).FontColor(Grafite);
+                    if (dati.Intestazione.Logo is { Length: > 0 })
+                        sinistra.ConstantItem(54).Height(44).PaddingRight(10)
+                            .Image(dati.Intestazione.Logo).FitArea();
+
+                    sinistra.RelativeItem().Column(azienda =>
+                    {
+                        azienda.Item().Text(dati.Intestazione.Azienda.ToUpperInvariant())
+                            .FontSize(13).SemiBold().FontColor(Inchiostro);
+                        azienda.Item().PaddingTop(5).Width(34).BorderBottom(1.4f).BorderColor(Rame);
+                        azienda.Item().PaddingTop(7).Text(Valore(dati.Intestazione.AziendaIndirizzo))
+                            .FontSize(8).FontColor(Grafite);
+                        azienda.Item().Text(Valore(dati.Intestazione.AziendaComune))
+                            .FontSize(8).FontColor(Grafite);
+                        azienda.Item().PaddingTop(5).Text(TestoFiscaleAzienda(dati.Intestazione))
+                            .FontSize(7.5f).FontColor(Grafite);
+                        azienda.Item().Text(
+                                $"Posizione INPS {Valore(dati.Intestazione.MatricolaInps)}   ·   " +
+                                $"PAT INAIL {Valore(dati.Intestazione.PatInail)}")
+                            .FontSize(7.5f).FontColor(Grafite);
+                    });
                 });
-            });
 
-            riga.RelativeItem(4.8f).AlignRight().Column(documento =>
-            {
-                documento.Item().AlignRight().Text("PROSPETTO PAGA")
-                    .FontSize(21).SemiBold().FontColor(Inchiostro);
-                documento.Item().PaddingTop(3).BorderTop(0.7f).BorderColor(Filetto);
-                documento.Item().PaddingTop(8).AlignRight().Text(Capitalize(dati.Periodo))
-                    .FontSize(17).SemiBold().FontColor(Inchiostro);
-                documento.Item().PaddingTop(7).AlignRight().Row(stato =>
+                riga.RelativeItem(4.8f).AlignRight().Column(documento =>
                 {
-                    stato.RelativeItem();
-                    stato.AutoItem().Background(Rame).PaddingHorizontal(8).PaddingVertical(4)
-                        .Text(EtichettaStato(dati.Emissione.Stato))
-                        .FontSize(7.5f).SemiBold().FontColor(Bianco);
+                    documento.Item().AlignRight().Text("RIEPILOGO RETRIBUTIVO DEL MESE")
+                        .FontSize(12).SemiBold().FontColor(Inchiostro);
+                    documento.Item().PaddingTop(3).BorderTop(0.7f).BorderColor(Filetto);
+                    documento.Item().PaddingTop(8).AlignRight().Text(Capitalize(dati.Periodo))
+                        .FontSize(17).SemiBold().FontColor(Inchiostro);
+                    documento.Item().PaddingTop(7).AlignRight().Row(stato =>
+                    {
+                        stato.RelativeItem();
+                        stato.AutoItem().Background(Rame).PaddingHorizontal(8).PaddingVertical(4)
+                            .Text(EtichettaStato(dati.Emissione.Stato))
+                            .FontSize(7.5f).SemiBold().FontColor(Bianco);
+                    });
                 });
             });
         });
     }
+
+    private static void BannerSimulazione(IContainer contenitore) =>
+        contenitore.Background(Rame).PaddingVertical(5).PaddingHorizontal(8).Row(riga =>
+        {
+            riga.RelativeItem().Text(CedolinoPdfPresentazione.TitoloSimulazione)
+                .FontSize(10).SemiBold().FontColor(Bianco);
+            riga.AutoItem().PaddingLeft(10).Text(CedolinoPdfPresentazione.AvvisoNonCertificato)
+                .FontSize(10).SemiBold().FontColor(Bianco);
+        });
 
     private static void NettoPrincipale(IContainer contenitore, Cedolino cedolino)
     {
@@ -247,7 +264,7 @@ internal static class CedolinoEditorialePdf
                     tabella.Cell().Element(CellaVoce).Text(riga.Codice).FontSize(6.7f);
                     tabella.Cell().Element(CellaVoce).Text(riga.Descrizione);
                     tabella.Cell().Element(CellaVoce).AlignRight().Text(Numero(riga.Quantita));
-                    tabella.Cell().Element(CellaVoce).AlignRight().Text(Importo(riga.Base));
+                    tabella.Cell().Element(CellaVoce).AlignRight().Text(Importo4(riga.Base));
                     tabella.Cell().Element(CellaVoce).AlignRight().Text(Importo(riga.Competenza));
                     tabella.Cell().Element(CellaVoce).AlignRight().Text(Importo(riga.Trattenuta));
                 }
@@ -260,13 +277,13 @@ internal static class CedolinoEditorialePdf
         contenitore.BorderTop(1).BorderColor(Inchiostro).PaddingTop(8).Row(riga =>
         {
             riga.RelativeItem(4.8f).Text(
-                    "Il netto è il risultato del cedolino; il pagamento è un’operazione separata.")
+                    "Il netto mostrato è una simulazione; il pagamento è un’operazione separata.")
                 .FontSize(7.5f).FontColor(Grafite);
             TotaleEditoriale(riga, "TOTALE COMPETENZE", cedolino.TotaleCompetenze);
             TotaleEditoriale(riga, "TOTALE TRATTENUTE", cedolino.TotaleTrattenute);
             riga.RelativeItem(1.7f).Background(Inchiostro).Padding(8).Column(netto =>
             {
-                netto.Item().Text("NETTO").FontSize(7).SemiBold().FontColor(Bianco);
+                netto.Item().Text("NETTO SIMULATO").FontSize(7).SemiBold().FontColor(Bianco);
                 netto.Item().AlignRight().Text(Euro(cedolino.NettoInBusta))
                     .FontSize(11.5f).SemiBold().FontColor(Bianco);
             });
@@ -310,20 +327,38 @@ internal static class CedolinoEditorialePdf
         CedolinoPresentazione dati,
         string titolo)
     {
-        contenitore.BorderBottom(0.8f).BorderColor(Filetto).PaddingBottom(9).Row(riga =>
+        contenitore.Column(testata =>
         {
-            riga.RelativeItem().Column(sinistra =>
+            testata.Item().Element(BannerSimulazione);
+            testata.Item().PaddingTop(9).BorderBottom(0.8f).BorderColor(Filetto).PaddingBottom(9).Row(riga =>
             {
-                sinistra.Item().Text(dati.Intestazione.Azienda.ToUpperInvariant())
-                    .FontSize(8).SemiBold().FontColor(Inchiostro);
-                sinistra.Item().Text($"{dati.Intestazione.Dipendente} · {Capitalize(dati.Periodo)}")
-                    .FontSize(8).FontColor(Grafite);
+                riga.RelativeItem().Column(sinistra =>
+                {
+                    sinistra.Item().Text(dati.Intestazione.Azienda.ToUpperInvariant())
+                        .FontSize(8).SemiBold().FontColor(Inchiostro);
+                    sinistra.Item().Text($"{dati.Intestazione.Dipendente} · {Capitalize(dati.Periodo)}")
+                        .FontSize(8).FontColor(Grafite);
+                });
+                riga.RelativeItem().AlignRight().Column(destra =>
+                {
+                    destra.Item().AlignRight().Text(titolo).FontSize(18).SemiBold().FontColor(Inchiostro);
+                    destra.Item().AlignRight().Text(EtichettaStato(dati.Emissione.Stato))
+                        .FontSize(7.5f).SemiBold().FontColor(Rame);
+                });
             });
-            riga.RelativeItem().AlignRight().Column(destra =>
+        });
+    }
+
+    private static void RetribuzioneDiRiferimento(IContainer contenitore, Cedolino cedolino)
+    {
+        contenitore.Column(colonna =>
+        {
+            colonna.Item().Element(c => TitoloSezione(c, "Retribuzione e tariffe usate nel calcolo"));
+            colonna.Item().PaddingTop(7).Row(riga =>
             {
-                destra.Item().AlignRight().Text(titolo).FontSize(18).SemiBold().FontColor(Inchiostro);
-                destra.Item().AlignRight().Text(EtichettaStato(dati.Emissione.Stato))
-                    .FontSize(7.5f).SemiBold().FontColor(Rame);
+                MiniDato(riga, "Retribuzione fissa", Euro4(cedolino.RetribuzioneFissa));
+                MiniDato(riga, "Tariffa oraria", Euro4(cedolino.TariffaOraria));
+                MiniDato(riga, "Tariffa giornaliera", Euro4(cedolino.TariffaGiornaliera));
             });
         });
     }
@@ -346,6 +381,7 @@ internal static class CedolinoEditorialePdf
                     RigaDato(c, "Imponibile fiscale", Euro(cedolino.ImponibileIrpef));
                     RigaDato(c, "IRPEF lorda", Euro(cedolino.IrpefLorda));
                     RigaDato(c, "Detrazioni lavoro dipendente", Euro(cedolino.DetrazioniLavoroDipendente));
+                    RigaDato(c, "Ulteriore detrazione cuneo", Euro(cedolino.UlterioreDetrazioneCuneo));
                     RigaDato(c, "IRPEF netta", Euro(cedolino.IrpefNetta));
                     RigaDato(c, "Addizionale regionale", Euro(cedolino.AddizionaleRegionale));
                     RigaDato(c, "Addizionale comunale", Euro(cedolino.AddizionaleComunale));
@@ -353,7 +389,7 @@ internal static class CedolinoEditorialePdf
                 riga.RelativeItem().BorderLeft(0.6f).BorderColor(Filetto).PaddingLeft(12).Column(c =>
                 {
                     RigaDato(c, "Quota TFR del mese (*)", Euro(cedolino.QuotaTfr));
-                    RigaDato(c, "Costo azienda - dato informativo (*)", Euro(cedolino.CostoAzienda));
+                    RigaDato(c, "Prestazioni recuperabili", Euro(cedolino.PrestazioniRecuperabili));
                     RigaDato(c, "Somme esenti del mese", Euro(cedolino.TotaleEsenti));
                     RigaDato(c, "Premio di risultato agevolato", Euro(cedolino.PremioRisultatoAgevolato));
                     RigaDato(c, "Imposta sostitutiva premio", Euro(cedolino.ImpostaSostitutivaPremio));
@@ -365,31 +401,113 @@ internal static class CedolinoEditorialePdf
         });
     }
 
+    private static void CostiStimati(IContainer contenitore, Cedolino cedolino)
+    {
+        contenitore.Column(colonna =>
+        {
+            colonna.Item().Element(c => TitoloSezione(c, "Costi parziali stimati"));
+            colonna.Item().PaddingTop(5).Row(riga =>
+            {
+                riga.RelativeItem().PaddingRight(12).Column(c =>
+                {
+                    c.Item().Text("COSTO PARZIALE STIMATO DEL MESE")
+                        .FontSize(7.4f).SemiBold().FontColor(Grafite);
+                    c.Item().PaddingTop(2).Text(Euro(cedolino.CostoAzienda))
+                        .FontSize(11).SemiBold().FontColor(Inchiostro);
+                });
+                riga.RelativeItem().BorderLeft(0.6f).BorderColor(Filetto).PaddingLeft(12).Column(c =>
+                {
+                    c.Item().Text("COSTO MEDIO PARZIALE STIMATO ANNUO/12")
+                        .FontSize(7.4f).SemiBold().FontColor(Grafite);
+                    c.Item().PaddingTop(2).Text(cedolino.CostoMedioAnnualizzato > 0m
+                            ? Euro(cedolino.CostoMedioAnnualizzato)
+                            : "Dato non disponibile")
+                        .FontSize(11).SemiBold().FontColor(Inchiostro);
+                });
+            });
+        });
+    }
+
     private static void FerieEPermessi(IContainer contenitore, CedolinoPresentazione dati)
     {
         contenitore.Column(colonna =>
         {
-            colonna.Item().Element(c => TitoloSezione(c, "Ferie e ROL / ex festività"));
-            colonna.Item().Row(riga =>
+            colonna.Item().Element(c => TitoloSezione(c, "Ferie, ROL ed ex festività"));
+            colonna.Item().PaddingTop(5).Table(tabella =>
             {
-                riga.RelativeItem().PaddingRight(16).Column(c =>
+                tabella.ColumnsDefinition(colonne =>
                 {
-                    c.Item().Text("FERIE").FontSize(8).SemiBold().FontColor(Inchiostro);
-                    RigaDato(c, "Maturate nel calcolo da gennaio", $"{Numero(dati.Cedolino.FerieMaturate)} giorni");
-                    RigaDato(c, "Godute da gennaio", $"{Numero(dati.Cedolino.FerieGodute)} giorni");
-                    RigaDato(c, "Saldo disponibile calcolato", $"{Numero(dati.Cedolino.FerieResidue)} giorni");
+                    colonne.RelativeColumn(2.2f);
+                    colonne.RelativeColumn();
+                    colonne.RelativeColumn();
+                    colonne.RelativeColumn();
+                    colonne.RelativeColumn();
                 });
-                riga.RelativeItem().BorderLeft(0.6f).BorderColor(Filetto).PaddingLeft(16).Column(c =>
+                tabella.Header(header =>
                 {
-                    c.Item().Text("ROL + EX FESTIVITÀ").FontSize(8).SemiBold().FontColor(Inchiostro);
-                    RigaDato(c, "Maturati nel calcolo da gennaio", $"{Numero(dati.Cedolino.PermessiMaturati)} ore");
-                    RigaDato(c, "Goduti da gennaio", $"{Numero(dati.Cedolino.PermessiGoduti)} ore");
-                    RigaDato(c, "Saldo disponibile calcolato", $"{Numero(dati.Cedolino.PermessiResidui)} ore");
+                    header.Cell().Element(CellaTitolo).Text("ISTITUTO");
+                    header.Cell().Element(CellaTitolo).AlignRight().Text("SALDO PRECEDENTE");
+                    header.Cell().Element(CellaTitolo).AlignRight().Text("MATURATO");
+                    header.Cell().Element(CellaTitolo).AlignRight().Text("GODUTO");
+                    header.Cell().Element(CellaTitolo).AlignRight().Text("RESIDUO");
                 });
+                RigaSaldo(tabella, "FERIE (giorni)", null,
+                    dati.Cedolino.FerieMaturate, dati.Cedolino.FerieGodute, dati.Cedolino.FerieResidue);
+                RigaSaldo(tabella, "ROL (ore)", dati.Cedolino.RolSaldoPrecedente,
+                    dati.Cedolino.RolMaturati, dati.Cedolino.RolGoduti, dati.Cedolino.RolResidui);
+                RigaSaldo(tabella, "EX FESTIVITÀ (ore)", dati.Cedolino.ExFestivitaSaldoPrecedente,
+                    dati.Cedolino.ExFestivitaMaturate, dati.Cedolino.ExFestivitaGodute,
+                    dati.Cedolino.ExFestivitaResidue);
             });
             colonna.Item().PaddingTop(6).Text(
-                    "Il saldo include il riporto iniziale del rapporto e gli utilizzi dei mesi precedenti chiusi.")
+                    "Saldo precedente ferie: dato non disponibile nel modello del cedolino; " +
+                    "la casella resta vuota e non viene ricavata dal residuo.")
                 .FontSize(7.5f).FontColor(Grafite);
+        });
+    }
+
+    private static void RigaSaldo(
+        TableDescriptor tabella, string istituto, decimal? saldoPrecedente,
+        decimal maturato, decimal goduto, decimal residuo)
+    {
+        tabella.Cell().Element(CellaCalendario).Text(istituto).SemiBold();
+        tabella.Cell().Element(CellaCalendario).AlignRight().Text(Numero(saldoPrecedente));
+        tabella.Cell().Element(CellaCalendario).AlignRight().Text(Numero(maturato));
+        tabella.Cell().Element(CellaCalendario).AlignRight().Text(Numero(goduto));
+        tabella.Cell().Element(CellaCalendario).AlignRight().Text(Numero(residuo)).SemiBold();
+    }
+
+    private static void DettaglioFigurativo(
+        IContainer contenitore, IReadOnlyList<RigaFigurativaPresentata> righe)
+    {
+        contenitore.Column(colonna =>
+        {
+            colonna.Item().Element(c => TitoloSezione(
+                c, "Dettaglio figurativo TFR, fondi e prestazioni recuperabili"));
+            colonna.Item().PaddingTop(5).Table(tabella =>
+            {
+                tabella.ColumnsDefinition(colonne =>
+                {
+                    colonne.RelativeColumn(2.2f);
+                    colonne.RelativeColumn(4.0f);
+                    colonne.RelativeColumn(1.4f);
+                    colonne.RelativeColumn(1.4f);
+                });
+                tabella.Header(header =>
+                {
+                    header.Cell().Element(CellaTitolo).Text("CODICE");
+                    header.Cell().Element(CellaTitolo).Text("DESCRIZIONE");
+                    header.Cell().Element(CellaTitolo).AlignRight().Text("BASE");
+                    header.Cell().Element(CellaTitolo).AlignRight().Text("IMPORTO");
+                });
+                foreach (var voce in righe)
+                {
+                    tabella.Cell().Element(CellaCalendario).Text(voce.Codice).FontSize(6.7f);
+                    tabella.Cell().Element(CellaCalendario).Text(voce.Descrizione);
+                    tabella.Cell().Element(CellaCalendario).AlignRight().Text(Importo4(voce.Base));
+                    tabella.Cell().Element(CellaCalendario).AlignRight().Text(Importo(voce.Importo));
+                }
+            });
         });
     }
 
@@ -587,27 +705,41 @@ internal static class CedolinoEditorialePdf
     {
         contenitore.Column(colonna =>
         {
-            colonna.Item().Element(c => TitoloSezione(c, "Ferie e ROL / ex festività"));
+            colonna.Item().Element(c => TitoloSezione(c, "Ferie, ROL ed ex festività"));
             colonna.Item().Row(riga =>
             {
-                riga.RelativeItem().PaddingRight(14).Column(c =>
-                {
-                    c.Item().Text("Ferie").FontSize(10).SemiBold().FontColor(Inchiostro);
-                    c.Item().Text($"Maturate nel calcolo da gennaio: {Numero(dati.Cedolino.FerieMaturate)} giorni");
-                    c.Item().Text($"Usate da gennaio: {Numero(dati.Cedolino.FerieGodute)} giorni");
-                    c.Item().Text($"Saldo disponibile calcolato: {Numero(dati.Cedolino.FerieResidue)} giorni");
-                });
-                riga.RelativeItem().BorderLeft(0.6f).BorderColor(Filetto).PaddingLeft(14).Column(c =>
-                {
-                    c.Item().Text("Permessi ROL / ex festività").FontSize(10).SemiBold().FontColor(Inchiostro);
-                    c.Item().Text($"Maturati nel calcolo da gennaio: {Numero(dati.Cedolino.PermessiMaturati)} ore");
-                    c.Item().Text($"Usati da gennaio: {Numero(dati.Cedolino.PermessiGoduti)} ore");
-                    c.Item().Text($"Saldo disponibile calcolato: {Numero(dati.Cedolino.PermessiResidui)} ore");
-                });
+                riga.RelativeItem().PaddingRight(9).Element(c => SpiegazioneSaldo(
+                    c, "Ferie", "giorni", null, dati.Cedolino.FerieMaturate,
+                    dati.Cedolino.FerieGodute, dati.Cedolino.FerieResidue));
+                riga.RelativeItem().BorderLeft(0.6f).BorderColor(Filetto).PaddingHorizontal(9)
+                    .Element(c => SpiegazioneSaldo(
+                        c, "ROL", "ore", dati.Cedolino.RolSaldoPrecedente,
+                        dati.Cedolino.RolMaturati, dati.Cedolino.RolGoduti, dati.Cedolino.RolResidui));
+                riga.RelativeItem().BorderLeft(0.6f).BorderColor(Filetto).PaddingLeft(9)
+                    .Element(c => SpiegazioneSaldo(
+                        c, "Ex festività", "ore", dati.Cedolino.ExFestivitaSaldoPrecedente,
+                        dati.Cedolino.ExFestivitaMaturate, dati.Cedolino.ExFestivitaGodute,
+                        dati.Cedolino.ExFestivitaResidue));
             });
             colonna.Item().PaddingTop(6).Text(
-                    "Il saldo comprende il riporto iniziale inserito nella scheda e i mesi precedenti chiusi.")
+                    "Il saldo precedente delle ferie non è presente nel modello ricevuto e non viene stimato.")
                 .FontSize(8.5f).FontColor(Grafite);
+        });
+    }
+
+    private static void SpiegazioneSaldo(
+        IContainer contenitore, string istituto, string unita, decimal? saldoPrecedente,
+        decimal maturato, decimal goduto, decimal residuo)
+    {
+        contenitore.Column(c =>
+        {
+            c.Item().Text(istituto).FontSize(10).SemiBold().FontColor(Inchiostro);
+            c.Item().Text(saldoPrecedente is decimal precedente
+                ? $"Saldo precedente: {Numero(precedente)} {unita}"
+                : "Saldo precedente: dato non disponibile");
+            c.Item().Text($"Maturato: {Numero(maturato)} {unita}");
+            c.Item().Text($"Goduto: {Numero(goduto)} {unita}");
+            c.Item().Text($"Residuo: {Numero(residuo)} {unita}");
         });
     }
 
@@ -717,31 +849,32 @@ internal static class CedolinoEditorialePdf
     {
         "preworkflow" => "ARCHIVIO PRE-WORKFLOW",
         "controllata" => "DATI CONGELATI - DA VALIDARE",
-        "validata" => "VALIDAZIONE REGISTRATA",
-        "chiusa" => "CHIUSO - VALIDAZIONE REGISTRATA",
-        _ => "BOZZA DA VALIDARE",
+        "validata" => "STATO: VALIDATA",
+        "chiusa" => "STATO: CHIUSA",
+        _ => "STATO: BOZZA",
     };
 
     private static string NotaStato(ContestoEmissioneCedolino emissione) =>
         emissione.Stato?.Trim().ToLowerInvariant() switch
         {
-            "preworkflow" => "RICOSTRUZIONE DA ARCHIVIO PRE-WORKFLOW NON DEFINITIVA - importi archiviati, dati accessori e impaginazione correnti; nessuna attestazione retroattiva.",
-            "validata" => "VALIDAZIONE REGISTRATA - Documento da chiudere; non equivale a conservazione a norma.",
-            "chiusa" => "CEDOLINO CHIUSO - Ristampa dello snapshot; consegna e pagamento sono operazioni separate.",
-            "controllata" => "DATI CONGELATI - Controllo dichiarato dall'operatore; validazione ancora da registrare.",
-            _ => "BOZZA DA VALIDARE - Documento non certificato: sottoporre al controllo del professionista.",
+            "preworkflow" => "BOZZA / NON CERTIFICATO - Ricostruzione da archivio pre-workflow non definitiva.",
+            "validata" => "BOZZA / NON CERTIFICATO - Stato workflow: validazione registrata.",
+            "chiusa" => "BOZZA / NON CERTIFICATO - Stato workflow: chiusa; consegna e pagamento restano separati.",
+            "controllata" => "BOZZA / NON CERTIFICATO - Stato workflow: dati congelati, validazione da registrare.",
+            _ => "BOZZA / NON CERTIFICATO - Documento di simulazione da sottoporre al professionista.",
         };
 
     private static string MessaggioAllegato(ContestoEmissioneCedolino emissione)
     {
-        const string premessa = "ALLEGATO INFORMATIVO - NON COSTITUISCE LIBRO UNICO DEL LAVORO. ";
+        const string premessa =
+            "BOZZA / NON CERTIFICATO. ALLEGATO INFORMATIVO DEL PROSPETTO DI SIMULAZIONE. ";
         return emissione.Stato?.Trim().ToLowerInvariant() switch
         {
             "preworkflow" => premessa
                 + "RICOSTRUZIONE DA ARCHIVIO PRE-WORKFLOW NON DEFINITIVA - importi archiviati, dati accessori e impaginazione correnti; nessuna attestazione retroattiva.",
             "chiusa" => premessa + (string.IsNullOrWhiteSpace(emissione.ValidazioneRegistrata)
-                ? "Documento chiuso sullo snapshot validato. Consegna, pagamento e conservazione a norma restano separati."
-                : $"{emissione.ValidazioneRegistrata}. Documento chiuso sullo snapshot; consegna, pagamento e conservazione a norma restano separati."),
+                ? "Stato workflow: chiusa. Consegna, pagamento e conservazione a norma restano separati."
+                : $"{emissione.ValidazioneRegistrata}. Stato workflow: chiusa; consegna, pagamento e conservazione a norma restano separati."),
             "validata" => premessa + "La validazione è stata registrata; il documento non è ancora chiuso.",
             "controllata" => premessa + "I dati sono congelati dopo il controllo dichiarato dall'operatore e attendono la validazione.",
             _ => premessa + "I dati devono essere controllati e validati dal professionista.",
@@ -870,9 +1003,11 @@ internal static class CedolinoEditorialePdf
         };
 
     private static string Euro(decimal valore) => $"€ {valore.ToString("N2", It)}";
+    private static string Euro4(decimal valore) => $"€ {valore.ToString("N4", It)}";
     private static bool ÈRigaEconomica(RigaCedolinoPresentata riga) =>
         riga.Competenza is not null and not 0m || riga.Trattenuta is not null and not 0m;
     private static string Importo(decimal? valore) => valore is decimal v ? v.ToString("N2", It) : "";
+    private static string Importo4(decimal? valore) => valore is decimal v ? v.ToString("N4", It) : "";
     private static string Numero(decimal valore) => valore.ToString("0.##", It);
     private static string Numero(decimal? valore) => valore is decimal v ? Numero(v) : "";
     private static string Valore(string? valore) => string.IsNullOrWhiteSpace(valore) ? "-" : valore;

@@ -10,6 +10,9 @@
     <!-- Tabelle ufficiali MEF delle addizionali IRPEF (comunale + regionale), per anno.
          Incorporate come risorse: disponibili anche nel deploy, senza file esterni. -->
     <EmbeddedResource Include="Parametri/dati-mef/*.csv" />
+    <!-- Schema di validazione ufficiale INPS del flusso UniEmens individuale (4.32.0):
+         incorporato per validare offline, senza file esterni nel deploy. -->
+    <EmbeddedResource Include="AdeTelematico/UniEmens/Schema/UniEMENSind.xsd" />
   </ItemGroup>
 
 </Project>

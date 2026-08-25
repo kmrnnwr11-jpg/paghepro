@@ -64,8 +64,8 @@ public class PdfTests
             Azienda = "Officina Nord S.r.l.",
             AziendaIndirizzo = "Via Melchiorre Gioia 12",
             AziendaComune = "20124 Milano (MI)",
-            PartitaIva = "12345678901",
-            CodiceFiscaleAzienda = "12345678901",
+            PartitaIva = "12345678903",
+            CodiceFiscaleAzienda = "12345678903",
             MatricolaInps = "1234567890/01",
             PatInail = "12345678/01",
             Dipendente = "Giulia Bianchi",
@@ -94,7 +94,7 @@ public class PdfTests
         Assert.True(pdf.Length > 3_000, "Il riepilogo completo non risulta nel documento PDF.");
 
         string testo = EstrattoreTestoPdf.EstraiTesto(pdf);
-        Assert.Contains("CEDOLINO PAGA", testo);
+        Assert.Contains("PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL", testo);
         Assert.Contains("H011", testo);
         // Griglia classica: fasce anagrafica, ratei e quadratura contributiva/fiscale.
         Assert.Contains("COGNOME E NOME", testo);
@@ -103,16 +103,17 @@ public class PdfTests
         Assert.Contains("Malattia", testo);
         Assert.Contains("IMPON. CONTR. SOC.", testo);
         Assert.Contains("IMPONIBILE IRPEF", testo);
-        Assert.Contains("NETTO BUSTA", testo);
-        Assert.Contains("BOZZA DA VALIDARE", testo);
+        Assert.Contains("NETTO SIMULATO", testo);
+        Assert.Contains("BOZZA / NON CERTIFICATO", testo);
         Assert.DoesNotContain("Firma per quietanza", testo);
         Assert.DoesNotContain("RETRIBUZIONE UTILE TFR", testo);
         Assert.DoesNotContain("Come leggere questo cedolino", testo);
 
         using var documento = PdfDocument.Open(pdf);
         var pagine = documento.GetPages().ToList();
-        Assert.Single(pagine);
-        Assert.Contains("CEDOLINO PAGA", pagine[0].Text);
+        Assert.InRange(pagine.Count, 1, 2);
+        Assert.All(pagine, pagina =>
+            Assert.Contains("PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL", pagina.Text));
     }
 
     [Fact]
@@ -261,7 +262,8 @@ public class PdfTests
         Assert.InRange(documento.NumberOfPages, 2, 3);
         foreach (int indice in Enumerable.Range(1, 40))
             Assert.Contains($"V{indice:00}", testo);
-        Assert.All(documento.GetPages(), pagina => Assert.Contains("CEDOLINO PAGA", pagina.Text));
+        Assert.All(documento.GetPages(), pagina =>
+            Assert.Contains("PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL", pagina.Text));
         Assert.DoesNotContain("Come leggere questo cedolino", testo);
     }
 
@@ -326,7 +328,7 @@ public class PdfTests
     }
 
     [Fact]
-    public void CedolinoPdf_RiportaLaValidazioneRegistrataEChiudeLoStato()
+    public void CedolinoPdf_AncheSeChiusoRestaUnaSimulazioneNonCertificata()
     {
         var cedolino = new Cedolino
         {
@@ -343,13 +345,15 @@ public class PdfTests
 
         string testo = EstrattoreTestoPdf.EstraiTesto(pdf);
         Assert.Contains("Validazione registrata: Dott.ssa Maria Verdi", testo);
-        Assert.Contains("CEDOLINO CHIUSO", testo);
-        Assert.DoesNotContain("BOZZA DA VALIDARE", testo);
+        Assert.Contains("PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL", testo);
+        Assert.Contains("BOZZA / NON CERTIFICATO", testo);
+        Assert.Contains("Stato workflow: chiusa", testo, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
     [InlineData(StileCedolino.Classico)]
     [InlineData(StileCedolino.Colori)]
+    [InlineData(StileCedolino.Editoriale)]
     public void CedolinoPdf_NonSiQualificaComeLibroUnicoDelLavoro(StileCedolino stile)
     {
         var cedolino = new Cedolino
@@ -388,9 +392,171 @@ public class PdfTests
             stile: stile);
 
         string testo = EstrattoreTestoPdf.EstraiTesto(pdf).ToUpperInvariant();
-        Assert.Contains("NON COSTITUISCE LIBRO UNICO DEL LAVORO", testo);
+        Assert.Contains("PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL", testo);
+        Assert.Contains("BOZZA / NON CERTIFICATO", testo);
         Assert.DoesNotContain("LIBRO UNICO DEL LAVORO - PROSPETTO PAGA", testo);
         Assert.DoesNotContain("D.L. 112/2008 ART. 39", testo);
+    }
+
+    [Theory]
+    [InlineData(StileCedolino.Classico)]
+    [InlineData(StileCedolino.Colori)]
+    [InlineData(StileCedolino.Editoriale)]
+    public void CedolinoPdf_MantieneTitoloEAvvisoInOgniStatoWorkflow(StileCedolino stile)
+    {
+        string[] stati = ["Bozza", "PreWorkflow", "Controllata", "Validata", "Chiusa"];
+        var cedolino = new Cedolino
+        {
+            Anno = 2026, Mese = 7,
+            TotaleCompetenze = 1_500m, TotaleTrattenute = 300m, NettoInBusta = 1_200m,
+        };
+
+        foreach (string stato in stati)
+        {
+            byte[] pdf = CedolinoPdf.Genera(
+                cedolino,
+                new IntestazioneCedolino { Azienda = "Alfa Srl", Dipendente = "Rossi Mario" },
+                cartellino: null,
+                emissione: new ContestoEmissioneCedolino(stato),
+                stile: stile);
+
+            string testo = EstrattoreTestoPdf.EstraiTesto(pdf).ToUpperInvariant();
+            Assert.Contains("PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL", testo);
+            Assert.Contains("BOZZA / NON CERTIFICATO", testo);
+        }
+    }
+
+    [Theory]
+    [InlineData(StileCedolino.Classico)]
+    [InlineData(StileCedolino.Colori)]
+    [InlineData(StileCedolino.Editoriale)]
+    public void CedolinoPdf_EsponeTariffeSaldiCostiERigheFigurativeSenzaPrecisioneNascosta(
+        StileCedolino stile)
+    {
+        var cedolino = new Cedolino
+        {
+            Anno = 2026,
+            Mese = 7,
+            RetribuzioneFissa = 2_015.15m,
+            TariffaOraria = 11.994940476m,
+            TariffaGiornaliera = 77.50576923m,
+            TotaleCompetenze = 2_015.15m,
+            TotaleTrattenute = 500m,
+            NettoInBusta = 1_515.15m,
+            QuotaTfr = 164.16m,
+            PrestazioniRecuperabili = 123.45m,
+            CostoAzienda = 2_700.10m,
+            CostoMedioAnnualizzato = 3_000.20m,
+            FerieMaturate = 15.17m,
+            FerieGodute = 2m,
+            FerieResidue = 13.17m,
+            RolSaldoPrecedente = 4m,
+            RolMaturati = 18.67m,
+            RolGoduti = 3m,
+            RolResidui = 19.67m,
+            ExFestivitaSaldoPrecedente = 2m,
+            ExFestivitaMaturate = 18.66m,
+            ExFestivitaGodute = 1m,
+            ExFestivitaResidue = 19.66m,
+        };
+        cedolino.Righe.AddRange(
+        [
+            new CedolinoRiga
+            {
+                Codice = "PAGA_BASE", Descrizione = "Paga base", Tipo = TipoVoce.Competenza,
+                Base = 1_453.94m, Importo = 1_453.94m,
+            },
+            new CedolinoRiga
+            {
+                Codice = "CONTINGENZA", Descrizione = "Contingenza (EDR incluso)",
+                Tipo = TipoVoce.Competenza, Base = 527.90m, Importo = 527.90m,
+            },
+            new CedolinoRiga
+            {
+                Codice = "SCATTI", Descrizione = "Scatto di anzianità", Tipo = TipoVoce.Competenza,
+                Base = 21.95m, Importo = 21.95m,
+            },
+            new CedolinoRiga
+            {
+                Codice = "TFR_PAGA_BASE", Descrizione = "Quota TFR su paga base",
+                Tipo = TipoVoce.Figurativa, Base = 1_453.94m, Importo = 118.54m,
+            },
+            new CedolinoRiga
+            {
+                Codice = "TFR_CONTINGENZA", Descrizione = "Quota TFR su contingenza",
+                Tipo = TipoVoce.Figurativa, Base = 527.90m, Importo = 43.04m,
+            },
+            new CedolinoRiga
+            {
+                Codice = "FONDO_SAN_DATORE", Descrizione = "Fondo Est c/azienda",
+                Tipo = TipoVoce.Figurativa, Importo = 13m,
+            },
+            new CedolinoRiga
+            {
+                Codice = "ENTE_BIL_DATORE", Descrizione = "Ente bilaterale c/azienda",
+                Tipo = TipoVoce.Figurativa, Base = 1_981.84m, Importo = 1.98m,
+            },
+            new CedolinoRiga
+            {
+                Codice = "PREST_RECUPERABILI", Descrizione = "Prestazioni anticipate recuperabili",
+                Tipo = TipoVoce.Figurativa, Importo = -123.45m,
+            },
+            new CedolinoRiga
+            {
+                Codice = "QUATTORDICESIMA_SEPARATA",
+                Descrizione = "Quattordicesima da documentare con prospetto separato",
+                Tipo = TipoVoce.Figurativa, Importo = 0m,
+            },
+            new CedolinoRiga
+            {
+                Codice = "INPS_DATORE", Descrizione = "Contributi INPS c/datore",
+                Tipo = TipoVoce.Figurativa, Base = 2_015.15m, Importo = 500m,
+            },
+        ]);
+
+        byte[] pdf = CedolinoPdf.Genera(
+            cedolino,
+            new IntestazioneCedolino
+            {
+                Azienda = "Officina Nord S.r.l.",
+                Dipendente = "Giulia Bianchi",
+                CodiceCnel = "H011",
+            },
+            cartellino: null,
+            new ContestoEmissioneCedolino("Chiusa"),
+            stile);
+
+        string? directoryAnteprime = Environment.GetEnvironmentVariable("PAGHE_PDF_VARIANTI_DIR");
+        if (!string.IsNullOrWhiteSpace(directoryAnteprime))
+        {
+            Directory.CreateDirectory(directoryAnteprime);
+            File.WriteAllBytes(
+                Path.Combine(directoryAnteprime, $"cedolino-{stile.ToString().ToLowerInvariant()}.pdf"),
+                pdf);
+        }
+
+        string testo = EstrattoreTestoPdf.EstraiTesto(pdf).ToUpperInvariant();
+        Assert.Contains("PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL", testo);
+        Assert.Contains("BOZZA / NON CERTIFICATO", testo);
+        Assert.Contains("RETRIBUZIONE FISSA", testo);
+        Assert.Contains("2.015,1500", testo);
+        Assert.Contains("TARIFFA ORARIA", testo);
+        Assert.Contains("11,9949", testo);
+        Assert.Contains("TARIFFA GIORNALIERA", testo);
+        Assert.Contains("77,5058", testo);
+        Assert.Contains("FERIE (GIORNI)", testo);
+        Assert.Contains("ROL (ORE)", testo);
+        Assert.Contains("EX FESTIVITÀ (ORE)", testo);
+        Assert.Contains("SALDO PRECEDENTE FERIE", testo);
+        Assert.Contains("COSTO PARZIALE STIMATO DEL MESE", testo);
+        Assert.Contains("COSTO MEDIO PARZIALE STIMATO ANNUO/12", testo);
+        Assert.Contains("TFR_PAGA_BASE", testo);
+        Assert.Contains("TFR_CONTINGENZA", testo);
+        Assert.Contains("FONDO_SAN_DATORE", testo);
+        Assert.Contains("ENTE_BIL_DATORE", testo);
+        Assert.Contains("PREST_RECUPERABILI", testo);
+        Assert.Contains("QUATTORDICESIMA_SEPARATA", testo);
+        Assert.DoesNotContain("INPS_DATORE", testo);
     }
 
     [Fact]
@@ -428,12 +594,12 @@ public class PdfTests
             Numero = "1/2026", Data = new DateOnly(2026, 6, 26),
             Cedente = new DatiAnagrafici
             {
-                Denominazione = "Alfa Srl", PartitaIva = "01234567890",
+                Denominazione = "Alfa Srl", PartitaIva = "01234567897",
                 Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
             },
             Cessionario = new DatiAnagrafici
             {
-                Denominazione = "Beta Spa", PartitaIva = "09876543210",
+                Denominazione = "Beta Spa", PartitaIva = "09876543217",
                 Indirizzo = "Via Po 2", Cap = "10100", Comune = "Torino", Provincia = "TO",
             },
             Righe =

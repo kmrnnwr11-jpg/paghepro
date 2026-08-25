@@ -12,12 +12,12 @@ public class FatturaPaXmlTests
         Data = new DateOnly(2026, 6, 26),
         Cedente = new DatiAnagrafici
         {
-            Denominazione = "Alfa Srl", PartitaIva = "01234567890",
+            Denominazione = "Alfa Srl", PartitaIva = "01234567897",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
         },
         Cessionario = new DatiAnagrafici
         {
-            Denominazione = "Beta Spa", PartitaIva = "09876543210",
+            Denominazione = "Beta Spa", PartitaIva = "09876543217",
             Indirizzo = "Via Po 2", Cap = "10100", Comune = "Torino", Provincia = "TO",
         },
         CodiceDestinatario = "ABCDEFG",
@@ -77,7 +77,7 @@ public class FatturaPaXmlTests
         var xml = FatturaPaXml.Genera(Fattura());
         Assert.Contains("Alfa Srl", xml);
         Assert.Contains("Beta Spa", xml);
-        Assert.Contains("01234567890", xml);
+        Assert.Contains("01234567897", xml);
         Assert.Contains("ABCDEFG", xml); // codice destinatario
     }
 }

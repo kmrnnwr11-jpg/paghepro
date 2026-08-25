@@ -8,16 +8,29 @@ namespace Paghe.Api;
 /// <summary>
 /// Configurazione del livello AI (sezione "Ai"). Il provider è a scelta dell'utente:
 /// "Spento" (default, nessuna chiamata esterna), "Claude" (SDK ufficiale Anthropic),
-/// "DeepSeek", "Glm" o "Compatibile" (qualsiasi endpoint OpenAI-compatibile, anche
+/// "DeepSeek", "Gemini", "Glm" o "Compatibile" (qualsiasi endpoint OpenAI-compatibile, anche
 /// Ollama in locale, impostando BaseUrl e Modello).
 /// </summary>
 public sealed class AiOptions
 {
-    /// <summary>"Spento" | "Claude" | "DeepSeek" | "Glm" | "Compatibile".</summary>
+    /// <summary>"Spento" | "Claude" | "DeepSeek" | "Gemini" | "Glm" | "Compatibile".</summary>
     public string Provider { get; set; } = "Spento";
 
     /// <summary>Chiave API del provider. Per Claude vuota = variabile d'ambiente ANTHROPIC_API_KEY.</summary>
     public string? ApiKey { get; set; }
+
+    /// <summary>
+    /// Chiave Google Gemini separata. Quando <see cref="UsaGeminiComeFallback"/> è attivo,
+    /// DeepSeek resta il provider principale e Gemini interviene soltanto se il primo non
+    /// risponde; per le immagini, che DeepSeek non legge, Gemini viene usato direttamente.
+    /// </summary>
+    public string? GeminiApiKey { get; set; }
+
+    /// <summary>Abilita Gemini come riserva del provider principale OpenAI-compatibile.</summary>
+    public bool UsaGeminiComeFallback { get; set; }
+
+    /// <summary>Modello Gemini per chat, estrazione testo e immagini; vuoto = default corrente.</summary>
+    public string? ModelloGemini { get; set; }
 
     /// <summary>Endpoint base per i provider OpenAI-compatibili (per DeepSeek/GLM c'è un default).</summary>
     public string? BaseUrl { get; set; }
@@ -82,8 +95,21 @@ public sealed class AiOptions
     /// configurazione, però ogni chiamata prenderebbe 401. Meglio dirlo che fingersi attivi.
     /// Un modello sulla stessa macchina (Ollama e simili) non chiede chiavi.
     /// </summary>
-    public bool ChiaveMancante =>
-        string.IsNullOrWhiteSpace(ApiKey) && !ÈEndpointOllamaLocale(BaseUrl);
+    public bool ChiaveMancante
+    {
+        get
+        {
+            var configurazione = CatalogoProviderAiCompatibili.Primario(this);
+            return configurazione is not null
+                && string.IsNullOrWhiteSpace(configurazione.ApiKey)
+                && !ÈEndpointOllamaLocale(configurazione.BaseUrl);
+        }
+    }
+
+    /// <summary>La riserva Gemini è richiesta ma non ha ancora una chiave utilizzabile.</summary>
+    public bool ChiaveGeminiMancante => UsaGeminiComeFallback
+        && !Provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase)
+        && string.IsNullOrWhiteSpace(GeminiApiKey);
 
     /// <summary>
     /// Il piano vincolante vieta di accendere Ollama prima della prova G1. È un blocco nel codice,
@@ -117,9 +143,12 @@ public sealed class AiOptions
     /// <summary>
     /// Controlla l'endpoint effettivo (incluso il default del provider) con regole fail-closed.
     /// </summary>
-    public bool EndpointConsentito(string? baseUrl)
+    public bool EndpointConsentito(string? baseUrl) => EndpointConsentito(Provider, baseUrl);
+
+    /// <summary>Valida un endpoint rispetto al provider che lo userà, incluso il fallback.</summary>
+    public bool EndpointConsentito(string provider, string? baseUrl)
     {
-        if (Provider.Equals("Spento", StringComparison.OrdinalIgnoreCase)) return false;
+        if (provider.Equals("Spento", StringComparison.OrdinalIgnoreCase)) return false;
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
             || uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0)
             return false;
@@ -133,9 +162,10 @@ public sealed class AiOptions
             return false;
 
         string host = uri.IdnHost.ToLowerInvariant();
-        return Provider.ToLowerInvariant() switch
+        return provider.ToLowerInvariant() switch
         {
             "deepseek" => host == "api.deepseek.com",
+            "gemini" => host == "generativelanguage.googleapis.com",
             "glm" => host == "open.bigmodel.cn",
             "claude" => host == "api.anthropic.com",
             "compatibile" => HostCloudConsentiti.Any(h =>
@@ -148,21 +178,46 @@ public sealed class AiOptions
     public void ValidaProfiloLocale()
     {
         if (Provider.Equals("Spento", StringComparison.OrdinalIgnoreCase)) return;
-        if (Uri.TryCreate(BaseUrl, UriKind.Absolute, out var uri) && uri.IsLoopback)
+        if (Provider.Equals("Claude", StringComparison.OrdinalIgnoreCase))
         {
-            if (!SoloLocale || !GateLocaleG1Verificato || !ÈEndpointOllamaLocale(BaseUrl))
+            if (SoloLocale)
                 throw new InvalidOperationException(
-                    "Aurora locale resta sospesa: endpoint canonico e gate di isolamento G1 non verificati.");
+                    "Profilo AI solo locale: i provider cloud sono vietati. Usare Provider=Spento "
+                    + "finché il runtime locale G1 non è pronto.");
+            if (!ProviderCloudApprovato)
+                throw new InvalidOperationException(
+                    "Provider AI cloud non approvato: completare il gate G1-SaaS (DPA, egress e trasparenza) "
+                    + "oppure usare Provider=Spento.");
+            if (UsaGeminiComeFallback)
+                throw new InvalidOperationException(
+                    "Il fallback Gemini è disponibile con i provider OpenAI-compatibili, non con Claude.");
             return;
         }
-        if (SoloLocale)
-            throw new InvalidOperationException(
-                "Profilo AI solo locale: i provider cloud sono vietati. Usare Provider=Spento "
-                + "finché il runtime locale G1 non è pronto.");
-        if (!ProviderCloudApprovato)
-            throw new InvalidOperationException(
-                "Provider AI cloud non approvato: completare il gate G1-SaaS (DPA, egress e trasparenza) "
-                + "oppure usare Provider=Spento.");
+        foreach (var configurazione in CatalogoProviderAiCompatibili.Tutte(this))
+        {
+            if (!Uri.TryCreate(configurazione.BaseUrl, UriKind.Absolute, out var uri))
+                throw new InvalidOperationException(
+                    $"Endpoint AI non valido per il provider {configurazione.Provider}.");
+            if (uri.IsLoopback)
+            {
+                if (!SoloLocale || !GateLocaleG1Verificato
+                    || !ÈEndpointOllamaLocale(configurazione.BaseUrl))
+                    throw new InvalidOperationException(
+                        "Aurora locale resta sospesa: endpoint canonico e gate di isolamento G1 non verificati.");
+                continue;
+            }
+            if (SoloLocale)
+                throw new InvalidOperationException(
+                    "Profilo AI solo locale: i provider cloud sono vietati. Usare Provider=Spento "
+                    + "finché il runtime locale G1 non è pronto.");
+            if (!ProviderCloudApprovato)
+                throw new InvalidOperationException(
+                    "Provider AI cloud non approvato: completare il gate G1-SaaS (DPA, egress e trasparenza) "
+                    + "oppure usare Provider=Spento.");
+            if (!EndpointConsentito(configurazione.Provider, configurazione.BaseUrl))
+                throw new InvalidOperationException(
+                    $"Endpoint AI non autorizzato per il provider {configurazione.Provider}.");
+        }
     }
 
     /// <summary>

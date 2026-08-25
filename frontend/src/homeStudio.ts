@@ -8,6 +8,7 @@ export type SectionKey =
   | "dipendente"
   | "presenze"
   | "cedolini"
+  | "agricoltura"
   | "calcolo"
   | "adempimenti"
   | "scadenzario"
@@ -47,7 +48,7 @@ export interface StrumentoRecente {
 // monta finché il professionista non ha scelto esplicitamente l'azienda.
 const SEZIONI_CON_AZIENDA_OBBLIGATORIA = new Set<SectionKey>([
   "azienda",
-  "moduli", "dipendenti", "presenze", "cedolini", "fatture", "lipe", "iva-annuale", "bilancio",
+  "moduli", "dipendenti", "presenze", "cedolini", "agricoltura", "fatture", "lipe", "iva-annuale", "bilancio",
   "fine-anno", "cu", "mod770", "redditi-pf", "irap", "ires", "imu",
   "intrastat",
 ]);

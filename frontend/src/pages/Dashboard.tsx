@@ -92,6 +92,7 @@ import { Intrastat } from "./Intrastat";
 import { IvaAnnuale } from "./IvaAnnuale";
 import { Presenze } from "./Presenze";
 import { Cedolini } from "./Cedolini";
+import { CedolinoAgricolo } from "./CedolinoAgricolo";
 import { Elaborazione } from "./Elaborazione";
 import { Fatture } from "./Fatture";
 import { Firma } from "./Firma";
@@ -122,6 +123,7 @@ const sectionTitle: Record<SectionKey, string> = {
   dipendente: "Scheda dipendente",
   presenze: "Cartellino presenze",
   cedolini: "Cedolini",
+  agricoltura: "Anteprima busta agricola",
   calcolo: "Calcolo cedolino",
   adempimenti: "Adempimenti",
   scadenzario: "Scadenzario",
@@ -1480,6 +1482,7 @@ function ModuleScreen({
   }
 
   if (active === "cedolini") return <Cedolini onTornaPresenze={() => onNavigate("presenze")} />;
+  if (active === "agricoltura") return <CedolinoAgricolo />;
 
   if (active === "calcolo") {
     return (

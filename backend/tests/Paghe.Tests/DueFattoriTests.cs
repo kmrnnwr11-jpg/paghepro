@@ -10,7 +10,7 @@ namespace Paghe.Tests;
 /// <summary>Test del core TOTP (RFC 6238) e del flusso di login a due fattori in <see cref="AuthService"/>.</summary>
 public sealed class DueFattoriTests : IDisposable
 {
-    // Segreto del vettore ufficiale RFC 6238 (ASCII "12345678901234567890" in Base32).
+    // Segreto del vettore ufficiale RFC 6238 (ASCII "12345678903234567897" in Base32).
     private const string SegretoRfc = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
 
     private readonly SqliteConnection _connection;

@@ -8,6 +8,7 @@ import {
   etichettaStatoCedolino,
   statoEffettivo,
 } from "../cedolinoStati";
+import { preparaDatiGateRapporto } from "../rapportoFiscaleForm";
 
 type Tab = "anagrafica" | "rapporto" | "storico";
 
@@ -72,8 +73,15 @@ export function Dipendente({ rapportoId, onPayslip, onBack }: { rapportoId: stri
     ["Scatti anzianità", String(d.scattiAnzianita)],
     ["Superminimo", `${euro(d.superminimo)} €`],
     ["Ferie riportate al 1° gennaio", `${d.ferieResidueIniziali.toLocaleString("it-IT")} giorni`],
-    ["ROL/ex festività riportati al 1° gennaio", `${d.permessiResiduiIniziali.toLocaleString("it-IT")} ore`],
-    ["Regione", d.regione || "—"],
+    ["ROL riportati al 1° gennaio", d.rolResiduiIniziali == null ? "—" : `${d.rolResiduiIniziali.toLocaleString("it-IT")} ore`],
+    ["Ex festività riportate al 1° gennaio", d.exFestivitaResidueIniziali == null ? "—" : `${d.exFestivitaResidueIniziali.toLocaleString("it-IT")} ore`],
+    ["Regione domicilio fiscale", d.regione || "—"],
+    ["Codice catastale comune fiscale", d.codiceCatastaleComune || "—"],
+    ["Decorrenza domicilio fiscale", d.dataDecorrenzaDomicilioFiscale || "—"],
+    ["Fonte progressivi fiscali", d.riferimentoProgressiviFiscaliPregressi || "—"],
+    ["Conguaglio addizionale regionale", d.addizionaleRegionaleConguaglioAnnuo == null ? "—" : `${euro(d.addizionaleRegionaleConguaglioAnnuo)} €`],
+    ["Saldo addizionale comunale", d.addizionaleComunaleSaldoAnnuo == null ? "—" : `${euro(d.addizionaleComunaleSaldoAnnuo)} €`],
+    ["Acconto addizionale comunale", d.addizionaleComunaleAccontoAnnuo == null ? "—" : `${euro(d.addizionaleComunaleAccontoAnnuo)} €`],
     ["Data assunzione", d.dataAssunzione],
     ["Data cessazione", d.dataCessazione ?? "In forza"],
   ];
@@ -226,14 +234,32 @@ function dataIso(it: string): string {
 function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggiornato: RapportoDettaglio | null) => void }) {
   const [f, setF] = useState({
     nome: d.nome, cognome: d.cognome, codiceFiscale: d.codiceFiscale, iban: d.iban ?? "",
+    sesso: d.sesso ?? "",
     livello: d.livello, qualifica: d.qualifica,
     numeroMensilita: String(d.numeroMensilita),
     percentualePartTime: String(d.partTime ? d.percentualePartTime : 100),
     scattiAnzianita: String(d.scattiAnzianita), superminimo: String(d.superminimo),
     ferieResidueIniziali: String(d.ferieResidueIniziali),
-    permessiResiduiIniziali: String(d.permessiResiduiIniziali),
+    rolResiduiIniziali: d.rolResiduiIniziali != null ? String(d.rolResiduiIniziali) : "",
+    exFestivitaResidueIniziali:
+      d.exFestivitaResidueIniziali != null ? String(d.exFestivitaResidueIniziali) : "",
+    regione: d.regione ?? "",
+    codiceCatastaleComune: d.codiceCatastaleComune ?? "",
+    dataDecorrenzaDomicilioFiscale: d.dataDecorrenzaDomicilioFiscale ?? "",
+    riferimentoProgressiviFiscaliPregressi: d.riferimentoProgressiviFiscaliPregressi ?? "",
     dataAssunzione: dataIso(d.dataAssunzione),
     dataCessazione: d.dataCessazione ? dataIso(d.dataCessazione) : "",
+    provinciaLavoro: d.provinciaLavoro ?? "",
+    addizionaleRegionaleConguaglioAnnuo:
+      d.addizionaleRegionaleConguaglioAnnuo != null ? String(d.addizionaleRegionaleConguaglioAnnuo) : "",
+    addizionaleComunaleSaldoAnnuo:
+      d.addizionaleComunaleSaldoAnnuo != null ? String(d.addizionaleComunaleSaldoAnnuo) : "",
+    addizionaleComunaleAccontoAnnuo:
+      d.addizionaleComunaleAccontoAnnuo != null ? String(d.addizionaleComunaleAccontoAnnuo) : "",
+    tipoPartTimeInps: d.tipoPartTimeInps ?? "",
+    cittadinanzaInps: d.cittadinanzaInps ?? "",
+    qualificaProfessionaleIstat: d.qualificaProfessionaleIstat ?? "",
+    tipoContribuzioneInps: d.tipoContribuzioneInps ?? "",
   });
   const [errore, setErrore] = useState<string | null>(null);
   const [attesa, setAttesa] = useState(false);
@@ -244,22 +270,35 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
   async function salva(e: FormEvent) {
     e.preventDefault();
     setErrore(null);
+    const datiGate = preparaDatiGateRapporto(f);
+    if (!datiGate.ok) {
+      setErrore(`Completa i dati richiesti prima di salvare. ${datiGate.errori.join(" ")}`);
+      return;
+    }
     setAttesa(true);
     try {
       const pct = Number(f.percentualePartTime) || 100;
       await api.correggiRapporto(d.rapportoId, {
         nome: f.nome.trim(), cognome: f.cognome.trim(), codiceFiscale: f.codiceFiscale.trim(),
         iban: f.iban.trim(),
+        // Vuoto = non indicato; il server verifica la coerenza col codice fiscale.
+        sesso: f.sesso,
         livello: f.livello.trim(), qualifica: f.qualifica,
         numeroMensilita: Number(f.numeroMensilita) || d.numeroMensilita,
         partTime: pct < 100, percentualePartTime: pct,
         scattiAnzianita: Number(f.scattiAnzianita) || 0,
         superminimo: Number(f.superminimo) || 0,
         ferieResidueIniziali: Number(f.ferieResidueIniziali) || 0,
-        permessiResiduiIniziali: Number(f.permessiResiduiIniziali) || 0,
+        ...datiGate.valore,
         dataAssunzione: f.dataAssunzione || undefined,
         dataCessazione: f.dataCessazione || undefined,
         rimuoviDataCessazione: f.dataCessazione ? undefined : true,
+        provinciaLavoro: f.provinciaLavoro.trim(),
+        // Stringa vuota = «togli il dato»: il server distingue fra assente e cancellato.
+        tipoPartTimeInps: pct < 100 ? f.tipoPartTimeInps.trim() : "",
+        cittadinanzaInps: f.cittadinanzaInps.trim(),
+        qualificaProfessionaleIstat: f.qualificaProfessionaleIstat.trim(),
+        tipoContribuzioneInps: f.tipoContribuzioneInps.trim(),
       });
       const aggiornato = await api.rapportoDettaglio(d.rapportoId);
       onFatto(aggiornato);
@@ -283,6 +322,12 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
         <label><span>Nome</span><input value={f.nome} onChange={set("nome")} /></label>
         <label><span>Cognome</span><input value={f.cognome} onChange={set("cognome")} /></label>
         <label><span>Codice fiscale</span><input value={f.codiceFiscale} onChange={set("codiceFiscale")} maxLength={16} /></label>
+        <label><span>Sesso <small>(verificato col codice fiscale)</small></span>
+          <select value={f.sesso} onChange={set("sesso")}>
+            <option value="">Non indicato</option>
+            <option value="M">M</option>
+            <option value="F">F</option>
+          </select></label>
         <label><span>IBAN <small>(vuoto = rimuovi)</small></span><input value={f.iban} onChange={set("iban")} /></label>
       </div></div>
       <div className="employee-correction-section"><h3><BriefcaseBusiness size={15} /> Rapporto di lavoro</h3><div className="form-grid">
@@ -304,12 +349,78 @@ function CorreggiScheda({ d, onFatto }: { d: RapportoDettaglio; onFatto: (aggior
         <label><span>Superminimo €</span><input type="number" min={0} step="0.01" value={f.superminimo} onChange={set("superminimo")} /></label>
         <label><span>Ferie riportate al 1° gennaio <small>(giorni)</small></span>
           <input type="number" step="0.01" value={f.ferieResidueIniziali} onChange={set("ferieResidueIniziali")} /></label>
-        <label><span>ROL/ex festività riportati al 1° gennaio <small>(ore)</small></span>
-          <input type="number" step="0.01" value={f.permessiResiduiIniziali} onChange={set("permessiResiduiIniziali")} /></label>
+        <label><span>ROL riportati al 1° gennaio <small>(ore; indica anche 0)</small></span>
+          <input type="number" step="0.01" value={f.rolResiduiIniziali}
+            onChange={set("rolResiduiIniziali")} required /></label>
+        <label><span>Ex festività riportate al 1° gennaio <small>(ore; indica anche 0)</small></span>
+          <input type="number" step="0.01" value={f.exFestivitaResidueIniziali}
+            onChange={set("exFestivitaResidueIniziali")} required /></label>
+        <label><span>Regione del domicilio fiscale</span>
+          <input value={f.regione} onChange={set("regione")} required /></label>
+        <label><span>Codice catastale del comune fiscale</span>
+          <input maxLength={4} placeholder="es. F205" value={f.codiceCatastaleComune}
+            onChange={set("codiceCatastaleComune")} required /></label>
+        <label><span>Decorrenza domicilio fiscale</span>
+          <input type="date" value={f.dataDecorrenzaDomicilioFiscale}
+            onChange={set("dataDecorrenzaDomicilioFiscale")} required /></label>
+        <label><span>Fonte progressivi fiscali <small>(o assenza pregressi)</small></span>
+          <input placeholder="CU provvisoria / import certificato / assunzione nel mese"
+            value={f.riferimentoProgressiviFiscaliPregressi}
+            onChange={set("riferimentoProgressiviFiscaliPregressi")} required /></label>
         <label><span>Data assunzione</span><input type="date" value={f.dataAssunzione} onChange={set("dataAssunzione")} /></label>
         <label><span>Data cessazione <small>(vuoto = ancora in forza)</small></span>
           <input type="date" value={f.dataCessazione} onChange={set("dataCessazione")} /></label>
+        <label><span>Provincia unità operativa <small>(sigla; vuoto = sede azienda)</small></span>
+          <input maxLength={2} placeholder="es. MI" value={f.provinciaLavoro}
+            onChange={set("provinciaLavoro")} /></label>
       </div>
+      </div>
+
+      <div className="employee-correction-section">
+        <h3><BriefcaseBusiness size={15} /> Addizionali dal conguaglio</h3>
+        <p className="hint">
+          Compila tutti gli importi annui risultanti dal conguaglio dell'anno precedente.
+          Digita 0 quando il conguaglio certifica zero: un campo vuoto blocca il cedolino
+          archiviabile e non viene stimato sul solo mese.
+        </p>
+        <div className="form-grid">
+          <label><span>Addizionale regionale anno precedente €</span>
+            <input type="number" min={0} step="0.01" value={f.addizionaleRegionaleConguaglioAnnuo}
+              onChange={set("addizionaleRegionaleConguaglioAnnuo")} required /></label>
+          <label><span>Addizionale comunale, saldo €</span>
+            <input type="number" min={0} step="0.01" value={f.addizionaleComunaleSaldoAnnuo}
+              onChange={set("addizionaleComunaleSaldoAnnuo")} required /></label>
+          <label><span>Addizionale comunale, acconto €</span>
+            <input type="number" min={0} step="0.01" value={f.addizionaleComunaleAccontoAnnuo}
+              onChange={set("addizionaleComunaleAccontoAnnuo")} required /></label>
+        </div>
+      </div>
+
+      <div className="employee-correction-section">
+        <h3><BriefcaseBusiness size={15} /> Dati per la denuncia INPS (UniEmens)</h3>
+        <p className="hint">
+          Servono alla denuncia mensile all'INPS e non si ricavano dalla busta paga.
+          Senza la cittadinanza il flusso viene scartato; gli altri riguardano casi particolari.
+        </p>
+        <div className="form-grid">
+        <label><span>Cittadinanza <small>(codice a 3 cifre, come sull'UNILAV)</small></span>
+          <input inputMode="numeric" maxLength={3} placeholder="es. 330"
+            value={f.cittadinanzaInps} onChange={set("cittadinanzaInps")} /></label>
+        <label><span>Tipo di part-time <small>(solo se part-time)</small></span>
+          <select value={f.tipoPartTimeInps} onChange={set("tipoPartTimeInps")}
+            disabled={Number(f.percentualePartTime) >= 100}>
+            <option value="">Da indicare</option>
+            <option value="P">Orizzontale — meno ore tutti i giorni</option>
+            <option value="V">Verticale — giornate intere, ma non tutte</option>
+            <option value="M">Misto — giorni ridotti e giornate non lavorate</option>
+          </select></label>
+        <label><span>Qualifica professionale ISTAT <small>(facoltativa)</small></span>
+          <input placeholder="es. 8.1.3.3.0.2"
+            value={f.qualificaProfessionaleIstat} onChange={set("qualificaProfessionaleIstat")} /></label>
+        <label><span>Tipo contribuzione <small>(solo casi particolari: apprendisti, intermittenti)</small></span>
+          <input maxLength={2} placeholder="es. G0"
+            value={f.tipoContribuzioneInps} onChange={set("tipoContribuzioneInps")} /></label>
+        </div>
       {errore && <span className="errore">{errore}</span>}
       </div>
       <div className="actions-row employee-correction-actions">

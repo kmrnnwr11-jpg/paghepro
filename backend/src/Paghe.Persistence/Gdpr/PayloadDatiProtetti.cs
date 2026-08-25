@@ -16,7 +16,8 @@ internal static class PayloadDatiProtetti
     /// dimensione è fissa come per le voci, così la lunghezza del cifrato non lascia intuire
     /// quante assenze contenga il mese.
     /// </summary>
-    private const int DimensioneGiornate = 8192;
+    private const int DimensioneGiornateLegacy = 8192;
+    private const int DimensioneGiornate = 32768;
 
     public static string SerializzaSalute(decimal malattia, int numeroEvento, decimal infortunio)
     {
@@ -165,7 +166,13 @@ internal static class PayloadDatiProtetti
     /// <summary>Una giornata nella forma compatta che finisce dentro il payload cifrato.</summary>
     private sealed record GiornataProtetta(
         int G, string C, decimal Ord, decimal Per, decimal Exf, decimal Ass,
-        decimal Str, decimal StrN, decimal StrF);
+        decimal Str, decimal StrN, decimal StrF,
+        decimal? Prg = null,
+        string? IdE = null,
+        DateOnly? IniE = null,
+        decimal? RmgP = null,
+        decimal? Rat = null,
+        decimal? Lor = null);
 
     public static string SerializzaGiornate(IReadOnlyList<GiornataCartellino> giornate)
     {
@@ -174,7 +181,10 @@ internal static class PayloadDatiProtetti
             .Select(g => new GiornataProtetta(
                 g.Data.Day, g.Causale.ToString(), g.OreOrdinarie, g.OrePermessi,
                 g.OreExFestivita, g.OreAssenzaNonRetribuita,
-                g.OreStraordinario, g.OreStraordinarioNotturno, g.OreStraordinarioFestivo))
+                g.OreStraordinario, g.OreStraordinarioNotturno, g.OreStraordinarioFestivo,
+                g.ProgressivoOreSettimanali, g.IdentificativoEvento,
+                g.DataInizioEvento, g.RetribuzioneMediaGiornalieraPrecedente,
+                g.RateiGiornalieri, g.CoefficienteLordizzazione))
             .ToList();
 
         var json = JsonSerializer.SerializeToUtf8Bytes(compatte);
@@ -212,14 +222,14 @@ internal static class PayloadDatiProtetti
             throw new InvalidOperationException("Payload calendario Base64 non valido.", ex);
         }
 
-        if (payload.Length != DimensioneGiornate)
+        if (payload.Length is not DimensioneGiornate and not DimensioneGiornateLegacy)
             throw new InvalidOperationException(
                 $"Payload calendario di lunghezza non valida: {payload.Length} byte.");
 
         try
         {
             var lunghezza = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
-            if (lunghezza <= 0 || lunghezza > DimensioneGiornate - sizeof(int))
+            if (lunghezza <= 0 || lunghezza > payload.Length - sizeof(int))
                 throw new InvalidOperationException("Lunghezza interna del payload calendario non valida.");
 
             var compatte = JsonSerializer.Deserialize<List<GiornataProtetta>>(
@@ -229,9 +239,7 @@ internal static class PayloadDatiProtetti
             return [.. compatte.Select(g => new GiornataCartellino
             {
                 Data = new DateOnly(anno, mese, g.G),
-                Causale = Enum.TryParse<CausaleGiornata>(g.C, out var causale)
-                    ? causale
-                    : CausaleGiornata.Lavorata,
+                Causale = LeggiCausaleGiornata(g.C),
                 OreOrdinarie = g.Ord,
                 OrePermessi = g.Per,
                 OreExFestivita = g.Exf,
@@ -239,6 +247,12 @@ internal static class PayloadDatiProtetti
                 OreStraordinario = g.Str,
                 OreStraordinarioNotturno = g.StrN,
                 OreStraordinarioFestivo = g.StrF,
+                ProgressivoOreSettimanali = g.Prg,
+                IdentificativoEvento = g.IdE,
+                DataInizioEvento = g.IniE,
+                RetribuzioneMediaGiornalieraPrecedente = g.RmgP,
+                RateiGiornalieri = g.Rat,
+                CoefficienteLordizzazione = g.Lor,
             })];
         }
         catch (JsonException ex)
@@ -249,5 +263,14 @@ internal static class PayloadDatiProtetti
         {
             System.Security.Cryptography.CryptographicOperations.ZeroMemory(payload);
         }
+    }
+
+    private static CausaleGiornata LeggiCausaleGiornata(string valore)
+    {
+        if (!Enum.TryParse<CausaleGiornata>(valore, out var causale)
+            || !Enum.IsDefined(causale))
+            throw new InvalidOperationException(
+                $"Il payload calendario contiene una causale non riconosciuta: '{valore}'.");
+        return causale;
     }
 }

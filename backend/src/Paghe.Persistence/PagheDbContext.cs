@@ -39,7 +39,13 @@ public class PagheDbContext : DbContext
     public DbSet<CcnlEntity> Ccnl => Set<CcnlEntity>();
     public DbSet<CcnlVersioneEntity> CcnlVersioni => Set<CcnlVersioneEntity>();
     public DbSet<CcnlLivelloEntity> CcnlLivelli => Set<CcnlLivelloEntity>();
+    public DbSet<CcnlTerzoElementoEntity> CcnlTerzoElemento => Set<CcnlTerzoElementoEntity>();
     public DbSet<RegoleCcnlEntity> RegoleCcnl => Set<RegoleCcnlEntity>();
+
+    // Parametri del settore agricolo: versionati per anno e per provincia (contratto provinciale).
+    public DbSet<ParametriAgricoliEntity> ParametriAgricoli => Set<ParametriAgricoliEntity>();
+    public DbSet<TariffaAgricolaEntity> TariffeAgricole => Set<TariffaAgricolaEntity>();
+    public DbSet<ContributoAgricoloEntity> ContributiAgricoli => Set<ContributoAgricoloEntity>();
 
     // Autenticazione
     public DbSet<TenantEntity> Tenants => Set<TenantEntity>();
@@ -262,6 +268,11 @@ public class PagheDbContext : DbContext
             e.Property(x => x.IbanProtetto);
             e.Ignore(x => x.FirmaSiglaTimbro);
             e.Property(x => x.FirmaSiglaTimbroProtetta);
+            e.Property(x => x.AliquotaInpsDatore).HasPrecision(8, 6);
+            e.Property(x => x.AliquotaInpsDipendente).HasPrecision(8, 6);
+            // Default a livello di colonna: le aziende già in archivio restano aderenti ai
+            // fondi contrattuali, come il comportamento precedente all'introduzione del flag.
+            e.Property(x => x.AderisceFondiContrattuali).HasDefaultValue(true);
             e.HasMany(x => x.Fatture)
                 .WithOne(f => f.Azienda!)
                 .HasForeignKey(f => f.AziendaId);
@@ -301,6 +312,11 @@ public class PagheDbContext : DbContext
                 nameof(ParametriAnnoEntity.TfrContributoFondo),
                 nameof(ParametriAnnoEntity.VariazioneIstatTfr) })
                 e.Property(p).HasPrecision(12, 5);
+            foreach (var p in new[] { nameof(ParametriAnnoEntity.CuneoUlterioreDetrazioneAnnua),
+                nameof(ParametriAnnoEntity.CuneoRedditoOltre),
+                nameof(ParametriAnnoEntity.CuneoRedditoFinoA),
+                nameof(ParametriAnnoEntity.CuneoRedditoAzzeramento) })
+                e.Property(p).HasPrecision(15, 2);
         });
         mb.Entity<InpsAliquotaEntity>(e =>
         {
@@ -344,6 +360,13 @@ public class PagheDbContext : DbContext
             e.Property(x => x.MinimoTabellare).HasPrecision(15, 2);
             e.Property(x => x.Edr).HasPrecision(15, 2);
             e.Property(x => x.ImportoScatto).HasPrecision(15, 2);
+            e.Property(x => x.Contingenza).HasPrecision(15, 2);
+        });
+        mb.Entity<CcnlTerzoElementoEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.CcnlCodice, x.Anno, x.Provincia }).IsUnique();
+            e.Property(x => x.Importo).HasPrecision(15, 2);
         });
         mb.Entity<RegoleCcnlEntity>(e =>
         {
@@ -352,11 +375,41 @@ public class PagheDbContext : DbContext
             e.Property(x => x.DivisoreOrario).HasPrecision(8, 2);
             e.Property(x => x.DivisoreGiornaliero).HasPrecision(8, 2);
             e.Property(x => x.GiorniFerieMese).HasPrecision(8, 4);
-            e.Property(x => x.OrePermessiMese).HasPrecision(8, 2);
+            e.Property(x => x.OrePermessiMese).HasPrecision(8, 4);
+            e.Property(x => x.OrePermessiMeseOltre15).HasPrecision(8, 4);
+            e.Property(x => x.AssistenzaSanitariaLavoratoreMese).HasPrecision(8, 2);
+            e.Property(x => x.AssistenzaSanitariaDatoreMese).HasPrecision(8, 2);
+            e.Property(x => x.EnteBilateraleAliquotaLavoratore).HasPrecision(8, 5);
+            e.Property(x => x.EnteBilateraleAliquotaDatore).HasPrecision(8, 5);
+            e.Property(x => x.OreRolAnno).HasPrecision(8, 4);
+            e.Property(x => x.OreRolAnnoOltre15).HasPrecision(8, 4);
+            e.Property(x => x.OreExFestivitaAnno).HasPrecision(8, 4);
+            e.Property(x => x.PercentualeRolRidotta).HasPrecision(6, 4);
             foreach (var p in new[] { nameof(RegoleCcnlEntity.MaggiorazioneStraordinario),
                 nameof(RegoleCcnlEntity.MaggiorazioneStraordinarioNotturno),
                 nameof(RegoleCcnlEntity.MaggiorazioneStraordinarioFestivo) })
                 e.Property(p).HasPrecision(6, 4);
+        });
+
+        mb.Entity<ParametriAgricoliEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.Anno, x.Provincia }).IsUnique();
+            e.Property(x => x.AliquotaContributiDeducibili).HasPrecision(8, 5);
+        });
+        mb.Entity<TariffaAgricolaEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.Anno, x.Provincia, x.Livello }).IsUnique();
+            // Cinque decimali: la paga oraria agricola è 8,56671 €, non 8,57.
+            e.Property(x => x.SalarioProvincialeOrario).HasPrecision(12, 5);
+            e.Property(x => x.TerzoElementoOrario).HasPrecision(12, 5);
+        });
+        mb.Entity<ContributoAgricoloEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.Anno, x.Provincia, x.Codice }).IsUnique();
+            e.Property(x => x.Aliquota).HasPrecision(8, 5);
         });
 
         // --- Autenticazione ---
@@ -424,9 +477,14 @@ public class PagheDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.PercentualePartTime).HasPrecision(6, 3);
             e.Property(x => x.Superminimo).HasPrecision(15, 2);
+            e.Property(x => x.AddizionaleRegionaleConguaglioAnnuo).HasPrecision(15, 2);
+            e.Property(x => x.AddizionaleComunaleSaldoAnnuo).HasPrecision(15, 2);
+            e.Property(x => x.AddizionaleComunaleAccontoAnnuo).HasPrecision(15, 2);
             e.Property(x => x.FondoTfrIniziale).HasPrecision(15, 2);
             e.Property(x => x.FerieResidueIniziali).HasPrecision(15, 2).HasDefaultValue(0m);
             e.Property(x => x.PermessiResiduiIniziali).HasPrecision(15, 2).HasDefaultValue(0m);
+            e.Property(x => x.RolResiduiIniziali).HasPrecision(15, 2);
+            e.Property(x => x.ExFestivitaResidueIniziali).HasPrecision(15, 2);
         });
         mb.Entity<CartellinoEntity>(e =>
         {
@@ -462,6 +520,9 @@ public class PagheDbContext : DbContext
             e.Property(x => x.Versione).IsConcurrencyToken();
             e.Property(x => x.Stato).IsRequired();
             e.Property(x => x.ParametriApplicatiProtetti).IsRequired();
+            e.Property(x => x.RetribuzioneFissa).HasPrecision(15, 2);
+            e.Property(x => x.TariffaOraria).HasPrecision(15, 6);
+            e.Property(x => x.TariffaGiornaliera).HasPrecision(15, 6);
             foreach (var p in new[] { nameof(CedolinoEntity.TotaleCompetenze),
                 nameof(CedolinoEntity.TotaleTrattenute), nameof(CedolinoEntity.ImponibileInps),
                 nameof(CedolinoEntity.ContributiDipendente), nameof(CedolinoEntity.ContributiDatore),
@@ -471,7 +532,16 @@ public class PagheDbContext : DbContext
                 nameof(CedolinoEntity.NettoInBusta), nameof(CedolinoEntity.TotaleEsenti),
                 nameof(CedolinoEntity.PremioRisultatoAgevolato),
                 nameof(CedolinoEntity.ImpostaSostitutivaPremio), nameof(CedolinoEntity.QuotaTfr),
-                nameof(CedolinoEntity.CostoAzienda), nameof(CedolinoEntity.ConguaglioIrpef) })
+                nameof(CedolinoEntity.PrestazioniRecuperabili),
+                nameof(CedolinoEntity.CostoAzienda), nameof(CedolinoEntity.CostoMedioAnnualizzato),
+                nameof(CedolinoEntity.UlterioreDetrazioneCuneo),
+                nameof(CedolinoEntity.ConguaglioIrpef) })
+                e.Property(p).HasPrecision(15, 2);
+            foreach (var p in new[] { nameof(CedolinoEntity.RolSaldoPrecedente),
+                nameof(CedolinoEntity.RolMaturati), nameof(CedolinoEntity.RolGoduti),
+                nameof(CedolinoEntity.RolResidui), nameof(CedolinoEntity.ExFestivitaSaldoPrecedente),
+                nameof(CedolinoEntity.ExFestivitaMaturate), nameof(CedolinoEntity.ExFestivitaGodute),
+                nameof(CedolinoEntity.ExFestivitaResidue) })
                 e.Property(p).HasPrecision(15, 2);
             // Anche la relazione padre/righe include il tenant: il solo CedolinoId consentirebbe
             // a una riga corrotta/importata di puntare a un cedolino appartenente a un altro tenant.

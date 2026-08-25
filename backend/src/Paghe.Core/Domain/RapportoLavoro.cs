@@ -23,8 +23,36 @@ public sealed class RapportoLavoro
     /// <summary>Percentuale di part-time (100 = full-time).</summary>
     public decimal PercentualePartTime { get; init; } = 100m;
 
-    /// <summary>Numero di scatti di anzianità maturati.</summary>
+    /// <summary>
+    /// Numero di scatti di anzianità maturati, indicato a mano. Quando il CCNL dichiara la
+    /// periodicità e la data di assunzione è nota, il motore li matura da solo e questo campo
+    /// viene ignorato (revisione consulente 24/08/2026).
+    /// </summary>
     public int ScattiAnzianita { get; init; }
+
+    /// <summary>Data di assunzione: serve alla maturazione automatica degli scatti e delle mensilità aggiuntive.</summary>
+    public DateOnly? DataAssunzione { get; init; }
+
+    /// <summary>
+    /// Sigla della provincia dell'unità operativa (per gli elementi provinciali del CCNL, come il
+    /// terzo elemento del Terziario). In mancanza vale la provincia della sede aziendale.
+    /// </summary>
+    public string? ProvinciaLavoro { get; init; }
+
+    /// <summary>
+    /// Aliquota INPS complessiva c/datore del profilo contributivo dell'azienda (CSC, codici
+    /// autorizzazione, dimensione), se determinata dal professionista. Null = tabella per
+    /// qualifica. Il consulente (24/08/2026): l'aliquota datoriale non va mai cablata,
+    /// dipende dal profilo reale dell'azienda.
+    /// </summary>
+    public decimal? AliquotaInpsDatoreProfilo { get; init; }
+
+    /// <summary>
+    /// Aliquota complessiva c/dipendente risolta dal profilo contributivo reale (CSC, CA,
+    /// organico, fondo di integrazione e agevolazioni). Nel percorso archiviabile e obbligatoria:
+    /// H011 identifica il contratto collettivo, non la classificazione contributiva.
+    /// </summary>
+    public decimal? AliquotaInpsDipendenteProfilo { get; init; }
 
     /// <summary>Eventuale superminimo individuale mensile (full-time).</summary>
     public decimal Superminimo { get; init; }
@@ -54,11 +82,38 @@ public sealed class RapportoLavoro
     /// </summary>
     public decimal ContributiFondiSettore { get; init; }
 
+    /// <summary>
+    /// L'azienda aderisce ai fondi contrattuali del CCNL (assistenza sanitaria, ente bilaterale):
+    /// se no, le relative quote non vanno in busta. Gli eventuali elementi retributivi
+    /// sostitutivi previsti dal contratto restano da gestire a parte.
+    /// </summary>
+    public bool AderisceFondiContrattuali { get; init; } = true;
+
+    // ---- Addizionali da conguaglio dell'anno precedente ------------------------------
+    // Il motore trattiene soltanto RATE originate dal conguaglio (regionale e saldo comunale
+    // in 11 rate gennaio-novembre, acconto comunale in 9 rate da marzo). Null = dato mancante:
+    // nessuna trattenuta mensile inventata e percorso archiviabile bloccato.
+
+    /// <summary>Addizionale regionale dovuta sul reddito dell'anno precedente (importo annuo da rateizzare).</summary>
+    public decimal? AddizionaleRegionaleConguaglioAnnuo { get; init; }
+
+    /// <summary>Saldo dell'addizionale comunale dell'anno precedente (importo annuo da rateizzare).</summary>
+    public decimal? AddizionaleComunaleSaldoAnnuo { get; init; }
+
+    /// <summary>Acconto 30% dell'addizionale comunale dell'anno corrente (importo da rateizzare da marzo).</summary>
+    public decimal? AddizionaleComunaleAccontoAnnuo { get; init; }
+
     /// <summary>Ferie disponibili all'inizio dell'anno, riportate dall'anno precedente.</summary>
     public decimal FerieResidueIniziali { get; init; }
 
     /// <summary>ROL/ex festività disponibili all'inizio dell'anno, in ore.</summary>
     public decimal PermessiResiduiIniziali { get; init; }
+
+    /// <summary>Riporto ROL al 1 gennaio. Null conserva soltanto la compatibilita storica.</summary>
+    public decimal? RolResiduiIniziali { get; init; }
+
+    /// <summary>Riporto ex festivita al 1 gennaio. Null conserva soltanto la compatibilita storica.</summary>
+    public decimal? ExFestivitaResidueIniziali { get; init; }
 
     /// <summary>
     /// Copia del rapporto con un diverso superminimo. Serve al calcolo inverso netto → lordo,
@@ -73,6 +128,10 @@ public sealed class RapportoLavoro
         PartTime = PartTime,
         PercentualePartTime = PercentualePartTime,
         ScattiAnzianita = ScattiAnzianita,
+        DataAssunzione = DataAssunzione,
+        ProvinciaLavoro = ProvinciaLavoro,
+        AliquotaInpsDatoreProfilo = AliquotaInpsDatoreProfilo,
+        AliquotaInpsDipendenteProfilo = AliquotaInpsDipendenteProfilo,
         Superminimo = superminimo,
         Regione = Regione,
         CodiceCatastaleComune = CodiceCatastaleComune,
@@ -80,7 +139,13 @@ public sealed class RapportoLavoro
         GiorniDetrazioneAnno = GiorniDetrazioneAnno,
         AziendaOltre15Dipendenti = AziendaOltre15Dipendenti,
         ContributiFondiSettore = ContributiFondiSettore,
+        AderisceFondiContrattuali = AderisceFondiContrattuali,
+        AddizionaleRegionaleConguaglioAnnuo = AddizionaleRegionaleConguaglioAnnuo,
+        AddizionaleComunaleSaldoAnnuo = AddizionaleComunaleSaldoAnnuo,
+        AddizionaleComunaleAccontoAnnuo = AddizionaleComunaleAccontoAnnuo,
         FerieResidueIniziali = FerieResidueIniziali,
         PermessiResiduiIniziali = PermessiResiduiIniziali,
+        RolResiduiIniziali = RolResiduiIniziali,
+        ExFestivitaResidueIniziali = ExFestivitaResidueIniziali,
     };
 }

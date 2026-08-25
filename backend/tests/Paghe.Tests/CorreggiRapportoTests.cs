@@ -31,7 +31,7 @@ public sealed class CorreggiRapportoTests : IDisposable
         await using var db = NuovoContesto();
         var azienda = await new AziendeService(db).CreaAsync(_tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "01234567890",
+            RagioneSociale = "Alfa Srl", PartitaIva = "01234567897",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
         });
         var rapporto = await new AnagraficheLavoroService(db).CreaDipendenteERapportoAsync(
@@ -73,6 +73,70 @@ public sealed class CorreggiRapportoTests : IDisposable
             Assert.Equal("COMMERCIO_TERZIARIO", r.CodiceCcnl);
             Assert.Equal(14, r.NumeroMensilita);
         }
+    }
+
+    [Fact]
+    public async Task Sesso_Incoerente_Col_Codice_Fiscale_Viene_Rifiutato()
+    {
+        var rapportoId = await CreaRapportoAsync();
+
+        await using var db = NuovoContesto();
+        // RSSMRA80A01F205X: giorno di nascita 01 = uomo. Un giorno oltre 40 identifica una
+        // donna: la revisione del consulente ha trovato proprio un «Luigi» col giorno 41,
+        // e un'anagrafica incoerente va fermata prima di finire su LUL e denunce.
+        var errore = await Assert.ThrowsAsync<ArgumentException>(() =>
+            new AnagraficheLavoroService(db).CorreggiRapportoAsync(_tenant, rapportoId,
+                new AnagraficheLavoroService.CorrezioneRapporto(Sesso: "F")));
+        Assert.Contains("codice fiscale", errore.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Sesso_Coerente_Salvato_Vuoto_Lo_Toglie_E_Codice_Invalido_Rifiutato()
+    {
+        var rapportoId = await CreaRapportoAsync();
+
+        await using (var db = NuovoContesto())
+            await new AnagraficheLavoroService(db).CorreggiRapportoAsync(_tenant, rapportoId,
+                new AnagraficheLavoroService.CorrezioneRapporto(Sesso: "m"));
+        await using (var db = NuovoContesto())
+            Assert.Equal("M", (await new AnagraficheLavoroService(db)
+                .GetRapportoAsync(_tenant, rapportoId))!.Dipendente!.Sesso);
+
+        await using (var db = NuovoContesto())
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                new AnagraficheLavoroService(db).CorreggiRapportoAsync(_tenant, rapportoId,
+                    new AnagraficheLavoroService.CorrezioneRapporto(Sesso: "X")));
+
+        await using (var db = NuovoContesto())
+            await new AnagraficheLavoroService(db).CorreggiRapportoAsync(_tenant, rapportoId,
+                new AnagraficheLavoroService.CorrezioneRapporto(Sesso: ""));
+        await using (var db = NuovoContesto())
+            Assert.Null((await new AnagraficheLavoroService(db)
+                .GetRapportoAsync(_tenant, rapportoId))!.Dipendente!.Sesso);
+    }
+
+    [Fact]
+    public async Task Sesso_Incoerente_Alla_Creazione_Viene_Rifiutato()
+    {
+        await using var db = NuovoContesto();
+        var azienda = await new AziendeService(db).CreaAsync(_tenant, new AziendaEntity
+        {
+            RagioneSociale = "Beta Srl", PartitaIva = "09876543217",
+            Indirizzo = "Via Roma 2", Cap = "20100", Comune = "Milano", Provincia = "MI",
+        });
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            new AnagraficheLavoroService(db).CreaDipendenteERapportoAsync(
+                _tenant, azienda.Id,
+                new DipendenteEntity
+                {
+                    CodiceFiscale = "VRDLGI90A41F205N", Nome = "Luigi", Cognome = "Verdi",
+                    Sesso = "M", // il CF (giorno 41) dice donna
+                },
+                new RapportoLavoroEntity
+                {
+                    CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3",
+                    DataAssunzione = new DateOnly(2026, 1, 1),
+                }));
     }
 
     [Fact]

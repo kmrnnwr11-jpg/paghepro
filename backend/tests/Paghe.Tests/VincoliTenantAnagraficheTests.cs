@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -94,9 +95,10 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
         var aziendaB = Azienda(tenantB, "Azienda B");
         var dipendenteA = Dipendente(tenantA, "Persona A");
         var dipendenteB = Dipendente(tenantB, "Persona B");
-        db.Aziende.AddRange(aziendaA, aziendaB);
-        db.Dipendenti.AddRange(dipendenteA, dipendenteB);
-        await db.SaveChangesAsync();
+        await InserisciAziendaLegacyAsync(db, aziendaA);
+        await InserisciAziendaLegacyAsync(db, aziendaB);
+        await InserisciDipendenteLegacyAsync(db, dipendenteA);
+        await InserisciDipendenteLegacyAsync(db, dipendenteB);
         return (aziendaA, aziendaB, dipendenteA, dipendenteB);
     }
 
@@ -109,7 +111,7 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
         var migrator = db.Database.GetService<IMigrator>();
         migrator.Migrate(MigrazionePrecedente);
         var dati = await CreaPrincipaliAsync(db, tenantA, tenantB);
-        db.Rapporti.Add(Rapporto(tenantA, dati.AziendaA.Id, dati.DipendenteA.Id));
+        await InserisciRapportoLegacyAsync(db, Rapporto(tenantA, dati.AziendaA.Id, dati.DipendenteA.Id));
         db.Durc.Add(Durc(tenantA, dati.AziendaA.Id));
         db.Promemoria.Add(Promemoria(tenantA, dati.AziendaA.Id, "Valido"));
         await db.SaveChangesAsync();
@@ -141,7 +143,7 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
         var dati = await CreaPrincipaliAsync(db, tenantA, tenantB);
 
         if (tipo == "Rapporto")
-            db.Rapporti.Add(Rapporto(tenantA, dati.AziendaA.Id, dati.DipendenteB.Id));
+            await InserisciRapportoLegacyAsync(db, Rapporto(tenantA, dati.AziendaA.Id, dati.DipendenteB.Id));
         else if (tipo == "Durc")
             db.Durc.Add(Durc(tenantA, dati.AziendaB.Id));
         else
@@ -162,8 +164,7 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
         await using var db = NuovoContesto();
         db.Database.GetService<IMigrator>().Migrate(MigrazionePrecedente);
         var dati = await CreaPrincipaliAsync(db, tenantA, tenantB);
-        db.Rapporti.Add(Rapporto(tenantA, dati.AziendaA.Id, dati.DipendenteB.Id));
-        await db.SaveChangesAsync();
+        await InserisciRapportoLegacyAsync(db, Rapporto(tenantA, dati.AziendaA.Id, dati.DipendenteB.Id));
         await db.Database.ExecuteSqlRawAsync("DROP TABLE \"__EFMigrationsHistory\";");
 
         var errore = Assert.Throws<InvalidOperationException>(() => SchemaDatabase.Applica(db));
@@ -217,11 +218,11 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
         db.Database.GetService<IMigrator>().Migrate(MigrazionePrecedente);
         var azienda = Azienda(tenant, "Azienda parziale");
         var dipendente = Dipendente(tenant, "Persona parziale");
-        db.Aziende.Add(azienda);
-        db.Dipendenti.Add(dipendente);
-        db.Rapporti.Add(Rapporto(tenant, azienda.Id, dipendente.Id));
+        await InserisciAziendaLegacyAsync(db, azienda);
+        await InserisciDipendenteLegacyAsync(db, dipendente);
         db.Durc.Add(Durc(tenant, azienda.Id));
         await db.SaveChangesAsync();
+        await InserisciRapportoLegacyAsync(db, Rapporto(tenant, azienda.Id, dipendente.Id));
         await db.Database.ExecuteSqlRawAsync("DROP TABLE \"Promemoria\";");
         await db.Database.ExecuteSqlRawAsync("DROP TABLE \"__EFMigrationsHistory\";");
 
@@ -243,12 +244,12 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
         db.Database.GetService<IMigrator>().Migrate(MigrazionePrecedente);
         var azienda = Azienda(tenant, "Azienda legacy");
         var dipendente = Dipendente(tenant, "Persona legacy");
-        db.Aziende.Add(azienda);
-        db.Dipendenti.Add(dipendente);
-        db.Rapporti.Add(Rapporto(tenant, azienda.Id, dipendente.Id));
+        await InserisciAziendaLegacyAsync(db, azienda);
+        await InserisciDipendenteLegacyAsync(db, dipendente);
         db.Durc.Add(Durc(tenant, azienda.Id));
         db.Promemoria.Add(Promemoria(tenant, azienda.Id, "Promemoria legacy"));
         await db.SaveChangesAsync();
+        await InserisciRapportoLegacyAsync(db, Rapporto(tenant, azienda.Id, dipendente.Id));
 
         foreach (var tabella in new[] { "Rapporti", "Durc", "Promemoria" })
             RicostruisciTabella(tabella, RimuoviForeignKey);
@@ -271,10 +272,10 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
         db.Database.GetService<IMigrator>().Migrate(MigrazionePrecedente);
         var azienda = Azienda(tenant, "Azienda indice parziale");
         var dipendente = Dipendente(tenant, "Persona indice parziale");
-        db.Aziende.Add(azienda);
-        db.Dipendenti.Add(dipendente);
-        db.Rapporti.Add(Rapporto(tenant, azienda.Id, dipendente.Id));
+        await InserisciAziendaLegacyAsync(db, azienda);
+        await InserisciDipendenteLegacyAsync(db, dipendente);
         await db.SaveChangesAsync();
+        await InserisciRapportoLegacyAsync(db, Rapporto(tenant, azienda.Id, dipendente.Id));
         RicostruisciTabella("Rapporti", RimuoviForeignKey);
         await db.Database.ExecuteSqlRawAsync(
             """
@@ -301,10 +302,10 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
         var azienda = Azienda(tenant, "Azienda colonna legacy");
         var dipendente = Dipendente(tenant, "Persona colonna legacy");
         var rapporto = Rapporto(tenant, azienda.Id, dipendente.Id);
-        db.Aziende.Add(azienda);
-        db.Dipendenti.Add(dipendente);
-        db.Rapporti.Add(rapporto);
+        await InserisciAziendaLegacyAsync(db, azienda);
+        await InserisciDipendenteLegacyAsync(db, dipendente);
         await db.SaveChangesAsync();
+        await InserisciRapportoLegacyAsync(db, rapporto);
         RicostruisciTabella("Rapporti", RimuoviForeignKey);
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -323,7 +324,7 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
         await using var verifica = _connection.CreateCommand();
         verifica.CommandText =
             "SELECT \"NotaLegacy\" FROM \"Rapporti\" WHERE \"Id\" = $id;";
-        verifica.Parameters.AddWithValue("$id", rapporto.Id);
+        verifica.Parameters.AddWithValue("$id", rapporto.Id.ToString().ToUpperInvariant());
         Assert.Equal("valore-da-preservare", await verifica.ExecuteScalarAsync());
     }
 
@@ -417,6 +418,149 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
         Assert.Single(await verifica.Aziende.Where(a => a.TenantId == tenantB).ToListAsync());
     }
 
+    /// <summary>
+    /// Scrive un dipendente direttamente in tabella, con le sole colonne che quella versione
+    /// dello schema possiede davvero: stessa ragione degli altri helper legacy (una colonna
+    /// nuova, come «Sesso», non deve rompere le prove sui vincoli tenant degli schemi storici).
+    /// </summary>
+    private static async Task InserisciDipendenteLegacyAsync(PagheDbContext db, DipendenteEntity d)
+    {
+        var valori = new Dictionary<string, object?>
+        {
+            ["Id"] = d.Id.ToString().ToUpperInvariant(),
+            ["TenantId"] = d.TenantId.ToString().ToUpperInvariant(),
+            ["CodiceFiscale"] = d.CodiceFiscale,
+            ["Nome"] = d.Nome,
+            ["Cognome"] = d.Cognome,
+            ["Anonimizzato"] = d.Anonimizzato ? 1 : 0,
+        };
+
+        var presenti = new List<string>();
+        var connessione = (SqliteConnection)db.Database.GetDbConnection();
+        await using (var info = connessione.CreateCommand())
+        {
+            info.CommandText = "PRAGMA table_info(\"Dipendenti\");";
+            await using var lettore = await info.ExecuteReaderAsync();
+            while (await lettore.ReadAsync())
+            {
+                string colonna = lettore.GetString(1);
+                if (valori.ContainsKey(colonna)) presenti.Add(colonna);
+            }
+        }
+
+        await using var inserimento = connessione.CreateCommand();
+        inserimento.CommandText =
+            $"INSERT INTO \"Dipendenti\" ({string.Join(", ", presenti.Select(c => $"\"{c}\""))}) "
+            + $"VALUES ({string.Join(", ", presenti.Select(c => "$" + c))});";
+        foreach (var colonna in presenti)
+            inserimento.Parameters.AddWithValue("$" + colonna, valori[colonna] ?? DBNull.Value);
+        await inserimento.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Scrive un'azienda direttamente in tabella, con le sole colonne che quella versione dello
+    /// schema possiede davvero: stessa ragione del rapporto legacy qui sotto (una colonna nuova
+    /// sull'anagrafica non deve rompere le prove sui vincoli tenant degli schemi storici).
+    /// </summary>
+    private static async Task InserisciAziendaLegacyAsync(PagheDbContext db, AziendaEntity a)
+    {
+        var valori = new Dictionary<string, object?>
+        {
+            ["Id"] = a.Id.ToString().ToUpperInvariant(),
+            ["TenantId"] = a.TenantId.ToString().ToUpperInvariant(),
+            ["RagioneSociale"] = a.RagioneSociale,
+            ["Indirizzo"] = a.Indirizzo,
+            ["Cap"] = a.Cap,
+            ["Comune"] = a.Comune,
+            ["Provincia"] = a.Provincia,
+            ["Nazione"] = a.Nazione,
+            ["RegimeFiscale"] = a.RegimeFiscale,
+            ["HaDipendenti"] = a.HaDipendenti ? 1 : 0,
+            ["OltreQuindiciDipendenti"] = a.OltreQuindiciDipendenti ? 1 : 0,
+            ["ContributiFondiSettore"] = a.ContributiFondiSettore.ToString(CultureInfo.InvariantCulture),
+            ["AssoggettataIva"] = a.AssoggettataIva ? 1 : 0,
+        };
+
+        var presenti = new List<string>();
+        var connessione = (SqliteConnection)db.Database.GetDbConnection();
+        await using (var info = connessione.CreateCommand())
+        {
+            info.CommandText = "PRAGMA table_info(\"Aziende\");";
+            await using var lettore = await info.ExecuteReaderAsync();
+            while (await lettore.ReadAsync())
+            {
+                string colonna = lettore.GetString(1);
+                if (valori.ContainsKey(colonna)) presenti.Add(colonna);
+            }
+        }
+
+        await using var inserimento = connessione.CreateCommand();
+        inserimento.CommandText =
+            $"INSERT INTO \"Aziende\" ({string.Join(", ", presenti.Select(c => $"\"{c}\""))}) "
+            + $"VALUES ({string.Join(", ", presenti.Select(c => "$" + c))});";
+        foreach (var colonna in presenti)
+            inserimento.Parameters.AddWithValue("$" + colonna, valori[colonna] ?? DBNull.Value);
+        await inserimento.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Scrive un rapporto direttamente in tabella, con le sole colonne che quella versione
+    /// dello schema possiede davvero. Salvarlo con il DbContext userebbe il modello di oggi:
+    /// basterebbe una colonna aggiunta al dominio per far fallire una prova che riguarda i
+    /// vincoli tenant e non l'anagrafica.
+    /// </summary>
+    private static async Task InserisciRapportoLegacyAsync(
+        PagheDbContext db, RapportoLavoroEntity r)
+    {
+        var valori = new Dictionary<string, object?>
+        {
+            // EF Core scrive i GUID come testo maiuscolo: le chiavi esterne si confrontano
+            // carattere per carattere, quindi la stessa forma va rispettata anche qui.
+            ["Id"] = r.Id.ToString().ToUpperInvariant(),
+            ["TenantId"] = r.TenantId.ToString().ToUpperInvariant(),
+            ["AziendaId"] = r.AziendaId.ToString().ToUpperInvariant(),
+            ["DipendenteId"] = r.DipendenteId.ToString().ToUpperInvariant(),
+            ["CodiceCcnl"] = r.CodiceCcnl,
+            ["Livello"] = r.Livello,
+            ["Qualifica"] = r.Qualifica,
+            ["TipoContratto"] = r.TipoContratto,
+            ["OreSettimanali"] = r.OreSettimanali.ToString(CultureInfo.InvariantCulture),
+            ["NumeroMensilita"] = r.NumeroMensilita,
+            ["PartTime"] = r.PartTime ? 1 : 0,
+            ["PercentualePartTime"] = r.PercentualePartTime.ToString(CultureInfo.InvariantCulture),
+            ["ScattiAnzianita"] = r.ScattiAnzianita,
+            ["Superminimo"] = r.Superminimo.ToString(CultureInfo.InvariantCulture),
+            ["Regione"] = r.Regione,
+            ["CodiceCatastaleComune"] = r.CodiceCatastaleComune,
+            ["DetrazioniLavoroDipendente"] = r.DetrazioniLavoroDipendente ? 1 : 0,
+            ["GiorniDetrazioneAnno"] = r.GiorniDetrazioneAnno,
+            ["DataAssunzione"] = r.DataAssunzione.ToString("yyyy-MM-dd"),
+            ["FerieResidueIniziali"] = r.FerieResidueIniziali.ToString(CultureInfo.InvariantCulture),
+            ["PermessiResiduiIniziali"] = r.PermessiResiduiIniziali.ToString(CultureInfo.InvariantCulture),
+        };
+
+        var presenti = new List<string>();
+        var connessione = (SqliteConnection)db.Database.GetDbConnection();
+        await using (var info = connessione.CreateCommand())
+        {
+            info.CommandText = "PRAGMA table_info(\"Rapporti\");";
+            await using var lettore = await info.ExecuteReaderAsync();
+            while (await lettore.ReadAsync())
+            {
+                string colonna = lettore.GetString(1);
+                if (valori.ContainsKey(colonna)) presenti.Add(colonna);
+            }
+        }
+
+        await using var inserimento = connessione.CreateCommand();
+        inserimento.CommandText =
+            $"INSERT INTO \"Rapporti\" ({string.Join(", ", presenti.Select(c => $"\"{c}\""))}) "
+            + $"VALUES ({string.Join(", ", presenti.Select(c => "$" + c))});";
+        foreach (var colonna in presenti)
+            inserimento.Parameters.AddWithValue("$" + colonna, valori[colonna] ?? DBNull.Value);
+        await inserimento.ExecuteNonQueryAsync();
+    }
+
     private static async Task AssertFkAsync(PagheDbContext db, object entita)
     {
         db.Add(entita);
@@ -435,7 +579,7 @@ public sealed class VincoliTenantAnagraficheTests : IDisposable
             {
                 var rapporto = Rapporto(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
                 rapporto.Id = id;
-                db.Rapporti.Add(rapporto);
+                await InserisciRapportoLegacyAsync(db, rapporto);
             }
             else if (tabella == "Durc")
             {

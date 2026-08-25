@@ -52,6 +52,28 @@ public sealed class AiChatTests : IDisposable
         }
     }
 
+    private sealed record RichiestaCatturata(
+        Uri? Indirizzo, string? Autorizzazione, string? Corpo, bool HeaderGoogle);
+
+    private sealed class HandlerSequenza(params HttpResponseMessage[] risposte) : HttpMessageHandler
+    {
+        private readonly Queue<HttpResponseMessage> _risposte = new(risposte);
+        public List<RichiestaCatturata> Richieste { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            string? corpo = request.Content is null
+                ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            Richieste.Add(new RichiestaCatturata(
+                request.RequestUri,
+                request.Headers.Authorization?.Parameter,
+                corpo,
+                request.Headers.Contains("x-goog-api-client")));
+            return _risposte.Dequeue();
+        }
+    }
+
     [Fact]
     public async Task Chat_DeepSeek_MandaGliStrumenti_ELeggeLaChiamata()
     {
@@ -105,6 +127,75 @@ public sealed class AiChatTests : IDisposable
         Assert.Equal("call_1", chiamata.Id);
 
         static string chat_Indirizzo(HandlerFinto h) => h.UltimoIndirizzo!.ToString();
+    }
+
+    [Fact]
+    public async Task Chat_DeepSeekNonDisponibile_UsaGeminiComeRiserva()
+    {
+        var handler = new HandlerSequenza(
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable),
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Risposta Gemini\"}}]}",
+                    Encoding.UTF8, "application/json"),
+            });
+        var chat = new AiChatClient(new HttpClient(handler), new AiOptions
+        {
+            Provider = "DeepSeek",
+            ApiKey = "chiave-deepseek-prova",
+            UsaGeminiComeFallback = true,
+            GeminiApiKey = "chiave-gemini-prova",
+            ProviderCloudApprovato = true,
+        });
+
+        Assert.True(chat.Attivo);
+        Assert.Equal("DeepSeek", chat.Provider);
+        Assert.Equal("Gemini", chat.ProviderSecondario);
+        Assert.Equal("gemini-3.7-flash", chat.ModelloSecondario);
+
+        var esito = await chat.ParlaAsync(
+            [new MessaggioChatAi { Ruolo = "user", Contenuto = "Spiega" }], []);
+
+        Assert.Equal("Risposta Gemini", esito.Testo);
+        Assert.Equal(2, handler.Richieste.Count);
+        Assert.Equal("https://api.deepseek.com/chat/completions",
+            handler.Richieste[0].Indirizzo!.ToString());
+        Assert.Equal("chiave-deepseek-prova", handler.Richieste[0].Autorizzazione);
+        Assert.Contains("\"thinking\":{\"type\":\"disabled\"}", handler.Richieste[0].Corpo);
+        Assert.Equal("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            handler.Richieste[1].Indirizzo!.ToString());
+        Assert.Equal("chiave-gemini-prova", handler.Richieste[1].Autorizzazione);
+        Assert.True(handler.Richieste[1].HeaderGoogle);
+        Assert.Contains("gemini-3.7-flash", handler.Richieste[1].Corpo);
+        Assert.DoesNotContain("\"thinking\"", handler.Richieste[1].Corpo);
+    }
+
+    [Fact]
+    public async Task Chat_DeepSeekRisponde_NonDuplicaLaRichiestaSuGemini()
+    {
+        var handler = new HandlerSequenza(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Risposta DeepSeek\"}}]}",
+                Encoding.UTF8, "application/json"),
+        });
+        var chat = new AiChatClient(new HttpClient(handler), new AiOptions
+        {
+            Provider = "DeepSeek",
+            ApiKey = "chiave-deepseek-prova",
+            UsaGeminiComeFallback = true,
+            GeminiApiKey = "chiave-gemini-prova",
+            ProviderCloudApprovato = true,
+        });
+
+        var esito = await chat.ParlaAsync(
+            [new MessaggioChatAi { Ruolo = "user", Contenuto = "Spiega" }], []);
+
+        Assert.Equal("Risposta DeepSeek", esito.Testo);
+        Assert.Single(handler.Richieste);
+        Assert.Equal("https://api.deepseek.com/chat/completions",
+            handler.Richieste[0].Indirizzo!.ToString());
     }
 
     [Fact]
@@ -340,6 +431,57 @@ public sealed class AiChatTests : IDisposable
         Assert.Contains("scheda_azienda", conChiamate);
     }
 
+    [Fact]
+    public void Interpreta_LeggeLaFirmaDiPensieroDiGemini()
+    {
+        var risposta = AiChatClient.Interpreta("""
+            {"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"call_1",
+            "type":"function","function":{"name":"elenco_rapporti","arguments":"{}"},
+            "extra_content":{"google":{"thought_signature":"firma-opaca-di-google"}}}]}}]}
+            """);
+        Assert.Equal("firma-opaca-di-google", Assert.Single(risposta.Chiamate).FirmaPensiero);
+    }
+
+    /// <summary>
+    /// Gemini rifiuta con 400 il giro successivo se non riceve indietro la propria firma;
+    /// gli altri provider non la conoscono, quindi non deve mai finire nelle loro richieste.
+    /// </summary>
+    [Fact]
+    public void Serializza_RimandaLaFirmaSoloAlProviderCheLHaProdotta()
+    {
+        var messaggio = new MessaggioChatAi
+        {
+            Ruolo = "assistant",
+            Chiamate =
+            [
+                new ChiamataStrumentoAi
+                {
+                    Id = "call_1", Nome = "elenco_rapporti", ArgomentiJson = "{}",
+                    FirmaPensiero = "firma-opaca-di-google",
+                },
+            ],
+        };
+
+        string versoGemini = JsonSerializer.Serialize(AiChatClient.Serializza(messaggio, true));
+        Assert.Contains("\"thought_signature\":\"firma-opaca-di-google\"", versoGemini);
+
+        string versoDeepSeek = JsonSerializer.Serialize(AiChatClient.Serializza(messaggio));
+        Assert.DoesNotContain("thought_signature", versoDeepSeek);
+        Assert.DoesNotContain("extra_content", versoDeepSeek);
+    }
+
+    /// <summary>La firma è un blob del provider: la SPA non deve vederla né rimandarla.</summary>
+    [Fact]
+    public void FirmaDiPensiero_NonEsceVersoLaSpa()
+    {
+        string json = JsonSerializer.Serialize(new ChiamataStrumentoAi
+        {
+            Id = "call_1", Nome = "elenco_rapporti", ArgomentiJson = "{}",
+            FirmaPensiero = "firma-opaca-di-google",
+        });
+        Assert.DoesNotContain("firma-opaca-di-google", json);
+    }
+
     // ---- Letture ----
 
     [Fact]
@@ -349,7 +491,7 @@ public sealed class AiChatTests : IDisposable
         var aziende = new AziendeService(db);
         await aziende.CreaAsync(_tenant, new AziendaEntity
         {
-            RagioneSociale = "Alfa Srl", PartitaIva = "12345678901",
+            RagioneSociale = "Alfa Srl", PartitaIva = "12345678903",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
         });
         await aziende.CreaAsync(Guid.NewGuid(), new AziendaEntity
@@ -371,7 +513,7 @@ public sealed class AiChatTests : IDisposable
     {
         await using var db = NuovoContesto();
         var proposta = await NuoviStrumenti(db).PreparaScritturaAsync(_tenant, "registra_azienda",
-            """{"ragioneSociale":"Gamma Srl","partitaIva":"12345678901"}""");
+            """{"ragioneSociale":"Gamma Srl","partitaIva":"12345678903"}""");
 
         Assert.False(proposta.PuoProcedere);
         Assert.Contains(proposta.Campi, c => c.Etichetta == "Denominazione" && c.Valore == "Gamma Srl");
@@ -387,7 +529,7 @@ public sealed class AiChatTests : IDisposable
         await using var db = NuovoContesto();
         var proposta = await NuoviStrumenti(db).PreparaScritturaAsync(_tenant, "registra_azienda",
             """
-            {"ragioneSociale":"Delta Srl","partitaIva":"12345678901","indirizzo":"Via Verdi 3",
+            {"ragioneSociale":"Delta Srl","partitaIva":"12345678903","indirizzo":"Via Verdi 3",
              "cap":"20100","comune":"Milano","provincia":"MI"}
             """);
 
@@ -402,7 +544,7 @@ public sealed class AiChatTests : IDisposable
         var (riuscita, messaggio, _) = await NuoviStrumenti(db).EseguiScritturaAsync(
             _tenant, "registra_azienda",
             """
-            {"ragioneSociale":"Epsilon Srl","partitaIva":"12345678901","indirizzo":"Via Dante 5",
+            {"ragioneSociale":"Epsilon Srl","partitaIva":"12345678903","indirizzo":"Via Dante 5",
              "cap":"20100","comune":"Milano","provincia":"MI","pec":"epsilon@pec.it"}
             """);
 
@@ -411,7 +553,7 @@ public sealed class AiChatTests : IDisposable
         Assert.Contains("matricolaInps", messaggio); // i dati contributivi restano da completare
 
         var salvata = Assert.Single(await db.Aziende.Where(a => a.TenantId == _tenant).ToListAsync());
-        Assert.Equal("12345678901", salvata.PartitaIva);
+        Assert.Equal("12345678903", salvata.PartitaIva);
         Assert.Equal("MI", salvata.Provincia);
     }
 
@@ -421,7 +563,7 @@ public sealed class AiChatTests : IDisposable
         await using var db = NuovoContesto();
         var strumenti = NuoviStrumenti(db);
         const string dati = """
-            {"ragioneSociale":"Zeta Srl","partitaIva":"12345678901","indirizzo":"Via Po 1",
+            {"ragioneSociale":"Zeta Srl","partitaIva":"12345678903","indirizzo":"Via Po 1",
              "cap":"10100","comune":"Torino","provincia":"TO"}
             """;
         await strumenti.EseguiScritturaAsync(_tenant, "registra_azienda", dati);
@@ -429,7 +571,7 @@ public sealed class AiChatTests : IDisposable
         var (riuscita, messaggio, _) = await strumenti.EseguiScritturaAsync(_tenant, "registra_azienda", dati);
 
         Assert.False(riuscita);
-        Assert.Contains("12345678901", messaggio);
+        Assert.Contains("12345678903", messaggio);
         Assert.Single(await db.Aziende.Where(a => a.TenantId == _tenant).ToListAsync());
     }
 

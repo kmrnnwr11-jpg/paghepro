@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  applicaDatiVisura, datiContributiviMancanti, parsaTestoAzienda, validaAzienda,
+  applicaDatiVisura, codiceFiscaleValido, datiContributiviMancanti,
+  parsaTestoAzienda, partitaIvaValida, validaAzienda,
 } from "../src/aziendaForm.ts";
 import type { NuovaAzienda } from "../src/api.ts";
 
 const aziendaBase: NuovaAzienda = {
   ragioneSociale: "Società Agricola Esempio S.r.l.",
-  partitaIva: "12345678901",
-  codiceFiscale: "12345678901",
+  partitaIva: "12345670017",
+  codiceFiscale: "12345670017",
   indirizzo: "Via del Campo 26",
   cap: "52100",
   comune: "Arezzo",
@@ -98,6 +99,24 @@ test("la modalità prova allenta solo i dati contributivi", () => {
   assert.match(conZeri.cscInps ?? "", /Non usare 00000/);
 });
 
+test("controlla il checksum di Partita IVA e Codice Fiscale", () => {
+  assert.equal(partitaIvaValida("12345670017"), true);
+  assert.equal(partitaIvaValida("12345670018"), false);
+  assert.equal(partitaIvaValida("12345678901"), false);
+  assert.equal(codiceFiscaleValido("12345670017"), true);
+  assert.equal(codiceFiscaleValido("RSSMRA80A01H501U"), true);
+  assert.equal(codiceFiscaleValido("RSSMRA80A01H501X"), false);
+  assert.equal(codiceFiscaleValido("BNCGLI93B41F205X"), false);
+
+  const errori = validaAzienda({
+    ...aziendaBase,
+    partitaIva: "12345670018",
+    codiceFiscale: "RSSMRA80A01H501X",
+  }, { datiContributiviProvvisori: true });
+  assert.match(errori.partitaIva ?? "", /checksum/);
+  assert.match(errori.codiceFiscale ?? "", /checksum/);
+});
+
 test("datiContributiviMancanti elenca i codici assenti solo per le aziende con dipendenti", () => {
   // Azienda senza dipendenti: nessun adempimento contributivo, nessun avviso.
   assert.deepEqual(datiContributiviMancanti({ haDipendenti: false }), []);
@@ -105,10 +124,23 @@ test("datiContributiviMancanti elenca i codici assenti solo per le aziende con d
   // Con dipendenti e anagrafica vuota: tutti i codici che bloccano F24 e UniEmens.
   assert.deepEqual(datiContributiviMancanti({ haDipendenti: true }), [
     "matricola INPS", "codice sede INPS", "CSC INPS", "P.A.T. INAIL", "CCNL", "livello CCNL",
+    "codici autorizzazione INPS / NESSUNO", "FIS o altro fondo / NESSUNO",
+    "agevolazione / NESSUNA", "aliquota INPS dipendente", "aliquota INPS datore",
+    "fonte profilo contributivo",
   ]);
+
+  const profiloCompleto = {
+    codiciAutorizzazioneInps: "NESSUNO",
+    codiceFondoIntegrazioneSalariale: "FIS",
+    codiceAgevolazioneContributiva: "NESSUNA",
+    aliquotaInpsDipendente: 0.0949,
+    aliquotaInpsDatore: 0.2788,
+    fonteProfiloContributivo: "Prospetto consulente 2026-07",
+  };
 
   // Completa: l'archivio non deve segnalare nulla.
   assert.deepEqual(datiContributiviMancanti({
+    ...profiloCompleto,
     haDipendenti: true,
     matricolaInps: "8900000010", codiceSedeInps: "0001", cscInps: "11801",
     patInail: "80000103", ccnlDefault: "COMMERCIO", livelloDefault: "3",
@@ -116,6 +148,7 @@ test("datiContributiviMancanti elenca i codici assenti solo per le aziende con d
 
   // Gli spazi non contano come valore inserito.
   assert.deepEqual(datiContributiviMancanti({
+    ...profiloCompleto,
     haDipendenti: true,
     matricolaInps: "   ", codiceSedeInps: "0001", cscInps: "11801",
     patInail: "80000103", ccnlDefault: "COMMERCIO", livelloDefault: "3",

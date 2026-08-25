@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.Domain;
 using Paghe.Persistence;
+using Paghe.Persistence.Cedolini;
 
 namespace Paghe.Api;
 
@@ -35,9 +36,13 @@ public static class PresenzeEndpoints
             if (rapporto is null)
                 return Results.NotFound(new { errore = "Rapporto di lavoro non trovato." });
 
+            decimal? riportoPrimaSettimana = await RiportoOreSettimanaliService.CalcolaAsync(
+                db, tenantId, rapportoId, cartellino.Anno, cartellino.Mese,
+                rapporto.DataAssunzione, ct);
             var problemi = CalendarioCartellino.Verifica(
                 cartellino.Anno, cartellino.Mese, cartellino.Giornate,
-                rapporto.OreSettimanali / 5m);
+                rapporto.OreSettimanali / 5m,
+                oreLavoratePregressePrimaSettimana: riportoPrimaSettimana);
 
             return Results.Ok(new
             {

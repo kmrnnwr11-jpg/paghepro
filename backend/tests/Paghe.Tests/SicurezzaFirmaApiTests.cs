@@ -98,7 +98,7 @@ public sealed class SicurezzaFirmaApiTests : IClassFixture<WebApplicationFactory
         {
             numero = "TEST-1",
             data = "2026-07-15",
-            cedente = new { denominazione = "Cedente", nazione = "IT", partitaIva = "12345678901" },
+            cedente = new { denominazione = "Cedente", nazione = "IT", partitaIva = "12345678903" },
             cessionario = new { denominazione = "Cliente", nazione = "IT", codiceFiscale = "RSSMRA80A01H501U" },
             righe = Array.Empty<object>(),
         };

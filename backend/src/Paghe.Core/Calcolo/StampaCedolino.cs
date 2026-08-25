@@ -38,6 +38,7 @@ public static class StampaCedolino
         sb.AppendLine($"│ Imponibile fiscale (IRPEF) ....................... {Eur(c.ImponibileIrpef)} │");
         sb.AppendLine($"│   IRPEF lorda .................................... {Eur(c.IrpefLorda)} │");
         sb.AppendLine($"│   Detrazioni lavoro dipendente ................... {Eur(c.DetrazioniLavoroDipendente)} │");
+        sb.AppendLine($"│   Ulteriore detrazione cuneo ..................... {Eur(c.UlterioreDetrazioneCuneo)} │");
         sb.AppendLine($"│   IRPEF netta ................................... {Eur(c.IrpefNetta)} │");
         sb.AppendLine($"│   Addizionale regionale .......................... {Eur(c.AddizionaleRegionale)} │");
         sb.AppendLine($"│   Addizionale comunale ........................... {Eur(c.AddizionaleComunale)} │");

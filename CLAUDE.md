@@ -44,6 +44,187 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Stato autorevole Officina Nord / luglio 2026 (25 agosto 2026)**: il caso resta una
+  **simulazione non validabile**, non un LUL. La revisione corrente sostituisce i numeri delle
+  revisioni storiche sotto: fisso H011 livello III **2.015,15 €** (1.453,94 paga base + 527,90
+  contingenza con EDR incluso + 21,95 uno scatto dal 01/10/2025 + 11,36 terzo elemento Milano
+  soltanto con fonte), tariffa oraria **11,9949**, giornaliera **77,5058**, TFR per codice
+  **162,40**, ROL/ex festivita separati **16,33/18,67 h** (oppure 21,00/18,67 oltre 15
+  dipendenti). La quattordicesima e separata. Il gate blocca archiviazione/elaborazione senza
+  applicabilita H011 documentata, calendario e progressivi settimanali, metadati evento,
+  domicilio e conguagli fiscali, profilo contributivo reale e checksum fiscali validi. Malattia
+  INPS e INAIL sono distinte dalle quote azienda e dalle prestazioni recuperabili; i PDF
+  riportano sempre «Prospetto paga di simulazione - non costituisce LUL» e «Bozza / non
+  certificato». Fonte di dettaglio: `docs/buste-reali/validazione-06-commercio-2026-07.md`.
+  Le voci datate 24 agosto e le cifre **2.037,10 / 164,16 / 51,33** conservate piu sotto sono
+  cronologia di sviluppo e non vanno riutilizzate per questo caso.
+
+- **Busta Commercio rivista riga per riga e correzioni implementate (24 agosto 2026)**: la busta
+  di prova H011 di luglio 2026 è stata rivista dal fondatore in veste di consulente
+  (`docs/buste-reali/validazione-06-commercio-2026-07.md`: risposte, esito «da rifare», busta
+  rigenerata). Correzioni entrate nel motore, tutte coperte da `RevisioneConsulenteCommercioTests`:
+  **paga base e contingenza (EDR incluso) esposte come voci distinte** (colonna `Contingenza` sui
+  livelli CCNL, dato fornito per il solo liv. 3 H011: 1.453,94+527,90); **terzo elemento
+  provinciale** (tabella `CcnlTerzoElemento` per anno+provincia, `ProvinciaLavoro` sul rapporto con
+  default sede azienda, Milano 11,36 / nazionale 2,07, mai ereditato tra province); **scatti di
+  anzianità maturati dalla data di assunzione** (periodicità e massimo nelle regole CCNL, decorrenza
+  dal compimento del periodo); **13ª/14ª erogate nel mese del contratto** (Terziario: dicembre e
+  luglio, finestra 14ª 1/7→30/6, maturazione per dodicesimi, tassazione separata senza detrazioni ex
+  art. 23 c.2 DPR 600/73); **detrazione e addizionali proiettate sulle mensilità contrattuali**
+  (l'IRPEF lorda mensile resta a scaglioni ragguagliati ×12: confermata da 26 buste reali);
+  **ulteriore detrazione cuneo fiscale** L. 207/2024 (1.000 €/anno, 20–32k, décalage a 40k) come
+  parametri dell'anno, applicata anche al conguaglio di dicembre; **ROL+ex-festività per dimensione
+  aziendale** (Terziario 88/104 h/anno); **aliquota INPS c/datore mai cablata**: il profilo
+  contributivo reale si imposta sull'azienda (`AliquotaInpsDatore`) e vince sulla tabella per
+  qualifica; **costo del mese e costo medio annualizzato distinti** (formula verificata sui numeri
+  della revisione). Migrazioni `CorrezioniRevisioneCommercio` per entrambi i provider; i dataset
+  `minimi-ccnl-2026.json` e `voci-variabili-ccnl-2026.json` portano i dati H011. Il collaudo PDF
+  finale copre sia lo stile classico sia quello colori e conferma: totale mensile **2.037,10 €**,
+  TFR **164,16 €**, costo del mese **5.432,64 €**, costo medio annuo/12 **3.237,44 €** e
+  ROL/ex-festività **51,33 ore**; il classico è un A4 di una pagina con font incorporati. Il codec
+  dello snapshot conserva anche il costo medio annualizzato, quindi il PDF definitivo dopo la
+  chiusura non perde il secondo costo; gli snapshot V1 precedenti restano leggibili. Verifica finale:
+  modello EF senza variazioni pendenti per SQLite/PostgreSQL, build backend Release a 0 errori,
+  **1.000/1.000 test backend**, **48/48 frontend**, lint senza errori e build SPA riuscita. La **dicitura
+  generale di non certificazione resta** (verdetto della revisione): mancano progressivi in busta,
+  conguagli infrannuali delle addizionali, FIS dedotto dalla dimensione, coerenza CF/sesso e la
+  scomposizione degli altri livelli H011. Test aggiornati ai nuovi criteri (`MotoreCalcoloCedolino`,
+  `VerificaApprofondita`, `ParametriNormativiService`); i test sugli schemi storici ora inseriscono
+  anche le aziende con l'helper legacy, così una colonna nuova non li rompe più.
+
+  **Seconda revisione della busta rigenerata (25 agosto 2026)**: nove rilievi, tutti chiusi o
+  dichiarati (tabella completa nel documento di validazione). Nel motore: aliquote INPS
+  stampate con tutti i decimali significativi (9,3567%, mai 9,36%); **detrazione art. 13 e
+  ulteriore detrazione cuneo in caselle separate** (colonna `UlterioreDetrazioneCuneo` sui
+  cedolini, esposta nei tre stili PDF); **addizionali a rate dal conguaglio** quando gli
+  importi annui sono caricati sul rapporto (regionale e saldo comunale in 11 rate
+  gennaio–novembre con ultima a recupero, acconto 30% in 9 rate da marzo; senza dati resta
+  l'anteprima, dichiarata nella voce; campi in scheda dipendente); **Fondo Est** (2 €
+  lavoratore + 13 € azienda) ed **EBiTer** (0,05%/0,10% su paga base + contingenza,
+  mensilità aggiuntive comprese) come regole del CCNL nel dataset voci variabili;
+  quattordicesima esposta come mensilità intera (niente «12 × 169,76 = 2.037,10»); TFR
+  etichettato «media del mese, ratei 13ª/14ª inclusi»; costi marcati «(parziale)» e
+  comprensivi dei fondi datoriali (busta Milano: netto 3.074,27, costo mese 5.449,60, costo
+  medio annuo/12 3.252,76); scenario con CF maschile valido (VRDLGI90A01F205J) e dicitura
+  presenze non più contraddittoria quando le variabili sono tutte a zero. Migrazioni
+  `ConguagliAddizionaliECuneoCedolino` per entrambi i provider. Verifiche di quel giro:
+  suite backend e frontend verdi, build e lint verdi; il verdetto «tabella H011 Milano
+  verificata, busta completa non ancora» è registrato nel documento e la dicitura
+  generale resta.
+
+  **Chiusura dei punti aperti implementabili (25 agosto 2026, /goal)**: **progressivi annui
+  in busta** (imponibile previdenziale/IRPEF, IRPEF pagata e detrazioni col cuneo, sommati
+  dai mesi elaborati dell'anno — chiusi e storici pre-workflow, mai le bozze — stampati
+  nella fascia dedicata del PDF classico e nel quadro 05 dei colori, congelati nello
+  snapshot alla chiusura insieme all'ulteriore detrazione cuneo che al codec mancava);
+  **contributo di solidarietà 10%** sul fondo sanitario c/azienda (art. 9-bis L. 166/1991,
+  parametro dell'anno, voce figurativa nel costo: busta Milano 5.450,90 / 3.254,06);
+  **campo sesso in anagrafica** (M/F facoltativo) con rifiuto al salvataggio se il giorno
+  di nascita del codice fiscale dice il contrario, anche quando cambia il solo CF; **flag
+  «aderisce ai fondi contrattuali»** sull'azienda (default sì, anche per gli archivi
+  esistenti via default di colonna) che spegne Fondo Est/EBiTer/solidarietà quando l'azienda
+  non aderisce. Migrazioni `CoerenzaSessoEFondiContrattuali` per entrambi i provider; campi
+  esposti in scheda dipendente e scheda azienda. Restano dichiarati aperti: INAIL nel costo
+  ed elementi sostitutivi per le aziende non aderenti. Verifiche: suite backend completa e
+  **53/53 frontend** verdi, build e lint puliti, busta rigenerata.
+
+- **UniEmens: il flusso passa il controllo ufficiale INPS (24 agosto 2026)**. Il generatore è
+  stato riscritto sul tracciato vero (radice `DenunceMensili`, schema di validazione 4.32.0,
+  allegato tecnico 4.32.3): la bozza precedente aveva una struttura inventata. Lo XSD ufficiale
+  è **incorporato come risorsa** (`Paghe.Core/AdeTelematico/UniEmens/Schema`) e
+  `UniEmensValidator` valida offline a ogni generazione, come per la FatturaPA. `SettimaneInps`
+  implementa la numerazione INPS delle settimane (progressivo annuale da domenica a sabato, 1-54:
+  **non** è la ISO 8601), riscontrata su un flusso reale. `UniEmensService` costruisce il flusso
+  da cedolini, anagrafica e cartellino, e restituisce l'elenco dei dati che il tracciato pretende
+  e l'archivio non ha (`daCompletare`), senza inventarli. Un file generato da qui è stato
+  elaborato dal **validatore automatico ufficiale INPS 4.2.0**: `RC=OK`, 0 errori bloccanti,
+  file `.UniEM` e ricevuta prodotti. Le regole emerse dai controlli reali (unità
+  operativa/produttiva obbligatorie a zero, `GiorniContribuiti` alternativo a `OreContribuite`,
+  `RetribTeorica` obbligatoria, calendario giornaliero sempre esposto, codici fiscali verificati
+  nel carattere di controllo, matricola verificata sugli archivi INPS) sono nel codice e nei
+  test. Restano fuori: inquadramento contributivo in anagrafica (tipo contribuzione,
+  cittadinanza, CNEL, professione ISTAT), eventi tutelati con codici evento, conguagli, gestioni
+  speciali, archiviazione della pratica e schermata SPA. Procedura ripetibile in
+  `docs/UNIEMENS-CONTROLLO-UFFICIALE-INPS.md`.
+
+  **Anagrafica contributiva (24 agosto 2026)**: `RapportoLavoroEntity` tiene ora cittadinanza
+  (codifica Comunicazioni Obbligatorie), tipo di part-time (`P`/`V`/`M` → Qualifica2), qualifica
+  professionale ISTAT e tipo di contribuzione; migrazioni `AnagraficaContributivaUniEmens` per
+  entrambi i provider. I formati sono validati in `AnagraficaContributiva` (Paghe.Core) e
+  rifiutati al salvataggio con messaggi in italiano; la scheda del dipendente ha la sezione
+  «Dati per la denuncia INPS». Il codice contratto CNEL non si digita: arriva dal CCNL
+  dell'anno via cedolino. Difetto trovato dai test e corretto: il tracciato ammette solo
+  maiuscole senza accenti nei nomi, quindi `UniEmensXmlWriter` li adatta **solo nel file**
+  mentre l'archivio conserva la grafia vera.
+
+- **Aurora — DeepSeek + Google Gemini con fallback esplicito (24 agosto 2026)**: il profilo
+  cloud può usare DeepSeek come principale e Gemini come riserva senza duplicare le richieste
+  riuscite. Chat ed estrazione riprovano una sola volta su Gemini dopo errore/timeout/risposta
+  illeggibile di DeepSeek; foto e scansioni vanno direttamente a Gemini, che fornisce la vista.
+  Endpoint e modelli sono centralizzati in `CatalogoProviderAiCompatibili`, con allowlist esatta,
+  niente proxy/redirect, header client Google e chiavi separate (`Ai__ApiKey` e
+  `Ai__GeminiApiKey`) mai restituite dalla UI. Il pannello mostra provider principale, riserva e
+  l'eventuale chiave secondaria mancante. `render.yaml` prepara il segreto Gemini e lo script
+  locale richiede `.chiavi/deepseek.txt` + `.chiavi/gemini.txt`. Verifiche: **65/65 test AI/API**,
+  **945/945 backend**, **48/48 frontend**, build Release completa e SPA verdi.
+
+- **Paghe agricole — motore OTD validato su buste reali (23 agosto 2026)**: primo blocco del
+  modulo agricoltura. `MotoreCalcoloCedolinoAgricolo` è separato dal motore ordinario perché il
+  settore paga le **ore effettive alla tariffa del contratto provinciale** (salario provinciale +
+  terzo elemento), non una mensilità divisa per 26 o 168. Riproduce **al centesimo** tre buste
+  paga reali di un OTD di Cuneo (ott/nov/dic 2025, INAZ): lordo, imponibile contributivo
+  arrotondato all'euro, quattro trattenute provinciali (FAP 8,84% + FAVLA 0,30% + CAC prov 0,20%
+  + CAC naz 0,20% = 9,54%), IRPEF e netto. Le **39 giornate** coincidono con l'estratto conto
+  previdenziale INPS del lavoratore. Regole vere emerse dalle buste e ora nel codice: giornate e
+  ore sono dati distinti (le giornate vanno all'INPS, non si ricavano dividendo le ore); il
+  reddito annuo presunto è una stima del rapporto, non il mese × 12; la detrazione minima da
+  tempo determinato (1.380 €, art. 13 c.1 TUIR, aggiunta come parametro dell'anno) azzera l'IRPEF
+  dello stagionale; il netto si arrotonda all'euro **per eccesso** e l'ultima busta recupera gli
+  arrotondamenti anticipati. I contributi c/azienda NON sono calcolati: in agricoltura li liquida
+  l'INPS sulla denuncia mensile PosAgri. Punto aperto dichiarato: la quota deducibile ai fini fiscali
+  osservata è 7,80% e resta un parametro esplicito (`AliquotaContributiDeducibili`), non una
+  formula. Busta di riferimento e domande per il consulente in
+  `docs/buste-reali/busta-05-agricoltura-otd-cuneo-2025.md`.
+
+  **Tabelle provinciali su database e API (24 agosto 2026)**: i parametri agricoli sono
+  versionati per anno **e per provincia** (`ParametriAgricoli`/`TariffeAgricole`/
+  `ContributiAgricoli`, migrazioni `TabelleAgricole` per SQLite e PostgreSQL), con paghe orarie a
+  cinque decimali. `ParametriNormativiService` li carica e li importa in upsert per anno+provincia;
+  il seed inserisce la sola tabella osservata di Cuneo 2025 e tace appena arriva il CPL vero.
+  Endpoint: `GET /api/agricoltura/province`, `GET /api/agricoltura/tabelle/{anno}/{provincia}`,
+  `POST /api/agricoltura/tabelle/importa` (riservato al super-admin, come i CCNL) e
+  `POST /api/agricoltura/cedolino/anteprima`, che calcola la busta **senza archiviarla** e
+  restituisce la fonte delle tabelle usate. Una provincia senza tabelle è rifiutata con un
+  messaggio esplicito invece di ereditare le tariffe di un'altra. Guida in
+  `docs/AGRICOLTURA-TABELLE-CPL.md`.
+
+  **Anteprima operativa collegata al rapporto e PDF dedicato (25 agosto 2026)**: la pagina SPA
+  **Agricoltura OTD** usa un rapporto `AGRICOLTURA_OPERAI` dell'azienda corrente. Il backend
+  ricava dal rapporto tenant-scoped provincia CPL, livello, tipo, flag detrazioni e
+  residenza; il browser invia soltanto i dati variabili del mese e deve indicare il reddito annuo
+  presunto reale. Gli endpoint
+  `POST /api/agricoltura/rapporti/{rapportoId}/cedolino/anteprima` e `/pdf` restituiscono una
+  bozza non archiviata; `/province` dichiara anche se per quell'anno esistono i parametri nazionali,
+  evitando una tabella apparentemente utilizzabile ma impossibile da calcolare. Il renderer
+  `CedolinoAgricoloPdf` è separato da quello ordinario: conserva `AGR_GG`, `AGR_ARROT` e le voci
+  datoriali informative, mostra tariffa a cinque decimali, ore/giornate distinte, fonte e avviso
+  **non LUL/PosAgri/F24**, senza inventare TFR o ROL. Il flusso ordinario rifiuta esplicitamente un
+  rapporto agricolo, così non può archiviare una busta col motore sbagliato. PDF campione:
+  `output/pdf/busta-agricola-otd-cuneo-2025-10.pdf`, verificato A4, una pagina, font Lato
+  incorporati e controllo visivo completo.
+
+  OTI è riconosciuto dal rapporto ma resta intenzionalmente **fail-closed** nel motore, nell'API
+  e nella SPA: la tabella e i tre casi golden disponibili sono OTD, quindi non possono essere
+  riutilizzati per salario/terzo elemento OTI. La UI spiega il blocco e disabilita calcolo/PDF.
+
+  Verifiche finali: build Release 0 errori, **1.012/1.012 test backend** e **53/53 frontend**
+  verdi, lint senza errori bloccanti, build SPA riuscita, modelli EF senza variazioni pendenti per
+  SQLite/PostgreSQL. Restano aperti e dichiarati: archiviazione/snapshot/workflow agricolo,
+  cartellino giornaliero e progressivi persistiti, CPL ufficiale completo e livelli verificati,
+  golden OTI, contribuzione datoriale complessiva, denuncia mensile UniEmens/PosAgri, riscontro
+  F24 e CU agricola; la quota deducibile osservata del 7,80% e lo scarto di 0,01 € di novembre
+  richiedono ancora validazione professionale.
+
 - **Aurora — protocollo A3 di proposta, conferma e undo (23 agosto 2026)**: le scritture
   reversibili passano da un intento firmato completo (comando canonico, undo, precondizione/
   postcondizione, diff) cifrato tenant-bound, con token v2 tipizzati: una conferma non vale mai
@@ -457,7 +638,7 @@ dotnet run --project src/Paghe.Demo -c Release
 - **Livello AI di lettura documenti (AI-first, multi-provider)**: seam `IEstrattoreAiDocumenti`
   in `Paghe.Core/Ai` con default `EstrattoreAiSpento` (zero chiamate esterne — il prodotto è
   completo anche senza AI). Provider a scelta in sezione config `Ai`: `Claude` (SDK ufficiale
-  Anthropic, structured output con schema JSON), `DeepSeek`/`Glm` (default endpoint/modello
+  Anthropic, structured output con schema JSON), `DeepSeek`/`Gemini`/`Glm` (default endpoint/modello
   precompilati) o `Compatibile` (qualsiasi endpoint OpenAI-compatibile, incluso Ollama locale)
   via `EstrattoreAiCompatibile` (typed HttpClient, testato con handler finto). Contratto comune
   `{campi:[{nome,valore,confidenza}]}` interpretato da `PropostaAiJson`. Regole architetturali

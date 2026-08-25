@@ -76,6 +76,7 @@ test("azienda corrente e ultima azienda sono isolate per tenant", () => {
 test("il gate distingue le schermate aziendali dalla Home studio", () => {
   assert.equal(sezioneRichiedeAzienda("dipendenti"), true);
   assert.equal(sezioneRichiedeAzienda("cedolini"), true);
+  assert.equal(sezioneRichiedeAzienda("agricoltura"), true);
   assert.equal(sezioneRichiedeAzienda("dashboard"), false);
   assert.equal(sezioneRichiedeAzienda("aziende"), false);
   assert.equal(sezioneRichiedeAzienda("pratiche"), false);

@@ -16,12 +16,12 @@ public class FatturaPaValidatorTests
         Data = new DateOnly(2026, 6, 26),
         Cedente = new DatiAnagrafici
         {
-            Denominazione = "Alfa Srl", PartitaIva = "01234567890",
+            Denominazione = "Alfa Srl", PartitaIva = "01234567897",
             Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = provincia,
         },
         Cessionario = new DatiAnagrafici
         {
-            Denominazione = "Beta Spa", PartitaIva = "09876543210",
+            Denominazione = "Beta Spa", PartitaIva = "09876543217",
             Indirizzo = "Via Po 2", Cap = "10100", Comune = "Torino", Provincia = "TO",
         },
         CodiceDestinatario = "ABCDEFG",

@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
-# Avvia PaghePro in locale con Aurora accesa su DeepSeek, per il collaudo del fondatore.
+# Avvia PaghePro in locale con Aurora su DeepSeek e Google Gemini di riserva.
 #
 #   ./scripts/avvia-aurora-collaudo.sh                  → solo chat e letture governate (A2)
 #   ./scripts/avvia-aurora-collaudo.sh tua@email.it     → anche modifiche con conferma (A3)
 #
-# La chiave DeepSeek va in .chiavi/deepseek.txt (cartella già in .gitignore).
+# Le chiavi vanno in .chiavi/deepseek.txt e .chiavi/gemini.txt (cartella già in .gitignore).
 # Le modifiche A3 valgono SOLO per l'utente indicato: qualunque altro account resta in
 # sola lettura. Nessuna configurazione viene scritta su file: tutto vive in questo avvio.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CHIAVE_FILE=".chiavi/deepseek.txt"
+CHIAVE_DEEPSEEK_FILE=".chiavi/deepseek.txt"
+CHIAVE_GEMINI_FILE=".chiavi/gemini.txt"
 DB="backend/src/Paghe.Api/paghe.db"
 
-if [[ ! -s "$CHIAVE_FILE" ]]; then
-  echo "ERRORE: manca la chiave DeepSeek in $CHIAVE_FILE" >&2
+if [[ ! -s "$CHIAVE_DEEPSEEK_FILE" ]]; then
+  echo "ERRORE: manca la chiave DeepSeek in $CHIAVE_DEEPSEEK_FILE" >&2
+  exit 1
+fi
+if [[ ! -s "$CHIAVE_GEMINI_FILE" ]]; then
+  echo "ERRORE: manca la chiave Google Gemini in $CHIAVE_GEMINI_FILE" >&2
+  echo "Creane una nuova in Google AI Studio: quella incollata in chat va sostituita." >&2
   exit 1
 fi
 
@@ -23,7 +29,12 @@ ENV_ARGS=(
   ASPNETCORE_ENVIRONMENT=Development
   ASPNETCORE_URLS=http://127.0.0.1:5171
   Ai__Provider=DeepSeek
-  "Ai__ApiKey=$(cat "$CHIAVE_FILE")"
+  "Ai__ApiKey=$(cat "$CHIAVE_DEEPSEEK_FILE")"
+  Ai__UsaGeminiComeFallback=true
+  "Ai__GeminiApiKey=$(cat "$CHIAVE_GEMINI_FILE")"
+  # gemini-3.7-flash risponde 503 "high demand" nelle prove del 24 agosto 2026: la riserva
+  # sarebbe muta proprio quando serve. gemini-3.5-flash risponde e vede le immagini.
+  Ai__ModelloGemini=gemini-3.5-flash
   Ai__SoloLocale=false
   Ai__ProviderCloudApprovato=true
 )

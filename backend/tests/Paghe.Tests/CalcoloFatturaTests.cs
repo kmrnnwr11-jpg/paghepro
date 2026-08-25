@@ -14,8 +14,8 @@ public class CalcoloFatturaTests
     private static Fattura FatturaCon(params RigaFattura[] righe) => new()
     {
         Numero = "1/2026", Data = new DateOnly(2026, 6, 26),
-        Cedente = Soggetto("Alfa Srl", "01234567890"),
-        Cessionario = Soggetto("Beta Spa", "09876543210"),
+        Cedente = Soggetto("Alfa Srl", "01234567897"),
+        Cessionario = Soggetto("Beta Spa", "09876543217"),
         Righe = righe.ToList(),
     };
 

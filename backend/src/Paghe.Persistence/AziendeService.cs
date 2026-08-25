@@ -17,7 +17,10 @@ public sealed class AziendeService
     {
         public bool DatiContributiviCompleti => !DatiMancanti.Any(d =>
             d is "settore" or "codiceAteco" or "matricolaInps" or "codiceSedeInps"
-                or "cscInps" or "patInail" or "ccnlDefault" or "livelloDefault");
+                or "cscInps" or "codiciAutorizzazioneInps" or "fondoIntegrazione"
+                or "agevolazioneContributiva" or "aliquotaInpsDipendente"
+                or "aliquotaInpsDatore" or "fonteProfiloContributivo"
+                or "patInail" or "ccnlDefault" or "livelloDefault");
     }
 
     /// <summary>
@@ -36,6 +39,7 @@ public sealed class AziendeService
     public async Task<AziendaEntity> CreaAsync(Guid tenantId, AziendaEntity azienda, CancellationToken ct = default)
     {
         Normalizza(azienda);
+        ValidaIdentificativi(azienda);
         var piva = azienda.PartitaIva;
         var cf = azienda.CodiceFiscale;
         if (!string.IsNullOrEmpty(piva))
@@ -109,7 +113,17 @@ public sealed class AziendeService
         string? LivelloDefault = null, string? Iban = null,
         string? LegaleRappresentanteNome = null, string? LegaleRappresentanteCognome = null,
         string? LegaleRappresentanteCodiceFiscale = null,
-        bool? OltreQuindiciDipendenti = null, decimal? ContributiFondiSettore = null);
+        bool? OltreQuindiciDipendenti = null, decimal? ContributiFondiSettore = null,
+        decimal? AliquotaInpsDatore = null, bool? AderisceFondiContrattuali = null,
+        string? CodiciAutorizzazioneInps = null,
+        string? CodiceFondoIntegrazioneSalariale = null,
+        string? CodiceAgevolazioneContributiva = null,
+        decimal? AliquotaInpsDipendente = null,
+        string? FonteProfiloContributivo = null,
+        string? RiferimentoVisuraCamerale = null,
+        string? StatoAlboArtigiani = null,
+        string? RiferimentoVerificaApplicabilitaCcnl = null,
+        string? RiferimentoTerzoElementoTerritoriale = null);
 
     /// <summary>
     /// Corregge l'anagrafica di un'azienda (isolata per tenant): aggiorna solo i campi indicati.
@@ -152,9 +166,34 @@ public sealed class AziendeService
         if (c.LegaleRappresentanteCodiceFiscale is not null) a.LegaleRappresentanteCodiceFiscale = VuotoNull(c.LegaleRappresentanteCodiceFiscale)?.ToUpperInvariant();
         if (c.OltreQuindiciDipendenti is not null) a.OltreQuindiciDipendenti = c.OltreQuindiciDipendenti.Value;
         if (c.ContributiFondiSettore is not null) a.ContributiFondiSettore = c.ContributiFondiSettore.Value;
+        // Zero o negativo = torna alla tabella per qualifica (rimozione del profilo).
+        if (c.AliquotaInpsDatore is not null)
+            a.AliquotaInpsDatore = c.AliquotaInpsDatore.Value > 0m ? c.AliquotaInpsDatore.Value : null;
+        if (c.AderisceFondiContrattuali is not null)
+            a.AderisceFondiContrattuali = c.AderisceFondiContrattuali.Value;
+        if (c.CodiciAutorizzazioneInps is not null)
+            a.CodiciAutorizzazioneInps = VuotoNull(c.CodiciAutorizzazioneInps)?.ToUpperInvariant();
+        if (c.CodiceFondoIntegrazioneSalariale is not null)
+            a.CodiceFondoIntegrazioneSalariale = VuotoNull(c.CodiceFondoIntegrazioneSalariale)?.ToUpperInvariant();
+        if (c.CodiceAgevolazioneContributiva is not null)
+            a.CodiceAgevolazioneContributiva = VuotoNull(c.CodiceAgevolazioneContributiva)?.ToUpperInvariant();
+        if (c.AliquotaInpsDipendente is not null)
+            a.AliquotaInpsDipendente = c.AliquotaInpsDipendente.Value > 0m
+                ? c.AliquotaInpsDipendente.Value : null;
+        if (c.FonteProfiloContributivo is not null)
+            a.FonteProfiloContributivo = VuotoNull(c.FonteProfiloContributivo);
+        if (c.RiferimentoVisuraCamerale is not null)
+            a.RiferimentoVisuraCamerale = VuotoNull(c.RiferimentoVisuraCamerale);
+        if (c.StatoAlboArtigiani is not null)
+            a.StatoAlboArtigiani = StatoAlbo(c.StatoAlboArtigiani);
+        if (c.RiferimentoVerificaApplicabilitaCcnl is not null)
+            a.RiferimentoVerificaApplicabilitaCcnl = VuotoNull(c.RiferimentoVerificaApplicabilitaCcnl);
+        if (c.RiferimentoTerzoElementoTerritoriale is not null)
+            a.RiferimentoTerzoElementoTerritoriale = VuotoNull(c.RiferimentoTerzoElementoTerritoriale);
 
         await VerificaDuplicatiAsync(tenantId, a, ct);
         Normalizza(a);
+        ValidaIdentificativi(a);
 
         await _db.SaveChangesAsync(ct);
         return a;
@@ -243,6 +282,12 @@ public sealed class AziendeService
         if (string.IsNullOrWhiteSpace(a.MatricolaInps)) mancanti.Add("matricolaInps");
         if (string.IsNullOrWhiteSpace(a.CodiceSedeInps)) mancanti.Add("codiceSedeInps");
         if (string.IsNullOrWhiteSpace(a.CscInps)) mancanti.Add("cscInps");
+        if (string.IsNullOrWhiteSpace(a.CodiciAutorizzazioneInps)) mancanti.Add("codiciAutorizzazioneInps");
+        if (string.IsNullOrWhiteSpace(a.CodiceFondoIntegrazioneSalariale)) mancanti.Add("fondoIntegrazione");
+        if (string.IsNullOrWhiteSpace(a.CodiceAgevolazioneContributiva)) mancanti.Add("agevolazioneContributiva");
+        if (a.AliquotaInpsDipendente is not > 0m) mancanti.Add("aliquotaInpsDipendente");
+        if (a.AliquotaInpsDatore is not > 0m) mancanti.Add("aliquotaInpsDatore");
+        if (string.IsNullOrWhiteSpace(a.FonteProfiloContributivo)) mancanti.Add("fonteProfiloContributivo");
         if (string.IsNullOrWhiteSpace(a.PatInail)) mancanti.Add("patInail");
         if (string.IsNullOrWhiteSpace(a.CcnlDefault)) mancanti.Add("ccnlDefault");
         if (string.IsNullOrWhiteSpace(a.LivelloDefault)) mancanti.Add("livelloDefault");
@@ -255,6 +300,12 @@ public sealed class AziendeService
         "matricolaInps" => "matricola INPS",
         "codiceSedeInps" => "codice sede INPS",
         "cscInps" => "CSC INPS",
+        "codiciAutorizzazioneInps" => "codici autorizzazione INPS (o NESSUNO)",
+        "fondoIntegrazione" => "FIS/fondo di integrazione (o NESSUNO)",
+        "agevolazioneContributiva" => "agevolazione contributiva (o NESSUNA)",
+        "aliquotaInpsDipendente" => "aliquota INPS c/dipendente del profilo",
+        "aliquotaInpsDatore" => "aliquota INPS c/datore del profilo",
+        "fonteProfiloContributivo" => "fonte del profilo contributivo",
         "patInail" => "P.A.T. INAIL",
         "ccnlDefault" => "CCNL",
         "livelloDefault" => "livello CCNL",
@@ -280,6 +331,14 @@ public sealed class AziendeService
         a.MatricolaInps = CodiceContributivoOVuoto(a.MatricolaInps);
         a.CodiceSedeInps = CodiceContributivoOVuoto(a.CodiceSedeInps);
         a.CscInps = CodiceContributivoOVuoto(a.CscInps);
+        a.CodiciAutorizzazioneInps = VuotoNull(a.CodiciAutorizzazioneInps)?.ToUpperInvariant();
+        a.CodiceFondoIntegrazioneSalariale = VuotoNull(a.CodiceFondoIntegrazioneSalariale)?.ToUpperInvariant();
+        a.CodiceAgevolazioneContributiva = VuotoNull(a.CodiceAgevolazioneContributiva)?.ToUpperInvariant();
+        a.FonteProfiloContributivo = VuotoNull(a.FonteProfiloContributivo);
+        a.RiferimentoVisuraCamerale = VuotoNull(a.RiferimentoVisuraCamerale);
+        a.StatoAlboArtigiani = StatoAlbo(a.StatoAlboArtigiani);
+        a.RiferimentoVerificaApplicabilitaCcnl = VuotoNull(a.RiferimentoVerificaApplicabilitaCcnl);
+        a.RiferimentoTerzoElementoTerritoriale = VuotoNull(a.RiferimentoTerzoElementoTerritoriale);
         a.PatInail = CodiceContributivoOVuoto(a.PatInail);
         a.CcnlDefault = VuotoNull(a.CcnlDefault);
         a.LivelloDefault = VuotoNull(a.LivelloDefault);
@@ -299,5 +358,24 @@ public sealed class AziendeService
         var normalizzato = VuotoNull(valore);
         if (normalizzato is null) return null;
         return normalizzato.All(c => c is '0' or '/' or ' ' or '.' or '-') ? null : normalizzato;
+    }
+
+    private static void ValidaIdentificativi(AziendaEntity a)
+    {
+        if (!string.IsNullOrWhiteSpace(a.PartitaIva)
+            && !Paghe.Core.AdeTelematico.ValidatoreFiscale.PartitaIvaValida(a.PartitaIva))
+            throw new ArgumentException("Partita IVA formalmente errata: il checksum non coincide.");
+        if (!string.IsNullOrWhiteSpace(a.CodiceFiscale)
+            && !Paghe.Core.AdeTelematico.ValidatoreFiscale.CodiceFiscaleValido(a.CodiceFiscale))
+            throw new ArgumentException("Codice fiscale aziendale formalmente errato: il checksum non coincide.");
+    }
+
+    private static string StatoAlbo(string? valore)
+    {
+        var normalizzato = VuotoNull(valore) ?? "DaVerificare";
+        if (normalizzato.Equals("DaVerificare", StringComparison.OrdinalIgnoreCase)) return "DaVerificare";
+        if (normalizzato.Equals("Iscritta", StringComparison.OrdinalIgnoreCase)) return "Iscritta";
+        if (normalizzato.Equals("NonIscritta", StringComparison.OrdinalIgnoreCase)) return "NonIscritta";
+        throw new ArgumentException("Stato Albo artigiani non valido: usare DaVerificare, Iscritta o NonIscritta.");
     }
 }

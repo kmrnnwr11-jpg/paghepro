@@ -22,13 +22,20 @@ const vuota: NuovaAzienda = {
   matricolaInps: "", codiceSedeInps: "", cscInps: "", patInail: "", ccnlDefault: "", livelloDefault: "",
   iban: "", legaleRappresentanteNome: "", legaleRappresentanteCognome: "", legaleRappresentanteCodiceFiscale: "",
   canalePredefinito: "", haDipendenti: true, tipoContribuente: "", assoggettataIva: true,
-  oltreQuindiciDipendenti: false, contributiFondiSettore: 0,
+  oltreQuindiciDipendenti: false, contributiFondiSettore: 0, aliquotaInpsDatore: 0,
+  aliquotaInpsDipendente: 0,
+  aderisceFondiContrattuali: true,
+  codiciAutorizzazioneInps: "", codiceFondoIntegrazioneSalariale: "",
+  codiceAgevolazioneContributiva: "", fonteProfiloContributivo: "",
+  riferimentoVisuraCamerale: "", statoAlboArtigiani: "DaVerificare",
+  riferimentoVerificaApplicabilitaCcnl: "", riferimentoTerzoElementoTerritoriale: "",
 };
 
 // Fondi di settore a carico del dipendente, verificati su buste reali. Il valore è una frazione:
 // finisce direttamente nel calcolo della quota INPS, quindi meglio sceglierlo che digitarlo.
 const FONDI_SETTORE = [
   { valore: 0, label: "Nessuno" },
+  { valore: 0.001667, label: "FIS 0,1667% — aziende da 6 a 15 dipendenti" },
   { valore: 0.002667, label: "FIS 0,2667% — Fondo Integrazione Salariale (es. Multiservizi)" },
   { valore: 0.0015, label: "FSBS 0,15% — somministrazione" },
 ];
@@ -68,7 +75,7 @@ const SEZIONI = [
   { id: "sede", titolo: "2. Sede legale & Territorio", campi: ["indirizzo", "comune", "cap", "provincia", "codiceCatastale"] as (keyof NuovaAzienda)[] },
   { id: "contatti", titolo: "3. Contatti e PEC", campi: ["telefono", "email", "pec", "canalePredefinito"] as (keyof NuovaAzienda)[] },
   { id: "fiscale", titolo: "4. Profilo fiscale & Tesoreria (IBAN)", campi: ["tipoContribuente", "iban", "haDipendenti", "assoggettataIva"] as (keyof NuovaAzienda)[] },
-  { id: "contributivo", titolo: "5. Dati INPS, INAIL, CCNL & Legale Rappresentante", campi: ["matricolaInps", "codiceSedeInps", "cscInps", "patInail", "ccnlDefault", "livelloDefault", "legaleRappresentanteNome", "legaleRappresentanteCognome", "legaleRappresentanteCodiceFiscale"] as (keyof NuovaAzienda)[] },
+  { id: "contributivo", titolo: "5. Dati INPS, INAIL, CCNL & Legale Rappresentante", campi: ["matricolaInps", "codiceSedeInps", "cscInps", "codiciAutorizzazioneInps", "codiceFondoIntegrazioneSalariale", "codiceAgevolazioneContributiva", "aliquotaInpsDipendente", "aliquotaInpsDatore", "fonteProfiloContributivo", "patInail", "ccnlDefault", "livelloDefault", "riferimentoVisuraCamerale", "statoAlboArtigiani", "riferimentoVerificaApplicabilitaCcnl", "riferimentoTerzoElementoTerritoriale", "legaleRappresentanteNome", "legaleRappresentanteCognome", "legaleRappresentanteCodiceFiscale"] as (keyof NuovaAzienda)[] },
 ];
 
 // ---------- componenti piccoli ----------
@@ -370,6 +377,17 @@ export function Aziende({
       cscInps: a.cscInps ?? "", patInail: a.patInail ?? "",
       oltreQuindiciDipendenti: a.oltreQuindiciDipendenti ?? false,
       contributiFondiSettore: a.contributiFondiSettore ?? 0,
+      aliquotaInpsDatore: a.aliquotaInpsDatore ?? 0,
+      aliquotaInpsDipendente: a.aliquotaInpsDipendente ?? 0,
+      aderisceFondiContrattuali: a.aderisceFondiContrattuali ?? true,
+      codiciAutorizzazioneInps: a.codiciAutorizzazioneInps ?? "",
+      codiceFondoIntegrazioneSalariale: a.codiceFondoIntegrazioneSalariale ?? "",
+      codiceAgevolazioneContributiva: a.codiceAgevolazioneContributiva ?? "",
+      fonteProfiloContributivo: a.fonteProfiloContributivo ?? "",
+      riferimentoVisuraCamerale: a.riferimentoVisuraCamerale ?? "",
+      statoAlboArtigiani: a.statoAlboArtigiani ?? "DaVerificare",
+      riferimentoVerificaApplicabilitaCcnl: a.riferimentoVerificaApplicabilitaCcnl ?? "",
+      riferimentoTerzoElementoTerritoriale: a.riferimentoTerzoElementoTerritoriale ?? "",
       ccnlDefault: a.ccnlDefault ?? "", livelloDefault: a.livelloDefault ?? "",
       iban: a.iban ?? "",
       legaleRappresentanteNome: a.legaleRappresentanteNome ?? "",
@@ -1017,6 +1035,27 @@ export function Aziende({
                   placeholder="Es. 10101 (Terziario)" value={form.cscInps ?? ""}
                   onChange={set("cscInps")} maxLength={5} />
               </Campo>
+              <Campo label="Codici autorizzazione INPS (CA)" errore={errori.codiciAutorizzazioneInps}
+                facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
+                <input style={inputStyle(errori.codiciAutorizzazioneInps)}
+                  placeholder="Codici reali oppure NESSUNO"
+                  value={form.codiciAutorizzazioneInps ?? ""}
+                  onChange={set("codiciAutorizzazioneInps")} />
+              </Campo>
+              <Campo label="FIS / fondo integrazione" errore={errori.codiceFondoIntegrazioneSalariale}
+                facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
+                <input style={inputStyle(errori.codiceFondoIntegrazioneSalariale)}
+                  placeholder="Codice fondo oppure NESSUNO"
+                  value={form.codiceFondoIntegrazioneSalariale ?? ""}
+                  onChange={set("codiceFondoIntegrazioneSalariale")} />
+              </Campo>
+              <Campo label="Agevolazione contributiva" errore={errori.codiceAgevolazioneContributiva}
+                facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
+                <input style={inputStyle(errori.codiceAgevolazioneContributiva)}
+                  placeholder="Codice reale oppure NESSUNA"
+                  value={form.codiceAgevolazioneContributiva ?? ""}
+                  onChange={set("codiceAgevolazioneContributiva")} />
+              </Campo>
               <Campo label="P.A.T. INAIL" errore={errori.patInail} facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
                 <input style={inputStyle(errori.patInail)}
                   placeholder="Es. 12345678/90" value={form.patInail ?? ""}
@@ -1068,6 +1107,69 @@ export function Aziende({
                   ))}
                 </select>
               </Campo>
+              <Campo label="Aliquota INPS c/datore del profilo aziendale (%)" facoltativo>
+                <input style={inputStyle(undefined)} type="number" step="0.0001" min="0" max="60"
+                  placeholder="Vuoto = tabella per qualifica (non certificata)"
+                  value={form.aliquotaInpsDatore ? +(form.aliquotaInpsDatore * 100).toFixed(4) : ""}
+                  onChange={e => setForm({
+                    ...form,
+                    aliquotaInpsDatore: e.target.value === ""
+                      ? 0
+                      : +(Number(e.target.value) / 100).toFixed(6),
+                  })} />
+                <small style={{ display: "block", opacity: 0.7, marginTop: 4 }}>
+                  L'aliquota datoriale dipende da CSC, autorizzazioni e dimensione (es. commercio
+                  ordinario 28,98% + FIS). La determina il consulente: qui si registra quella vera.
+                </small>
+              </Campo>
+              <Campo label="Aliquota INPS c/dipendente del profilo (%)"
+                errore={errori.aliquotaInpsDipendente}
+                facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
+                <input style={inputStyle(errori.aliquotaInpsDipendente)} type="number"
+                  step="0.0001" min="0" max="30"
+                  placeholder="Aliquota risolta dal profilo reale"
+                  value={form.aliquotaInpsDipendente
+                    ? +(form.aliquotaInpsDipendente * 100).toFixed(4) : ""}
+                  onChange={e => setForm({
+                    ...form,
+                    aliquotaInpsDipendente: e.target.value === ""
+                      ? 0
+                      : +(Number(e.target.value) / 100).toFixed(6),
+                  })} />
+              </Campo>
+              <Campo label="Fonte del profilo contributivo" errore={errori.fonteProfiloContributivo}
+                facoltativo={!form.haDipendenti || datiContributiviProvvisori}>
+                <input style={inputStyle(errori.fonteProfiloContributivo)}
+                  placeholder="Prospetto consulente / cassetto INPS, data e riferimento"
+                  value={form.fonteProfiloContributivo ?? ""}
+                  onChange={set("fonteProfiloContributivo")} />
+              </Campo>
+              <Campo label="Riferimento visura camerale" facoltativo>
+                <input style={inputStyle(undefined)}
+                  placeholder="Documento e data della visura verificata"
+                  value={form.riferimentoVisuraCamerale ?? ""}
+                  onChange={set("riferimentoVisuraCamerale")} />
+              </Campo>
+              <Campo label="Iscrizione Albo artigiani" facoltativo>
+                <select style={selectStyle(undefined)} value={form.statoAlboArtigiani ?? "DaVerificare"}
+                  onChange={set("statoAlboArtigiani")}>
+                  <option value="DaVerificare">Da verificare</option>
+                  <option value="NonIscritta">Non iscritta</option>
+                  <option value="Iscritta">Iscritta</option>
+                </select>
+              </Campo>
+              <Campo label="Verifica applicabilità CCNL H011" facoltativo>
+                <input style={inputStyle(undefined)}
+                  placeholder="Riferimento della verifica attività/CCNL"
+                  value={form.riferimentoVerificaApplicabilitaCcnl ?? ""}
+                  onChange={set("riferimentoVerificaApplicabilitaCcnl")} />
+              </Campo>
+              <Campo label="Fonte terzo elemento territoriale" facoltativo>
+                <input style={inputStyle(undefined)}
+                  placeholder="Accordo territoriale applicato (es. Milano)"
+                  value={form.riferimentoTerzoElementoTerritoriale ?? ""}
+                  onChange={set("riferimentoTerzoElementoTerritoriale")} />
+              </Campo>
             </div>
             <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer",
               fontSize: 14, marginTop: 12 }}>
@@ -1076,9 +1178,22 @@ export function Aziende({
               <span>
                 Azienda con più di 15 dipendenti (CIG)
                 <small style={{ display: "block", opacity: 0.7 }}>
-                  Aggiunge lo 0,30% alla quota INPS trattenuta al dipendente (9,19% → 9,49%).
+                  La soglia dimensionale concorre al profilo contributivo insieme a CSC, CA,
+                  FIS e agevolazioni; non determina da sola un'aliquota.
                   Il conteggio di legge è la media del semestre, con i part-time pro quota:
                   vale la tua dichiarazione, non il numero di dipendenti in archivio.
+                </small>
+              </span>
+            </label>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer",
+              fontSize: 14, marginTop: 8 }}>
+              <input type="checkbox" checked={form.aderisceFondiContrattuali ?? true}
+                onChange={e => setForm({ ...form, aderisceFondiContrattuali: e.target.checked })} />
+              <span>
+                Aderisce ai fondi contrattuali del CCNL (Fondo Est, ente bilaterale)
+                <small style={{ display: "block", opacity: 0.7 }}>
+                  Se spenta, le quote dei fondi non vanno in busta: gli eventuali elementi
+                  retributivi sostitutivi previsti dal contratto restano da gestire a parte.
                 </small>
               </span>
             </label>

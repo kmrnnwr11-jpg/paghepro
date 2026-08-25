@@ -1,127 +1,299 @@
 [
-  {
-    "codice": "TRASPORTI_LOGISTICA",
-    "anno": 2026,
-    "fonte": "CNEL I100 accordo 223634, CCNL Logistica Trasporto Merci e Spedizione, testo 25/09/2025, artt. 9,12,13,17,18,19,62. Maggiorazioni e fasce trasferta viaggiante citate dagli articoli. Le due trasferte forfettarie autotrasporto (46,48 Italia / 77,47 estero) sono VERIFICATE sulla busta reale TORELLO (regime autotrasporto, distinto dalle fasce orarie del CCNL). Straordinario diurno 30% verificato su busta GIOVE.",
-    "orarioSettimanale": 39,
-    "divisoreOrario": 168,
-    "numeroMensilita": 14,
-    "maggiorazioni": {
-      "straordinarioDiurno": 0.30,
-      "straordinarioNotturno": 0.50,
-      "lavoroFestivo": 0.50,
-      "lavoroNotturno": 0.25,
-      "lavoroDomenicale": 0.20,
-      "straordinarioFestivo": 0.65
-    },
-    "indennita": [
-      { "nome": "Trasferta Italia forfettaria autotrasporto (busta reale)", "tipo": "giornaliera", "importo": 46.48 },
-      { "nome": "Trasferta estero forfettaria autotrasporto (busta reale)", "tipo": "giornaliera", "importo": 77.47 },
-      { "nome": "Indennita di funzione quadri", "tipo": "mensile", "importo": 51.65 },
-      { "nome": "Indennita flessibilita programmata", "tipo": "giornaliera", "importo": 8.00 },
-      { "nome": "Trasferta Italia 6-12 ore personale viaggiante", "tipo": "giornaliera", "importo": 23.80 },
-      { "nome": "Trasferta Italia 12-18 ore personale viaggiante", "tipo": "giornaliera", "importo": 35.02 },
-      { "nome": "Trasferta Italia 18-24 ore personale viaggiante", "tipo": "giornaliera", "importo": 43.16 },
-      { "nome": "Trasferta estero 6-12 ore personale viaggiante", "tipo": "giornaliera", "importo": 31.94 },
-      { "nome": "Trasferta estero 12-18 ore personale viaggiante", "tipo": "giornaliera", "importo": 45.05 },
-      { "nome": "Trasferta estero 18-24 ore personale viaggiante", "tipo": "giornaliera", "importo": 62.49 },
-      { "nome": "Indennita lavoro notturno personale viaggiante in trasferta", "tipo": "giornaliera", "importo": 0.93 }
-    ],
-    "scatti": { "numeroMassimo": 5, "periodicita": "biennale" }
+ {
+  "codice": "TRASPORTI_LOGISTICA",
+  "anno": 2026,
+  "fonte": "CNEL I100 accordo 223634, CCNL Logistica Trasporto Merci e Spedizione, testo 25/09/2025, artt. 9,12,13,17,18,19,62. Maggiorazioni e fasce trasferta viaggiante citate dagli articoli. Le due trasferte forfettarie autotrasporto (46,48 Italia / 77,47 estero) sono VERIFICATE sulla busta reale TORELLO (regime autotrasporto, distinto dalle fasce orarie del CCNL). Straordinario diurno 30% verificato su busta GIOVE.",
+  "orarioSettimanale": 39,
+  "divisoreOrario": 168,
+  "numeroMensilita": 14,
+  "maggiorazioni": {
+   "straordinarioDiurno": 0.3,
+   "straordinarioNotturno": 0.5,
+   "lavoroFestivo": 0.5,
+   "lavoroNotturno": 0.25,
+   "lavoroDomenicale": 0.2,
+   "straordinarioFestivo": 0.65
   },
-  {
-    "codice": "MULTISERVIZI_PULIZIE",
-    "anno": 2026,
-    "fonte": "CNEL K511 id 105782 artt. 19,20,21,22,24,38,39,40; rinnovo 2025-2028 id 234754 e integrativo 234752. Maggiorazioni citate dagli articoli. NON verificate su busta (le buste Dussmann non riportano straordinari).",
-    "orarioSettimanale": 40,
-    "divisoreOrario": 173,
-    "numeroMensilita": 14,
-    "maggiorazioni": {
-      "straordinarioDiurno": 0.25,
-      "straordinarioNotturno": 0.50,
-      "lavoroFestivo": 0.50,
-      "lavoroNotturno": 0.30,
-      "lavoroDomenicale": 0.00,
-      "straordinarioFestivo": 0.65
-    },
-    "indennita": [
-      { "nome": "Indennita di funzione quadro", "tipo": "mensile", "importo": 25.82 },
-      { "nome": "Indennita rimozione scorie e polverino altoforni", "tipo": "oraria", "importo": 0.05 },
-      { "nome": "Indennita pulizia reparti lavorazioni industriali", "tipo": "oraria", "importo": 0.036 },
-      { "nome": "Indennita pulizia ambienti radioattivi", "tipo": "oraria", "importo": 0.12 },
-      { "nome": "Indennita lavori nel sottosuolo", "tipo": "oraria", "importo": 0.03 },
-      { "nome": "Indennita metropolitana locali coperti sotto livello stradale", "tipo": "oraria", "importo": 0.03 }
-    ],
-    "scatti": { "numeroMassimo": 8, "periodicita": "biennale" }
-  },
-  {
-    "codice": "EDILIZIA_INDUSTRIA",
-    "anno": 2026,
-    "fonte": "CNEL F012 rinnovo id 212523, ANCE CCNL unificato artt. 5,18,19,21,44,49,52,54,63,64. Maggiorazioni operai art. 19. NON verificate su busta.",
-    "orarioSettimanale": 40,
-    "divisoreOrario": 173,
-    "numeroMensilita": 13,
-    "maggiorazioni": {
-      "straordinarioDiurno": 0.35,
-      "straordinarioNotturno": 0.40,
-      "lavoroFestivo": 0.45,
-      "lavoroNotturno": 0.28,
-      "lavoroDomenicale": 0.08,
-      "straordinarioFestivo": 0.55
-    },
-    "indennita": [
-      { "nome": "Compenso pernottamento in cantiere", "tipo": "giornaliera", "importo": 0.52 },
-      { "nome": "Indennita impiegati lavori in galleria", "tipo": "mensile", "importo": 25.82 }
-    ],
-    "scatti": { "numeroMassimo": 5, "periodicita": "biennale" }
-  },
-  {
-    "codice": "METALMECCANICI_INDUSTRIA",
-    "anno": 2026,
-    "fonte": "CNEL C011 id 157071 Sez. IV; rinnovo Federmeccanica-Assistal 22/11/2025 e verbale IPCA 16/06/2026 (trasferta/reperibilita dal 01/06/2026). Straordinario diurno prima aliquota 25%. NON verificate su busta (le buste cavi mostrano turni, non straordinari).",
-    "orarioSettimanale": 40,
-    "divisoreOrario": 173,
-    "numeroMensilita": 13,
-    "maggiorazioni": {
-      "straordinarioDiurno": 0.25,
-      "straordinarioNotturno": 0.50,
-      "lavoroFestivo": 0.50,
-      "lavoroNotturno": 0.30,
-      "lavoroDomenicale": 0.10,
-      "straordinarioFestivo": 0.55
-    },
-    "indennita": [
-      { "nome": "Trasferta intera", "tipo": "giornaliera", "importo": 51.29 },
-      { "nome": "Quota pasto meridiano o serale trasferta", "tipo": "giornaliera", "importo": 13.13 },
-      { "nome": "Quota pernottamento trasferta", "tipo": "giornaliera", "importo": 25.03 },
-      { "nome": "Reperibilita D1-D2-C1 16 ore giorno lavorato", "tipo": "giornaliera", "importo": 5.87 },
-      { "nome": "Reperibilita D1-D2-C1 24 ore giorno libero", "tipo": "giornaliera", "importo": 8.83 },
-      { "nome": "Reperibilita D1-D2-C1 24 ore festive", "tipo": "giornaliera", "importo": 9.55 },
-      { "nome": "Reperibilita C2-C3 16 ore giorno lavorato", "tipo": "giornaliera", "importo": 7.00 },
-      { "nome": "Reperibilita C2-C3 24 ore giorno libero", "tipo": "giornaliera", "importo": 10.98 },
-      { "nome": "Reperibilita C2-C3 24 ore festive", "tipo": "giornaliera", "importo": 11.78 },
-      { "nome": "Reperibilita B1 e superiore 16 ore giorno lavorato", "tipo": "giornaliera", "importo": 8.03 },
-      { "nome": "Reperibilita B1 e superiore 24 ore giorno libero", "tipo": "giornaliera", "importo": 13.23 },
-      { "nome": "Reperibilita B1 e superiore 24 ore festive", "tipo": "giornaliera", "importo": 13.92 }
-    ],
-    "scatti": { "numeroMassimo": 5, "periodicita": "biennale" }
-  },
-  {
-    "codice": "AGRICOLTURA_OPERAI",
-    "anno": 2026,
-    "fonte": "CNEL A011 id 167688 operai agricoli e florovivaisti artt. 34,43,44,50,52,53,54,56; rinnovo 2026-2029 del 28/05/2026. Maggiorazioni operai art. 43. NON verificate su busta.",
-    "orarioSettimanale": 39,
-    "divisoreOrario": 169,
-    "numeroMensilita": 14,
-    "maggiorazioni": {
-      "straordinarioDiurno": 0.25,
-      "straordinarioNotturno": 0.00,
-      "lavoroFestivo": 0.35,
-      "lavoroNotturno": 0.40,
-      "lavoroDomenicale": 0.35,
-      "straordinarioFestivo": 0.40
-    },
-    "indennita": [],
-    "scatti": { "numeroMassimo": 5, "periodicita": "biennale" }
+  "indennita": [
+   {
+    "nome": "Trasferta Italia forfettaria autotrasporto (busta reale)",
+    "tipo": "giornaliera",
+    "importo": 46.48
+   },
+   {
+    "nome": "Trasferta estero forfettaria autotrasporto (busta reale)",
+    "tipo": "giornaliera",
+    "importo": 77.47
+   },
+   {
+    "nome": "Indennita di funzione quadri",
+    "tipo": "mensile",
+    "importo": 51.65
+   },
+   {
+    "nome": "Indennita flessibilita programmata",
+    "tipo": "giornaliera",
+    "importo": 8.0
+   },
+   {
+    "nome": "Trasferta Italia 6-12 ore personale viaggiante",
+    "tipo": "giornaliera",
+    "importo": 23.8
+   },
+   {
+    "nome": "Trasferta Italia 12-18 ore personale viaggiante",
+    "tipo": "giornaliera",
+    "importo": 35.02
+   },
+   {
+    "nome": "Trasferta Italia 18-24 ore personale viaggiante",
+    "tipo": "giornaliera",
+    "importo": 43.16
+   },
+   {
+    "nome": "Trasferta estero 6-12 ore personale viaggiante",
+    "tipo": "giornaliera",
+    "importo": 31.94
+   },
+   {
+    "nome": "Trasferta estero 12-18 ore personale viaggiante",
+    "tipo": "giornaliera",
+    "importo": 45.05
+   },
+   {
+    "nome": "Trasferta estero 18-24 ore personale viaggiante",
+    "tipo": "giornaliera",
+    "importo": 62.49
+   },
+   {
+    "nome": "Indennita lavoro notturno personale viaggiante in trasferta",
+    "tipo": "giornaliera",
+    "importo": 0.93
+   }
+  ],
+  "scatti": {
+   "numeroMassimo": 5,
+   "periodicita": "biennale"
   }
+ },
+ {
+  "codice": "MULTISERVIZI_PULIZIE",
+  "anno": 2026,
+  "fonte": "CNEL K511 id 105782 artt. 19,20,21,22,24,38,39,40; rinnovo 2025-2028 id 234754 e integrativo 234752. Maggiorazioni citate dagli articoli. NON verificate su busta (le buste Dussmann non riportano straordinari).",
+  "orarioSettimanale": 40,
+  "divisoreOrario": 173,
+  "numeroMensilita": 14,
+  "maggiorazioni": {
+   "straordinarioDiurno": 0.25,
+   "straordinarioNotturno": 0.5,
+   "lavoroFestivo": 0.5,
+   "lavoroNotturno": 0.3,
+   "lavoroDomenicale": 0.0,
+   "straordinarioFestivo": 0.65
+  },
+  "indennita": [
+   {
+    "nome": "Indennita di funzione quadro",
+    "tipo": "mensile",
+    "importo": 25.82
+   },
+   {
+    "nome": "Indennita rimozione scorie e polverino altoforni",
+    "tipo": "oraria",
+    "importo": 0.05
+   },
+   {
+    "nome": "Indennita pulizia reparti lavorazioni industriali",
+    "tipo": "oraria",
+    "importo": 0.036
+   },
+   {
+    "nome": "Indennita pulizia ambienti radioattivi",
+    "tipo": "oraria",
+    "importo": 0.12
+   },
+   {
+    "nome": "Indennita lavori nel sottosuolo",
+    "tipo": "oraria",
+    "importo": 0.03
+   },
+   {
+    "nome": "Indennita metropolitana locali coperti sotto livello stradale",
+    "tipo": "oraria",
+    "importo": 0.03
+   }
+  ],
+  "scatti": {
+   "numeroMassimo": 8,
+   "periodicita": "biennale"
+  }
+ },
+ {
+  "codice": "EDILIZIA_INDUSTRIA",
+  "anno": 2026,
+  "fonte": "CNEL F012 rinnovo id 212523, ANCE CCNL unificato artt. 5,18,19,21,44,49,52,54,63,64. Maggiorazioni operai art. 19. NON verificate su busta.",
+  "orarioSettimanale": 40,
+  "divisoreOrario": 173,
+  "numeroMensilita": 13,
+  "maggiorazioni": {
+   "straordinarioDiurno": 0.35,
+   "straordinarioNotturno": 0.4,
+   "lavoroFestivo": 0.45,
+   "lavoroNotturno": 0.28,
+   "lavoroDomenicale": 0.08,
+   "straordinarioFestivo": 0.55
+  },
+  "indennita": [
+   {
+    "nome": "Compenso pernottamento in cantiere",
+    "tipo": "giornaliera",
+    "importo": 0.52
+   },
+   {
+    "nome": "Indennita impiegati lavori in galleria",
+    "tipo": "mensile",
+    "importo": 25.82
+   }
+  ],
+  "scatti": {
+   "numeroMassimo": 5,
+   "periodicita": "biennale"
+  }
+ },
+ {
+  "codice": "METALMECCANICI_INDUSTRIA",
+  "anno": 2026,
+  "fonte": "CNEL C011 id 157071 Sez. IV; rinnovo Federmeccanica-Assistal 22/11/2025 e verbale IPCA 16/06/2026 (trasferta/reperibilita dal 01/06/2026). Straordinario diurno prima aliquota 25%. NON verificate su busta (le buste cavi mostrano turni, non straordinari).",
+  "orarioSettimanale": 40,
+  "divisoreOrario": 173,
+  "numeroMensilita": 13,
+  "maggiorazioni": {
+   "straordinarioDiurno": 0.25,
+   "straordinarioNotturno": 0.5,
+   "lavoroFestivo": 0.5,
+   "lavoroNotturno": 0.3,
+   "lavoroDomenicale": 0.1,
+   "straordinarioFestivo": 0.55
+  },
+  "indennita": [
+   {
+    "nome": "Trasferta intera",
+    "tipo": "giornaliera",
+    "importo": 51.29
+   },
+   {
+    "nome": "Quota pasto meridiano o serale trasferta",
+    "tipo": "giornaliera",
+    "importo": 13.13
+   },
+   {
+    "nome": "Quota pernottamento trasferta",
+    "tipo": "giornaliera",
+    "importo": 25.03
+   },
+   {
+    "nome": "Reperibilita D1-D2-C1 16 ore giorno lavorato",
+    "tipo": "giornaliera",
+    "importo": 5.87
+   },
+   {
+    "nome": "Reperibilita D1-D2-C1 24 ore giorno libero",
+    "tipo": "giornaliera",
+    "importo": 8.83
+   },
+   {
+    "nome": "Reperibilita D1-D2-C1 24 ore festive",
+    "tipo": "giornaliera",
+    "importo": 9.55
+   },
+   {
+    "nome": "Reperibilita C2-C3 16 ore giorno lavorato",
+    "tipo": "giornaliera",
+    "importo": 7.0
+   },
+   {
+    "nome": "Reperibilita C2-C3 24 ore giorno libero",
+    "tipo": "giornaliera",
+    "importo": 10.98
+   },
+   {
+    "nome": "Reperibilita C2-C3 24 ore festive",
+    "tipo": "giornaliera",
+    "importo": 11.78
+   },
+   {
+    "nome": "Reperibilita B1 e superiore 16 ore giorno lavorato",
+    "tipo": "giornaliera",
+    "importo": 8.03
+   },
+   {
+    "nome": "Reperibilita B1 e superiore 24 ore giorno libero",
+    "tipo": "giornaliera",
+    "importo": 13.23
+   },
+   {
+    "nome": "Reperibilita B1 e superiore 24 ore festive",
+    "tipo": "giornaliera",
+    "importo": 13.92
+   }
+  ],
+  "scatti": {
+   "numeroMassimo": 5,
+   "periodicita": "biennale"
+  }
+ },
+ {
+  "codice": "AGRICOLTURA_OPERAI",
+  "anno": 2026,
+  "fonte": "CNEL A011 id 167688 operai agricoli e florovivaisti artt. 34,43,44,50,52,53,54,56; rinnovo 2026-2029 del 28/05/2026. Maggiorazioni operai art. 43. NON verificate su busta.",
+  "orarioSettimanale": 39,
+  "divisoreOrario": 169,
+  "numeroMensilita": 14,
+  "maggiorazioni": {
+   "straordinarioDiurno": 0.25,
+   "straordinarioNotturno": 0.0,
+   "lavoroFestivo": 0.35,
+   "lavoroNotturno": 0.4,
+   "lavoroDomenicale": 0.35,
+   "straordinarioFestivo": 0.4
+  },
+  "indennita": [],
+  "scatti": {
+   "numeroMassimo": 5,
+   "periodicita": "biennale"
+  }
+ },
+ {
+  "codice": "COMMERCIO_TERZIARIO",
+  "anno": 2026,
+    "fonte": "CCNL Terziario Distribuzione e Servizi (Confcommercio), artt. 158, 159, 209 e 225: scatti triennali (max 10); ferie 26 gg/anno; 32 h ex festivita separate dai ROL; ROL a regime 56 h/anno fino a 15 dipendenti o 72 h/anno oltre 15, con maturazione zero nei primi 24 mesi e al 50% nei successivi 24 mesi per assunti dal 01/03/2011; 14a dovuta il 1 luglio. Fondo Est 2+13 euro/mese dal 01/04/2025 ed EBiTer 0,05%+0,10% su paga base e contingenza. Maggiorazioni straordinario ancora da riscontrare su tabella ufficiale.",
+  "orarioSettimanale": 40,
+  "divisoreOrario": 168,
+  "numeroMensilita": 14,
+  "divisoreGiornaliero": 26,
+  "maggiorazioni": {
+   "straordinarioDiurno": 0.15,
+   "straordinarioNotturno": 0.5,
+   "straordinarioFestivo": 0.3
+  },
+  "scatti": {
+   "numeroMassimo": 10,
+   "periodicita": "triennale"
+  },
+  "giorniFerieMese": 2.1667,
+    "orePermessiMese": 7.3333,
+    "orePermessiMeseOltre15": 8.6667,
+    "oreRolAnno": 56,
+    "oreRolAnnoOltre15": 72,
+    "oreExFestivitaAnno": 32,
+    "mesiAnzianitaSenzaRol": 24,
+    "mesiAnzianitaRolRidotto": 24,
+    "percentualeRolRidotta": 0.5,
+  "meseErogazioneTredicesima": 12,
+  "meseErogazioneQuattordicesima": 7,
+  "assistenzaSanitariaLavoratoreMese": 2.00,
+  "assistenzaSanitariaDatoreMese": 13.00,
+  "enteBilateraleAliquotaLavoratore": 0.0005,
+  "enteBilateraleAliquotaDatore": 0.0010
+ }
 ]

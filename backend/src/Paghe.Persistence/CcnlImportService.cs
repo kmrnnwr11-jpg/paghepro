@@ -3,9 +3,17 @@ using Paghe.Persistence.Entities;
 
 namespace Paghe.Persistence;
 
-/// <summary>Un livello di un CCNL da caricare (minimi tabellari).</summary>
+/// <summary>
+/// Un livello di un CCNL da caricare. <paramref name="MinimoTabellare"/> è il conglobato;
+/// <paramref name="Contingenza"/> ne è la quota interna (EDR storico incluso) da esporre come
+/// voce distinta in busta, quando la scomposizione è nota.
+/// </summary>
 public sealed record LivelloCcnlInput(
-    string Livello, string Descrizione, decimal MinimoTabellare, decimal Edr, decimal ImportoScatto);
+    string Livello, string Descrizione, decimal MinimoTabellare, decimal Edr, decimal ImportoScatto,
+    decimal? Contingenza = null);
+
+/// <summary>Terzo elemento provinciale: importo mensile per sigla provincia ("*" = nazionale).</summary>
+public sealed record TerzoElementoInput(string Provincia, decimal Importo);
 
 /// <summary>Un CCNL da caricare con i suoi livelli, per un dato anno.</summary>
 public sealed record CcnlInput(
@@ -14,7 +22,8 @@ public sealed record CcnlInput(
     int Anno,
     List<LivelloCcnlInput> Livelli,
     string? CodiceCnel = null,
-    string? Fonte = null);
+    string? Fonte = null,
+    List<TerzoElementoInput>? TerzoElemento = null);
 
 /// <summary>
 /// Carica/aggiorna i CCNL e i loro minimi tabellari da dati esterni (file/JSON), così da poter
@@ -69,8 +78,24 @@ public sealed class CcnlImportService
                     Id = Guid.NewGuid(), CcnlCodice = c.Codice, Anno = c.Anno,
                     Livello = l.Livello, Descrizione = l.Descrizione,
                     MinimoTabellare = l.MinimoTabellare, Edr = l.Edr, ImportoScatto = l.ImportoScatto,
+                    Contingenza = l.Contingenza is > 0m ? l.Contingenza : null,
                 });
                 nLiv++;
+            }
+
+            // Terzo elemento provinciale: stesso upsert dei livelli, per (codice + anno).
+            var terzoVecchi = await _db.CcnlTerzoElemento
+                .Where(t => t.CcnlCodice == c.Codice && t.Anno == c.Anno).ToListAsync(ct);
+            _db.CcnlTerzoElemento.RemoveRange(terzoVecchi);
+            foreach (var t in c.TerzoElemento ?? [])
+            {
+                if (string.IsNullOrWhiteSpace(t.Provincia))
+                    continue;
+                _db.CcnlTerzoElemento.Add(new CcnlTerzoElementoEntity
+                {
+                    Id = Guid.NewGuid(), CcnlCodice = c.Codice, Anno = c.Anno,
+                    Provincia = t.Provincia.Trim().ToUpperInvariant(), Importo = t.Importo,
+                });
             }
             nCcnl++;
         }

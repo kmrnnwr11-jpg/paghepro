@@ -5,7 +5,7 @@ namespace Paghe.Tests;
 
 public class ControlliSdiTests
 {
-    private static DatiAnagrafici Soggetto(string nome, string? piva = "01234567890", string? cf = null) => new()
+    private static DatiAnagrafici Soggetto(string nome, string? piva = "01234567897", string? cf = null) => new()
     {
         Denominazione = nome, PartitaIva = piva, CodiceFiscale = cf,
         Indirizzo = "Via Roma 1", Cap = "20100", Comune = "Milano", Provincia = "MI",
@@ -15,7 +15,7 @@ public class ControlliSdiTests
     {
         Numero = "1/2026", Data = new DateOnly(2026, 6, 26),
         Cedente = Soggetto("Alfa Srl"),
-        Cessionario = cessionario ?? Soggetto("Beta Spa", "09876543210"),
+        Cessionario = cessionario ?? Soggetto("Beta Spa", "09876543217"),
         Righe = righe.Length > 0
             ? righe.ToList()
             : new List<RigaFattura> { new() { Descrizione = "Servizio", PrezzoUnitario = 100m, AliquotaIva = 22m } },

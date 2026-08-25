@@ -22,6 +22,10 @@ public sealed class ParametriNormativiService
     /// <summary>Popola il database con i parametri di esempio se non è già stato fatto.</summary>
     public async Task ImportaSeedSeVuotoAsync(CancellationToken ct = default)
     {
+        // Le tabelle agricole hanno una guardia propria: sono arrivate dopo, e un database già
+        // inizializzato non le riceverebbe mai se dipendessero dal controllo qui sotto.
+        await ImportaSeedAgricoloSeVuotoAsync(ct);
+
         if (await _db.ParametriAnno.AnyAsync(ct))
             return;
 
@@ -45,6 +49,11 @@ public sealed class ParametriNormativiService
             PremioRisultatoLimiteAnnuo = p.PremioRisultatoLimiteAnnuo,
             PremioRisultatoAliquota = p.PremioRisultatoAliquota,
             PremioRisultatoRedditoMassimo = p.PremioRisultatoRedditoMassimo,
+            CuneoUlterioreDetrazioneAnnua = p.CuneoUlterioreDetrazioneAnnua,
+            CuneoRedditoOltre = p.CuneoRedditoOltre,
+            CuneoRedditoFinoA = p.CuneoRedditoFinoA,
+            CuneoRedditoAzzeramento = p.CuneoRedditoAzzeramento,
+            SolidarietaFondiAliquota = p.SolidarietaFondiAliquota,
         });
 
         foreach (var (qualifica, aliquota) in p.AliquoteInps)
@@ -86,7 +95,20 @@ public sealed class ParametriNormativiService
                 {
                     Id = Guid.NewGuid(), CcnlCodice = ccnl.Codice, Anno = p.Anno,
                     Livello = liv.Codice, Descrizione = liv.Descrizione,
-                    MinimoTabellare = liv.MinimoTabellare, Edr = liv.Edr, ImportoScatto = liv.ImportoScatto,
+                    MinimoTabellare = liv.MinimoTabellare,
+                    Edr = liv.Edr,
+                    ImportoScatto = liv.ImportoScatto,
+                    Contingenza = liv.Contingenza,
+                });
+
+            foreach (var (provincia, importo) in ccnl.TerzoElementoProvinciale)
+                _db.CcnlTerzoElemento.Add(new CcnlTerzoElementoEntity
+                {
+                    Id = Guid.NewGuid(),
+                    CcnlCodice = ccnl.Codice,
+                    Anno = p.Anno,
+                    Provincia = provincia,
+                    Importo = importo,
                 });
         }
 
@@ -152,7 +174,22 @@ public sealed class ParametriNormativiService
                     r.MaggiorazioneStraordinarioNotturno,
                     r.MaggiorazioneStraordinarioFestivo,
                     r.GiorniFerieMese ?? predefiniti.GiorniFerieMese,
-                    r.OrePermessiMese ?? predefiniti.OrePermessiMese),
+                    r.OrePermessiMese ?? predefiniti.OrePermessiMese,
+                    r.OrePermessiMeseOltre15,
+                    r.ScattiOgniMesi,
+                    r.ScattiMassimo,
+                    r.MeseErogazioneTredicesima,
+                    r.MeseErogazioneQuattordicesima,
+                    r.AssistenzaSanitariaLavoratoreMese,
+                    r.AssistenzaSanitariaDatoreMese,
+                    r.EnteBilateraleAliquotaLavoratore,
+                    r.EnteBilateraleAliquotaDatore,
+                    r.OreRolAnno,
+                    r.OreRolAnnoOltre15,
+                    r.OreExFestivitaAnno,
+                    r.MesiAnzianitaSenzaRol,
+                    r.MesiAnzianitaRolRidotto,
+                    r.PercentualeRolRidotta),
                 StringComparer.OrdinalIgnoreCase),
             TfrDivisore = pa.TfrDivisore,
             TfrContributoFondo = pa.TfrContributoFondo,
@@ -169,6 +206,11 @@ public sealed class ParametriNormativiService
             PremioRisultatoLimiteAnnuo = pa.PremioRisultatoLimiteAnnuo ?? predefiniti.PremioRisultatoLimiteAnnuo,
             PremioRisultatoAliquota = pa.PremioRisultatoAliquota ?? predefiniti.PremioRisultatoAliquota,
             PremioRisultatoRedditoMassimo = pa.PremioRisultatoRedditoMassimo ?? predefiniti.PremioRisultatoRedditoMassimo,
+            CuneoUlterioreDetrazioneAnnua = pa.CuneoUlterioreDetrazioneAnnua ?? predefiniti.CuneoUlterioreDetrazioneAnnua,
+            CuneoRedditoOltre = pa.CuneoRedditoOltre ?? predefiniti.CuneoRedditoOltre,
+            CuneoRedditoFinoA = pa.CuneoRedditoFinoA ?? predefiniti.CuneoRedditoFinoA,
+            CuneoRedditoAzzeramento = pa.CuneoRedditoAzzeramento ?? predefiniti.CuneoRedditoAzzeramento,
+            SolidarietaFondiAliquota = pa.SolidarietaFondiAliquota ?? predefiniti.SolidarietaFondiAliquota,
         };
     }
 
@@ -186,10 +228,122 @@ public sealed class ParametriNormativiService
         var versione = await _db.CcnlVersioni
             .FirstOrDefaultAsync(v => v.CcnlCodice == codice && v.Anno == anno, ct);
 
+        var terzoElemento = await _db.CcnlTerzoElemento
+            .Where(t => t.CcnlCodice == codice && t.Anno == anno).ToListAsync(ct);
+
         return new Ccnl(ccnl.Codice, ccnl.Descrizione,
             livelli.Select(l => new LivelloCcnl(
-                l.Livello, l.Descrizione, l.MinimoTabellare, l.Edr, l.ImportoScatto)),
+                l.Livello, l.Descrizione, l.MinimoTabellare, l.Edr, l.ImportoScatto,
+                l.Contingenza ?? 0m)),
             versione?.CodiceCnel,
-            versione?.Fonte);
+            versione?.Fonte,
+            terzoElemento.ToDictionary(
+                t => t.Provincia, t => t.Importo, StringComparer.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Carica le tabelle agricole di partenza (Cuneo 2025, lette da buste reali) se non c'è
+    /// ancora nulla. Non sovrascrive: appena il consulente carica il CPL vero, questo tace.
+    /// </summary>
+    private async Task ImportaSeedAgricoloSeVuotoAsync(CancellationToken ct)
+    {
+        if (await _db.ParametriAgricoli.AnyAsync(ct))
+            return;
+
+        await ImportaParametriAgricoliAsync(SeedAgricoltura.Cuneo2025(), ct);
+    }
+
+    /// <summary>
+    /// Parametri agricoli di un anno e di una provincia. Fallisce se la provincia non è
+    /// caricata: applicare la tabella di un'altra provincia produrrebbe una busta sbagliata
+    /// che sembra giusta, ed è il modo peggiore di sbagliare in questo mestiere.
+    /// </summary>
+    public async Task<ParametriAgricoli> CaricaParametriAgricoliAsync(
+        int anno, string provincia, CancellationToken ct = default)
+    {
+        provincia = (provincia ?? "").Trim().ToUpperInvariant();
+
+        var testata = await _db.ParametriAgricoli
+            .FirstOrDefaultAsync(p => p.Anno == anno && p.Provincia == provincia, ct)
+            ?? throw new ArgumentException(
+                $"Tabelle agricole non presenti per la provincia {provincia} nell'anno {anno}: "
+                + "vanno caricate dal contratto provinciale prima di elaborare le buste.");
+
+        var tariffe = await _db.TariffeAgricole
+            .Where(t => t.Anno == anno && t.Provincia == provincia)
+            .OrderBy(t => t.Livello).ToListAsync(ct);
+        if (tariffe.Count == 0)
+            throw new ArgumentException(
+                $"Nessuna tariffa salariale per la provincia {provincia} nell'anno {anno}.");
+
+        var contributi = await _db.ContributiAgricoli
+            .Where(c => c.Anno == anno && c.Provincia == provincia)
+            .OrderBy(c => c.Ordine).ToListAsync(ct);
+
+        return new ParametriAgricoli
+        {
+            Anno = anno,
+            Provincia = provincia,
+            Fonte = testata.Fonte,
+            AliquotaContributiDeducibili = testata.AliquotaContributiDeducibili,
+            Tariffe = tariffe
+                .Select(t => new TariffaAgricola(
+                    t.Livello, t.Descrizione, t.SalarioProvincialeOrario, t.TerzoElementoOrario))
+                .ToList(),
+            Contributi = contributi
+                .Select(c => new ContributoAgricolo(
+                    c.Codice, c.Descrizione, c.Aliquota, c.ACaricoDipendente))
+                .ToList(),
+        };
+    }
+
+    /// <summary>
+    /// Carica (o sostituisce) le tabelle agricole di un anno e di una provincia. È un upsert
+    /// per anno+provincia, come l'import dei CCNL: si ricarica la tabella aggiornata senza
+    /// toccare il codice e senza sporcare gli anni già usati per buste emesse.
+    /// </summary>
+    public async Task<(int tariffe, int contributi)> ImportaParametriAgricoliAsync(
+        ParametriAgricoli parametri, CancellationToken ct = default)
+    {
+        var provincia = parametri.Provincia.Trim().ToUpperInvariant();
+
+        var testata = await _db.ParametriAgricoli
+            .FirstOrDefaultAsync(p => p.Anno == parametri.Anno && p.Provincia == provincia, ct);
+        if (testata is null)
+        {
+            testata = new ParametriAgricoliEntity
+            {
+                Id = Guid.NewGuid(), Anno = parametri.Anno, Provincia = provincia,
+            };
+            _db.ParametriAgricoli.Add(testata);
+        }
+        testata.AliquotaContributiDeducibili = parametri.AliquotaContributiDeducibili;
+        testata.Fonte = parametri.Fonte;
+
+        _db.TariffeAgricole.RemoveRange(await _db.TariffeAgricole
+            .Where(t => t.Anno == parametri.Anno && t.Provincia == provincia).ToListAsync(ct));
+        _db.ContributiAgricoli.RemoveRange(await _db.ContributiAgricoli
+            .Where(c => c.Anno == parametri.Anno && c.Provincia == provincia).ToListAsync(ct));
+
+        foreach (var t in parametri.Tariffe)
+            _db.TariffeAgricole.Add(new TariffaAgricolaEntity
+            {
+                Id = Guid.NewGuid(), Anno = parametri.Anno, Provincia = provincia,
+                Livello = t.Livello, Descrizione = t.Descrizione,
+                SalarioProvincialeOrario = t.SalarioProvincialeOrario,
+                TerzoElementoOrario = t.TerzoElementoOrario,
+            });
+
+        int ordine = 0;
+        foreach (var c in parametri.Contributi)
+            _db.ContributiAgricoli.Add(new ContributoAgricoloEntity
+            {
+                Id = Guid.NewGuid(), Anno = parametri.Anno, Provincia = provincia,
+                Codice = c.Codice, Descrizione = c.Descrizione, Aliquota = c.Aliquota,
+                ACaricoDipendente = c.ACaricoDipendente, Ordine = ordine++,
+            });
+
+        await _db.SaveChangesAsync(ct);
+        return (parametri.Tariffe.Count, parametri.Contributi.Count);
     }
 }

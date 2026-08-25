@@ -37,18 +37,19 @@ public class MotoreCalcoloCedolinoTests
         // Imponibile fiscale: 1340,99 - 123,24 = 1217,75
         Assert.Equal(1217.75m, cedolino.ImponibileIrpef);
 
-        // IRPEF: reddito annuo presunto 14613 -> 23% = 3360,99 /12 = 280,08
+        // IRPEF lorda del mese: scaglioni ragguagliati sull'ordinario 1217,75 × 12 = 14613 -> 23% /12 = 280,08
         Assert.Equal(280.08m, cedolino.IrpefLorda);
-        // Detrazione 1955 /12 = 162,92 ; IRPEF netta 280,08 - 162,92 = 117,16
-        Assert.Equal(162.92m, cedolino.DetrazioniLavoroDipendente);
-        Assert.Equal(117.16m, cedolino.IrpefNetta);
+        // Detrazione sul reddito presunto CON le 14 mensilità del contratto (revisione
+        // consulente 24/08/2026): 14613 + 1217,75 × 2 = 17048,50 → 2912,48 annui /12 = 242,71
+        Assert.Equal(242.71m, cedolino.DetrazioniLavoroDipendente);
+        Assert.Equal(37.37m, cedolino.IrpefNetta);
 
-        // Addizionali: 14613 * 1,23% /12 = 14,98 ; 14613 * 0,80% /12 = 9,74
-        Assert.Equal(14.98m, cedolino.AddizionaleRegionale);
-        Assert.Equal(9.74m, cedolino.AddizionaleComunale);
+        // Addizionali sullo stesso presunto: 17048,50 * 1,23% /12 = 17,47 ; * 0,80% /12 = 11,37
+        Assert.Equal(17.47m, cedolino.AddizionaleRegionale);
+        Assert.Equal(11.37m, cedolino.AddizionaleComunale);
 
-        // Netto: 1340,99 - (123,24 + 117,16 + 14,98 + 9,74) = 1075,87
-        Assert.Equal(1075.87m, cedolino.NettoInBusta);
+        // Netto: 1340,99 - (123,24 + 37,37 + 17,47 + 11,37) = 1151,54
+        Assert.Equal(1151.54m, cedolino.NettoInBusta);
     }
 
     [Fact]

@@ -16,15 +16,18 @@ public sealed class CedolinoWorkflowService
     private readonly PagheDbContext _db;
     private readonly CedoliniService _cedolini;
     private readonly TimeProvider _clock;
+    private readonly RequisitiCedolinoService _requisiti;
 
     public CedolinoWorkflowService(
         PagheDbContext db,
         CedoliniService cedolini,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        RequisitiCedolinoService? requisiti = null)
     {
         _db = db;
         _cedolini = cedolini;
         _clock = clock ?? TimeProvider.System;
+        _requisiti = requisiti ?? new RequisitiCedolinoService(db);
     }
 
     public async Task<StatoWorkflowCedolino?> LeggiStatoAsync(
@@ -47,6 +50,7 @@ public sealed class CedolinoWorkflowService
         BloccaArchivioPreWorkflow(c);
         RichiediVersione(c, versioneAttesa);
         RichiediStato(c, StatoCedolino.Bozza);
+        await _requisiti.RichiediCedolinoCompletoAsync(tenantId, cedolinoId, ct);
         if (string.IsNullOrWhiteSpace(c.CodiceCnel))
             throw new ArgumentException(
                 "Manca il codice CNEL del contratto applicato. Completa il CCNL prima del controllo.");
@@ -69,9 +73,13 @@ public sealed class CedolinoWorkflowService
             throw new ArgumentException(
                 "Manca il calendario giorno per giorno. Compila ogni data, anche riposi e festività, "
                 + "prima di congelare il cedolino.");
+        decimal? riportoPrimaSettimana = await RiportoOreSettimanaliService.CalcolaAsync(
+            _db, tenantId, c.RapportoLavoroId, dati.Cartellino.Anno, dati.Cartellino.Mese,
+            rapporto.DataAssunzione, ct);
         var problemiCalendario = CalendarioCartellino.Verifica(
             dati.Cartellino.Anno, dati.Cartellino.Mese, dati.Cartellino.Giornate,
-            rapporto.OreSettimanali / 5m);
+            rapporto.OreSettimanali / 5m,
+            oreLavoratePregressePrimaSettimana: riportoPrimaSettimana);
         var bloccantiCalendario = problemiCalendario.Where(p => p.Bloccante).ToList();
         if (bloccantiCalendario.Count > 0)
             throw new ArgumentException(
@@ -119,6 +127,7 @@ public sealed class CedolinoWorkflowService
         ValidaDatiValidazione(validazione);
         RichiediVersione(c, versioneAttesa);
         RichiediStato(c, StatoCedolino.Controllata);
+        await _requisiti.RichiediCedolinoCompletoAsync(tenantId, cedolinoId, ct);
         var snapshot = await CaricaSnapshotIntegroAsync(c, ct);
 
         var json = JsonSerializer.Serialize(validazione);
@@ -144,6 +153,7 @@ public sealed class CedolinoWorkflowService
         BloccaArchivioPreWorkflow(c);
         RichiediVersione(c, versioneAttesa);
         RichiediStato(c, StatoCedolino.Validata);
+        await _requisiti.RichiediCedolinoCompletoAsync(tenantId, cedolinoId, ct);
         if (string.IsNullOrWhiteSpace(c.DatiValidazioneProtetti))
             throw new ArgumentException("Manca la validazione registrata del cedolino.");
 
@@ -171,7 +181,8 @@ public sealed class CedolinoWorkflowService
                 nameof(StatoCedolino.Chiusa),
                 firma,
                 $"Snapshot {snapshot.Id:D}",
-                $"Validazione registrata: {validazione.Nominativo} - {validazione.Riferimento}"));
+                $"Validazione registrata: {validazione.Nominativo} - {validazione.Riferimento}"),
+            progressivi: dati.Progressivi);
 
         var documentoId = Guid.NewGuid();
         var documento = new CedolinoDocumentoEntity
@@ -223,7 +234,7 @@ public sealed class CedolinoWorkflowService
             }
             VerificaHash(pdf, documento.HashPdfSha256, "PDF chiuso");
             return new DocumentoCedolino(
-                pdf, NomeFile(c, stato), stato, Definitivo: true, documento.HashPdfSha256);
+                pdf, NomeFile(c, stato), stato, Definitivo: false, documento.HashPdfSha256);
         }
 
         CedolinoPerPdf dati;
@@ -249,7 +260,8 @@ public sealed class CedolinoWorkflowService
             dati.Cedolino,
             dati.Intestazione,
             dati.Cartellino,
-            new ContestoEmissioneCedolino(stato.ToString()));
+            new ContestoEmissioneCedolino(stato.ToString()),
+            progressivi: dati.Progressivi);
         return new DocumentoCedolino(
             anteprima, NomeFile(c, stato), stato, Definitivo: false,
             CedolinoSnapshotCodec.Hash(anteprima));
@@ -369,7 +381,7 @@ public sealed class CedolinoWorkflowService
     private DateTime OraUtc() => _clock.GetUtcNow().UtcDateTime;
 
     private static string NomeFile(CedolinoEntity c, StatoCedolino stato) =>
-        $"cedolino-{c.Anno}-{c.Mese:00}-{stato.ToString().ToLowerInvariant()}.pdf";
+        $"prospetto-simulazione-{c.Anno}-{c.Mese:00}-{stato.ToString().ToLowerInvariant()}.pdf";
 
     private static StatoWorkflowCedolino Proietta(
         CedolinoEntity c, string? hashSnapshot = null, string? hashPdf = null) =>

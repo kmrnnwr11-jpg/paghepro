@@ -10,6 +10,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Il runner GitHub è in inglese; l'app formatta i numeri con la cultura di
+# sistema, quindi i test che verificano le diciture italiane (es. "9,49%")
+# richiedono l'ambiente it-IT come sulle macchine di sviluppo.
+env:
+  LANG: it_IT.UTF-8
+  LC_ALL: it_IT.UTF-8
+
 jobs:
   backend:
     name: Backend (.NET)

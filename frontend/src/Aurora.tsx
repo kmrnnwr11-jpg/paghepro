@@ -520,6 +520,15 @@ export function AuroraPanel({
   const rimuoviAllegato = (indice: number) =>
     setAllegati((prima) => prima.filter((_, i) => i !== indice));
 
+  // Le bolle si vedono solo dentro l'ambito corrente: chi ne aggiunge una lo dichiara,
+  // altrimenti il messaggio resta filtrato e l'utente non vede nulla.
+  const aggiungiBollaAurora = (testo: string) => {
+    const scopeRichiesto = scopeConversazione;
+    const bolla: Bolla = { id: prossimoId.current++, chi: "aurora", testo };
+    setBolle((prima) => scopeChat === scopeRichiesto ? [...prima, bolla] : [bolla]);
+    setScopeChat(scopeRichiesto);
+  };
+
   // La creazione la chiede l'utente col pulsante: Aurora non salva nulla da sola.
   const creaAziendaProposta = async () => {
     if (!aziendaProposta || creazioneInCorso) return;
@@ -538,19 +547,14 @@ export function AuroraPanel({
         codiceAteco: aziendaProposta.codiceAteco ?? undefined,
       });
       setAziendaProposta(null);
-      setBolle((prima) => [...prima, {
-        id: prossimoId.current++,
-        chi: "aurora",
-        testo: `Ho creato il cliente «${creata.ragioneSociale}». Lo trovi in «Scegli il cliente»: `
-          + "apri la sua scheda per completare i dati che la visura non contiene "
-          + "(INPS, INAIL, CCNL, contatti).",
-      }]);
+      aggiungiBollaAurora(
+        `Ho creato il cliente «${creata.ragioneSociale}». Lo trovi in «Scegli il cliente»: `
+        + "apri la sua scheda per completare i dati che la visura non contiene "
+        + "(INPS, INAIL, CCNL, contatti).");
     } catch (e) {
-      setBolle((prima) => [...prima, {
-        id: prossimoId.current++,
-        chi: "aurora",
-        testo: `Non sono riuscita a creare il cliente: ${e instanceof Error ? e.message : "errore"}.`,
-      }]);
+      // La proposta resta in piedi: l'utente corregge il dato rifiutato e riprova.
+      aggiungiBollaAurora(
+        `Non sono riuscita a creare il cliente: ${e instanceof Error ? e.message : "errore"}.`);
     } finally {
       setCreazioneInCorso(false);
     }

@@ -1,0 +1,43 @@
+# PaghePro su VPS: app (SPA + API) + Caddy per HTTPS automatico.
+# Si usa con lo script scripts/pubblica-su-vps.sh, che copia il repo in
+# /opt/paghepro sul server e prepara il file .env accanto a questo file.
+# Il database SQLite vive nel volume paghe-dati (/data nel container).
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.railway
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: "Data Source=/data/paghe.db"
+      Sdi__Provider: Simulato
+      DOTNET_gcServer: "0"
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning
+    volumes:
+      - paghe-dati:/data
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-dati:/data
+      - caddy-config:/config
+
+volumes:
+  paghe-dati:
+  caddy-dati:
+  caddy-config:

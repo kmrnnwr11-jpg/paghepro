@@ -1,0 +1,8 @@
+# HTTPS automatico (Let's Encrypt) per il dominio indicato in .env (DOMINIO).
+# Caddy rinnova i certificati da solo; serve solo che il DNS del dominio
+# punti all'IP del VPS prima del primo avvio.
+
+{$DOMINIO} {
+    encode gzip
+    reverse_proxy app:8080
+}

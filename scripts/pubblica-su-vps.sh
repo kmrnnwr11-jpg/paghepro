@@ -21,6 +21,7 @@ echo "── 1/4 Copio il progetto su $VPS:$DEST ..."
 rsync -az --delete \
   --exclude .git --exclude node_modules --exclude '**/bin' --exclude '**/obj' \
   --exclude output --exclude .chiavi --exclude /frontend/dist \
+  --exclude /deploy/vps/.env \
   -e "ssh ${SSH_OPTS[*]}" ./ "$VPS:$DEST/"
 
 echo "── 2/4 Preparo Docker e i segreti sul server ..."

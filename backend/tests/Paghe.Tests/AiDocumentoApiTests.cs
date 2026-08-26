@@ -91,6 +91,43 @@ public sealed class AiDocumentoApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Documento_ConAnagraficaImpresa_ProponeLAzienda()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        const string visura = """
+            REGISTRO IMPRESE - VISURA ORDINARIA
+            Denominazione: OFFICINA NORD SRL
+            Codice fiscale e numero di iscrizione: 12345678903
+            Partita IVA: 12345678903
+            Sede legale: VIA ROMA 12 - 20100 MILANO (MI)
+            Codice ATECO: 45.20.10
+            """;
+
+        using var risposta = await CaricaAsync(
+            client, "visura.txt", "text/plain", Encoding.UTF8.GetBytes(visura));
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        var letto = await risposta.Content.ReadFromJsonAsync<DocumentoLetto>();
+        Assert.NotNull(letto!.Azienda);
+        Assert.Contains("OFFICINA NORD", letto.Azienda!.RagioneSociale ?? "");
+        Assert.Equal("12345678903", letto.Azienda.PartitaIva);
+    }
+
+    [Fact]
+    public async Task Documento_SenzaAnagrafica_NonProponeNulla()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+
+        using var risposta = await CaricaAsync(
+            client, "nota.txt", "text/plain",
+            Encoding.UTF8.GetBytes("Promemoria: chiamare il consulente giovedì."));
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        var letto = await risposta.Content.ReadFromJsonAsync<DocumentoLetto>();
+        Assert.Null(letto!.Azienda);
+    }
+
+    [Fact]
     public async Task Documento_SenzaAutenticazione_Risponde401()
     {
         using var client = _factory.CreateClient();
@@ -135,7 +172,11 @@ public sealed class AiDocumentoApiTests : IDisposable
         return client;
     }
 
-    private sealed record DocumentoLetto(string NomeFile, string Testo, bool Troncato);
+    private sealed record DocumentoLetto(
+        string NomeFile, string Testo, bool Troncato, AziendaProposta? Azienda);
+
+    private sealed record AziendaProposta(
+        string? RagioneSociale, string? PartitaIva, string? CodiceFiscale, string? Comune);
 
     public void Dispose()
     {

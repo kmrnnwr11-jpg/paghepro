@@ -14,6 +14,7 @@ import {
 import {
   api,
   type Azienda,
+  type AziendaRiconosciutaAi,
   type CosaVedeAi,
   type EsitoPreflightAi,
   type EsitoPropostaAurora,
@@ -94,6 +95,18 @@ interface DocumentoAllegato {
   troncato: boolean;
 }
 
+/** Righe mostrate prima di creare l'azienda: quello che verrà salvato, campo per campo. */
+function righeAzienda(a: AziendaRiconosciutaAi): { etichetta: string; valore: string }[] {
+  return [
+    { etichetta: "Ragione sociale", valore: a.ragioneSociale ?? "" },
+    { etichetta: "Partita IVA", valore: a.partitaIva ?? "" },
+    { etichetta: "Codice fiscale", valore: a.codiceFiscale ?? "" },
+    { etichetta: "Sede", valore: [a.indirizzo, a.cap, a.comune, a.provincia].filter(Boolean).join(" ") },
+    { etichetta: "ATECO", valore: a.codiceAteco ?? "" },
+    { etichetta: "Rappresentante", valore: a.legaleRappresentante ?? "" },
+  ].filter((r) => r.valore.trim().length > 0);
+}
+
 /** Quanti documenti si possono allegare a una sola domanda. */
 const MASSIMO_ALLEGATI = 10;
 
@@ -163,6 +176,8 @@ export function AuroraPanel({
   const [esitoCedolini, setEsitoCedolini] = useState<EsitoQueryAi<RigaCedolinoMeseAi> | null>(null);
   const [trasparenza, setTrasparenza] = useState<CosaVedeAi | null>(null);
   const [allegati, setAllegati] = useState<DocumentoAllegato[]>([]);
+  const [aziendaProposta, setAziendaProposta] = useState<AziendaRiconosciutaAi | null>(null);
+  const [creazioneInCorso, setCreazioneInCorso] = useState(false);
   const [allegatiInCorso, setAllegatiInCorso] = useState(false);
   const [erroreAllegati, setErroreAllegati] = useState<string | null>(null);
   const [trascinamento, setTrascinamento] = useState(false);
@@ -487,6 +502,8 @@ export function AuroraPanel({
       try {
         const d = await api.aiDocumento(f);
         letti.push({ nome: d.nomeFile, testo: d.testo, troncato: d.troncato });
+        // La prima anagrafica riconosciuta diventa la proposta: le altre restano nel testo.
+        if (d.azienda) setAziendaProposta((prima) => prima ?? d.azienda);
       } catch (e) {
         scartati.push(`${f.name}: ${e instanceof Error ? e.message : "non leggibile"}`);
       }
@@ -502,6 +519,42 @@ export function AuroraPanel({
 
   const rimuoviAllegato = (indice: number) =>
     setAllegati((prima) => prima.filter((_, i) => i !== indice));
+
+  // La creazione la chiede l'utente col pulsante: Aurora non salva nulla da sola.
+  const creaAziendaProposta = async () => {
+    if (!aziendaProposta || creazioneInCorso) return;
+    const nome = (aziendaProposta.ragioneSociale ?? "").trim();
+    if (!nome) return;
+    setCreazioneInCorso(true);
+    try {
+      const creata = await api.creaAzienda({
+        ragioneSociale: nome,
+        partitaIva: aziendaProposta.partitaIva ?? undefined,
+        codiceFiscale: aziendaProposta.codiceFiscale ?? undefined,
+        indirizzo: aziendaProposta.indirizzo ?? "",
+        cap: aziendaProposta.cap ?? "",
+        comune: aziendaProposta.comune ?? "",
+        provincia: aziendaProposta.provincia ?? "",
+        codiceAteco: aziendaProposta.codiceAteco ?? undefined,
+      });
+      setAziendaProposta(null);
+      setBolle((prima) => [...prima, {
+        id: prossimoId.current++,
+        chi: "aurora",
+        testo: `Ho creato il cliente «${creata.ragioneSociale}». Lo trovi in «Scegli il cliente»: `
+          + "apri la sua scheda per completare i dati che la visura non contiene "
+          + "(INPS, INAIL, CCNL, contatti).",
+      }]);
+    } catch (e) {
+      setBolle((prima) => [...prima, {
+        id: prossimoId.current++,
+        chi: "aurora",
+        testo: `Non sono riuscita a creare il cliente: ${e instanceof Error ? e.message : "errore"}.`,
+      }]);
+    } finally {
+      setCreazioneInCorso(false);
+    }
+  };
 
   const rimuoviContesto = () => {
     setBozza((corrente) => corrente === BOZZA_TESTO_SELEZIONATO ? "" : corrente);
@@ -1218,6 +1271,43 @@ export function AuroraPanel({
               </small>
             </div>
           ))}
+          {aziendaProposta && (
+            <div className="au-allegato au-proposta-azienda">
+              <div className="au-allegato-testa">
+                <strong>Azienda riconosciuta nel documento</strong>
+                <button
+                  type="button"
+                  onClick={() => setAziendaProposta(null)}
+                  aria-label="Scarta l'azienda riconosciuta"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <dl className="au-campi-proposti">
+                {righeAzienda(aziendaProposta).map((r) => (
+                  <div key={r.etichetta}>
+                    <dt>{r.etichetta}</dt>
+                    <dd>{r.valore}</dd>
+                  </div>
+                ))}
+              </dl>
+              <small>
+                {aziendaProposta.campiDaControllare.length > 0
+                  ? `Letti dall'AI, da controllare: ${aziendaProposta.campiDaControllare.join(", ")}. `
+                  : ""}
+                Controlla i dati: la creazione la decidi tu, e i campi mancanti si completano dopo
+                nella scheda del cliente.
+              </small>
+              <button
+                type="button"
+                className="au-crea-azienda"
+                disabled={creazioneInCorso || !(aziendaProposta.ragioneSociale ?? "").trim()}
+                onClick={() => void creaAziendaProposta()}
+              >
+                {creazioneInCorso ? "Creo il cliente…" : "Crea questo cliente"}
+              </button>
+            </div>
+          )}
           {allegatiInCorso && <p className="au-hint">Sto leggendo i documenti…</p>}
           {erroreAllegati && <p className="au-hint">{erroreAllegati}</p>}
           {contestoAllegati === null && contestoSelezione && (

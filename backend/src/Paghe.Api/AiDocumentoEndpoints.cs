@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using Paghe.Core.Ai;
+using Paghe.Core.PartiteIva;
 using Paghe.Documenti;
 using Paghe.Persistence;
 
@@ -108,15 +109,79 @@ public static class AiDocumentoEndpoints
                            + "segreta: non viene inviato all'assistente.",
                 });
 
+            // Riconoscimento: se dal documento esce un'anagrafica d'impresa, la proponiamo.
+            // Il parser deterministico decide; l'AI completa soltanto i campi rimasti vuoti e
+            // la creazione resta un pulsante che preme l'utente.
+            var azienda = await ProponiAziendaAsync(
+                testo, èImmagine ? dati : null, contentType, ai, aiOptions, consumi, user, ct);
+
             bool troncato = testo.Length > AiChatEndpoints.MassimoCaratteriSelezione;
             if (troncato) testo = testo[..AiChatEndpoints.MassimoCaratteriSelezione];
 
-            return Results.Ok(new { nomeFile = nome, testo, troncato });
+            return Results.Ok(new { nomeFile = nome, testo, troncato, azienda });
         })
         .RequireAuthorization()
         .RequireRateLimiting("sensibili")
         .DisableAntiforgery();
 
         return app;
+    }
+
+    /// <summary>
+    /// Anagrafica d'impresa riconosciuta nel documento, da confermare. È la stessa estrazione
+    /// di <c>/api/aziende/da-visura</c>: euristica prima, AI solo sui campi vuoti.
+    /// </summary>
+    private static async Task<object?> ProponiAziendaAsync(
+        string testo, byte[]? immagine, string contentType,
+        IEstrattoreAiDocumenti ai, AiOptions aiOptions, ConsumoAiService consumi,
+        ClaimsPrincipal user, CancellationToken ct)
+    {
+        var d = VisuraCameraleParser.Estrai(testo);
+        bool riconosciuta = !string.IsNullOrWhiteSpace(d.PartitaIva)
+            || (!string.IsNullOrWhiteSpace(d.RagioneSociale)
+                && !string.IsNullOrWhiteSpace(d.CodiceFiscale));
+
+        IReadOnlyList<string> campiDallAi = [];
+        var mancanti = CompletamentoVisuraAi.CampiMancanti(d);
+        bool vista = immagine is not null && ai.Attivo && ai.VedeImmagini;
+        if (ai.Attivo && mancanti.Count > 0 && (vista || !string.IsNullOrWhiteSpace(testo)))
+        {
+            var tenantId = Guid.TryParse(user.FindFirst("tenant_id")?.Value, out var t) ? t : Guid.Empty;
+            if (await consumi.ProvaConsumaAsync(tenantId, aiOptions.LimiteMensileChiamate, ct))
+            {
+                try
+                {
+                    var mime = string.IsNullOrWhiteSpace(contentType) ? "image/jpeg" : contentType;
+                    var proposta = vista
+                        ? await ai.EstraiDaImmagineAsync("visura camerale", immagine!, mime, mancanti, ct)
+                        : await ai.EstraiAsync("visura camerale", testo, mancanti, ct);
+                    if (proposta is not null)
+                        (d, campiDallAi) = CompletamentoVisuraAi.Completa(
+                            d, proposta, aiOptions.SogliaConfidenza);
+                }
+                catch (Exception)
+                {
+                    // L'AI non deve mai bloccare la lettura: resta l'estrazione euristica.
+                }
+            }
+        }
+
+        // Il riconoscimento vale anche quando è stata l'AI a trovare la partita IVA.
+        if (!riconosciuta && string.IsNullOrWhiteSpace(d.PartitaIva)) return null;
+        if (string.IsNullOrWhiteSpace(d.RagioneSociale)) return null;
+
+        return new
+        {
+            d.RagioneSociale,
+            d.PartitaIva,
+            d.CodiceFiscale,
+            d.Indirizzo,
+            d.Cap,
+            d.Comune,
+            d.Provincia,
+            d.CodiceAteco,
+            d.LegaleRappresentante,
+            campiDaControllare = campiDallAi,
+        };
     }
 }

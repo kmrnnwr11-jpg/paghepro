@@ -1521,6 +1521,14 @@ export interface DocumentoLettoAi {
   nomeFile: string;
   testo: string;
   troncato: boolean;
+  /** Anagrafica riconosciuta nel documento, da confermare. Null se non è una visura. */
+  azienda: AziendaRiconosciutaAi | null;
+}
+
+/** Dati d'impresa letti dal documento: proposta, mai salvata da sola. */
+export interface AziendaRiconosciutaAi extends DatiVisura {
+  /** Campi completati dall'AI: vanno controllati con più attenzione. */
+  campiDaControllare: string[];
 }
 
 /** Una riga del diff mostrato prima della conferma: cosa cambia, da quale valore a quale. */

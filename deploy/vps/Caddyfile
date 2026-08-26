@@ -4,5 +4,13 @@
 
 {$DOMINIO} {
     encode gzip
+
+    # Pacchetti da installare sul PC: file messi in /opt/paghepro-scaricabili
+    # sul server, scaricabili da https://DOMINIO/scarica/NOMEFILE
+    handle_path /scarica/* {
+        root * /scaricabili
+        file_server browse
+    }
+
     reverse_proxy app:8080
 }

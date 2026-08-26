@@ -2707,6 +2707,7 @@ app.MapPosta();
 app.MapCertificazioneUnica();
 app.MapAi();
 app.MapAiChat();           // Chat esplicativa senza strumenti; i dati passano solo dal Governor.
+app.MapAiDocumento();      // Allegato della chat: legge il testo del documento, non lo conserva.
 app.MapLipe();
 app.MapModello770();
 app.MapRapportoDettaglio();

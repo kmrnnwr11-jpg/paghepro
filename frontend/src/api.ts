@@ -1327,6 +1327,28 @@ export const api = {
       }),
     }),
 
+  // Allegato della chat: il server legge il testo del documento e lo restituisce. Il file non
+  // viene conservato: il testo diventa il contesto monouso del turno successivo.
+  aiDocumento: async (file: File): Promise<DocumentoLettoAi> => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetchAutenticata("/api/ai/documento", { method: "POST", body: form, headers });
+    if (!res.ok) {
+      let messaggio = `Errore ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.errore) messaggio = body.errore as string;
+      } catch {
+        /* corpo non JSON */
+      }
+      throw new Error(messaggio);
+    }
+    return (await res.json()) as DocumentoLettoAi;
+  },
+
   // Protocollo proposta A3: viaggia soltanto il token firmato dal server, mai gli argomenti.
   aiPropostaConferma: (token: string, signal?: AbortSignal) =>
     req<EsitoPropostaAurora>("/api/ai/chat/conferma", {
@@ -1492,6 +1514,13 @@ export interface MessaggioChatAi {
 export interface ContestoSelezionatoAi {
   testo: string;
   sezione: string;
+}
+
+/** Documento allegato alla chat: il server ne restituisce il testo, non lo conserva. */
+export interface DocumentoLettoAi {
+  nomeFile: string;
+  testo: string;
+  troncato: boolean;
 }
 
 /** Una riga del diff mostrato prima della conferma: cosa cambia, da quale valore a quale. */

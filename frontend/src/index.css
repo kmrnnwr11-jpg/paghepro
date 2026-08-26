@@ -6287,6 +6287,36 @@ details[open] > summary .au-freccia {
   box-shadow: none;
 }
 
+.au-graffetta {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(15, 42, 39, 0.18);
+  border-radius: 50%;
+  color: #0e7268;
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.au-graffetta:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.au-graffetta:focus-visible {
+  outline: 3px solid rgba(19, 143, 131, 0.35);
+  outline-offset: 2px;
+}
+
+/* Il pannello segnala che i documenti trascinati vengono accettati. */
+.au-campo-trascina {
+  outline: 2px dashed rgba(19, 143, 131, 0.65);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
 .au-invia {
   flex: 0 0 auto;
   width: 34px;

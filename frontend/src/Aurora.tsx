@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   Lock,
+  Paperclip,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -24,7 +25,11 @@ import {
   type RigaCedolinoMeseAi,
   type StatoChatAi,
 } from "./api";
-import { anteprimaContestoAurora, type ContestoAurora } from "./auroraContext";
+import {
+  anteprimaContestoAurora,
+  creaContestoAurora,
+  type ContestoAurora,
+} from "./auroraContext";
 import {
   descriviScadenzaProposta,
   esitoPropostaDaErrore,
@@ -75,10 +80,59 @@ const SUGGERIMENTI_CON_TESTO = [
 ];
 
 const BOZZA_TESTO_SELEZIONATO = "Spiegami questo testo in parole semplici.";
+const BOZZA_DOCUMENTO = "Spiegami questo documento in parole semplici.";
 
 function periodoCorrente() {
   const oggi = new Date();
   return `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Documento letto dal server: resta solo il testo, il file non viene conservato. */
+interface DocumentoAllegato {
+  nome: string;
+  testo: string;
+  troncato: boolean;
+}
+
+/** Quanti documenti si possono allegare a una sola domanda. */
+const MASSIMO_ALLEGATI = 10;
+
+/** Unisce i documenti letti in un contesto solo, con il nome sopra ogni testo. */
+function componiContestoAllegati(allegati: DocumentoAllegato[]): ContestoAurora | null {
+  if (allegati.length === 0) return null;
+  const testo = allegati.map((a) => `— ${a.nome} —\n${a.testo}`).join("\n\n");
+  return creaContestoAurora(
+    testo,
+    allegati.length === 1 ? allegati[0].nome : `${allegati.length} documenti`,
+  );
+}
+
+/** Espande una cartella trascinata nei file che contiene (sottocartelle comprese). */
+async function fileDaVoce(voce: FileSystemEntry, raccolti: File[]): Promise<void> {
+  if (raccolti.length >= MASSIMO_ALLEGATI) return;
+  if (voce.isFile) {
+    const file = await new Promise<File | null>((risolvi) =>
+      (voce as FileSystemFileEntry).file(risolvi, () => risolvi(null)),
+    );
+    if (file) raccolti.push(file);
+    return;
+  }
+  const lettore = (voce as FileSystemDirectoryEntry).createReader();
+  const voci = await new Promise<FileSystemEntry[]>((risolvi) =>
+    lettore.readEntries(risolvi, () => risolvi([])),
+  );
+  for (const figlia of voci) await fileDaVoce(figlia, raccolti);
+}
+
+/** File trascinati: cartelle espanse quando il browser lo permette, altrimenti i soli file. */
+async function fileTrascinati(trasferimento: DataTransfer): Promise<File[]> {
+  const voci = Array.from(trasferimento.items)
+    .map((i) => (typeof i.webkitGetAsEntry === "function" ? i.webkitGetAsEntry() : null))
+    .filter((v): v is FileSystemEntry => v !== null);
+  if (voci.length === 0) return Array.from(trasferimento.files).slice(0, MASSIMO_ALLEGATI);
+  const raccolti: File[] = [];
+  for (const voce of voci) await fileDaVoce(voce, raccolti);
+  return raccolti;
 }
 
 export function AuroraPanel({
@@ -108,6 +162,11 @@ export function AuroraPanel({
   const [inventarioInCorso, setInventarioInCorso] = useState(true);
   const [esitoCedolini, setEsitoCedolini] = useState<EsitoQueryAi<RigaCedolinoMeseAi> | null>(null);
   const [trasparenza, setTrasparenza] = useState<CosaVedeAi | null>(null);
+  const [allegati, setAllegati] = useState<DocumentoAllegato[]>([]);
+  const [allegatiInCorso, setAllegatiInCorso] = useState(false);
+  const [erroreAllegati, setErroreAllegati] = useState<string | null>(null);
+  const [trascinamento, setTrascinamento] = useState(false);
+  const sceltaFile = useRef<HTMLInputElement>(null);
   const [erroreControllo, setErroreControllo] = useState<string | null>(null);
   const [controlloInCorso, setControlloInCorso] = useState(false);
   const [scopeChat, setScopeChat] = useState<string | null>(null);
@@ -159,7 +218,12 @@ export function AuroraPanel({
     ultimoContesto.current = contesto;
     scopeContesto.current = contesto ? scopeConversazione : null;
   }
-  const contestoCorrente = scopeContesto.current === scopeConversazione ? contesto : null;
+  const contestoSelezione = scopeContesto.current === scopeConversazione ? contesto : null;
+  // Documenti allegati alla chat: il server ne restituisce solo il testo, che vale per il
+  // turno successivo esattamente come il testo selezionato a mano. Il file non lascia
+  // traccia né qui né sul server.
+  const contestoAllegati = componiContestoAllegati(allegati);
+  const contestoCorrente = contestoAllegati ?? contestoSelezione;
   const mandatoCorrente = mandatoPerScope(mandato, azienda?.id, periodo);
   const leaseCorrente = leasePerScopeAurora(mandato, azienda?.id, periodo);
   const preflightCorrente = stessoAmbitoControlloCedolini(ambitoPreflight, ambitoCorrente)
@@ -339,7 +403,8 @@ export function AuroraPanel({
   }, [bolle, inCorso]);
 
   const invia = async (testo: string) => {
-    const messaggio = testo.trim();
+    // Con un documento allegato la domanda può mancare: vale «spiegamelo».
+    const messaggio = testo.trim() || (allegati.length > 0 ? BOZZA_DOCUMENTO : "");
     if (!messaggio || inCorso) return;
     const scopeRichiesto = scopeConversazione;
     const scopeQuotaRichiesto = scopeMandato;
@@ -384,7 +449,8 @@ export function AuroraPanel({
       if (r.ok) {
         setStoria(r.storia);
         setScopeChat(scopeRichiesto);
-        if (contestoDaInviare) onRimuoviContesto();
+        if (allegati.length > 0) setAllegati([]);
+        if (contestoDaInviare && contestoAllegati === null) onRimuoviContesto();
       } else {
         // Il provider spento risponde in modo controllato: conserva testo e domanda per il retry.
         setBozza(messaggio);
@@ -403,6 +469,39 @@ export function AuroraPanel({
       if (richiesta.attiva()) setInCorso(false);
     }
   };
+
+  // Ogni documento viene letto dal server uno per uno: quelli illeggibili o non ammessi
+  // vengono elencati, gli altri restano allegati alla domanda.
+  const allegaDocumenti = async (file: File[]) => {
+    if (file.length === 0 || allegatiInCorso) return;
+    const disponibili = MASSIMO_ALLEGATI - allegati.length;
+    if (disponibili <= 0) {
+      setErroreAllegati(`Massimo ${MASSIMO_ALLEGATI} documenti per domanda.`);
+      return;
+    }
+    setAllegatiInCorso(true);
+    setErroreAllegati(null);
+    const letti: DocumentoAllegato[] = [];
+    const scartati: string[] = [];
+    for (const f of file.slice(0, disponibili)) {
+      try {
+        const d = await api.aiDocumento(f);
+        letti.push({ nome: d.nomeFile, testo: d.testo, troncato: d.troncato });
+      } catch (e) {
+        scartati.push(`${f.name}: ${e instanceof Error ? e.message : "non leggibile"}`);
+      }
+    }
+    if (letti.length > 0) setAllegati((prima) => [...prima, ...letti]);
+    const troppi = file.length > disponibili ? file.length - disponibili : 0;
+    setErroreAllegati([
+      ...scartati,
+      ...(troppi > 0 ? [`${troppi} documenti non allegati: massimo ${MASSIMO_ALLEGATI} per domanda.`] : []),
+    ].join(" · ") || null);
+    setAllegatiInCorso(false);
+  };
+
+  const rimuoviAllegato = (indice: number) =>
+    setAllegati((prima) => prima.filter((_, i) => i !== indice));
 
   const rimuoviContesto = () => {
     setBozza((corrente) => corrente === BOZZA_TESTO_SELEZIONATO ? "" : corrente);
@@ -1094,25 +1193,71 @@ export function AuroraPanel({
         </div>
 
         <form
-          className="au-campo"
+          className={trascinamento ? "au-campo au-campo-trascina" : "au-campo"}
           onSubmit={(e) => { e.preventDefault(); void invia(bozza); }}
+          onDragOver={(e) => { e.preventDefault(); setTrascinamento(true); }}
+          onDragLeave={() => setTrascinamento(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setTrascinamento(false);
+            void fileTrascinati(e.dataTransfer).then(allegaDocumenti);
+          }}
         >
-          {contestoCorrente && (
+          {allegati.map((a, i) => (
+            <div className="au-allegato" key={`${a.nome}-${i}`}>
+              <div className="au-allegato-testa">
+                <strong>Documento · {a.nome}</strong>
+                <button type="button" onClick={() => rimuoviAllegato(i)} aria-label={`Rimuovi ${a.nome}`}>
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <blockquote>{a.testo.slice(0, 320)}{a.testo.length > 320 ? "…" : ""}</blockquote>
+              <small>
+                {a.troncato ? "Testo ridotto a 4.000 caratteri. " : ""}
+                Del file viene letto solo il testo: il documento non viene conservato.
+              </small>
+            </div>
+          ))}
+          {allegatiInCorso && <p className="au-hint">Sto leggendo i documenti…</p>}
+          {erroreAllegati && <p className="au-hint">{erroreAllegati}</p>}
+          {contestoAllegati === null && contestoSelezione && (
             <div className="au-allegato">
               <div className="au-allegato-testa">
-                <strong>Testo selezionato · {contestoCorrente.sezione}</strong>
+                <strong>Testo selezionato · {contestoSelezione.sezione}</strong>
                 <button type="button" onClick={rimuoviContesto} aria-label="Rimuovi testo selezionato">
                   <X size={14} aria-hidden="true" />
                 </button>
               </div>
-              <blockquote>{anteprimaContestoAurora(contestoCorrente, 320)}</blockquote>
+              <blockquote>{anteprimaContestoAurora(contestoSelezione, 320)}</blockquote>
               <small>
-                {contestoCorrente.troncato ? "Testo ridotto a 4.000 caratteri. " : ""}
+                {contestoSelezione.troncato ? "Testo ridotto a 4.000 caratteri. " : ""}
                 Sarà allegato una volta sola alla prossima domanda, anche se usi un pulsante rapido.
               </small>
             </div>
           )}
           <div className="au-riga-input">
+            <input
+              ref={sceltaFile}
+              type="file"
+              multiple
+              accept=".pdf,.txt,.csv,.xml,.json,.md,.log,image/*"
+              hidden
+              onChange={(e) => {
+                const scelti = Array.from(e.target.files ?? []);
+                e.target.value = "";
+                void allegaDocumenti(scelti);
+              }}
+            />
+            <button
+              className="au-graffetta"
+              type="button"
+              disabled={allegatiInCorso}
+              onClick={() => sceltaFile.current?.click()}
+              aria-label="Allega documenti"
+              title="Allega documenti (o trascinali qui)"
+            >
+              <Paperclip size={17} aria-hidden="true" />
+            </button>
             <textarea
               ref={campoMessaggio}
               value={bozza}
@@ -1127,7 +1272,12 @@ export function AuroraPanel({
               rows={1}
               aria-label="Messaggio per Aurora"
             />
-            <button className="au-invia" type="submit" disabled={inCorso || !bozza.trim()} aria-label="Manda">
+            <button
+              className="au-invia"
+              type="submit"
+              disabled={inCorso || (!bozza.trim() && allegati.length === 0)}
+              aria-label="Manda"
+            >
               <ArrowUp size={17} aria-hidden="true" />
             </button>
           </div>

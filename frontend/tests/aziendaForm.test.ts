@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  applicaDatiVisura, codiceFiscaleValido, datiContributiviMancanti,
-  parsaTestoAzienda, partitaIvaValida, validaAzienda,
+  applicaDatiVisura, aziendaDaProposta, campiDaCompletareAzienda, codiceFiscaleValido,
+  datiContributiviMancanti, parsaTestoAzienda, partitaIvaValida, validaAzienda,
 } from "../src/aziendaForm.ts";
 import type { NuovaAzienda } from "../src/api.ts";
 
@@ -153,4 +153,71 @@ test("datiContributiviMancanti elenca i codici assenti solo per le aziende con d
     matricolaInps: "   ", codiceSedeInps: "0001", cscInps: "11801",
     patInail: "80000103", ccnlDefault: "COMMERCIO", livelloDefault: "3",
   }), ["matricola INPS"]);
+});
+
+test("aziendaDaProposta fonde proposta del server e parser locale senza inventare nulla", () => {
+  const form = aziendaDaProposta(
+    {
+      ragioneSociale: "JOBTIME SRLS",
+      partitaIva: "12345678903",
+      codiceFiscale: "12345678903",
+      indirizzo: "VIA FRANCESCO BARACCA 19",
+      cap: "43036",
+      comune: "FIDENZA",
+      provincia: "pr",
+    },
+    [
+      "**Denominazione**: JOBTIME SRLS",
+      "**PEC**: jobtime.srls@pec.it",
+      "**Sede legale**: Via Francesco Baracca n. 19 - 43036 Fidenza (PR)",
+    ].join("\n"),
+  );
+
+  // La proposta del server vince; il parser locale aggiunge solo ciò che il server non ha.
+  assert.equal(form.ragioneSociale, "JOBTIME SRLS");
+  assert.equal(form.partitaIva, "12345678903");
+  assert.equal(form.indirizzo, "VIA FRANCESCO BARACCA 19");
+  assert.equal(form.provincia, "PR");
+  assert.equal(form.pec, "jobtime.srls@pec.it");
+  // «SRLS» senza punti è una società: il tipo contribuente si deduce dalla ragione sociale.
+  assert.equal(form.tipoContribuente, "Societa");
+  // Nessun dato contributivo inventato: restano vuoti, da completare in scheda.
+  assert.equal(form.matricolaInps, undefined);
+  assert.equal(form.ccnlDefault, undefined);
+  assert.equal(form.haDipendenti, true);
+});
+
+test("campiDaCompletareAzienda elenca i campi vuoti che servono per lavorare", () => {
+  const campi = campiDaCompletareAzienda({
+    id: "a1",
+    ragioneSociale: "JOBTIME SRLS",
+    partitaIva: "12345678903",
+    indirizzo: "VIA FRANCESCO BARACCA 19",
+    cap: "43036",
+    comune: "FIDENZA",
+    provincia: "PR",
+    haDipendenti: true,
+  });
+
+  assert.deepEqual(campi, [
+    "codiceCatastale", "pec", "settore", "codiceAteco", "tipoContribuente",
+    "matricolaInps", "codiceSedeInps", "cscInps", "patInail", "ccnlDefault", "livelloDefault",
+  ]);
+
+  // Senza dipendenti i codici contributivi non vengono segnalati.
+  const senzaDipendenti = campiDaCompletareAzienda({
+    id: "a2",
+    ragioneSociale: "Studio Prova",
+    pec: "studio@pec.it",
+    codiceCatastale: "B034",
+    settore: "COMMERCIO_SERVIZI",
+    codiceAteco: "47.91.10",
+    tipoContribuente: "Societa",
+    indirizzo: "Via Roma 1",
+    cap: "43036",
+    comune: "Fidenza",
+    provincia: "PR",
+    haDipendenti: false,
+  });
+  assert.deepEqual(senzaDipendenti, []);
 });

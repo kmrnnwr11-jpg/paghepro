@@ -6328,6 +6328,28 @@ details[open] > summary .au-freccia {
   cursor: not-allowed;
 }
 
+/* Elenco rosso dei dati ancora da inserire dopo una registrazione dalla chat. */
+.au-dati-mancanti {
+  border: 1.5px solid var(--red);
+}
+
+.au-dati-mancanti ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 0.86rem;
+}
+
+.au-dati-mancanti li strong {
+  color: var(--red);
+}
+
+.au-dati-mancanti li small {
+  display: block;
+  opacity: 0.75;
+}
+
 .au-graffetta {
   flex: 0 0 auto;
   width: 34px;

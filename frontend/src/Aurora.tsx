@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
   Check,
@@ -15,17 +15,21 @@ import {
   api,
   type Azienda,
   type AziendaRiconosciutaAi,
+  type CampoDaCompletare,
   type CosaVedeAi,
   type EsitoPreflightAi,
   type EsitoPropostaAurora,
   type EsitoQueryAi,
   type GrantAiEmesso,
+  type LavoratoreRiconosciutoAi,
   type ManifestGrantAi,
   type MessaggioChatAi,
+  type NuovaAzienda,
   type PropostaAzioneAurora,
   type RigaCedolinoMeseAi,
   type StatoChatAi,
 } from "./api";
+import { aziendaDaProposta } from "./aziendaForm";
 import {
   anteprimaContestoAurora,
   creaContestoAurora,
@@ -95,16 +99,52 @@ interface DocumentoAllegato {
   troncato: boolean;
 }
 
-/** Righe mostrate prima di creare l'azienda: quello che verrà salvato, campo per campo. */
-function righeAzienda(a: AziendaRiconosciutaAi): { etichetta: string; valore: string }[] {
+/** Righe mostrate prima di registrare l'azienda: quello che verrà salvato, campo per campo. */
+function righeAzienda(f: NuovaAzienda): { etichetta: string; valore: string }[] {
   return [
-    { etichetta: "Ragione sociale", valore: a.ragioneSociale ?? "" },
-    { etichetta: "Partita IVA", valore: a.partitaIva ?? "" },
-    { etichetta: "Codice fiscale", valore: a.codiceFiscale ?? "" },
-    { etichetta: "Sede", valore: [a.indirizzo, a.cap, a.comune, a.provincia].filter(Boolean).join(" ") },
-    { etichetta: "ATECO", valore: a.codiceAteco ?? "" },
-    { etichetta: "Rappresentante", valore: a.legaleRappresentante ?? "" },
+    { etichetta: "Ragione sociale", valore: f.ragioneSociale },
+    { etichetta: "Partita IVA", valore: f.partitaIva ?? "" },
+    { etichetta: "Codice fiscale", valore: f.codiceFiscale ?? "" },
+    { etichetta: "Sede", valore: [f.indirizzo, f.cap, f.comune, f.provincia].filter(Boolean).join(" ") },
+    { etichetta: "ATECO", valore: f.codiceAteco ?? "" },
+    { etichetta: "PEC", valore: f.pec ?? "" },
+    { etichetta: "Email", valore: f.email ?? "" },
+    { etichetta: "Telefono", valore: f.telefono ?? "" },
+    {
+      etichetta: "Rappresentante",
+      valore: [f.legaleRappresentanteCognome, f.legaleRappresentanteNome].filter(Boolean).join(" "),
+    },
   ].filter((r) => r.valore.trim().length > 0);
+}
+
+/** Data ISO del server resa come la scrive lo studio. */
+function dataItaliana(iso?: string | null): string {
+  return iso ? iso.split("-").reverse().join("/") : "";
+}
+
+/** Righe mostrate prima di registrare il dipendente. */
+function righeLavoratore(l: LavoratoreRiconosciutoAi): { etichetta: string; valore: string }[] {
+  const nominativo = [l.nome, l.cognome].filter(Boolean).join(" ")
+    + (l.nomeCognomeDaCampoUnico ? " (ordine da confermare)" : "");
+  return [
+    { etichetta: "Nominativo", valore: nominativo.trim() },
+    { etichetta: "Codice fiscale", valore: l.codiceFiscale },
+    { etichetta: "Assunzione", valore: dataItaliana(l.dataAssunzione) },
+    { etichetta: "CCNL", valore: l.ccnl ?? "" },
+    { etichetta: "Livello", valore: l.livello ?? "" },
+    { etichetta: "Qualifica", valore: l.qualifica ?? "" },
+    { etichetta: "Contratto", valore: l.tipoContratto ?? "" },
+    { etichetta: "Ore settimanali", valore: l.oreSettimanali != null ? String(l.oreSettimanali) : "" },
+  ].filter((r) => r.valore.trim().length > 0);
+}
+
+/** Chiave stabile di una proposta: dopo un rifiuto o una registrazione non si ripropone. */
+function chiaveAziendaProposta(a: AziendaRiconosciutaAi): string {
+  return `azienda:${(a.partitaIva ?? a.codiceFiscale ?? a.ragioneSociale ?? "").trim().toUpperCase()}`;
+}
+
+function chiaveLavoratoreProposto(l: LavoratoreRiconosciutoAi): string {
+  return `lavoratore:${l.codiceFiscale.trim().toUpperCase()}`;
 }
 
 /** Quanti documenti si possono allegare a una sola domanda. */
@@ -154,12 +194,18 @@ export function AuroraPanel({
   contesto,
   onRimuoviContesto,
   onChiudi,
+  onAziendaCreata,
+  onApriDipendente,
 }: {
   azienda: Azienda | null;
   sezione: string;
   contesto: ContestoAurora | null;
   onRimuoviContesto: () => void;
   onChiudi: () => void;
+  /** L'utente ha registrato il cliente dalla card: la shell apre la sua scheda. */
+  onAziendaCreata?: (aziendaId: string) => void;
+  /** L'utente ha registrato il dipendente dalla card: la shell apre la sua scheda. */
+  onApriDipendente?: (rapportoId: string) => void;
 }) {
   const [bolle, setBolle] = useState<Bolla[]>([]);
   const [storia, setStoria] = useState<MessaggioChatAi[]>([]);
@@ -176,8 +222,17 @@ export function AuroraPanel({
   const [esitoCedolini, setEsitoCedolini] = useState<EsitoQueryAi<RigaCedolinoMeseAi> | null>(null);
   const [trasparenza, setTrasparenza] = useState<CosaVedeAi | null>(null);
   const [allegati, setAllegati] = useState<DocumentoAllegato[]>([]);
-  const [aziendaProposta, setAziendaProposta] = useState<AziendaRiconosciutaAi | null>(null);
+  // Le proposte congelano il testo da cui sono nate: allegati e bolle possono sparire
+  // (invio riuscito, cambio cliente/sezione) prima che l'utente prema «Registra».
+  const [aziendaProposta, setAziendaProposta] =
+    useState<{ dati: AziendaRiconosciutaAi; testo: string } | null>(null);
   const [creazioneInCorso, setCreazioneInCorso] = useState(false);
+  const [lavoratoreProposto, setLavoratoreProposto] =
+    useState<{ dati: LavoratoreRiconosciutoAi; testo: string } | null>(null);
+  const [registrazioneDipendenteInCorso, setRegistrazioneDipendenteInCorso] = useState(false);
+  const [checklistDipendente, setChecklistDipendente] = useState<CampoDaCompletare[] | null>(null);
+  // Proposte rifiutate o già registrate in questo pannello: non vengono riproposte.
+  const proposteScartate = useRef<Set<string>>(new Set());
   const [allegatiInCorso, setAllegatiInCorso] = useState(false);
   const [erroreAllegati, setErroreAllegati] = useState<string | null>(null);
   const [trascinamento, setTrascinamento] = useState(false);
@@ -252,6 +307,14 @@ export function AuroraPanel({
   const quotaCorrenteConfermata = Boolean(mandatoCorrente
     && quotaConfermata?.grantId === mandatoCorrente.manifest.grantId
     && quotaConfermata.scopeMandato === scopeMandato);
+  // Il parser locale riusa il testo congelato per completare il form della card
+  // (PEC, contatti, CF dell'amministratore) senza dipendere dallo stato vivo della chat.
+  const formAziendaProposta = useMemo(
+    () => aziendaProposta
+      ? aziendaDaProposta(aziendaProposta.dati, aziendaProposta.testo)
+      : null,
+    [aziendaProposta],
+  );
 
   const riconciliaMandati = useCallback(async (): Promise<ManifestGrantAi[]> => {
     const richiesta = richiesteMandati.current.apri();
@@ -461,6 +524,20 @@ export function AuroraPanel({
         setEsitoProposta(null);
         setScopeProposta(scopeRichiesto);
       }
+      // Card di registrazione riconosciute dal server nei messaggi dell'utente: la prima
+      // resta finché l'utente decide; una proposta scartata o registrata non torna. Il
+      // testo del turno viene congelato subito: allegati e bolle possono sparire dopo.
+      const testoTurno = [messaggio, contestoDaInviare?.testo]
+        .filter(Boolean)
+        .join("\n\n");
+      if (r.azienda && !proposteScartate.current.has(chiaveAziendaProposta(r.azienda))) {
+        const riconosciuta = r.azienda;
+        setAziendaProposta((prima) => prima ?? { dati: riconosciuta, testo: testoTurno });
+      }
+      if (r.lavoratore && !proposteScartate.current.has(chiaveLavoratoreProposto(r.lavoratore))) {
+        const riconosciuto = r.lavoratore;
+        setLavoratoreProposto((prima) => prima ?? { dati: riconosciuto, testo: testoTurno });
+      }
       if (r.ok) {
         setStoria(r.storia);
         setScopeChat(scopeRichiesto);
@@ -503,7 +580,9 @@ export function AuroraPanel({
         const d = await api.aiDocumento(f);
         letti.push({ nome: d.nomeFile, testo: d.testo, troncato: d.troncato });
         // La prima anagrafica riconosciuta diventa la proposta: le altre restano nel testo.
-        if (d.azienda) setAziendaProposta((prima) => prima ?? d.azienda);
+        const riconosciuta = d.azienda;
+        if (riconosciuta && !proposteScartate.current.has(chiaveAziendaProposta(riconosciuta)))
+          setAziendaProposta((prima) => prima ?? { dati: riconosciuta, testo: d.testo });
       } catch (e) {
         scartati.push(`${f.name}: ${e instanceof Error ? e.message : "non leggibile"}`);
       }
@@ -529,34 +608,65 @@ export function AuroraPanel({
     setScopeChat(scopeRichiesto);
   };
 
-  // La creazione la chiede l'utente col pulsante: Aurora non salva nulla da sola.
+  // La registrazione la chiede l'utente col pulsante: Aurora non salva nulla da sola.
   const creaAziendaProposta = async () => {
-    if (!aziendaProposta || creazioneInCorso) return;
-    const nome = (aziendaProposta.ragioneSociale ?? "").trim();
-    if (!nome) return;
+    if (!aziendaProposta || !formAziendaProposta || creazioneInCorso) return;
+    if (!formAziendaProposta.ragioneSociale.trim()) return;
     setCreazioneInCorso(true);
     try {
-      const creata = await api.creaAzienda({
-        ragioneSociale: nome,
-        partitaIva: aziendaProposta.partitaIva ?? undefined,
-        codiceFiscale: aziendaProposta.codiceFiscale ?? undefined,
-        indirizzo: aziendaProposta.indirizzo ?? "",
-        cap: aziendaProposta.cap ?? "",
-        comune: aziendaProposta.comune ?? "",
-        provincia: aziendaProposta.provincia ?? "",
-        codiceAteco: aziendaProposta.codiceAteco ?? undefined,
-      });
+      const creata = await api.creaAzienda(formAziendaProposta);
+      proposteScartate.current.add(chiaveAziendaProposta(aziendaProposta.dati));
       setAziendaProposta(null);
       aggiungiBollaAurora(
-        `Ho creato il cliente «${creata.ragioneSociale}». Lo trovi in «Scegli il cliente»: `
-        + "apri la sua scheda per completare i dati che la visura non contiene "
-        + "(INPS, INAIL, CCNL, contatti).");
+        `Ho registrato «${creata.ragioneSociale}» e ti porto nella sua scheda: `
+        + "i dati che mancano sono evidenziati in rosso, completali appena li hai.");
+      onAziendaCreata?.(creata.id);
     } catch (e) {
       // La proposta resta in piedi: l'utente corregge il dato rifiutato e riprova.
       aggiungiBollaAurora(
-        `Non sono riuscita a creare il cliente: ${e instanceof Error ? e.message : "errore"}.`);
+        `Non sono riuscita a registrare il cliente: ${e instanceof Error ? e.message : "errore"}.`);
     } finally {
       setCreazioneInCorso(false);
+    }
+  };
+
+  const scartaAziendaProposta = () => {
+    if (aziendaProposta) proposteScartate.current.add(chiaveAziendaProposta(aziendaProposta.dati));
+    setAziendaProposta(null);
+  };
+
+  const scartaLavoratoreProposto = () => {
+    if (lavoratoreProposto)
+      proposteScartate.current.add(chiaveLavoratoreProposto(lavoratoreProposto.dati));
+    setLavoratoreProposto(null);
+  };
+
+  // Anche qui: il server riestrae i dati dal testo e crea dipendente e rapporto solo
+  // perché l'utente ha premuto il pulsante, con il cliente selezionato da lui.
+  const registraLavoratoreProposto = async () => {
+    if (!lavoratoreProposto || !azienda || registrazioneDipendenteInCorso) return;
+    setRegistrazioneDipendenteInCorso(true);
+    try {
+      const esito = await api.importUnilavTesto(lavoratoreProposto.testo, {
+        aziendaId: azienda.id,
+        ccnlDefault: azienda.ccnlDefault ?? undefined,
+        livelloDefault: azienda.livelloDefault ?? undefined,
+      });
+      proposteScartate.current.add(chiaveLavoratoreProposto(lavoratoreProposto.dati));
+      setLavoratoreProposto(null);
+      setChecklistDipendente(esito.daCompletare.length > 0 ? esito.daCompletare : null);
+      aggiungiBollaAurora(
+        `Ho registrato ${esito.rapporto.dipendente.nome} ${esito.rapporto.dipendente.cognome} `
+        + `per «${esito.azienda.ragioneSociale}» e ti porto nella sua scheda.`
+        + (esito.daCompletare.length > 0
+          ? " Qui sotto trovi in rosso i dati ancora da inserire."
+          : ""));
+      onApriDipendente?.(esito.rapporto.id);
+    } catch (e) {
+      aggiungiBollaAurora(
+        `Non sono riuscita a registrare il dipendente: ${e instanceof Error ? e.message : "errore"}.`);
+    } finally {
+      setRegistrazioneDipendenteInCorso(false);
     }
   };
 
@@ -1275,20 +1385,20 @@ export function AuroraPanel({
               </small>
             </div>
           ))}
-          {aziendaProposta && (
+          {aziendaProposta && formAziendaProposta && (
             <div className="au-allegato au-proposta-azienda">
               <div className="au-allegato-testa">
-                <strong>Azienda riconosciuta nel documento</strong>
+                <strong>Azienda riconosciuta</strong>
                 <button
                   type="button"
-                  onClick={() => setAziendaProposta(null)}
+                  onClick={scartaAziendaProposta}
                   aria-label="Scarta l'azienda riconosciuta"
                 >
                   <X size={14} aria-hidden="true" />
                 </button>
               </div>
               <dl className="au-campi-proposti">
-                {righeAzienda(aziendaProposta).map((r) => (
+                {righeAzienda(formAziendaProposta).map((r) => (
                   <div key={r.etichetta}>
                     <dt>{r.etichetta}</dt>
                     <dd>{r.valore}</dd>
@@ -1296,20 +1406,80 @@ export function AuroraPanel({
                 ))}
               </dl>
               <small>
-                {aziendaProposta.campiDaControllare.length > 0
-                  ? `Letti dall'AI, da controllare: ${aziendaProposta.campiDaControllare.join(", ")}. `
+                {aziendaProposta.dati.campiDaControllare.length > 0
+                  ? `Letti dall'AI, da controllare: ${aziendaProposta.dati.campiDaControllare.join(", ")}. `
                   : ""}
-                Controlla i dati: la creazione la decidi tu, e i campi mancanti si completano dopo
-                nella scheda del cliente.
+                Controlla i dati: la registrazione parte solo se premi il pulsante. Poi apro la
+                scheda del cliente con i campi mancanti evidenziati in rosso.
               </small>
               <button
                 type="button"
                 className="au-crea-azienda"
-                disabled={creazioneInCorso || !(aziendaProposta.ragioneSociale ?? "").trim()}
+                disabled={creazioneInCorso || !formAziendaProposta.ragioneSociale.trim()}
                 onClick={() => void creaAziendaProposta()}
               >
-                {creazioneInCorso ? "Creo il cliente…" : "Crea questo cliente"}
+                {creazioneInCorso ? "Registro il cliente…" : "Registra questo cliente"}
               </button>
+            </div>
+          )}
+          {lavoratoreProposto && (
+            <div className="au-allegato au-proposta-azienda">
+              <div className="au-allegato-testa">
+                <strong>Dipendente riconosciuto</strong>
+                <button
+                  type="button"
+                  onClick={scartaLavoratoreProposto}
+                  aria-label="Scarta il dipendente riconosciuto"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <dl className="au-campi-proposti">
+                {righeLavoratore(lavoratoreProposto.dati).map((r) => (
+                  <div key={r.etichetta}>
+                    <dt>{r.etichetta}</dt>
+                    <dd>{r.valore}</dd>
+                  </div>
+                ))}
+              </dl>
+              <small>
+                {azienda
+                  ? `Verrà assunto per «${azienda.ragioneSociale}». Controlla i dati: la `
+                    + "registrazione parte solo se premi il pulsante, poi apro la sua scheda."
+                  : "Scegli prima il cliente in alto: il dipendente verrà assunto per quello."}
+              </small>
+              <button
+                type="button"
+                className="au-crea-azienda"
+                disabled={registrazioneDipendenteInCorso || !azienda}
+                onClick={() => void registraLavoratoreProposto()}
+              >
+                {registrazioneDipendenteInCorso
+                  ? "Registro il dipendente…"
+                  : "Registra questo dipendente"}
+              </button>
+            </div>
+          )}
+          {checklistDipendente && (
+            <div className="au-allegato au-dati-mancanti" role="alert">
+              <div className="au-allegato-testa">
+                <strong>Dati del dipendente ancora da inserire</strong>
+                <button
+                  type="button"
+                  onClick={() => setChecklistDipendente(null)}
+                  aria-label="Chiudi l'elenco dei dati mancanti"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <ul>
+                {checklistDipendente.map((c) => (
+                  <li key={`${c.dove}-${c.campo}`}>
+                    <strong>{c.campo}</strong> — {c.perche}
+                    <small>Dove trovarlo: {c.doveTrovarlo}</small>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           {allegatiInCorso && <p className="au-hint">Sto leggendo i documenti…</p>}

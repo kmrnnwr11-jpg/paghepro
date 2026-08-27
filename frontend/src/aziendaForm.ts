@@ -1,4 +1,4 @@
-import type { DatiVisura, NuovaAzienda } from "./api";
+import type { Azienda, DatiVisura, NuovaAzienda } from "./api";
 
 export type ErroriAzienda = Partial<Record<keyof NuovaAzienda, string>>;
 
@@ -68,7 +68,8 @@ function profiloDaAteco(codiceAteco?: string | null): Partial<NuovaAzienda> {
 }
 
 function tipoContribuenteDaRagioneSociale(ragioneSociale?: string | null): string | undefined {
-  return /\bS\.?R\.?L\.?\b/i.test(ragioneSociale ?? "") ? "Societa" : undefined;
+  // Riconosce SRL, SRLS e le grafie puntate (S.R.L., S.R.L.S.).
+  return /\bS\.?R\.?L\.?S?\.?(?=\s|$|[,)])/i.test(ragioneSociale ?? "") ? "Societa" : undefined;
 }
 
 function scomponiNominativo(nominativo?: string | null): Pick<Partial<NuovaAzienda>, "legaleRappresentanteNome" | "legaleRappresentanteCognome"> {
@@ -170,6 +171,50 @@ export function applicaDatiVisura(form: NuovaAzienda, dati: DatiVisura): NuovaAz
     codiceAteco: valoreNonVuoto(dati.codiceAteco) ?? form.codiceAteco,
     tipoContribuente: tipoContribuente ?? form.tipoContribuente,
   };
+}
+
+/**
+ * Form completo per la registrazione decisa dall'utente sulla card di Aurora: fonde la
+ * proposta riconosciuta dal server con quanto il parser locale ricava dallo stesso testo
+ * (PEC, email, telefono, CF dell'amministratore). Nessun dato viene inventato: ciò che
+ * manca resta vuoto e si completa nella scheda del cliente.
+ */
+export function aziendaDaProposta(proposta: DatiVisura, testoOrigine: string): NuovaAzienda {
+  const base: NuovaAzienda = {
+    ragioneSociale: "", indirizzo: "", cap: "", comune: "", provincia: "",
+    haDipendenti: true, assoggettataIva: true, aderisceFondiContrattuali: true,
+    statoAlboArtigiani: "DaVerificare",
+  };
+  const dalTesto = parsaTestoAzienda(testoOrigine.replace(/\*\*/g, ""));
+  return applicaDatiVisura({ ...base, ...dalTesto }, proposta);
+}
+
+/**
+ * Campi vuoti da evidenziare in rosso quando la scheda si apre subito dopo una
+ * registrazione via Aurora: anagrafica di base più i dati contributivi, che nessuna
+ * visura contiene e che servono per cedolini, F24 e UniEmens.
+ */
+export function campiDaCompletareAzienda(a: Azienda): (keyof NuovaAzienda)[] {
+  const vuoto = (valore?: string | null) => !valore?.trim();
+  const campi: (keyof NuovaAzienda)[] = [];
+  if (vuoto(a.indirizzo)) campi.push("indirizzo");
+  if (vuoto(a.cap)) campi.push("cap");
+  if (vuoto(a.comune)) campi.push("comune");
+  if (vuoto(a.provincia)) campi.push("provincia");
+  if (vuoto(a.codiceCatastale)) campi.push("codiceCatastale");
+  if (vuoto(a.pec)) campi.push("pec");
+  if (vuoto(a.settore)) campi.push("settore");
+  if (vuoto(a.codiceAteco)) campi.push("codiceAteco");
+  if (vuoto(a.tipoContribuente)) campi.push("tipoContribuente");
+  if (a.haDipendenti) {
+    if (vuoto(a.matricolaInps)) campi.push("matricolaInps");
+    if (vuoto(a.codiceSedeInps)) campi.push("codiceSedeInps");
+    if (vuoto(a.cscInps)) campi.push("cscInps");
+    if (vuoto(a.patInail)) campi.push("patInail");
+    if (vuoto(a.ccnlDefault)) campi.push("ccnlDefault");
+    if (vuoto(a.livelloDefault)) campi.push("livelloDefault");
+  }
+  return campi;
 }
 
 /**

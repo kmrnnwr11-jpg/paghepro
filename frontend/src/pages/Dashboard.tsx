@@ -208,6 +208,9 @@ export function Dashboard() {
   const [aziendeInCaricamento, setAziendeInCaricamento] = useState(true);
   const [erroreAziende, setErroreAziende] = useState<string | null>(null);
   const [sezioneDopoScelta, setSezioneDopoScelta] = useState<SectionKey | null>(null);
+  // Azienda appena registrata dalla chat di Aurora: la pagina Aziende ne apre la scheda
+  // con i campi mancanti evidenziati in rosso, poi azzera la richiesta.
+  const [aziendaDaCompletareId, setAziendaDaCompletareId] = useState<string | null>(null);
   const [strumentiRecenti, setStrumentiRecenti] = useState<StrumentoRecente[]>(leggiStrumentiRecenti);
   const aziendeRef = useRef<Azienda[]>([]);
   const contestoCatturato = useRef<ContestoAurora | null>(null);
@@ -483,7 +486,14 @@ export function Dashboard() {
               onRiprendi={riprendiLavoro}
             />
           ) : (
-            <ModuleScreen active={active} onNavigate={vaiA} rapportoSel={rapportoSel} onApriDipendente={apriDipendente} />
+            <ModuleScreen
+              active={active}
+              onNavigate={vaiA}
+              rapportoSel={rapportoSel}
+              onApriDipendente={apriDipendente}
+              aziendaDaCompletareId={aziendaDaCompletareId}
+              onAziendaDaCompletareGestita={() => setAziendaDaCompletareId(null)}
+            />
           )}
         </main>
       </div>
@@ -495,6 +505,11 @@ export function Dashboard() {
           contesto={contestoAurora}
           onRimuoviContesto={() => setContestoAurora(null)}
           onChiudi={chiudiAurora}
+          onAziendaCreata={(id) => {
+            setAziendaDaCompletareId(id);
+            vaiA("aziende");
+          }}
+          onApriDipendente={apriDipendente}
         />
       )}
 
@@ -1465,17 +1480,24 @@ function ModuleScreen({
   onNavigate,
   rapportoSel,
   onApriDipendente,
+  aziendaDaCompletareId,
+  onAziendaDaCompletareGestita,
 }: {
   active: SectionKey;
   onNavigate: (key: SectionKey) => void;
   rapportoSel: string | null;
   onApriDipendente: (rapportoId: string) => void;
+  aziendaDaCompletareId: string | null;
+  onAziendaDaCompletareGestita: () => void;
 }) {
   if (active === "azienda" || active === "aziende") {
     return (
       <div className="module-layout wide aziende-page-layout">
         <div>
-          <Aziende />
+          <Aziende
+            apriAziendaId={aziendaDaCompletareId}
+            onApriGestita={onAziendaDaCompletareGestita}
+          />
         </div>
       </div>
     );

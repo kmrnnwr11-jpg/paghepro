@@ -125,6 +125,8 @@ public sealed class AiChatApiTests : IDisposable
         {
             Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("azione").ValueKind);
             Assert.True(ricevuto.RootElement.GetProperty("ok").GetBoolean());
+            // Nessun dato d'impresa nel messaggio: nessuna card di registrazione.
+            Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("azienda").ValueKind);
         }
 
         // Il dominio resta intatto; cambia soltanto il contatore dei consumi AI dello studio.
@@ -138,6 +140,288 @@ public sealed class AiChatApiTests : IDisposable
             .Select(c => c.Chiamate)
             .SingleAsync());
         Assert.Null(scope.ServiceProvider.GetService<AiChatStrumenti>());
+    }
+
+    [Fact]
+    public async Task Chat_SenzaLease_ConDatiAziendaNeiMessaggi_AllegaLaCardRegistraCliente()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var prima = await FotografaDominioAsync(tenant);
+
+        // Dati incollati in chat come nella conversazione reale: etichette in grassetto
+        // markdown. Il riconoscimento è del parser deterministico, non del modello.
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = """
+                Registra questa azienda:
+                **Denominazione**: JOBTIME SRLS
+                **Codice fiscale e numero di iscrizione**: 12345670017
+                **Partita IVA**: 12345670017
+                **Sede legale**: VIA FRANCESCO BARACCA 19 - 43036 FIDENZA (PR)
+                **Codice ATECO**: 78.20.00
+                """,
+            storia = Array.Empty<object>(),
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        Assert.Equal(1, _providerFinto.Chiamate);
+        using (var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!))
+        {
+            // Ancora nessuno strumento: il modello sa soltanto che la card esiste.
+            Assert.False(inviato.RootElement.TryGetProperty("tools", out _));
+            Assert.Contains("Registra questo cliente",
+                inviato.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
+        }
+
+        using (var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync()))
+        {
+            var azienda = ricevuto.RootElement.GetProperty("azienda");
+            Assert.Equal(JsonValueKind.Object, azienda.ValueKind);
+            Assert.Equal("JOBTIME SRLS", azienda.GetProperty("ragioneSociale").GetString());
+            Assert.Equal("12345670017", azienda.GetProperty("partitaIva").GetString());
+            Assert.Equal("FIDENZA", azienda.GetProperty("comune").GetString());
+            Assert.Equal("PR", azienda.GetProperty("provincia").GetString());
+        }
+
+        // La card è solo una proposta: il dominio resta intatto salvo il contatore consumi.
+        var dopo = await FotografaDominioAsync(tenant);
+        Assert.Equal(prima with { ConsumiAi = dopo.ConsumiAi }, dopo);
+    }
+
+    [Fact]
+    public async Task Chat_SenzaLease_ConDatiLavoratore_AllegaLaCardRegistraDipendente()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var prima = await FotografaDominioAsync(tenant);
+
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = """
+                Assumi questo dipendente:
+                - Nome: Mario
+                - Cognome: Rossi
+                - Codice fiscale: RSSMRA85M01H501Q
+                - Data assunzione: 01/09/2026
+                - Livello: 4
+                """,
+            storia = Array.Empty<object>(),
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = "Dipendenti",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using (var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!))
+        {
+            Assert.False(inviato.RootElement.TryGetProperty("tools", out _));
+            Assert.Contains("Registra questo dipendente",
+                inviato.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
+        }
+
+        using (var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync()))
+        {
+            var lavoratore = ricevuto.RootElement.GetProperty("lavoratore");
+            Assert.Equal(JsonValueKind.Object, lavoratore.ValueKind);
+            Assert.Equal("RSSMRA85M01H501Q", lavoratore.GetProperty("codiceFiscale").GetString());
+            Assert.Equal("Mario", lavoratore.GetProperty("nome").GetString());
+            Assert.Equal("Rossi", lavoratore.GetProperty("cognome").GetString());
+            Assert.Equal("2026-09-01", lavoratore.GetProperty("dataAssunzione").GetString());
+            // Nessuna azienda in quel testo: la card cliente non compare.
+            Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("azienda").ValueKind);
+        }
+
+        var dopo = await FotografaDominioAsync(tenant);
+        Assert.Equal(prima with { ConsumiAi = dopo.ConsumiAi }, dopo);
+    }
+
+    [Fact]
+    public async Task Chat_SenzaLease_LavoratoreGiaAssunto_NonRipropone()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var aziendaId = Guid.NewGuid();
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Azienda con dipendente",
+            });
+            var dipendenteId = Guid.NewGuid();
+            db.Dipendenti.Add(new DipendenteEntity
+            {
+                Id = dipendenteId,
+                TenantId = tenant,
+                CodiceFiscale = "RSSMRA85M01H501Q",
+                Nome = "Mario",
+                Cognome = "Rossi",
+            });
+            db.Rapporti.Add(new RapportoLavoroEntity
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenant,
+                AziendaId = aziendaId,
+                DipendenteId = dipendenteId,
+                CodiceCcnl = "COMMERCIO_TERZIARIO",
+                Livello = "4",
+                DataAssunzione = new DateOnly(2026, 9, 1),
+                // Tempo determinato ancora attivo: la cessazione futura non deve riaprire
+                // la card (un secondo rapporto = doppia busta paga).
+                DataCessazione = new DateOnly(2026, 12, 31),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Nome: Mario\nCognome: Rossi\nCodice fiscale: RSSMRA85M01H501Q",
+            storia = Array.Empty<object>(),
+            aziendaId,
+            contestoSelezionato = (object?)null,
+            sezioneUi = "Dipendenti",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("lavoratore").ValueKind);
+    }
+
+    [Fact]
+    public async Task Chat_SenzaLease_TurniDiversi_NonMescolaAziendaELavoratore()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+
+        // Turno precedente: la visura dell'azienda. Turno corrente: i dati del lavoratore.
+        // Il riconoscimento deve restare per singolo messaggio: il CF della persona non
+        // deve finire sull'azienda, e la card del dipendente deve comparire comunque.
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Ora assumi per loro:\nNome: Mario\nCognome: Rossi\n"
+                + "Codice fiscale: RSSMRA85M01H501Q\nData assunzione: 01/09/2026",
+            storia = new[]
+            {
+                new
+                {
+                    ruolo = "user",
+                    contenuto = "Denominazione: JOBTIME SRLS\n"
+                        + "Codice fiscale e numero di iscrizione: 12345670017\n"
+                        + "Partita IVA: 12345670017\n"
+                        + "Sede legale: VIA FRANCESCO BARACCA 19 - 43036 FIDENZA (PR)",
+                },
+            },
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        var azienda = ricevuto.RootElement.GetProperty("azienda");
+        Assert.Equal(JsonValueKind.Object, azienda.ValueKind);
+        Assert.Equal("JOBTIME SRLS", azienda.GetProperty("ragioneSociale").GetString());
+        Assert.Equal("12345670017", azienda.GetProperty("partitaIva").GetString());
+        Assert.Equal("12345670017", azienda.GetProperty("codiceFiscale").GetString());
+        var lavoratore = ricevuto.RootElement.GetProperty("lavoratore");
+        Assert.Equal(JsonValueKind.Object, lavoratore.ValueKind);
+        Assert.Equal("RSSMRA85M01H501Q", lavoratore.GetProperty("codiceFiscale").GetString());
+    }
+
+    [Fact]
+    public async Task Chat_SenzaLease_DittaIndividuale_NonProponeDiAssumereIlTitolare()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = """
+                Denominazione: ROSSI MARIO
+                Codice fiscale: RSSMRA85M01H501Q
+                Data inizio attività: 12/05/2018
+                Sede legale: VIA ROMA 1 - 43036 FIDENZA (PR)
+                """,
+            storia = Array.Empty<object>(),
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        // La ditta individuale è un'azienda da registrare, non una persona da assumere.
+        Assert.Equal(JsonValueKind.Object, ricevuto.RootElement.GetProperty("azienda").ValueKind);
+        Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("lavoratore").ValueKind);
+    }
+
+    [Fact]
+    public async Task Chat_SenzaLease_NumeroACaso_NonDiventaUnaPartitaIva()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+
+        // Un numero a 11 cifre col checksum sbagliato (es. un protocollo) citato in una
+        // domanda qualunque non deve produrre la card di registrazione.
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "La ditta di mio cugino ha chiuso: il protocollo della pratica "
+                + "è 12345678901, cosa devo conservare?",
+            storia = Array.Empty<object>(),
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("azienda").ValueKind);
+    }
+
+    [Fact]
+    public async Task Chat_SenzaLease_ClienteGiaRegistrato_NonRipropone()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenant,
+                RagioneSociale = "JOBTIME SRLS",
+                PartitaIva = "12345670017",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        // La storia della chat conserva i dati anche dopo la registrazione: il cliente
+        // già in archivio non deve essere riproposto a ogni turno.
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Grazie, cosa mi manca ora?",
+            storia = new[]
+            {
+                new
+                {
+                    ruolo = "user",
+                    contenuto = "Denominazione: JOBTIME SRLS - Partita IVA: 12345670017",
+                },
+            },
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("azienda").ValueKind);
     }
 
     [Fact]

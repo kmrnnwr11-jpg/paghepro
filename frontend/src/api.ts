@@ -1531,6 +1531,22 @@ export interface AziendaRiconosciutaAi extends DatiVisura {
   campiDaControllare: string[];
 }
 
+/** Lavoratore riconosciuto nei messaggi della chat (parser deterministico): proposta,
+ *  la registrazione parte solo dal pulsante dell'utente con il cliente selezionato. */
+export interface LavoratoreRiconosciutoAi {
+  codiceFiscale: string;
+  nome?: string | null;
+  cognome?: string | null;
+  /** Nome e cognome venivano da un campo unico: l'ordine è da confermare. */
+  nomeCognomeDaCampoUnico: boolean;
+  dataAssunzione?: string | null;
+  ccnl?: string | null;
+  livello?: string | null;
+  qualifica?: string | null;
+  tipoContratto?: string | null;
+  oreSettimanali?: number | null;
+}
+
 /** Una riga del diff mostrato prima della conferma: cosa cambia, da quale valore a quale. */
 export interface RigaDiffAurora {
   etichetta: string;
@@ -1590,6 +1606,11 @@ export interface RispostaChatAi {
   storia: MessaggioChatAi[];
   azione: PropostaAzioneAurora | null;
   ok: boolean;
+  /** Azienda riconosciuta (dal parser, non dal modello) nei messaggi dell'utente:
+   *  la SPA mostra la card «Registra questo cliente». Null se non riconosciuta. */
+  azienda?: AziendaRiconosciutaAi | null;
+  /** Lavoratore riconosciuto nei messaggi: la SPA mostra «Registra questo dipendente». */
+  lavoratore?: LavoratoreRiconosciutoAi | null;
 }
 
 export interface StatoChatAi {

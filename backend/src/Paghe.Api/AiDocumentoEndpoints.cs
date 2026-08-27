@@ -131,7 +131,7 @@ public static class AiDocumentoEndpoints
     /// Anagrafica d'impresa riconosciuta nel documento, da confermare. È la stessa estrazione
     /// di <c>/api/aziende/da-visura</c>: euristica prima, AI solo sui campi vuoti.
     /// </summary>
-    private static async Task<object?> ProponiAziendaAsync(
+    private static async Task<AziendaRiconosciutaAi?> ProponiAziendaAsync(
         string testo, byte[]? immagine, string contentType,
         IEstrattoreAiDocumenti ai, AiOptions aiOptions, ConsumoAiService consumi,
         ClaimsPrincipal user, CancellationToken ct)
@@ -167,21 +167,6 @@ public static class AiDocumentoEndpoints
         }
 
         // Il riconoscimento vale anche quando è stata l'AI a trovare la partita IVA.
-        if (!riconosciuta && string.IsNullOrWhiteSpace(d.PartitaIva)) return null;
-        if (string.IsNullOrWhiteSpace(d.RagioneSociale)) return null;
-
-        return new
-        {
-            d.RagioneSociale,
-            d.PartitaIva,
-            d.CodiceFiscale,
-            d.Indirizzo,
-            d.Cap,
-            d.Comune,
-            d.Provincia,
-            d.CodiceAteco,
-            d.LegaleRappresentante,
-            campiDaControllare = campiDallAi,
-        };
+        return AziendaRiconosciutaAi.Da(d, campiDallAi, riconosciuta);
     }
 }

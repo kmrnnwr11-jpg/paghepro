@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AlertTriangle, Building2, Check, ClipboardPaste, Edit3, FileText, Landmark, MapPin, Plus, Search, Trash2, UserRound, Users, WalletCards, X } from "lucide-react";
 import { api, type Azienda, type DipendenteRapporto, type NuovaAzienda } from "../api";
 import {
-  applicaDatiVisura, datiContributiviMancanti, parsaTestoAzienda, validaAzienda,
+  applicaDatiVisura, campiDaCompletareAzienda, datiContributiviMancanti, parsaTestoAzienda,
+  validaAzienda,
   type ErroriAzienda,
 } from "../aziendaForm";
 import { ComuneAutocomplete } from "../ComuneAutocomplete";
@@ -113,8 +114,14 @@ function selectStyle(errore?: string): React.CSSProperties {
 // ---------- componente principale ----------
 export function Aziende({
   onAziendeCambiate,
+  apriAziendaId,
+  onApriGestita,
 }: {
   onAziendeCambiate?: () => void;
+  /** Azienda appena registrata dalla chat di Aurora: la scheda si apre da sola
+   *  con i campi mancanti evidenziati in rosso. */
+  apriAziendaId?: string | null;
+  onApriGestita?: () => void;
 } = {}) {
   const [aziende, setAziende] = useState<Azienda[]>([]);
   const [dipendentiPerAzienda, setDipendentiPerAzienda] = useState<Record<string, DipendenteRapporto[]>>({});
@@ -142,6 +149,7 @@ export function Aziende({
   const [ricerca, setRicerca] = useState("");
   const [vista, setVista] = useState<"archivio" | "scheda">("archivio");
   const [sezioneAttiva, setSezioneAttiva] = useState("identita");
+  const [guidaAurora, setGuidaAurora] = useState(false);
 
   const refSezioni = useRef<Record<string, HTMLDivElement | null>>({});
   const refForm = useRef<HTMLFormElement | null>(null);
@@ -182,6 +190,36 @@ export function Aziende({
       window.removeEventListener("storage", aggiorna);
     };
   }, []);
+
+  // Azienda registrata dalla chat di Aurora: appena l'archivio la conosce, la scheda si
+  // apre da sola e i campi ancora vuoti vengono segnati in rosso «Da completare».
+  // Le segnalazioni restano finché l'utente compila o salva (la validazione le sostituisce).
+  const ricaricataPerApertura = useRef<string | null>(null);
+  useEffect(() => {
+    if (!apriAziendaId) return;
+    const a = aziende.find((x) => x.id === apriAziendaId);
+    if (!a) {
+      // Se la pagina era già montata l'elenco è vecchio: una sola ricarica per richiesta.
+      // Se dopo la ricarica l'azienda ancora non c'è, la richiesta viene consumata: meglio
+      // nessuna apertura che una scheda che spunta a sorpresa più tardi.
+      if (ricaricataPerApertura.current !== apriAziendaId) {
+        ricaricataPerApertura.current = apriAziendaId;
+        void carica();
+      } else {
+        onApriGestita?.();
+      }
+      return;
+    }
+    ricaricataPerApertura.current = null;
+    iniziaModifica(a);
+    const daCompletare = campiDaCompletareAzienda(a);
+    if (daCompletare.length > 0) {
+      setErrori(Object.fromEntries(daCompletare.map((campo) => [campo, "Da completare."])));
+      setGuidaAurora(true);
+    }
+    onApriGestita?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- iniziaModifica e callback stabili
+  }, [aziende, apriAziendaId]);
 
   // ---------- visura ----------
   async function elaboraVisura(file: File) {
@@ -303,7 +341,30 @@ export function Aziende({
       const aggiornato = { ...form, [k]: e.target.value };
       setForm(aggiornato);
       if (tentato) setErrori(validaAzienda(aggiornato, { datiContributiviProvvisori }));
+      // Prima del primo salvataggio gli avvisi «Da completare.» si spengono campo per
+      // campo appena l'utente scrive: il rosso resta solo dove manca davvero il dato.
+      else if (errori[k]) {
+        setErrori((prima) => {
+          if (!prima[k]) return prima;
+          const resto = { ...prima };
+          delete resto[k];
+          return resto;
+        });
+      }
     };
+  }
+
+  // Spegne gli avvisi «Da completare.» sui campi appena valorizzati da un'azione che ne
+  // riempie più d'uno (preset settore, autocomplete comune), prima del primo salvataggio.
+  function spegniAvvisi(...chiavi: (keyof NuovaAzienda)[]) {
+    setErrori((prima) => {
+      const resto = { ...prima };
+      let cambiato = false;
+      for (const k of chiavi) {
+        if (resto[k]) { delete resto[k]; cambiato = true; }
+      }
+      return cambiato ? resto : prima;
+    });
   }
 
   function cambiaSettore(codice: string) {
@@ -320,6 +381,8 @@ export function Aziende({
       : { ...form, settore: codice };
     setForm(aggiornato);
     if (tentato) setErrori(validaAzienda(aggiornato, { datiContributiviProvvisori }));
+    else if (preset) spegniAvvisi("settore", "tipoContribuente", "codiceAteco", "ccnlDefault", "livelloDefault");
+    else spegniAvvisi("settore");
   }
 
   function scrollAlPrimoErrore(e: Errori) {
@@ -355,6 +418,9 @@ export function Aziende({
 
   function iniziaModifica(a: Azienda) {
     setErroreApi(null); setNotaVisura(null); setTentato(false); setErrori({});
+    // Il banner di Aurora vale solo per la scheda aperta dalla chat: l'effetto di
+    // apriAziendaId lo riaccende subito dopo quando serve.
+    setGuidaAurora(false);
     setInModificaId(a.id);
     setVista("scheda");
     setSezioneAttiva("identita");
@@ -403,6 +469,7 @@ export function Aziende({
   function annullaModifica() {
     setInModificaId(null); setForm(vuota); setErrori({}); setTentato(false);
     setDaConfermare(null); setVista("archivio");
+    setGuidaAurora(false);
     setDatiContributiviProvvisori(false);
     aggiornaAnteprimaLogo(null);
     setFirmaTimbroConfigurata(false);
@@ -650,6 +717,16 @@ export function Aziende({
 
         <div className="azienda-editor-main">
 
+      {/* azienda registrata dalla chat di Aurora: guida ai campi da completare */}
+      {guidaAurora && (
+        <div className="azienda-global-error" role="alert">
+          <AlertTriangle size={16} aria-hidden="true" />
+          Azienda registrata dalla chat di Aurora: completa i campi segnati in rosso
+          «Da completare.», poi premi «Salva». I dati INPS, INAIL e CCNL servono per
+          cedolini, F24 e UniEmens.
+        </div>
+      )}
+
       {/* titolo form */}
       <h3 id="nuova-azienda-form" className="azienda-form-title">
         {inModificaId ? <Edit3 size={19} aria-hidden="true" /> : <Building2 size={19} aria-hidden="true" />}
@@ -894,6 +971,7 @@ export function Aziende({
                       const ag = { ...form, comune: c.nome, provincia: c.prov, cap: c.cap, codiceCatastale: c.cat ?? form.codiceCatastale };
                       setForm(ag);
                       if (tentato) setErrori(validaAzienda(ag, { datiContributiviProvvisori }));
+                      else spegniAvvisi("comune", "provincia", "cap", "codiceCatastale");
                     }}
                   />
                 </div>

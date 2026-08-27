@@ -44,6 +44,31 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Aurora registra aziende e dipendenti dalla chat (27 agosto 2026)**: nel turno libero
+  (senza lease) i **parser deterministici** riconoscono nei messaggi dell'utente i dati di
+  un'azienda (`VisuraCameraleParser`) o di un lavoratore (`ImportazioneUnilavPdf`) e la
+  risposta della chat allega le card «Registra questo cliente» / «Registra questo
+  dipendente» (`AziendaRiconosciutaAi`/`LavoratoreRiconosciutoAi` in Paghe.Api). La
+  scrittura resta un click dell'utente su API ordinarie (`POST /api/aziende`,
+  `POST /api/unilav/testo` con `aziendaId` del cliente selezionato): per il piano AI è un
+  «modulo di prodotto», non un'azione dell'agente. Dopo la registrazione la shell apre da
+  sola la scheda (azienda: prop `apriAziendaId` su Aziende con campi vuoti in rosso «Da
+  completare.» via `campiDaCompletareAzienda`; dipendente: `apriDipendente(rapportoId)` +
+  card rossa dei `daCompletare` nel pannello). Regole di sicurezza emerse dalla review
+  avversariale e implementate: riconoscimento **messaggio per messaggio** (mai sulla
+  conversazione concatenata, che mescolerebbe campi di fonti diverse), checksum P.IVA/CF
+  obbligatorio in chat, il CF del titolare in una visura non diventa un'assunzione, il
+  dedupe «già in archivio/già assunto» copre anche i tempi determinati con fine futura, e
+  la SPA congela il testo d'origine dentro la proposta. **Precisazione governance**: il
+  turno libero ora esegue due letture deterministiche di sola esistenza (cliente e
+  lavoratore, tenant-isolate) il cui esito arriva soltanto alla SPA — il prompt del
+  modello dipende dal solo riconoscimento testuale, quindi al provider non arriva alcun
+  bit d'archivio. Il documento allegato via `/api/ai/documento` restituisce la stessa
+  proposta tipizzata. Presenze/assenze da chat restano sul protocollo A3
+  (`compila_presenze`, gate fail-closed): mappa completa dei tre flussi in
+  `docs/AURORA-REGISTRAZIONI-DALLA-CHAT.md`. Verifiche: backend completo verde (19 test
+  chat/documenti inclusi), frontend verde, lint invariato, build ok.
+
 - **Aurora conversa senza mandato + riparazione repository e suite (26 agosto 2026)**: la chat
   `/api/ai/chat` senza lease ora esegue un **turno di conversazione libera** — nessuno strumento,
   nessuna lettura d'archivio, istruzioni «solo spiegazione», contatore `ConsumiAi` dello studio,

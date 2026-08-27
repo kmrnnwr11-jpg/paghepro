@@ -52,16 +52,21 @@ REMOTO
 echo "── 3/4 Costruisco e avvio (la prima volta servono alcuni minuti) ..."
 ssh "${SSH_OPTS[@]}" "$VPS" 'cd /opt/paghepro/deploy/vps && docker compose up -d --build'
 
-echo "── 4/4 Controllo la salute ..."
-ssh "${SSH_OPTS[@]}" "$VPS" '
+# Il controllo passa da HTTPS pubblico: dentro l'immagine dell'app non esistono
+# wget né curl, quindi un exec nel container fallirebbe sempre anche ad app sana.
+echo "── 4/4 Controllo la salute su https://$DOMINIO ..."
+SANO=0
 for i in $(seq 1 60); do
-  if docker compose -f /opt/paghepro/deploy/vps/docker-compose.yml exec -T app \
-       sh -c "wget -q -O- http://127.0.0.1:8080/health" 2>/dev/null; then
-    echo; echo "App in salute."; exit 0
+  if curl -fsS --max-time 5 "https://$DOMINIO/health" >/dev/null 2>&1; then
+    echo "App in salute."; SANO=1; break
   fi
   sleep 2
 done
-echo "App non in salute: guarda i log con: docker compose logs app"; exit 1'
+if [[ "$SANO" != 1 ]]; then
+  echo "App non in salute: guarda i log con:"
+  echo "  ssh $VPS 'docker compose -f /opt/paghepro/deploy/vps/docker-compose.yml logs app'"
+  exit 1
+fi
 
 echo
 echo "FATTO. Appena il DNS di $DOMINIO punta all'IP del VPS,"

@@ -1646,6 +1646,32 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.ToTable("ConfigurazioniSdi");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.ConsensoAuroraEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ConcessoUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RevocatoUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UtenteId")
+                        .IsUnique();
+
+                    b.ToTable("ConsensiAurora");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.ConsumoAiEntity", b =>
                 {
                     b.Property<Guid>("Id")

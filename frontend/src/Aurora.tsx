@@ -3,6 +3,7 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
+  History,
   Lock,
   Paperclip,
   ShieldCheck,
@@ -16,6 +17,7 @@ import {
   type Azienda,
   type AziendaRiconosciutaAi,
   type CampoDaCompletare,
+  type ConsensoAuroraAi,
   type CosaVedeAi,
   type EsitoPreflightAi,
   type EsitoPropostaAurora,
@@ -46,6 +48,7 @@ import {
   ambitoControlloCedolini,
   contaStatiCedolini,
   DIMENSIONE_LOTTO_CEDOLINI_AURORA,
+  mandatoSoloLettura,
   richiestaControlloCedolini,
   richiestaPreparazioneMese,
   stessoAmbitoControlloCedolini,
@@ -61,6 +64,13 @@ import {
   mandatiAttiviUnici,
   mandatiDaRevocare,
 } from "./auroraScope";
+import {
+  conversazionePerScope,
+  elencoConversazioni,
+  eliminaConversazione,
+  salvaConversazione,
+  type ConversazioneSalvata,
+} from "./auroraCronologia";
 import { creaSequenziatoreRichieste } from "./ultimaRichiesta";
 
 // Chat e strumenti usano esclusivamente il mandato visibile dello scope azienda-periodo corrente.
@@ -86,6 +96,9 @@ const SUGGERIMENTI_CON_TESTO = [
 
 const BOZZA_TESTO_SELEZIONATO = "Spiegami questo testo in parole semplici.";
 const BOZZA_DOCUMENTO = "Spiegami questo documento in parole semplici.";
+
+// Preferenza «Risposte brevi»: cambia solo lo stile delle risposte, resta sul browser.
+const CHIAVE_RISPOSTE_BREVI = "aurora_risposte_brevi";
 
 function periodoCorrente() {
   const oggi = new Date();
@@ -210,8 +223,15 @@ export function AuroraPanel({
   const [bolle, setBolle] = useState<Bolla[]>([]);
   const [storia, setStoria] = useState<MessaggioChatAi[]>([]);
   const [bozza, setBozza] = useState("");
+  const [risposteBrevi, setRisposteBrevi] = useState(
+    () => localStorage.getItem(CHIAVE_RISPOSTE_BREVI) === "1",
+  );
   const [inCorso, setInCorso] = useState(false);
   const [stato, setStato] = useState<StatoChatAi | null>(null);
+  // Consenso pieno: con il consenso attivo il server si procura da solo il mandato di
+  // lettura sul cliente selezionato — qui si mostra lo stato e il pulsante di revoca.
+  const [consenso, setConsenso] = useState<ConsensoAuroraAi | null>(null);
+  const [consensoInCorso, setConsensoInCorso] = useState(false);
   const [periodo, setPeriodo] = useState(periodoCorrente);
   const [preflight, setPreflight] = useState<EsitoPreflightAi | null>(null);
   const [ambitoPreflight, setAmbitoPreflight] = useState<AmbitoControlloCedolini | null>(null);
@@ -240,6 +260,10 @@ export function AuroraPanel({
   const [erroreControllo, setErroreControllo] = useState<string | null>(null);
   const [controlloInCorso, setControlloInCorso] = useState(false);
   const [scopeChat, setScopeChat] = useState<string | null>(null);
+  // Cronologia delle chat: salvata nel browser, si cancella solo a mano.
+  const [cronologiaAperta, setCronologiaAperta] = useState(false);
+  const [conversazioni, setConversazioni] = useState<ConversazioneSalvata[]>([]);
+  const conversazioneCorrente = useRef<{ id: string; scope: string } | null>(null);
   // Rollout A3 per l'utente corrente (dal catalogo del Governor) e tipo di mandato scelto.
   const [a3Disponibile, setA3Disponibile] = useState(false);
   const [tipoMandato, setTipoMandato] = useState<"controllo" | "preparazione">("controllo");
@@ -278,17 +302,20 @@ export function AuroraPanel({
   const scopeMandato = chiaveScopeAurora(azienda?.id, periodo);
   const scopeMandatoRef = useRef(scopeMandato);
   scopeMandatoRef.current = scopeMandato;
-  const scopeConversazione = chiaveScopeConversazioneAurora(azienda?.id, periodo, sezione);
+  const scopeConversazione = chiaveScopeConversazioneAurora(azienda?.id, periodo);
   const scopeConversazioneRef = useRef(scopeConversazione);
   scopeConversazioneRef.current = scopeConversazione;
   const scopeConversazionePrecedente = useRef(scopeConversazione);
+  // Il testo selezionato resta legato alla schermata dov'è stato scelto: cambiare pagina
+  // lo toglie dall'anteprima, mentre la conversazione continua.
+  const chiaveContesto = `${scopeConversazione}:${sezione}`;
   const ultimoContesto = useRef<ContestoAurora | null>(contesto);
-  const scopeContesto = useRef<string | null>(contesto ? scopeConversazione : null);
+  const scopeContesto = useRef<string | null>(contesto ? chiaveContesto : null);
   if (ultimoContesto.current !== contesto) {
     ultimoContesto.current = contesto;
-    scopeContesto.current = contesto ? scopeConversazione : null;
+    scopeContesto.current = contesto ? chiaveContesto : null;
   }
-  const contestoSelezione = scopeContesto.current === scopeConversazione ? contesto : null;
+  const contestoSelezione = scopeContesto.current === chiaveContesto ? contesto : null;
   // Documenti allegati alla chat: il server ne restituisce solo il testo, che vale per il
   // turno successivo esattamente come il testo selezionato a mano. Il file non lascia
   // traccia né qui né sul server.
@@ -328,7 +355,10 @@ export function AuroraPanel({
       const attivi = mandatiAttiviUnici(grants);
       if (montato.current) {
         const grantCorrenteId = mandatoRef.current?.manifest.grantId;
-        setMandatiResidui(attivi.filter((grant) => grant.grantId !== grantCorrenteId));
+        // I mandati di sola lettura emessi dal server col consenso pieno non sono
+        // «residui» da segnalare: scadono da soli e non occupano lo slot A3.
+        setMandatiResidui(attivi.filter((grant) =>
+          grant.grantId !== grantCorrenteId && !mandatoSoloLettura(grant)));
         setInventarioCaricato(true);
       }
       return attivi;
@@ -383,6 +413,9 @@ export function AuroraPanel({
     api.aiChatStato(richiestaStato.signal)
       .then((risultato) => { if (richiestaStato.attiva()) setStato(risultato); })
       .catch(() => { if (richiestaStato.attiva()) setStato(null); });
+    api.aiConsenso(richiestaStato.signal)
+      .then((risultato) => { if (richiestaStato.attiva()) setConsenso(risultato); })
+      .catch(() => { /* stato consenso non leggibile: il blocco resta nascosto */ });
     void riconciliaMandati().catch((e) => {
       if (e instanceof DOMException && e.name === "AbortError") return;
       if (montato.current)
@@ -411,18 +444,69 @@ export function AuroraPanel({
     if (!mandatoRef.current && !avvioInCorsoRef.current) setControlloInCorso(false);
   }, [scopeMandato]);
 
+  // Rimette in chat una conversazione salvata (cronologia o riapertura del pannello):
+  // le risposte tornano visibili e le prossime domande continuano quel filo.
+  const ripristinaConversazione = useCallback((salvata: ConversazioneSalvata) => {
+    // Una risposta ancora in viaggio apparteneva al filo precedente: non va mescolata.
+    richiesteChat.current.invalida();
+    setInCorso(false);
+    const ripristinate: Bolla[] = salvata.bolle.map((b) => ({
+      id: prossimoId.current++,
+      chi: b.chi,
+      testo: b.testo,
+      ...(b.citazione ? { citazione: b.citazione } : {}),
+    }));
+    conversazioneCorrente.current = { id: salvata.id, scope: scopeConversazioneRef.current };
+    setBolle(ripristinate);
+    setStoria(salvata.storia);
+    setScopeChat(scopeConversazioneRef.current);
+    setCronologiaAperta(false);
+  }, []);
+
   useEffect(() => {
     if (scopeConversazionePrecedente.current === scopeConversazione) return;
     scopeConversazionePrecedente.current = scopeConversazione;
     richiesteChat.current.invalida();
-    setBolle([]);
-    setStoria([]);
-    setScopeChat(null);
     setInCorso(false);
     setBozza("");
     scopeContesto.current = null;
     onRimuoviContesto();
-  }, [onRimuoviContesto, scopeConversazione]);
+    // Cambio cliente o mese: la chat riprende dall'ultima conversazione salvata di quel
+    // cliente, altrimenti riparte vuota. Le conversazioni non vengono mai perse.
+    const salvata = conversazionePerScope(scopeConversazione);
+    if (salvata) {
+      ripristinaConversazione(salvata);
+    } else {
+      conversazioneCorrente.current = null;
+      setBolle([]);
+      setStoria([]);
+      setScopeChat(null);
+    }
+  }, [onRimuoviContesto, ripristinaConversazione, scopeConversazione]);
+
+  // Alla riapertura del pannello la chat del cliente-mese corrente riprende da dov'era.
+  useEffect(() => {
+    const salvata = conversazionePerScope(scopeConversazioneRef.current);
+    if (salvata) ripristinaConversazione(salvata);
+  }, [ripristinaConversazione]);
+
+  // Ogni turno viene salvato nel browser: chiudere il pannello non perde la chat.
+  useEffect(() => {
+    const corrente = conversazioneCorrente.current;
+    if (!corrente || scopeChat !== corrente.scope || bolle.length === 0) return;
+    salvaConversazione({
+      id: corrente.id,
+      scope: corrente.scope,
+      titolo: "",
+      aggiornataIl: new Date().toISOString(),
+      bolle: bolle.map((b) => ({
+        chi: b.chi,
+        testo: b.testo,
+        ...(b.citazione ? { citazione: b.citazione } : {}),
+      })),
+      storia,
+    });
+  }, [bolle, storia, scopeChat]);
 
   useEffect(() => {
     if (!mandato || mandatoPerScope(mandato, azienda?.id, periodo)) return;
@@ -480,6 +564,64 @@ export function AuroraPanel({
     fondo.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [bolle, inCorso]);
 
+  const commutaRisposteBrevi = () => {
+    const nuovo = !risposteBrevi;
+    setRisposteBrevi(nuovo);
+    localStorage.setItem(CHIAVE_RISPOSTE_BREVI, nuovo ? "1" : "0");
+  };
+
+  const concediConsenso = async () => {
+    if (consensoInCorso) return;
+    setConsensoInCorso(true);
+    try {
+      setConsenso(await api.aiConcediConsenso());
+    } catch {
+      // Lo stato resta quello precedente: il pulsante si può ripremere.
+    } finally {
+      if (montato.current) setConsensoInCorso(false);
+    }
+  };
+
+  const revocaConsenso = async () => {
+    if (consensoInCorso) return;
+    setConsensoInCorso(true);
+    try {
+      await api.aiRevocaConsenso();
+      setConsenso({ attivo: false, giaDeciso: true });
+    } catch {
+      // Revoca non riuscita: lo stato visibile non cambia.
+    } finally {
+      if (montato.current) setConsensoInCorso(false);
+    }
+  };
+
+  const commutaCronologia = () => {
+    setConversazioni(elencoConversazioni());
+    setCronologiaAperta((prima) => !prima);
+  };
+
+  const eliminaDallaCronologia = (id: string) => {
+    eliminaConversazione(id);
+    setConversazioni(elencoConversazioni());
+    // Se era la chat aperta, il pannello riparte pulito: eliminata vuol dire eliminata.
+    if (conversazioneCorrente.current?.id === id) {
+      conversazioneCorrente.current = null;
+      setBolle([]);
+      setStoria([]);
+      setScopeChat(null);
+    }
+  };
+
+  const nuovaConversazione = () => {
+    richiesteChat.current.invalida();
+    conversazioneCorrente.current = null;
+    setInCorso(false);
+    setBolle([]);
+    setStoria([]);
+    setScopeChat(null);
+    setCronologiaAperta(false);
+  };
+
   const invia = async (testo: string) => {
     // Con un documento allegato la domanda può mancare: vale «spiegamelo».
     const messaggio = testo.trim() || (allegati.length > 0 ? BOZZA_DOCUMENTO : "");
@@ -490,6 +632,10 @@ export function AuroraPanel({
     const grantIdQuota = mandatoCorrente?.manifest.grantId ?? null;
     const contestoDaInviare = contestoCorrente;
     const storiaDaInviare = scopeChat === scopeRichiesto ? storiaRef.current : [];
+    // Una nuova conversazione nasce col primo messaggio; altrimenti si continua quella
+    // corrente e il salvataggio in cronologia la aggiorna.
+    if (conversazioneCorrente.current?.scope !== scopeRichiesto || scopeChat !== scopeRichiesto)
+      conversazioneCorrente.current = { id: crypto.randomUUID(), scope: scopeRichiesto };
     const bollaUtente: Bolla = {
       id: prossimoId.current++,
       chi: "utente",
@@ -515,6 +661,7 @@ export function AuroraPanel({
           ? { testo: contestoDaInviare.testo, sezione: contestoDaInviare.sezione }
           : null,
         sezione,
+        risposteBrevi,
         richiesta.signal,
       );
       if (!richiesta.attiva() || scopeConversazioneRef.current !== scopeRichiesto) return;
@@ -729,7 +876,9 @@ export function AuroraPanel({
     try {
       const attivi = await riconciliaMandati();
       if (!richiesta.attiva() || scopeMandatoRef.current !== scopeRichiesto) return;
-      if (attivi.length > 0) {
+      // I mandati di sola lettura del consenso pieno non bloccano: vengono revocati
+      // all'avvio del controllo, prima di emettere il mandato nuovo.
+      if (attivi.some((grant) => !mandatoSoloLettura(grant))) {
         setErroreControllo("Revoca tutti i mandati attivi prima di iniziare un nuovo controllo.");
         return;
       }
@@ -770,10 +919,22 @@ export function AuroraPanel({
     try {
       const attiviPrima = await riconciliaMandati();
       if (!richiestaAvvio.attiva() || scopeMandatoRef.current !== scopeAvvio) return;
-      if (attiviPrima.length > 0) {
+      if (attiviPrima.some((grant) => !mandatoSoloLettura(grant))) {
         setErroreControllo("Esistono già mandati attivi: revocali prima di emetterne uno nuovo.");
         return;
       }
+      // I mandati di sola lettura del consenso pieno vengono chiusi qui: il controllo
+      // parte pulito e il server ne riemetterà uno alla prossima chat, se serve.
+      for (const soloLettura of attiviPrima.filter(mandatoSoloLettura)) {
+        try {
+          await api.aiRevocaGrant(soloLettura.grantId);
+        } catch {
+          setErroreControllo(
+            "Un mandato di lettura automatico non è revocabile in questo momento: riprova.");
+          return;
+        }
+      }
+      if (!richiestaAvvio.attiva() || scopeMandatoRef.current !== scopeAvvio) return;
 
       emissioneTentata = true;
       nuovoMandato = await api.aiEmettiGrant(
@@ -1012,6 +1173,16 @@ export function AuroraPanel({
         <button
           className="au-icona"
           type="button"
+          aria-label="Cronologia delle chat"
+          aria-expanded={cronologiaAperta}
+          title="Cronologia delle chat"
+          onClick={commutaCronologia}
+        >
+          <History size={16} aria-hidden="true" />
+        </button>
+        <button
+          className="au-icona"
+          type="button"
           aria-label="Chiudi Aurora"
           disabled={controlloInCorso}
           onClick={() => void chiudiSicuro()}
@@ -1020,11 +1191,89 @@ export function AuroraPanel({
         </button>
       </header>
 
+      {cronologiaAperta && (
+        <section className="au-cronologia" aria-label="Cronologia delle chat">
+          <button type="button" className="au-cronologia-nuova" onClick={nuovaConversazione}>
+            Nuova chat
+          </button>
+          {conversazioni.length === 0 ? (
+            <p className="au-hint">Nessuna conversazione salvata su questo dispositivo.</p>
+          ) : (
+            <ul>
+              {conversazioni.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    className="au-cronologia-voce"
+                    onClick={() => ripristinaConversazione(c)}
+                  >
+                    <strong>{c.titolo}</strong>
+                    <small>
+                      {new Date(c.aggiornataIl).toLocaleDateString("it-IT", {
+                        day: "2-digit", month: "2-digit", year: "numeric",
+                      })}
+                      {" · "}
+                      {new Date(c.aggiornataIl).toLocaleTimeString("it-IT", {
+                        hour: "2-digit", minute: "2-digit",
+                      })}
+                    </small>
+                  </button>
+                  <button
+                    type="button"
+                    className="au-icona"
+                    aria-label={`Elimina la conversazione «${c.titolo}»`}
+                    onClick={() => eliminaDallaCronologia(c.id)}
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="au-hint">
+            Le chat restano salvate su questo dispositivo finché non le elimini tu.
+          </p>
+        </section>
+      )}
+
       <section className="au-mandato" aria-label="Mandato e controllo governato">
         <div className="au-ambito">
           <span className="au-pill">{sezione}</span>
           {azienda ? <span className="au-pill">{azienda.ragioneSociale}</span> : null}
         </div>
+
+        {consenso?.attivo ? (
+          <div className="au-stato ok">
+            <strong>
+              <Lock size={13} aria-hidden="true" /> Consenso pieno attivo
+            </strong>
+            <span>
+              Aurora legge da sola l’archivio del cliente selezionato, senza chiederti il
+              mandato. Le modifiche restano sempre da confermare con un tocco.
+            </span>
+            <div className="au-azioni">
+              <button
+                className="au-chip stop"
+                type="button"
+                disabled={consensoInCorso}
+                onClick={() => void revocaConsenso()}
+              >
+                Revoca il consenso
+              </button>
+            </div>
+          </div>
+        ) : consenso ? (
+          <div className="au-azioni">
+            <button
+              className="au-chip"
+              type="button"
+              disabled={consensoInCorso}
+              onClick={() => void concediConsenso()}
+            >
+              Dai pieno accesso ad Aurora
+            </button>
+          </div>
+        ) : null}
 
         {!azienda ? (
           <div className="au-stato avviso">
@@ -1352,6 +1601,17 @@ export function AuroraPanel({
 
       <div className="au-composer">
         <div className="au-rapidi" aria-label="Domande rapide">
+          <button
+            type="button"
+            className={risposteBrevi ? "au-brevi au-brevi-attivo" : "au-brevi"}
+            aria-pressed={risposteBrevi}
+            onClick={commutaRisposteBrevi}
+            title={risposteBrevi
+              ? "Aurora risponde in massimo 2-3 frasi. Spegni quando vuoi una spiegazione completa."
+              : "Accendi per risposte corte e dirette, massimo 2-3 frasi."}
+          >
+            {risposteBrevi ? "Risposte brevi: sì" : "Risposte brevi"}
+          </button>
           {suggerimenti.map((s) => (
             <button key={s.etichetta} type="button" disabled={inCorso} onClick={() => invia(s.richiesta)}>
               {s.etichetta}

@@ -73,6 +73,15 @@ export function richiestaPreparazioneMese(
   };
 }
 
+/**
+ * Un mandato di sola lettura — come quello che il server emette da solo col consenso
+ * pieno — non blocca il pannello: non occupa lo slot A3, scade da sé e può essere
+ * revocato prima di emettere il mandato «Prepara il mese».
+ */
+export function mandatoSoloLettura(grant: { operazioni: string[] }): boolean {
+  return grant.operazioni.length === 1 && grant.operazioni[0] === "read";
+}
+
 export function contaStatiCedolini(righe: RigaCedolinoMeseAi[]) {
   return righe.reduce<Record<RigaCedolinoMeseAi["stato"], number>>(
     (totali, riga) => ({ ...totali, [riga.stato]: totali[riga.stato] + 1 }),

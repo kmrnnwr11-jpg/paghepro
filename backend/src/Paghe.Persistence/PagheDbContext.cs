@@ -107,6 +107,9 @@ public class PagheDbContext : DbContext
     public DbSet<AiToolCallEntity> AiToolCalls => Set<AiToolCallEntity>();
     public DbSet<AiPropostaEntity> AiProposte => Set<AiPropostaEntity>();
 
+    // Consenso pieno ad Aurora: auto-mandato di lettura in chat, revocabile dal pannello
+    public DbSet<ConsensoAuroraEntity> ConsensiAurora => Set<ConsensoAuroraEntity>();
+
     // Archivio persone fisiche (rappresentanti, soci): riusate per compilare i moduli ufficiali
     public DbSet<PersonaEntity> Persone => Set<PersonaEntity>();
     public DbSet<ConsumoAiEntity> ConsumiAi => Set<ConsumoAiEntity>();
@@ -806,6 +809,13 @@ public class PagheDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.TenantId, x.Anno, x.Mese }).IsUnique();
+        });
+
+        // --- Consenso pieno ad Aurora (auto-mandato di lettura in chat) ---
+        mb.Entity<ConsensoAuroraEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.UtenteId }).IsUnique();
         });
     }
 }

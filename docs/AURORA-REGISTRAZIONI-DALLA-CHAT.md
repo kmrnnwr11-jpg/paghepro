@@ -1,9 +1,39 @@
 # Aurora registra dalla chat — mappa completa dei tre flussi
 
-Aggiornato al 26 agosto 2026. Richiesta del fondatore: «non voglio la guida, Aurora deve
+Aggiornato al 29 agosto 2026. Richiesta del fondatore: «non voglio la guida, Aurora deve
 agire» — se l'utente chiede di registrare un'azienda o un dipendente dando i dati in chat,
 Aurora prepara la registrazione, l'utente conferma con un tocco, la scheda si apre da sola
 e i dati mancanti sono evidenziati in rosso.
+
+## Consenso pieno (29 agosto 2026, richiesta esplicita del fondatore)
+
+Alla prima apertura la shell propone **«Dai pieno accesso ad Aurora?»**. Se l'utente
+acconsente (`POST /api/ai/consenso`, tabella `ConsensiAurora`, coppia esatta
+tenant+utente, sempre revocabile dal pannello o con `DELETE /api/ai/consenso`):
+
+- a ogni turno di chat **senza lease** con un cliente selezionato, il **server stesso** si
+  procura il mandato di lettura (`AiChatEndpoints.MandatoAutomaticoAsync`): Guidata/S2,
+  finalità `PREPARAZIONE_MESE_PAGHE`, sei risorse in **sola lettura** (Aziende,
+  Dipendenti, Rapporti, Cartellini, Cedolini, PraticheF24), mese corrente, 60 minuti.
+  L'emissione passa dallo **stesso Governor del pannello**: policy, quote, audit,
+  trasparenza e revoca identici. La lease resta sul server (cache di processo, riusata tra
+  i messaggi); il browser non la vede mai.
+- il turno diventa quindi **governato** (runtime A2 con gli strumenti di lettura), e le
+  card di registrazione continuano a funzionare: il riconoscimento deterministico gira in
+  ogni turno.
+- «Non ora» viene ricordato sul dispositivo; la concessione/revoca vive sul server. La
+  revoca del consenso revoca subito anche i mandati automatici ancora attivi.
+- le **scritture non cambiano**: restano il protocollo A3 (proposta firmata + conferma +
+  undo) e le card di registrazione premute dall'utente. Il consenso pieno non abilita
+  alcuna scrittura nuova.
+- nel pannello i mandati di sola lettura automatici non contano come «mandati residui» e
+  non bloccano «Prepara il mese»: vengono revocati automaticamente all'avvio del
+  controllo.
+
+Rispetto a `docs/PIANO-AI-LIBERA-LIMITI-USO.md` questa è una **deroga decisa dal
+fondatore** (29/8/2026) al principio «nessun permesso permanente»: il consenso è
+permanente finché non revocato, ma ogni singolo mandato resta a scadenza, in sola lettura
+e dentro le stesse policy del Governor.
 
 ## Regola architetturale comune (conforme a `docs/PIANO-AI-LIBERA-LIMITI-USO.md`)
 
@@ -17,9 +47,15 @@ e i dati mancanti sono evidenziati in rosso.
 - In chat vale il **checksum**: una P.IVA o un CF formalmente errati (un protocollo, un
   numero citato per caso) non producono card. Il CF a 16 caratteri in una visura di ditta
   individuale è il titolare, non una persona da assumere.
-- Le due letture di sola esistenza (cliente/lavoratore già in archivio) decidono soltanto
-  **cosa riceve la SPA**: il prompt del modello dipende dal solo riconoscimento testuale,
-  quindi nessun bit dell'archivio raggiunge il provider senza mandato.
+- Le due letture di sola esistenza (cliente/lavoratore già in archivio) decidono **cosa
+  riceve la SPA** (card sì/no) e — dal 27 agosto 2026, su richiesta esplicita del
+  fondatore — anche **un singolo bit per entità nelle istruzioni del modello**: «già
+  registrata sì/no», «già assunto sì/no». Prima il modello era cieco sull'esito e doveva
+  rispondere per ipotesi («se la card non compare, significa che…»); ora risponde con
+  certezza e guida il passo giusto. La P.IVA/il CF su cui il bit è calcolato stanno già
+  nel messaggio dell'utente inviato al provider: l'unica informazione d'archivio in più
+  che il provider riceve è quel bit di esistenza. Nessun altro dato d'archivio (importi,
+  anagrafiche, elenchi) raggiunge il provider senza mandato.
 - La SPA **congela il testo d'origine dentro la proposta**: la registrazione funziona anche
   se gli allegati sono stati consumati o la conversazione è cambiata nel frattempo.
 - La **scrittura** è sempre un click dell'utente su una **API ordinaria** già esistente

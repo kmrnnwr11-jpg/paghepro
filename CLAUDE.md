@@ -44,6 +44,48 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Consenso pieno ad Aurora: auto-mandato di lettura in chat (29 agosto 2026)**: richiesta
+  esplicita del fondatore («voglio dare tutti i permessi ad Aurora, un avviso alla prima
+  apertura, l'utente conferma e Aurora ha accesso completo»). Alla prima apertura la shell
+  propone il dialogo «Dai pieno accesso ad Aurora?»; il consenso vive sul server (tabella
+  `ConsensiAurora`, migrazioni `ConsensoPienoAurora` per entrambi i provider — scritte a
+  mano con `[Migration]` sulla classe perché la CLI `dotnet ef` non era disponibile:
+  snapshot aggiornati, prossima migrazione da generare normalmente), endpoint
+  `GET/POST/DELETE /api/ai/consenso`, sempre revocabile dal pannello. Con il consenso
+  attivo e un cliente selezionato la chat **si procura da sola il mandato di lettura**
+  (`MandatoAutomaticoAsync`: Guidata/S2, `PREPARAZIONE_MESE_PAGHE`, sei risorse read-only,
+  mese corrente, 60', stesso Governor/policy/audit del pannello, lease mai esposta al
+  browser, cache di processo con riuso) e il turno diventa governato con gli strumenti di
+  lettura; senza cliente selezionato o a emissione fallita resta la conversazione libera,
+  senza errori. Il riconoscimento deterministico delle card gira ora in **ogni** turno
+  (libero e governato: `IstruzioniCard` separata da `IstruzioniTurnoLibero`). Le
+  **scritture non cambiano**: A3 con proposta+conferma+undo e card premute dall'utente.
+  Nel pannello i mandati read-only automatici non sono «residui» e non bloccano «Prepara
+  il mese» (vengono revocati all'avvio, `mandatoSoloLettura` in `auroraCedolini.ts`); la
+  revoca del consenso revoca subito i mandati automatici. Deroga al piano («nessun
+  permesso permanente») registrata in `docs/AURORA-REGISTRAZIONI-DALLA-CHAT.md`. Test:
+  4 nuovi casi in `AiChatApiTests` (19/19), frontend 69/69, build e lint verdi.
+
+- **Aurora sa se il cliente è già registrato e guida un passo alla volta (27 agosto
+  2026)**: richiesta del fondatore — «Aurora deve capire da sola se l'azienda è
+  registrata, fare quello che riesce senza mille domande e rispondere solo con quello che
+  manca». L'esito delle due letture deterministiche di sola esistenza del turno libero ora
+  entra **anche nelle istruzioni del modello** come singolo bit per entità («già
+  registrata sì/no», «già assunto sì/no», più «cliente selezionato sì/no»): Aurora smette
+  di rispondere per ipotesi («se la card non compare, significa che…») e dice il passo
+  giusto con certezza — cliente nuovo → premi la card; cliente già in archivio → scegli da
+  «Scegli il cliente» e avanti col dipendente; dipendente senza cliente selezionato → i
+  due passi in ordine, senza altre domande; già assunto → non si ripropone. Le istruzioni
+  del turno libero impongono risposte da 2-3 frasi senza riepiloghi (i campi obbligatori
+  mancanti restano segnalati in rosso dalla scheda, il modello non li inventa). Deroga di
+  governance decisa dal fondatore e registrata in
+  `docs/AURORA-REGISTRAZIONI-DALLA-CHAT.md`: l'unico dato d'archivio in più che raggiunge
+  il provider è quel bit di esistenza, calcolato su P.IVA/CF già presenti nel messaggio
+  dell'utente. In parallelo la SPA ha il pulsante **«Risposte brevi»** (preferenza per
+  browser, `RispostaBreve` nella richiesta chat): cambia solo lo stile — massimo 2-3
+  frasi — mai permessi o strumenti. Test aggiornati in `AiChatApiTests` (15 casi, incluse
+  le asserzioni sul prompt per «già registrata», «già assunto», due passi e stile).
+
 - **Aurora registra aziende e dipendenti dalla chat (27 agosto 2026)**: nel turno libero
   (senza lease) i **parser deterministici** riconoscono nei messaggi dell'utente i dati di
   un'azienda (`VisuraCameraleParser`) o di un lavoratore (`ImportazioneUnilavPdf`) e la
@@ -60,10 +102,10 @@ dotnet run --project src/Paghe.Demo -c Release
   obbligatorio in chat, il CF del titolare in una visura non diventa un'assunzione, il
   dedupe «già in archivio/già assunto» copre anche i tempi determinati con fine futura, e
   la SPA congela il testo d'origine dentro la proposta. **Precisazione governance**: il
-  turno libero ora esegue due letture deterministiche di sola esistenza (cliente e
-  lavoratore, tenant-isolate) il cui esito arriva soltanto alla SPA — il prompt del
-  modello dipende dal solo riconoscimento testuale, quindi al provider non arriva alcun
-  bit d'archivio. Il documento allegato via `/api/ai/documento` restituisce la stessa
+  turno libero esegue due letture deterministiche di sola esistenza (cliente e
+  lavoratore, tenant-isolate); in origine l'esito arrivava soltanto alla SPA, dal 27/8
+  entra anche nel prompt come singolo bit di esistenza (vedi la voce sopra — deroga
+  decisa dal fondatore). Il documento allegato via `/api/ai/documento` restituisce la stessa
   proposta tipizzata. Presenze/assenze da chat restano sul protocollo A3
   (`compila_presenze`, gate fail-closed): mappa completa dei tre flussi in
   `docs/AURORA-REGISTRAZIONI-DALLA-CHAT.md`. Verifiche: backend completo verde (19 test

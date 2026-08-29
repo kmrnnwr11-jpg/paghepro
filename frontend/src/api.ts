@@ -1305,6 +1305,12 @@ export const api = {
 
   aiChatStato: (signal?: AbortSignal) => req<StatoChatAi>("/api/ai/chat/stato", { signal }),
 
+  // Consenso pieno ad Aurora: con il consenso attivo la chat si procura da sola il mandato
+  // di lettura sul cliente selezionato (il server emette e revoca; il browser non vede lease).
+  aiConsenso: (signal?: AbortSignal) => req<ConsensoAuroraAi>("/api/ai/consenso", { signal }),
+  aiConcediConsenso: () => req<ConsensoAuroraAi>("/api/ai/consenso", { method: "POST" }),
+  aiRevocaConsenso: () => req<ConsensoAuroraAi>("/api/ai/consenso", { method: "DELETE" }),
+
   aiChat: (
     messaggio: string,
     storia: MessaggioChatAi[],
@@ -1312,6 +1318,7 @@ export const api = {
     aziendaId?: string | null,
     contestoSelezionato?: ContestoSelezionatoAi | null,
     sezioneUi?: string | null,
+    rispostaBreve?: boolean,
     signal?: AbortSignal,
   ) =>
     req<RispostaChatAi>("/api/ai/chat", {
@@ -1324,6 +1331,7 @@ export const api = {
         aziendaId: aziendaId ?? null,
         contestoSelezionato: contestoSelezionato ?? null,
         sezioneUi: sezioneUi ?? null,
+        rispostaBreve: rispostaBreve ?? false,
       }),
     }),
 
@@ -1622,6 +1630,12 @@ export interface StatoChatAi {
   providerSecondarioAttivo: boolean;
   messaggioProviderSecondario: string | null;
   messaggio: string | null;
+}
+
+export interface ConsensoAuroraAi {
+  attivo: boolean;
+  concessoUtc?: string | null;
+  giaDeciso?: boolean;
 }
 
 export interface Persona {

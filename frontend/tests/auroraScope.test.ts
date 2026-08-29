@@ -46,14 +46,18 @@ test("la chiave dello scope cambia anche quando cambia soltanto il periodo", () 
   );
 });
 
-test("la conversazione cambia scope quando cambia soltanto la sezione", () => {
-  assert.notEqual(
-    chiaveScopeConversazioneAurora("azienda-a", "2026-08", "Cedolini"),
-    chiaveScopeConversazioneAurora("azienda-a", "2026-08", "Presenze"),
-  );
+test("la conversazione resta la stessa tra le schermate e cambia con cliente o mese", () => {
   assert.equal(
+    chiaveScopeConversazioneAurora("azienda-a", "2026-08"),
     chiaveScopeAurora("azienda-a", "2026-08"),
-    chiaveScopeAurora("azienda-a", "2026-08"),
+  );
+  assert.notEqual(
+    chiaveScopeConversazioneAurora("azienda-a", "2026-08"),
+    chiaveScopeConversazioneAurora("azienda-b", "2026-08"),
+  );
+  assert.notEqual(
+    chiaveScopeConversazioneAurora("azienda-a", "2026-08"),
+    chiaveScopeConversazioneAurora("azienda-a", "2026-09"),
   );
 });
 

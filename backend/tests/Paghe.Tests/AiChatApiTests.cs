@@ -143,6 +143,83 @@ public sealed class AiChatApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Chat_ConRisposteBrevi_AggiungeLaRegolaDiStileAlleIstruzioni()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+
+        // Pulsante spento (o richiesta senza il campo): resta la regola generica.
+        using (var senzaFlag = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Cos'è il TFR?",
+            storia = Array.Empty<object>(),
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, senzaFlag.StatusCode);
+            using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+            string istruzioni = inviato.RootElement
+                .GetProperty("messages")[0].GetProperty("content").GetString()!;
+            Assert.DoesNotContain("RISPOSTE BREVI attive", istruzioni);
+            Assert.Contains("Risposte brevi: poche righe", istruzioni);
+        }
+
+        // Pulsante acceso: il modello riceve la regola stretta delle 2-3 frasi.
+        using (var conFlag = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Cos'è il TFR?",
+            storia = Array.Empty<object>(),
+            rispostaBreve = true,
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, conFlag.StatusCode);
+            using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+            string istruzioni = inviato.RootElement
+                .GetProperty("messages")[0].GetProperty("content").GetString()!;
+            Assert.Contains("RISPOSTE BREVI attive", istruzioni);
+            Assert.Contains("2-3 frasi", istruzioni);
+        }
+    }
+
+    [Fact]
+    public async Task Chat_Istruzioni_ConMappaProdottoRagionamentoEContestoCliente()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+
+        // Senza cliente selezionato: mappa del software, regola di ragionamento e
+        // avviso che molte operazioni richiedono prima la scelta del cliente.
+        using (var senzaCliente = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Come faccio una busta paga?",
+            storia = Array.Empty<object>(),
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, senzaCliente.StatusCode);
+            using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+            string istruzioni = inviato.RootElement
+                .GetProperty("messages")[0].GetProperty("content").GetString()!;
+            Assert.Contains("Mappa di PaghePro", istruzioni);
+            Assert.Contains("ragiona in silenzio", istruzioni);
+            Assert.Contains("Nessun cliente selezionato", istruzioni);
+        }
+
+        // Con un cliente selezionato dal browser cambia solo la riga di contesto:
+        // è stato dell'interfaccia, nessun dato del cliente arriva al modello.
+        using (var conCliente = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Come faccio una busta paga?",
+            storia = Array.Empty<object>(),
+            aziendaId = Guid.NewGuid(),
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, conCliente.StatusCode);
+            using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+            string istruzioni = inviato.RootElement
+                .GetProperty("messages")[0].GetProperty("content").GetString()!;
+            Assert.Contains("ha già selezionato un cliente", istruzioni);
+            Assert.DoesNotContain("Nessun cliente selezionato", istruzioni);
+        }
+    }
+
+    [Fact]
     public async Task Chat_SenzaLease_ConDatiAziendaNeiMessaggi_AllegaLaCardRegistraCliente()
     {
         using var client = await NuovoClientAutenticatoAsync();
@@ -171,10 +248,15 @@ public sealed class AiChatApiTests : IDisposable
         Assert.Equal(1, _providerFinto.Chiamate);
         using (var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!))
         {
-            // Ancora nessuno strumento: il modello sa soltanto che la card esiste.
+            // Ancora nessuno strumento: il modello sa che la card esiste e che il server
+            // ha già verificato che il cliente non è in archivio — niente risposte del
+            // tipo «se la card non compare, significa che…».
             Assert.False(inviato.RootElement.TryGetProperty("tools", out _));
-            Assert.Contains("Registra questo cliente",
-                inviato.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
+            string istruzioni = inviato.RootElement
+                .GetProperty("messages")[0].GetProperty("content").GetString()!;
+            Assert.Contains("Registra questo cliente", istruzioni);
+            Assert.Contains("NON risulta ancora in archivio", istruzioni);
+            Assert.DoesNotContain("Se la card non compare", istruzioni);
         }
 
         using (var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync()))
@@ -218,9 +300,13 @@ public sealed class AiChatApiTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
         using (var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!))
         {
+            // Nessun cliente selezionato: il modello sa che il pulsante della card resta
+            // spento e guida i due passi (prima il cliente, poi il dipendente).
             Assert.False(inviato.RootElement.TryGetProperty("tools", out _));
-            Assert.Contains("Registra questo dipendente",
-                inviato.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
+            string istruzioni = inviato.RootElement
+                .GetProperty("messages")[0].GetProperty("content").GetString()!;
+            Assert.Contains("Registra questo dipendente", istruzioni);
+            Assert.Contains("pulsante resta spento", istruzioni);
         }
 
         using (var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync()))
@@ -292,6 +378,14 @@ public sealed class AiChatApiTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
         using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
         Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("lavoratore").ValueKind);
+
+        // Il modello riceve il bit «già assunto»: risponde con certezza, senza riproporre
+        // l'assunzione né ipotizzare sul perché la card non c'è.
+        using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+        string istruzioni = inviato.RootElement
+            .GetProperty("messages")[0].GetProperty("content").GetString()!;
+        Assert.Contains("risulta GIÀ assunto", istruzioni);
+        Assert.DoesNotContain("Registra questo dipendente", istruzioni);
     }
 
     [Fact]
@@ -332,6 +426,14 @@ public sealed class AiChatApiTests : IDisposable
         var lavoratore = ricevuto.RootElement.GetProperty("lavoratore");
         Assert.Equal(JsonValueKind.Object, lavoratore.ValueKind);
         Assert.Equal("RSSMRA85M01H501Q", lavoratore.GetProperty("codiceFiscale").GetString());
+
+        // Scenario completo azienda nuova + dipendente nuovo senza cliente selezionato:
+        // il modello guida i due passi in un colpo solo, senza altre domande.
+        using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+        string istruzioni = inviato.RootElement
+            .GetProperty("messages")[0].GetProperty("content").GetString()!;
+        Assert.Contains("Registra questo cliente", istruzioni);
+        Assert.Contains("Guida i due passi in ordine", istruzioni);
     }
 
     [Fact]
@@ -422,6 +524,242 @@ public sealed class AiChatApiTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
         using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
         Assert.Equal(JsonValueKind.Null, ricevuto.RootElement.GetProperty("azienda").ValueKind);
+
+        // Il modello riceve il bit «già registrata»: dice di scegliere il cliente e va al
+        // passo successivo, invece di ipotizzare sul perché la card non c'è.
+        using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+        string istruzioni = inviato.RootElement
+            .GetProperty("messages")[0].GetProperty("content").GetString()!;
+        Assert.Contains("GIÀ registrata in archivio", istruzioni);
+        Assert.Contains("Scegli il cliente", istruzioni);
+        Assert.DoesNotContain("Registra questo cliente", istruzioni);
+    }
+
+    [Fact]
+    public async Task Chat_SenzaLease_LavoratoreNuovoConClienteSelezionato_GuidaLaCardConCertezza()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var aziendaId = Guid.NewGuid();
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Azienda senza quel dipendente",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Assumi:\nNome: Mario\nCognome: Rossi\n"
+                + "Codice fiscale: RSSMRA85M01H501Q\nData assunzione: 01/09/2026",
+            storia = Array.Empty<object>(),
+            aziendaId,
+            contestoSelezionato = (object?)null,
+            sezioneUi = "Dipendenti",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        Assert.Equal(JsonValueKind.Object,
+            ricevuto.RootElement.GetProperty("lavoratore").ValueKind);
+
+        // Cliente selezionato e lavoratore non ancora assunto: il modello sa che la card è
+        // pronta da premere, senza il passaggio intermedio della scelta del cliente.
+        using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+        string istruzioni = inviato.RootElement
+            .GetProperty("messages")[0].GetProperty("content").GetString()!;
+        Assert.Contains("Registra questo dipendente", istruzioni);
+        Assert.Contains("non ancora in archivio per il", istruzioni);
+        Assert.DoesNotContain("pulsante resta spento", istruzioni);
+    }
+
+    [Fact]
+    public async Task Consenso_ConcessioneStatoERevoca()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+
+        // Mai deciso: l'avviso della prima apertura può comparire.
+        using (var stato = await client.GetAsync("/api/ai/consenso"))
+        {
+            Assert.Equal(HttpStatusCode.OK, stato.StatusCode);
+            using var corpo = JsonDocument.Parse(await stato.Content.ReadAsStringAsync());
+            Assert.False(corpo.RootElement.GetProperty("attivo").GetBoolean());
+            Assert.False(corpo.RootElement.GetProperty("giaDeciso").GetBoolean());
+        }
+
+        using (var concessione = await client.PostAsync("/api/ai/consenso", null))
+        {
+            Assert.Equal(HttpStatusCode.OK, concessione.StatusCode);
+            using var corpo = JsonDocument.Parse(await concessione.Content.ReadAsStringAsync());
+            Assert.True(corpo.RootElement.GetProperty("attivo").GetBoolean());
+        }
+
+        using (var revoca = await client.DeleteAsync("/api/ai/consenso"))
+            Assert.Equal(HttpStatusCode.OK, revoca.StatusCode);
+
+        // Dopo la revoca: spento ma «già deciso», quindi l'avviso non ricompare.
+        using (var stato = await client.GetAsync("/api/ai/consenso"))
+        {
+            using var corpo = JsonDocument.Parse(await stato.Content.ReadAsStringAsync());
+            Assert.False(corpo.RootElement.GetProperty("attivo").GetBoolean());
+            Assert.True(corpo.RootElement.GetProperty("giaDeciso").GetBoolean());
+        }
+    }
+
+    [Fact]
+    public async Task Chat_ConConsensoEClienteSelezionato_SiProcuraDaSolaIlMandatoELoRiusa()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var aziendaId = Guid.NewGuid();
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Azienda con consenso pieno",
+            });
+            await db.SaveChangesAsync();
+        }
+        using (var concessione = await client.PostAsync("/api/ai/consenso", null))
+            Assert.Equal(HttpStatusCode.OK, concessione.StatusCode);
+
+        // Primo turno: nessuna lease dal browser, ma il server emette da solo il mandato
+        // di lettura e il modello riceve gli strumenti del runtime governato.
+        using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Com'è messo il mese?",
+            storia = Array.Empty<object>(),
+            aziendaId,
+            contestoSelezionato = (object?)null,
+            sezioneUi = "Cedolini",
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+            using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+            Assert.True(inviato.RootElement.TryGetProperty("tools", out var tools));
+            Assert.True(tools.GetArrayLength() > 0);
+        }
+
+        // Secondo turno: la lease emessa al primo giro viene riusata, niente doppio grant.
+        using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "E i cartellini?",
+            storia = Array.Empty<object>(),
+            aziendaId,
+            contestoSelezionato = (object?)null,
+            sezioneUi = "Cedolini",
+        }))
+            Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+
+        await using (var verifica = _factory.Services.CreateAsyncScope())
+        {
+            var dbVerifica = verifica.ServiceProvider.GetRequiredService<PagheDbContext>();
+            var grants = await dbVerifica.AiScopeGrants.AsNoTracking()
+                .Where(g => g.TenantId == tenant).ToListAsync();
+            Assert.Single(grants);
+            Assert.Equal("read", grants[0].OperazioniAmmesse);
+            Assert.Equal(aziendaId, grants[0].AziendaId);
+        }
+
+        // La revoca del consenso non aspetta la scadenza: il mandato automatico muore subito.
+        using (var revoca = await client.DeleteAsync("/api/ai/consenso"))
+            Assert.Equal(HttpStatusCode.OK, revoca.StatusCode);
+        await using (var dopo = _factory.Services.CreateAsyncScope())
+        {
+            var dbDopo = dopo.ServiceProvider.GetRequiredService<PagheDbContext>();
+            var stato = await dbDopo.AiScopeGrants.AsNoTracking()
+                .Where(g => g.TenantId == tenant)
+                .Select(g => g.Stato)
+                .SingleAsync();
+            Assert.NotEqual("Attivo", stato);
+        }
+    }
+
+    [Fact]
+    public async Task Chat_ConConsensoSenzaClienteSelezionato_RestaConversazioneLibera()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        using (var concessione = await client.PostAsync("/api/ai/consenso", null))
+            Assert.Equal(HttpStatusCode.OK, concessione.StatusCode);
+
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Cos'è il TFR?",
+            storia = Array.Empty<object>(),
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        });
+
+        // Senza cliente selezionato non esiste uno scope da mandato: niente strumenti e
+        // nessun grant emesso.
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+        Assert.False(inviato.RootElement.TryGetProperty("tools", out _));
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+        Assert.Empty(await db.AiScopeGrants.AsNoTracking()
+            .Where(g => g.TenantId == _tenantCorrente).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Chat_ConConsenso_LeCardDiRegistrazioneRestanoAncheNelTurnoGovernato()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var aziendaId = Guid.NewGuid();
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Cliente corrente",
+            });
+            await db.SaveChangesAsync();
+        }
+        using (var concessione = await client.PostAsync("/api/ai/consenso", null))
+            Assert.Equal(HttpStatusCode.OK, concessione.StatusCode);
+
+        // Turno governato dall'auto-mandato, ma il messaggio contiene un'ALTRA azienda:
+        // il riconoscimento deterministico gira comunque e la card viene allegata.
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = """
+                Registra anche questa azienda:
+                Denominazione: JOBTIME SRLS
+                Partita IVA: 12345670017
+                Sede legale: VIA FRANCESCO BARACCA 19 - 43036 FIDENZA (PR)
+                """,
+            storia = Array.Empty<object>(),
+            aziendaId,
+            contestoSelezionato = (object?)null,
+            sezioneUi = "Aziende",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using (var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!))
+        {
+            Assert.True(inviato.RootElement.TryGetProperty("tools", out _));
+            Assert.Contains("Registra questo cliente",
+                inviato.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
+        }
+        using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        var azienda = ricevuto.RootElement.GetProperty("azienda");
+        Assert.Equal(JsonValueKind.Object, azienda.ValueKind);
+        Assert.Equal("JOBTIME SRLS", azienda.GetProperty("ragioneSociale").GetString());
     }
 
     [Fact]

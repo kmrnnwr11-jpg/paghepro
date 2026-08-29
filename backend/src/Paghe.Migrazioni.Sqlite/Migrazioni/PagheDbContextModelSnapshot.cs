@@ -1641,6 +1641,32 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.ToTable("ConfigurazioniSdi");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.ConsensoAuroraEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ConcessoUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RevocatoUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UtenteId")
+                        .IsUnique();
+
+                    b.ToTable("ConsensiAurora");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.ConsumoAiEntity", b =>
                 {
                     b.Property<Guid>("Id")

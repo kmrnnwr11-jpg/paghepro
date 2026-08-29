@@ -4,12 +4,12 @@ export function chiaveScopeAurora(aziendaId: string | null | undefined, periodo:
   return `${aziendaId ?? "nessuna-azienda"}:${periodo}`;
 }
 
+/** La conversazione segue cliente e mese, non la schermata: cambiare pagina non la cancella. */
 export function chiaveScopeConversazioneAurora(
   aziendaId: string | null | undefined,
   periodo: string,
-  sezione: string,
 ): string {
-  return `${chiaveScopeAurora(aziendaId, periodo)}:${sezione}`;
+  return chiaveScopeAurora(aziendaId, periodo);
 }
 
 export function mandatoPerScope(

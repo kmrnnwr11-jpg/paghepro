@@ -5,6 +5,7 @@ import {
   DIMENSIONE_LOTTO_CEDOLINI_AURORA,
   contaStatiCedolini,
   LETTURE_PREPARAZIONE_MESE,
+  mandatoSoloLettura,
   richiestaControlloCedolini,
   richiestaPreparazioneMese,
   stessoAmbitoControlloCedolini,
@@ -91,4 +92,13 @@ test("il mandato Prepara il mese chiede permessi espliciti, mai il prodotto cart
   assert.ok(permessi.includes("Cedolini|apply_reversible"));
   assert.equal(permessi.filter((p) => p.endsWith("|draft") || p.endsWith("|apply_reversible")).length, 4);
   assert.equal(permessi.length, LETTURE_PREPARAZIONE_MESE.length + 4);
+});
+
+test("solo un mandato in pura lettura non blocca il pannello", () => {
+  // Il mandato automatico del consenso pieno è read-only: non è un residuo da segnalare.
+  assert.equal(mandatoSoloLettura({ operazioni: ["read"] }), true);
+  // Il mandato «Prepara il mese» (A3) e qualunque mandato con scritture bloccano.
+  assert.equal(mandatoSoloLettura({ operazioni: ["read", "draft", "apply_reversible"] }), false);
+  assert.equal(mandatoSoloLettura({ operazioni: ["draft"] }), false);
+  assert.equal(mandatoSoloLettura({ operazioni: [] }), false);
 });

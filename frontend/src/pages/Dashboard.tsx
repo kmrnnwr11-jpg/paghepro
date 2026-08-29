@@ -113,6 +113,10 @@ import { AuroraPanel } from "../Aurora";
 import { apriLinkEsterno } from "../mobile/piattaforma";
 
 
+// «Non ora» sull'avviso del consenso pieno: ricordato sul dispositivo, per non riproporlo
+// a ogni accesso. La concessione vera vive sul server (tabella ConsensiAurora).
+const CHIAVE_CONSENSO_RINVIATO = "aurora_consenso_rinviato";
+
 const sectionTitle: Record<SectionKey, string> = {
   dashboard: "Home studio",
   aziende: "Aziende",
@@ -211,6 +215,10 @@ export function Dashboard() {
   // Azienda appena registrata dalla chat di Aurora: la pagina Aziende ne apre la scheda
   // con i campi mancanti evidenziati in rosso, poi azzera la richiesta.
   const [aziendaDaCompletareId, setAziendaDaCompletareId] = useState<string | null>(null);
+  // Avviso della prima apertura: propone il consenso pieno ad Aurora. Compare una volta
+  // sola per account («Non ora» viene ricordato sul dispositivo, la scelta sul server).
+  const [consensoDialogo, setConsensoDialogo] = useState(false);
+  const [consensoInvio, setConsensoInvio] = useState(false);
   const [strumentiRecenti, setStrumentiRecenti] = useState<StrumentoRecente[]>(leggiStrumentiRecenti);
   const aziendeRef = useRef<Azienda[]>([]);
   const contestoCatturato = useRef<ContestoAurora | null>(null);
@@ -220,6 +228,35 @@ export function Dashboard() {
     setRapportoSel(rapportoId);
     setActive("dipendente");
     window.location.hash = "dipendente";
+  };
+
+  useEffect(() => {
+    let vivo = true;
+    if (localStorage.getItem(CHIAVE_CONSENSO_RINVIATO) === "1") return;
+    api.aiConsenso()
+      .then((stato) => {
+        if (vivo && !stato.giaDeciso) setConsensoDialogo(true);
+      })
+      .catch(() => { /* stato non leggibile: nessun avviso, si riprova al prossimo avvio */ });
+    return () => { vivo = false; };
+  }, []);
+
+  const concediConsensoPieno = async () => {
+    if (consensoInvio) return;
+    setConsensoInvio(true);
+    try {
+      await api.aiConcediConsenso();
+      setConsensoDialogo(false);
+    } catch {
+      // Consenso non salvato: il dialogo resta aperto e si può riprovare.
+    } finally {
+      setConsensoInvio(false);
+    }
+  };
+
+  const rinviaConsenso = () => {
+    localStorage.setItem(CHIAVE_CONSENSO_RINVIATO, "1");
+    setConsensoDialogo(false);
   };
 
   useEffect(() => {
@@ -497,6 +534,37 @@ export function Dashboard() {
           )}
         </main>
       </div>
+
+      {consensoDialogo && (
+        <div className="consenso-aurora-overlay" role="dialog" aria-modal="true"
+          aria-labelledby="consenso-aurora-titolo">
+          <div className="consenso-aurora glass-panel">
+            <strong id="consenso-aurora-titolo">
+              <Sparkles size={17} aria-hidden="true" /> Dai pieno accesso ad Aurora?
+            </strong>
+            <p>
+              Con il tuo consenso Aurora legge da sola l’archivio del cliente selezionato
+              (dipendenti, presenze, cedolini, F24) mentre chatti: niente più mandati da
+              preparare a mano. Ogni lettura resta registrata e con limiti.
+            </p>
+            <p>
+              Le <b>modifiche</b> (presenze, buste paga) restano sempre da confermare con
+              un tocco sulla card, e puoi <b>revocare il consenso</b> in ogni momento dal
+              pannello Aurora.
+            </p>
+            <div className="consenso-aurora-azioni">
+              <button className="btn primary" type="button" disabled={consensoInvio}
+                onClick={() => void concediConsensoPieno()}>
+                {consensoInvio ? "Un momento…" : "Do il pieno accesso"}
+              </button>
+              <button className="btn" type="button" disabled={consensoInvio}
+                onClick={rinviaConsenso}>
+                Non ora
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {auroraAperta && (
         <AuroraPanel

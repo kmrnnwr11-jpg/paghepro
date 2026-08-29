@@ -54,6 +54,12 @@ public sealed record SostitutoCu
     public string? Email { get; init; }
     /// <summary>Codice attività ATECO.</summary>
     public string? CodiceAttivita { get; init; }
+
+    // Rappresentante firmatario della comunicazione (record B del file telematico):
+    // obbligatorio quando il sostituto non è una persona fisica.
+    public string? RappresentanteCodiceFiscale { get; init; }
+    public string? RappresentanteCognome { get; init; }
+    public string? RappresentanteNome { get; init; }
 }
 
 /// <summary>Dipendente / percettore delle somme (riquadro DATI ANAGRAFICI).</summary>

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Persistence;
 using Paghe.Persistence.Ai;
@@ -37,10 +39,16 @@ public sealed record RichiestaAzioneChatAi(
 /// <summary>Risposta di un turno: testo, storia aggiornata e l'eventuale proposta da confermare.
 /// <c>Azienda</c> è l'anagrafica d'impresa riconosciuta in modo deterministico nei messaggi
 /// dell'utente: la SPA la mostra come card «Registra questo cliente», la scrittura resta un
-/// click dell'utente sulla API ordinaria.</summary>
+/// click dell'utente sulla API ordinaria. <c>ApriSezione</c> e <c>SelezionaCliente</c> sono
+/// le azioni d'interfaccia chieste dal modello (solo col consenso pieno): il server le ha
+/// già validate contro la whitelist delle schermate e l'archivio del tenant.</summary>
 public sealed record RispostaChatEndpoint(
     string Testo, List<MessaggioChatAi> Storia, PropostaAzioneAurora? Azione, bool Ok,
-    AziendaRiconosciutaAi? Azienda = null, LavoratoreRiconosciutoAi? Lavoratore = null);
+    AziendaRiconosciutaAi? Azienda = null, LavoratoreRiconosciutoAi? Lavoratore = null,
+    string? ApriSezione = null, AziendaSelezionataAi? SelezionaCliente = null);
+
+/// <summary>Cliente che Aurora seleziona nella barra in alto su richiesta dell'utente.</summary>
+public sealed record AziendaSelezionataAi(Guid Id, string RagioneSociale);
 
 /// <summary>Conferma di una proposta: il browser rimanda soltanto il token firmato.</summary>
 public sealed record RichiestaConfermaAurora(string? Token);
@@ -164,6 +172,27 @@ public static class AiChatEndpoints
                 lavoratoreRiconosciuto = null;
             }
 
+            // Col consenso pieno il modello riceve anche l'archivio clienti (nomi, comune e
+            // id, dal server) e può agire sull'interfaccia con [[APRI:…]] / [[CLIENTE:…]]:
+            // il server valida e esegue, il modello propone soltanto.
+            bool consensoAttivo = await AiConsensoEndpoints.ConsensoAttivoAsync(
+                db, tenantId, utenteId, ct);
+            string? archivioClienti = null;
+            if (consensoAttivo)
+            {
+                int totaleClienti = await db.Aziende.AsNoTracking()
+                    .CountAsync(a => a.TenantId == tenantId, ct);
+                var clienti = await db.Aziende.AsNoTracking()
+                    .Where(a => a.TenantId == tenantId)
+                    .OrderBy(a => a.RagioneSociale)
+                    .Take(MassimoClientiNelContesto)
+                    .Select(a => new { a.Id, a.RagioneSociale, a.Comune })
+                    .ToListAsync(ct);
+                archivioClienti = FormattaArchivioClienti(
+                    [.. clienti.Select(c => (c.Id, c.RagioneSociale, c.Comune))],
+                    totaleClienti, richiesta.AziendaId);
+            }
+
             // Il mandato del turno: quello esplicito del pannello oppure — con il consenso
             // pieno concesso dall'utente — un mandato di sola lettura emesso QUI dal server
             // sul cliente selezionato (Guidata/S2, mese corrente). L'emissione passa dallo
@@ -183,14 +212,29 @@ public static class AiChatEndpoints
                         selezione is null ? storiaRipulita : [], null, false));
                 manifest = risolto;
             }
-            else if (richiesta.AziendaId is Guid aziendaConsenso
-                && await AiConsensoEndpoints.ConsensoAttivoAsync(db, tenantId, utenteId, ct))
+            else if (richiesta.AziendaId is Guid aziendaConsenso && consensoAttivo)
             {
                 var automatico = await MandatoAutomaticoAsync(
                     governor, tenantId, utenteId, aziendaConsenso, RuoloCorrente(user), ct);
                 if (automatico is not null)
                     (lease, manifest) = automatico.Value;
                 // Emissione non riuscita: si prosegue in conversazione libera, senza errore.
+            }
+
+            // Rifinitura comune dei due turni: estrae le azioni d'interfaccia proposte dal
+            // modello (eseguite solo col consenso pieno e solo dopo la validazione qui),
+            // toglie i marcatori dal testo e risolve il cliente da selezionare sul tenant.
+            async Task<(string Testo, string? ApriSezione, AziendaSelezionataAi? Cliente)>
+                RifinisciRispostaAsync(string testoGrezzo)
+            {
+                var (pulito, apriSezione, clienteId) = EstraiAzioniUi(testoGrezzo, consensoAttivo);
+                AziendaSelezionataAi? cliente = null;
+                if (clienteId is Guid idCliente)
+                    cliente = await db.Aziende.AsNoTracking()
+                        .Where(a => a.TenantId == tenantId && a.Id == idCliente)
+                        .Select(a => new AziendaSelezionataAi(a.Id, a.RagioneSociale))
+                        .SingleOrDefaultAsync(ct);
+                return (pulito, apriSezione, cliente);
             }
 
             if (manifest is null)
@@ -216,7 +260,9 @@ public static class AiChatEndpoints
                             cardDipendente: lavoratoreRiconosciuto is not null,
                             dipendenteGiaAssunto: dipendenteGiaAssunto,
                             clienteSelezionato: richiesta.AziendaId is not null,
-                            rispostaBreve: richiesta.RispostaBreve),
+                            rispostaBreve: richiesta.RispostaBreve,
+                            archivioClienti: archivioClienti,
+                            azioniUi: consensoAttivo),
                     },
                 };
                 if (selezione is null)
@@ -229,13 +275,15 @@ public static class AiChatEndpoints
                 try
                 {
                     var risposta = await chat.ParlaAsync(conversazione, [], ct);
-                    string testo = risposta.Testo ?? "";
+                    var (testo, apriSezione, selezionaCliente) =
+                        await RifinisciRispostaAsync(risposta.Testo ?? "");
                     return Results.Ok(new RispostaChatEndpoint(
                         testo,
                         selezione is null
                             ? StoriaPubblica(richiesta.Storia, messaggio, testo)
                             : [],
-                        null, true, aziendaRiconosciuta, lavoratoreRiconosciuto));
+                        null, true, aziendaRiconosciuta, lavoratoreRiconosciuto,
+                        apriSezione, selezionaCliente));
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -261,7 +309,9 @@ public static class AiChatEndpoints
                         cardDipendente: lavoratoreRiconosciuto is not null,
                         dipendenteGiaAssunto: dipendenteGiaAssunto,
                         clienteSelezionato: richiesta.AziendaId is not null,
-                        rispostaBreve: richiesta.RispostaBreve),
+                        rispostaBreve: richiesta.RispostaBreve,
+                        archivioClienti: archivioClienti,
+                        azioniUi: consensoAttivo),
                 },
             };
             // La selezione è monouso: in quel turno non ritrasmettiamo la storia precedente,
@@ -282,12 +332,15 @@ public static class AiChatEndpoints
                 var contesto = new ContestoAurora(
                     tenantId, utenteId, RuoloCorrente(user), lease, manifest);
                 var turno = await runtime.TurnoAsync(contesto, messaggi, sezione, ct);
+                var (testoTurno, apriSezione, selezionaCliente) =
+                    await RifinisciRispostaAsync(turno.Testo);
                 return Results.Ok(new RispostaChatEndpoint(
-                    turno.Testo,
+                    testoTurno,
                     selezione is null
-                        ? StoriaPubblica(richiesta.Storia, messaggio, turno.Testo)
+                        ? StoriaPubblica(richiesta.Storia, messaggio, testoTurno)
                         : [],
-                    turno.Proposta, turno.Ok, aziendaRiconosciuta, lavoratoreRiconosciuto));
+                    turno.Proposta, turno.Ok, aziendaRiconosciuta, lavoratoreRiconosciuto,
+                    apriSezione, selezionaCliente));
             }
             catch (InvalidOperationException ex)
             {
@@ -521,7 +574,7 @@ public static class AiChatEndpoints
         string? sezioneUi, bool conStrumenti = false, bool cardCliente = false,
         bool clienteGiaRegistrato = false, bool cardDipendente = false,
         bool dipendenteGiaAssunto = false, bool clienteSelezionato = false,
-        bool rispostaBreve = false)
+        bool rispostaBreve = false, string? archivioClienti = null, bool azioniUi = false)
     {
         string oggi = DateTime.UtcNow.ToString("dddd d MMMM yyyy", new CultureInfo("it-IT"));
         string contesto = sezioneUi is null
@@ -552,7 +605,9 @@ public static class AiChatEndpoints
             : IstruzioniTurnoLibero())
             + IstruzioniCard(
                 cardCliente, clienteGiaRegistrato, cardDipendente,
-                dipendenteGiaAssunto, clienteSelezionato);
+                dipendenteGiaAssunto, clienteSelezionato)
+            + (azioniUi ? "\n" + IstruzioniAzioniUi : "");
+        string archivio = archivioClienti is null ? "" : "\n\n" + archivioClienti;
         string stileRisposta = rispostaBreve
             ? """
               - RISPOSTE BREVI attive (l'utente ha acceso il pulsante «Risposte brevi»):
@@ -568,7 +623,7 @@ public static class AiChatEndpoints
             fatturazione e contabilità che l'utente sta usando. Parli italiano, in modo diretto e
             concreto, come un collega esperto di amministrazione del personale.
 
-            Oggi è {oggi}. {contesto} {cliente}
+            Oggi è {oggi}. {contesto} {cliente}{archivio}
 
             {MappaPaghePro}
 
@@ -760,6 +815,104 @@ public static class AiChatEndpoints
     /// <summary>Le stesse letture del mandato «Prepara il mese» del pannello, in sola lettura.</summary>
     private static readonly string[] LettureConsensoPieno =
         ["Aziende", "Dipendenti", "Rapporti", "Cartellini", "Cedolini", "PraticheF24"];
+
+    /// <summary>Clienti mostrati al modello col consenso pieno; oltre, il taglio è dichiarato.</summary>
+    internal const int MassimoClientiNelContesto = 100;
+
+    /// <summary>
+    /// Blocco «archivio clienti» delle istruzioni (solo col consenso pieno): nomi, comune e
+    /// id, letti dal server in questo turno. Niente P.IVA, importi o altri dati.
+    /// </summary>
+    private static string FormattaArchivioClienti(
+        IReadOnlyList<(Guid Id, string Nome, string? Comune)> clienti, int totale,
+        Guid? selezionatoId)
+    {
+        var testo = new StringBuilder(
+            "Archivio clienti dello studio (fornito dal programma in questo istante: "
+            + "questi sono TUTTI i clienti registrati, non citarne altri):");
+        if (clienti.Count == 0)
+            testo.Append("\n- (nessun cliente ancora registrato)");
+        foreach (var cliente in clienti)
+        {
+            testo.Append("\n- ").Append(cliente.Nome);
+            if (!string.IsNullOrWhiteSpace(cliente.Comune))
+                testo.Append(" — ").Append(cliente.Comune);
+            testo.Append(" — id ").Append(cliente.Id);
+            if (selezionatoId == cliente.Id)
+                testo.Append(" (cliente SELEZIONATO in questo momento)");
+        }
+        if (totale > clienti.Count)
+            testo.Append("\n- … e altri ").Append(totale - clienti.Count)
+                .Append(" clienti non mostrati qui: per l'elenco completo c'è la schermata Aziende.");
+        return testo.ToString();
+    }
+
+    /// <summary>
+    /// Azioni d'interfaccia che il modello può proporre col consenso pieno. Le schermate
+    /// coincidono con le chiavi di navigazione della SPA (pagine operative; niente pagine
+    /// di dettaglio o amministrazione).
+    /// </summary>
+    private static readonly HashSet<string> SezioniApribili = new(StringComparer.Ordinal)
+    {
+        "dashboard", "aziende", "dipendenti", "presenze", "cedolini", "calcolo", "f24",
+        "adempimenti", "scadenzario", "fatture", "pagamenti", "contabilita", "lipe",
+        "iva-annuale", "bilancio", "documenti", "elaborazioni", "fine-anno", "cu",
+        "mod770", "redditi-pf", "irap", "ires", "imu", "intrastat", "pratiche", "moduli",
+        "firma", "posta", "agricoltura",
+    };
+
+    private static readonly Regex MarcatoreApri = new(
+        @"\[\[APRI:([a-z0-9\-]{1,30})\]\]", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex MarcatoreCliente = new(
+        @"\[\[CLIENTE:([0-9a-fA-F\-]{36})\]\]",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Toglie SEMPRE i marcatori d'azione dal testo (mai mostrati all'utente); le azioni
+    /// vengono restituite solo se il consenso pieno è attivo, e il chiamante rivalida il
+    /// cliente sul tenant. Sezione fuori whitelist o id malformato = nessuna azione.
+    /// </summary>
+    internal static (string Testo, string? ApriSezione, Guid? ClienteId) EstraiAzioniUi(
+        string testo, bool consentite)
+    {
+        string? apriSezione = null;
+        Guid? clienteId = null;
+        string pulito = MarcatoreApri.Replace(testo, incontro =>
+        {
+            string sezione = incontro.Groups[1].Value;
+            if (consentite && apriSezione is null && SezioniApribili.Contains(sezione))
+                apriSezione = sezione;
+            return "";
+        });
+        pulito = MarcatoreCliente.Replace(pulito, incontro =>
+        {
+            if (consentite && clienteId is null
+                && Guid.TryParse(incontro.Groups[1].Value, out var id) && id != Guid.Empty)
+                clienteId = id;
+            return "";
+        });
+        pulito = pulito.Trim();
+        while (pulito.Contains("\n\n\n", StringComparison.Ordinal))
+            pulito = pulito.Replace("\n\n\n", "\n\n", StringComparison.Ordinal);
+        return (pulito, apriSezione, clienteId);
+    }
+
+    /// <summary>Istruzioni delle azioni d'interfaccia (solo col consenso pieno).</summary>
+    private const string IstruzioniAzioniUi = """
+        - Puoi AGIRE sull'interfaccia quando l'utente te lo chiede. Per portarlo su una
+          schermata scrivi in fondo alla risposta una riga esatta [[APRI:chiave]] con una
+          di queste chiavi: dashboard, aziende, dipendenti, presenze, cedolini, calcolo,
+          f24, adempimenti, scadenzario, fatture, pagamenti, contabilita, lipe,
+          iva-annuale, bilancio, documenti, elaborazioni, fine-anno, cu, mod770,
+          redditi-pf, irap, ires, imu, intrastat, pratiche, moduli, firma, posta,
+          agricoltura. Per selezionare un cliente scrivi [[CLIENTE:id]] con l'id esatto
+          preso dall'archivio clienti qui sopra; puoi combinare le due azioni nello
+          stesso turno (prima il cliente, poi la schermata). Il programma esegue l'azione
+          e toglie la riga dal testo: accompagnala sempre con una frase breve che dice
+          cosa sta succedendo («Ti porto sulle presenze di …»). Mai usare un'azione che
+          l'utente non ha chiesto, e mai inventare id non presenti nell'archivio.
+        """;
 
     /// <summary>
     /// Lease dei mandati emessi in automatico col consenso pieno, riusate tra un messaggio

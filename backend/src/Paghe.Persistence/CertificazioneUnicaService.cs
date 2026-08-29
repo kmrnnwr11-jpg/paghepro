@@ -26,6 +26,13 @@ public sealed record CuBozza(
     decimal TotaleImponibileInps,
     decimal TotaleNetto);
 
+/// <summary>File telematico CUR26 pronto per il controllo ufficiale, con gli avvisi sui dati mancanti.</summary>
+public sealed record CuTelematico(
+    string NomeFile,
+    string Tracciato,
+    int NumeroCertificazioni,
+    IReadOnlyList<string> Avvisi);
+
 public sealed class CertificazioneUnicaService
 {
     private readonly PagheDbContext _db;
@@ -131,6 +138,9 @@ public sealed class CertificazioneUnicaService
                 Telefono = azienda?.Telefono,
                 Email = azienda?.Email ?? azienda?.Pec,
                 CodiceAttivita = azienda?.CodiceAteco,
+                RappresentanteCodiceFiscale = azienda?.LegaleRappresentanteCodiceFiscale,
+                RappresentanteCognome = azienda?.LegaleRappresentanteCognome,
+                RappresentanteNome = azienda?.LegaleRappresentanteNome,
             },
             Percipiente = new PercipienteCu
             {
@@ -219,6 +229,68 @@ public sealed class CertificazioneUnicaService
             .OrderBy(b => b.Nominativo, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    /// <summary>
+    /// Costruisce il file telematico CUR26 (redditi 2025) con tutte le CU dei dipendenti
+    /// dell'azienda per l'anno: una certificazione per ciascun rapporto con almeno un cedolino
+    /// archiviato. Restituisce anche gli avvisi sui dati d'anagrafica che il tracciato pretende
+    /// e l'archivio non ha (senza inventarli). Null se l'azienda non esiste per il tenant;
+    /// lancia se l'anno non è supportato dal modello o non ha cedolini.
+    /// </summary>
+    public async Task<CuTelematico?> CostruisciTracciatoTelematicoAsync(
+        Guid tenantId, Guid aziendaId, int anno, DateOnly dataFirma, CancellationToken ct = default)
+    {
+        if (anno != TracciatoCuUfficiale.AnnoRedditiSupportato)
+            throw new ArgumentException(
+                $"Il file telematico CU 2026 certifica soltanto i redditi {TracciatoCuUfficiale.AnnoRedditiSupportato}.");
+
+        var azienda = await _db.Aziende
+            .FirstOrDefaultAsync(a => a.Id == aziendaId && a.TenantId == tenantId, ct);
+        if (azienda is null) return null;
+
+        var rapportiConCedolini = await _db.Cedolini.UtilizzabiliAValle()
+            .Where(c => c.TenantId == tenantId && c.AziendaId == aziendaId && c.Anno == anno)
+            .Select(c => c.RapportoLavoroId)
+            .Distinct()
+            .ToListAsync(ct);
+        if (rapportiConCedolini.Count == 0)
+            throw new ArgumentException($"Nessun cedolino archiviato per l'anno {anno}.");
+
+        var certificazioni = new List<CertificazioneUnica>();
+        foreach (var rapportoId in rapportiConCedolini)
+        {
+            var cu = await CostruisciModelloAsync(tenantId, rapportoId, anno, ct);
+            if (cu is not null) certificazioni.Add(cu);
+        }
+        certificazioni = certificazioni
+            .OrderBy(c => c.Percipiente.Cognome, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(c => c.Percipiente.Nome, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var avvisi = new List<string>();
+        foreach (var cu in certificazioni)
+            foreach (var errore in cu.Valida())
+                avvisi.Add($"{cu.Percipiente.Cognome} {cu.Percipiente.Nome}: {errore}".Trim());
+        var sostituto = certificazioni[0].Sostituto;
+        if (string.IsNullOrWhiteSpace(sostituto.RappresentanteCodiceFiscale))
+            avvisi.Add("Manca il legale rappresentante dell'azienda (scheda azienda): il record B "
+                + "del tracciato lo richiede per i sostituti diversi dalle persone fisiche.");
+        if (string.IsNullOrWhiteSpace(sostituto.Email))
+            avvisi.Add("Manca l'email dell'azienda: serve al quadro CT (ricezione dei modelli 730-4).");
+        foreach (var cu in certificazioni)
+            if (cu.DatiFiscali.RitenuteIrpef > 0m
+                && string.IsNullOrWhiteSpace(cu.Percipiente.DomicilioCodiceComune))
+                avvisi.Add($"{cu.Percipiente.Cognome} {cu.Percipiente.Nome}: manca il comune del "
+                    + "domicilio fiscale (scheda dipendente): con ritenute IRPEF il tracciato lo pretende.");
+
+        var invio = new DatiInvioCu { DataFirma = dataFirma };
+        string tracciato = new TracciatoCuUfficiale().Genera(certificazioni, invio);
+        string nomeFile = $"CU-{anno + 1}-{SoloNomeFile(azienda.RagioneSociale)}.txt";
+        return new CuTelematico(nomeFile, tracciato, certificazioni.Count, avvisi);
+    }
+
+    private static string SoloNomeFile(string? v) =>
+        string.Concat((v ?? "azienda").Split(Path.GetInvalidFileNameChars())).Replace(' ', '-');
 
     /// <summary>
     /// Export CSV (bozza rivedibile) delle CU: separatore ';', decimali con punto (cultura invariante).

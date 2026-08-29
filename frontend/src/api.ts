@@ -1619,6 +1619,10 @@ export interface RispostaChatAi {
   azienda?: AziendaRiconosciutaAi | null;
   /** Lavoratore riconosciuto nei messaggi: la SPA mostra «Registra questo dipendente». */
   lavoratore?: LavoratoreRiconosciutoAi | null;
+  /** Azione d'interfaccia chiesta dal modello e già validata dal server (solo col
+   *  consenso pieno): schermata da aprire e/o cliente da selezionare in alto. */
+  apriSezione?: string | null;
+  selezionaCliente?: { id: string; ragioneSociale: string } | null;
 }
 
 export interface StatoChatAi {

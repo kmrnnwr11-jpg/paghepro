@@ -33,6 +33,7 @@ import {
 } from "../aziendaCorrente";
 import {
   aggiornaStrumentiRecenti,
+  sezioneApribileDaAurora,
   sezioneRichiedeAzienda,
   type SectionKey,
   type StrumentoRecente,
@@ -578,6 +579,24 @@ export function Dashboard() {
             vaiA("aziende");
           }}
           onApriDipendente={apriDipendente}
+          onVaiA={(sezione) => {
+            const chiave = sezioneApribileDaAurora(sezione);
+            if (chiave) vaiA(chiave);
+          }}
+          onSelezionaCliente={({ id }) => {
+            // Il server ha già validato l'id sul tenant; qui si recupera l'anagrafica
+            // completa dall'elenco caricato (o dal server se la lista è vecchia).
+            const trovata = aziende.find((a) => a.id === id);
+            if (trovata) {
+              scegliAzienda(trovata);
+              return;
+            }
+            void api.aziende().then((elenco) => {
+              setAziende(elenco);
+              const appena = elenco.find((a) => a.id === id);
+              if (appena) scegliAzienda(appena);
+            }).catch(() => { /* elenco non leggibile: la selezione non avviene */ });
+          }}
         />
       )}
 

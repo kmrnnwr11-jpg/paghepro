@@ -44,6 +44,20 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Aurora vede l'archivio clienti e agisce sull'interfaccia (29 agosto 2026, sera)**:
+  seconda richiesta del fondatore sul consenso pieno («Aurora deve vedere le aziende e
+  portarmi sulle pagine che chiedo»). Col consenso attivo ogni turno riceve nel prompt
+  l'**archivio clienti** (nome, comune, id; max 100 con taglio dichiarato, niente
+  P.IVA/importi) letto dal server: «quali aziende ho?» funziona anche senza cliente
+  selezionato. Il modello propone **azioni d'interfaccia** con marcatori `[[APRI:chiave]]`
+  (whitelist di pagine operative, identica tra server e SPA:
+  `SezioniApribili`/`SEZIONI_APRIBILI_DA_AURORA`) e `[[CLIENTE:id]]`; il server
+  (`EstraiAzioniUi` + rivalidazione tenant) toglie SEMPRE i marcatori dal testo ed
+  esegue solo col consenso; la SPA riceve `apriSezione`/`selezionaCliente` già validati,
+  naviga con `vaiA` e seleziona il cliente **migrando la conversazione** al nuovo scope
+  senza azzerarla. Senza consenso: né archivio né azioni. Test: 23/23 in
+  `AiChatApiTests` (4 nuovi su archivio/azioni), frontend 71/71, lint pulito.
+
 - **Consenso pieno ad Aurora: auto-mandato di lettura in chat (29 agosto 2026)**: richiesta
   esplicita del fondatore («voglio dare tutti i permessi ad Aurora, un avviso alla prima
   apertura, l'utente conferma e Aurora ha accesso completo»). Alla prima apertura la shell

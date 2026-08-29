@@ -38,6 +38,25 @@ export type SectionKey =
   | "retention"
   | "studi";
 
+/**
+ * Schermate che Aurora può aprire con l'azione [[APRI:…]] (consenso pieno): le pagine
+ * operative, mai dettagli o amministrazione. Deve combaciare con la whitelist del server
+ * (`AiChatEndpoints.SezioniApribili`).
+ */
+export const SEZIONI_APRIBILI_DA_AURORA: readonly SectionKey[] = [
+  "dashboard", "aziende", "dipendenti", "presenze", "cedolini", "calcolo", "f24",
+  "adempimenti", "scadenzario", "fatture", "pagamenti", "contabilita", "lipe",
+  "iva-annuale", "bilancio", "documenti", "elaborazioni", "fine-anno", "cu", "mod770",
+  "redditi-pf", "irap", "ires", "imu", "intrastat", "pratiche", "moduli", "firma",
+  "posta", "agricoltura",
+];
+
+export function sezioneApribileDaAurora(sezione: string): SectionKey | null {
+  return (SEZIONI_APRIBILI_DA_AURORA as readonly string[]).includes(sezione)
+    ? (sezione as SectionKey)
+    : null;
+}
+
 export interface StrumentoRecente {
   sezione: SectionKey;
   aziendaId: string;

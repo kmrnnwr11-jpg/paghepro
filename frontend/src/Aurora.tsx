@@ -209,6 +209,8 @@ export function AuroraPanel({
   onChiudi,
   onAziendaCreata,
   onApriDipendente,
+  onVaiA,
+  onSelezionaCliente,
 }: {
   azienda: Azienda | null;
   sezione: string;
@@ -219,6 +221,10 @@ export function AuroraPanel({
   onAziendaCreata?: (aziendaId: string) => void;
   /** L'utente ha registrato il dipendente dalla card: la shell apre la sua scheda. */
   onApriDipendente?: (rapportoId: string) => void;
+  /** Aurora (col consenso pieno) apre una schermata chiesta dall'utente in chat. */
+  onVaiA?: (sezione: string) => void;
+  /** Aurora (col consenso pieno) seleziona il cliente chiesto dall'utente in chat. */
+  onSelezionaCliente?: (cliente: { id: string; ragioneSociale: string }) => void;
 }) {
   const [bolle, setBolle] = useState<Bolla[]>([]);
   const [storia, setStoria] = useState<MessaggioChatAi[]>([]);
@@ -694,6 +700,22 @@ export function AuroraPanel({
         // Il provider spento risponde in modo controllato: conserva testo e domanda per il retry.
         setBozza(messaggio);
       }
+      // Azioni d'interfaccia già validate dal server (solo col consenso pieno). La
+      // selezione del cliente migra la conversazione al nuovo scope senza azzerarla:
+      // l'utente deve continuare a vedere la risposta appena ricevuta.
+      if (r.selezionaCliente && onSelezionaCliente
+        && r.selezionaCliente.id !== azienda?.id) {
+        const nuovoScope = chiaveScopeConversazioneAurora(r.selezionaCliente.id, periodo);
+        scopeConversazionePrecedente.current = nuovoScope;
+        if (conversazioneCorrente.current)
+          conversazioneCorrente.current = {
+            ...conversazioneCorrente.current,
+            scope: nuovoScope,
+          };
+        setScopeChat(nuovoScope);
+        onSelezionaCliente(r.selezionaCliente);
+      }
+      if (r.apriSezione && onVaiA) onVaiA(r.apriSezione);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
       if (!richiesta.attiva() || scopeConversazioneRef.current !== scopeRichiesto) return;

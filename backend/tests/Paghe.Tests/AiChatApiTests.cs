@@ -763,6 +763,167 @@ public sealed class AiChatApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Chat_ConConsenso_SenzaCliente_VedeLArchivioClienti()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = Guid.NewGuid(), TenantId = tenant,
+                RagioneSociale = "JOBTIME SRLS", Comune = "Fidenza",
+            });
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = Guid.NewGuid(), TenantId = tenant,
+                RagioneSociale = "Officina Nord Srl",
+            });
+            await db.SaveChangesAsync();
+        }
+        using (var concessione = await client.PostAsync("/api/ai/consenso", null))
+            Assert.Equal(HttpStatusCode.OK, concessione.StatusCode);
+
+        // Nessun cliente selezionato: niente strumenti, ma il modello riceve l'archivio
+        // clienti dal server e sa rispondere «quali aziende ho», invece di dire di aprire
+        // la schermata Aziende alla cieca.
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Quali aziende ho registrato?",
+            storia = Array.Empty<object>(),
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+        Assert.False(inviato.RootElement.TryGetProperty("tools", out _));
+        string istruzioni = inviato.RootElement
+            .GetProperty("messages")[0].GetProperty("content").GetString()!;
+        Assert.Contains("Archivio clienti dello studio", istruzioni);
+        Assert.Contains("JOBTIME SRLS", istruzioni);
+        Assert.Contains("Officina Nord Srl", istruzioni);
+        Assert.Contains("[[APRI:", istruzioni);
+        Assert.Contains("[[CLIENTE:", istruzioni);
+    }
+
+    [Fact]
+    public async Task Chat_ConConsenso_PortaLUtenteSullaSchermataChiesta()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        using (var concessione = await client.PostAsync("/api/ai/consenso", null))
+            Assert.Equal(HttpStatusCode.OK, concessione.StatusCode);
+
+        _providerFinto.RispostaTesto = "Ti porto sui cedolini. [[APRI:cedolini]]";
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Portami sulla pagina dei cedolini",
+            storia = Array.Empty<object>(),
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        // Il marcatore non arriva mai all'utente; l'azione validata sì.
+        Assert.Equal("Ti porto sui cedolini.",
+            ricevuto.RootElement.GetProperty("testo").GetString());
+        Assert.Equal("cedolini", ricevuto.RootElement.GetProperty("apriSezione").GetString());
+        var storia = ricevuto.RootElement.GetProperty("storia");
+        Assert.DoesNotContain("[[APRI:",
+            storia[storia.GetArrayLength() - 1].GetProperty("contenuto").GetString());
+    }
+
+    [Fact]
+    public async Task Chat_ConConsenso_SelezionaIlClienteChiestoEValidaSulTenant()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var aziendaId = Guid.NewGuid();
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId, TenantId = tenant, RagioneSociale = "JOBTIME SRLS",
+            });
+            await db.SaveChangesAsync();
+        }
+        using (var concessione = await client.PostAsync("/api/ai/consenso", null))
+            Assert.Equal(HttpStatusCode.OK, concessione.StatusCode);
+
+        _providerFinto.RispostaTesto = $"Lavoriamo su JOBTIME. [[CLIENTE:{aziendaId}]]";
+        using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Seleziona JOBTIME",
+            storia = Array.Empty<object>(),
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+            using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+            var cliente = ricevuto.RootElement.GetProperty("selezionaCliente");
+            Assert.Equal(aziendaId.ToString(), cliente.GetProperty("id").GetString());
+            Assert.Equal("JOBTIME SRLS", cliente.GetProperty("ragioneSociale").GetString());
+            Assert.DoesNotContain("[[CLIENTE:",
+                ricevuto.RootElement.GetProperty("testo").GetString());
+        }
+
+        // Un id inventato o di un altro studio non seleziona nulla: la validazione è sul tenant.
+        _providerFinto.RispostaTesto = $"Seleziono. [[CLIENTE:{Guid.NewGuid()}]]";
+        using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Seleziona l'altro cliente",
+            storia = Array.Empty<object>(),
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        }))
+        {
+            using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+            Assert.Equal(JsonValueKind.Null,
+                ricevuto.RootElement.GetProperty("selezionaCliente").ValueKind);
+        }
+    }
+
+    [Fact]
+    public async Task Chat_SenzaConsenso_MarcatoriRimossiMaNessunaAzioneEseguita()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+
+        // Senza consenso il modello non riceve né archivio né azioni; se un marcatore
+        // compare comunque nel testo, viene tolto e NON eseguito.
+        _providerFinto.RispostaTesto =
+            $"Apro. [[APRI:cedolini]] [[CLIENTE:{Guid.NewGuid()}]]";
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Portami sui cedolini",
+            storia = Array.Empty<object>(),
+            aziendaId = (Guid?)null,
+            contestoSelezionato = (object?)null,
+            sezioneUi = (string?)null,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var ricevuto = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        Assert.Equal("Apro.", ricevuto.RootElement.GetProperty("testo").GetString());
+        Assert.Equal(JsonValueKind.Null,
+            ricevuto.RootElement.GetProperty("apriSezione").ValueKind);
+        Assert.Equal(JsonValueKind.Null,
+            ricevuto.RootElement.GetProperty("selezionaCliente").ValueKind);
+        using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+        Assert.DoesNotContain("Archivio clienti dello studio",
+            inviato.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
+    }
+
+    [Fact]
     public async Task Conferma_ConTokenNonFirmatoDalServer_RespintaSenzaEffetti()
     {
         using var client = await NuovoClientAutenticatoAsync();
@@ -1023,6 +1184,10 @@ public sealed class AiChatApiTests : IDisposable
 
         public int Chiamate => Volatile.Read(ref _chiamate);
         public bool RispondeConToolCedolini { get; set; }
+
+        /// <summary>Se impostato, il provider finto risponde con questo testo semplice.</summary>
+        public string? RispostaTesto { get; set; }
+
         public string? UltimoCorpo { get; private set; }
         public string? UltimoIndirizzo { get; private set; }
 
@@ -1035,6 +1200,21 @@ public sealed class AiChatApiTests : IDisposable
             UltimoCorpo = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            if (RispostaTesto is not null)
+            {
+                string corpoTesto = JsonSerializer.Serialize(new
+                {
+                    choices = new[]
+                    {
+                        new { message = new { role = "assistant", content = RispostaTesto } },
+                    },
+                });
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(corpoTesto, Encoding.UTF8, "application/json"),
+                };
+            }
 
             if (RispondeConToolCedolini)
             {

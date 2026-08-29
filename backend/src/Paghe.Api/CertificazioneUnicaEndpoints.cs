@@ -60,6 +60,25 @@ public static class CertificazioneUnicaEndpoints
             Results.Ok(await svc.CostruisciPerAziendaAsync(Tenant(user), aziendaId, anno)))
             .RequireAuthorization();
 
+        // File telematico ufficiale CUR26 (tutte le CU dell'azienda per l'anno) con gli avvisi
+        // sui dati mancanti. Il file va passato dal controllo ufficiale AdE prima dell'invio.
+        app.MapGet("/api/aziende/{aziendaId:guid}/cu/{anno:int}/telematico", async (
+            Guid aziendaId, int anno, ClaimsPrincipal user, CertificazioneUnicaService svc) =>
+        {
+            try
+            {
+                var esito = await svc.CostruisciTracciatoTelematicoAsync(
+                    Tenant(user), aziendaId, anno, DateOnly.FromDateTime(DateTime.Today));
+                return esito is null
+                    ? Results.NotFound(new { errore = "Azienda non trovata per il tenant indicato." })
+                    : Results.Ok(esito);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { errore = ex.Message });
+            }
+        }).RequireAuthorization();
+
         // Export CSV (bozza rivedibile) delle CU dell'azienda per l'anno.
         app.MapGet("/api/aziende/{aziendaId:guid}/cu/{anno:int}/export.csv", async (
             Guid aziendaId, int anno, ClaimsPrincipal user, CertificazioneUnicaService svc) =>

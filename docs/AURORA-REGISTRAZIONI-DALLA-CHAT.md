@@ -35,6 +35,26 @@ fondatore** (29/8/2026) al principio «nessun permesso permanente»: il consenso
 permanente finché non revocato, ma ogni singolo mandato resta a scadenza, in sola lettura
 e dentro le stesse policy del Governor.
 
+### Archivio clienti nel contesto e azioni d'interfaccia (29 agosto 2026, sera)
+
+Sempre col consenso pieno (richiesta del fondatore: «Aurora deve vedere le aziende e
+portarmi sulle pagine che chiedo»):
+
+- a ogni turno il modello riceve **l'archivio clienti dello studio** (ragione sociale,
+  comune e id; massimo 100 righe, il taglio è dichiarato; niente P.IVA né importi), letto
+  dal server in quell'istante e marcato come elenco esaustivo. Così «quali aziende ho?»
+  riceve una risposta vera anche **senza cliente selezionato**, dove prima Aurora era
+  cieca.
+- il modello può proporre **azioni d'interfaccia** con marcatori nel testo:
+  `[[APRI:chiave]]` apre una schermata (whitelist di sole pagine operative, uguale tra
+  server `SezioniApribili` e SPA `SEZIONI_APRIBILI_DA_AURORA`) e `[[CLIENTE:id]]`
+  seleziona un cliente. Il **server valida ed esegue**: sezione fuori whitelist o id non
+  del tenant = nessuna azione; i marcatori vengono comunque sempre tolti dal testo (anche
+  senza consenso, così non compaiono mai all'utente). La SPA riceve `apriSezione` /
+  `selezionaCliente` già validati e naviga o seleziona; la conversazione **migra** al
+  nuovo cliente senza azzerarsi.
+- senza consenso pieno: nessun archivio nel prompt, nessuna azione eseguita.
+
 ## Regola architetturale comune (conforme a `docs/PIANO-AI-LIBERA-LIMITI-USO.md`)
 
 - Il **riconoscimento** dei dati nei messaggi è di **parser deterministici** lato server

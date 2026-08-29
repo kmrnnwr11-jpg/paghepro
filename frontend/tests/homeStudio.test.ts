@@ -10,6 +10,7 @@ import {
 } from "../src/aziendaCorrente.ts";
 import {
   aggiornaStrumentiRecenti,
+  sezioneApribileDaAurora,
   sezioneRichiedeAzienda,
   type StrumentoRecente,
 } from "../src/homeStudio.ts";
@@ -112,4 +113,15 @@ test("gli strumenti recenti sono deduplicati, limitati e privi di aziende non va
     { sezione: "cedolini", aziendaId: "azienda-a", usatoAlle: 7 },
     { sezione: "lipe", aziendaId: "azienda-b", usatoAlle: 6 },
   ]);
+});
+
+test("Aurora apre solo le schermate operative, mai dettagli o amministrazione", () => {
+  assert.equal(sezioneApribileDaAurora("cedolini"), "cedolini");
+  assert.equal(sezioneApribileDaAurora("aziende"), "aziende");
+  // Pagine di dettaglio o amministrative: mai apribili da un'azione del modello.
+  assert.equal(sezioneApribileDaAurora("azienda"), null);
+  assert.equal(sezioneApribileDaAurora("dipendente"), null);
+  assert.equal(sezioneApribileDaAurora("impostazioni"), null);
+  assert.equal(sezioneApribileDaAurora("studi"), null);
+  assert.equal(sezioneApribileDaAurora("inventata"), null);
 });

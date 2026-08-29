@@ -72,6 +72,36 @@ public static class ControlloF24A0
     }
 }
 
+/// <summary>
+/// Parametri ufficiali del modulo di controllo della Certificazione Unica 2026 (codice
+/// fornitura "CUR26"), come da <c>TabellaAssociazioniControlli.json</c> dell'Agenzia delle Entrate.
+/// </summary>
+public static class ControlloCur26
+{
+    public const string CodiceFornitura = "CUR26";
+    public const string ClasseMainControllo = "it.finanze.entrate.dic.main.MCUR26";
+    public const string ClasseMainDiagnostico = "it.finanze.entrate.dic.main.VisualCUR26";
+
+    /// <summary>
+    /// Costruisce la richiesta di controllo per il file CU indicato. <paramref name="cartellaJar"/>
+    /// è la cartella che contiene <c>SuppTelem.jar</c> e <c>ModuliControlloCUR26.jar</c>.
+    /// </summary>
+    public static RichiestaControlloUfficiale Richiesta(string fileInput, string cartellaJar, string? cartellaOutput = null)
+    {
+        char sep = OperatingSystem.IsWindows() ? ';' : ':';
+        string classpath = string.Join(sep,
+            Path.Combine(cartellaJar, "SuppTelem.jar"),
+            Path.Combine(cartellaJar, "ModuliControlloCUR26.jar"));
+        return new RichiestaControlloUfficiale
+        {
+            FileInput = fileInput,
+            Classpath = classpath,
+            ClasseMain = ClasseMainControllo,
+            CartellaOutput = cartellaOutput,
+        };
+    }
+}
+
 /// <summary>Esegue il controllo ufficiale di un file telematico.</summary>
 public interface IControlliUfficialiRunner
 {

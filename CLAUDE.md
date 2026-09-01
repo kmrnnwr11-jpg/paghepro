@@ -82,6 +82,10 @@ dotnet run --project src/Paghe.Demo -c Release
   colonna `TrasferteJson` nell'archivio (migrazioni `TrasferteBatchAgricole`), tabella
   editabile nella pagina SPA che sostituisce i due campi singoli quando compilata; la
   somma unica mensile documentata resta sui «Rimborsi spese documentati».
+  **Scelta dello stile busta** (notte): `GET /api/cedolini/{id}/pdf?stile=` espone i tre
+  stili già esistenti (classico/colori/editoriale, numeri identici) e la pagina Cedolini ha
+  la tendina «Stile della busta»; un cedolino CHIUSO resta il PDF congelato alla chiusura.
+  La busta agricola mantiene il suo stile dedicato (variante classica = lavoro futuro).
   Pagina agricola «dal contratto»: le ore al giorno arrivano dalle ore settimanali del rapporto
   (÷ 6, settimana agricola), le ore del mese si propongono come giornate × ore/giorno e i giorni di
   detrazione dal periodo di assunzione/cessazione — tutte proposte modificabili (helper puri in

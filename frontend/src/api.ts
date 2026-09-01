@@ -836,11 +836,13 @@ export const api = {
     }),
   // PreWorkflow = ricostruzione storica non validata; Bozza/Controllata/Validata = anteprima;
   // Chiusa = byte immutabili archiviati.
-  cedolinoPdf: async (id: string): Promise<{ blob: Blob; filename: string }> => {
+  cedolinoPdf: async (id: string, stile?: string): Promise<{ blob: Blob; filename: string }> => {
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetchAutenticata(`/api/cedolini/${id}/pdf`, { headers });
+    const percorso = `/api/cedolini/${id}/pdf`
+      + (stile && stile !== "classico" ? `?stile=${encodeURIComponent(stile)}` : "");
+    const res = await fetchAutenticata(percorso, { headers });
     if (!res.ok) {
       let messaggio = `Errore ${res.status}`;
       try {

@@ -26,6 +26,7 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
   const [caricamentoLista, setCaricamentoLista] = useState(false);
   const [caricamento, setCaricamento] = useState(true);
   const [scaricandoId, setScaricandoId] = useState<string | null>(null);
+  const [stileBusta, setStileBusta] = useState("classico");
   const [errore, setErrore] = useState<string | null>(null);
   const [annoCu, setAnnoCu] = useState<number | null>(null);
   const [scaricandoCu, setScaricandoCu] = useState(false);
@@ -78,7 +79,7 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
     setErrore(null);
     setScaricandoId(id);
     try {
-      const { blob, filename } = await api.cedolinoPdf(id);
+      const { blob, filename } = await api.cedolinoPdf(id, stileBusta);
       await scaricaBlob(blob, filename);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Impossibile scaricare il PDF.");
@@ -187,6 +188,18 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
                     <option key={d.rapportoId} value={d.rapportoId}>{d.nominativo || "—"}</option>
                   ))}
                 </select>
+              </label>
+              <label>
+                <span>Stile della busta (PDF)</span>
+                <select value={stileBusta} onChange={(e) => setStileBusta(e.target.value)}>
+                  <option value="classico">Classico</option>
+                  <option value="colori">Colori</option>
+                  <option value="editoriale">Editoriale</option>
+                </select>
+                <small style={{ display: "block", marginTop: 4, opacity: .7 }}>
+                  I numeri sono identici nei tre stili. Un cedolino chiuso resta nel PDF
+                  congelato alla chiusura.
+                </small>
               </label>
               <div className="empty-state wide-field">
                 Presenze e assenze si compilano nella pagina Presenze. Qui controlli ogni busta,

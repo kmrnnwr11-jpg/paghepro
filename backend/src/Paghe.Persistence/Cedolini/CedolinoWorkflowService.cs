@@ -211,7 +211,8 @@ public sealed class CedolinoWorkflowService
     public async Task<DocumentoCedolino?> LeggiPdfAsync(
         Guid tenantId,
         Guid cedolinoId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        StileCedolino stile = StileCedolino.Classico)
     {
         var c = await _db.Cedolini.AsNoTracking()
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == cedolinoId, ct);
@@ -261,6 +262,7 @@ public sealed class CedolinoWorkflowService
             dati.Intestazione,
             dati.Cartellino,
             new ContestoEmissioneCedolino(stato.ToString()),
+            stile: stile,
             progressivi: dati.Progressivi);
         return new DocumentoCedolino(
             anteprima, NomeFile(c, stato), stato, Definitivo: false,

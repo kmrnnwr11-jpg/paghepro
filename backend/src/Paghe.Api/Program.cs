@@ -2097,11 +2097,18 @@ secured.MapGet("/api/cedolini/{id:guid}", async (Guid id, CedoliniService svc, C
 // Prima della chiusura restituisce un'anteprima marcata; dopo la chiusura restituisce soltanto
 // i byte cifrati e verificati del documento archiviato, senza ricalcolare o rileggere anagrafiche.
 secured.MapGet("/api/cedolini/{id:guid}/pdf", async (
-    Guid id, CedolinoWorkflowService workflow, ClaimsPrincipal user, HttpResponse response) =>
+    Guid id, CedolinoWorkflowService workflow, ClaimsPrincipal user, HttpResponse response,
+    string? stile = null) =>
 {
+    // Stile dell'impaginazione: i numeri sono identici nei tre stili. Il PDF di un cedolino
+    // CHIUSO resta il documento congelato alla chiusura, qualunque stile venga chiesto.
+    var stileScelto = Paghe.Documenti.StileCedolino.Classico;
+    if (!string.IsNullOrWhiteSpace(stile)
+        && !Enum.TryParse(stile, ignoreCase: true, out stileScelto))
+        return Results.BadRequest(new { errore = "Stile non valido: usa classico, colori o editoriale." });
     try
     {
-        var documento = await workflow.LeggiPdfAsync(TenantCorrente(user), id);
+        var documento = await workflow.LeggiPdfAsync(TenantCorrente(user), id, stile: stileScelto);
         if (documento is null)
             return Results.NotFound(new { errore = "Cedolino non trovato." });
         response.Headers.CacheControl = "private, no-store";

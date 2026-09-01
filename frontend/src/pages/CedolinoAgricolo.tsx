@@ -5,6 +5,7 @@ import {
   scaricaBlob,
   type AnteprimaCedolinoAgricolo,
   type Azienda,
+  type BustaAgricolaArchiviata,
   type DatiMensiliCedolinoAgricolo,
   type DipendenteRapporto,
   type ProvinciaAgricola,
@@ -89,6 +90,10 @@ export function CedolinoAgricolo() {
   const [caricamento, setCaricamento] = useState(true);
   const [calcolando, setCalcolando] = useState(false);
   const [scaricando, setScaricando] = useState(false);
+  const [gruppiTrasferta, setGruppiTrasferta] = useState<{ giorni: string; importo: string }[]>([]);
+  const [archiviando, setArchiviando] = useState(false);
+  const [esitoArchiviazione, setEsitoArchiviazione] = useState<string | null>(null);
+  const [archiviate, setArchiviate] = useState<BustaAgricolaArchiviata[]>([]);
   const [errore, setErrore] = useState<string | null>(null);
 
   useEffect(() => {
@@ -162,6 +167,18 @@ export function CedolinoAgricolo() {
     return () => { attivo = false; };
   }, [anno, provinciaRapporto]);
 
+  async function ricaricaArchiviate(aziendaId: string) {
+    try {
+      setArchiviate(await api.cedoliniAgricoli(aziendaId, Number(form.anno), Number(form.mese)));
+    } catch { /* elenco facoltativo: la pagina resta usabile */ }
+  }
+
+  useEffect(() => {
+    if (!azienda) return;
+    void ricaricaArchiviate(azienda.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [azienda?.id, form.anno, form.mese]);
+
   const dati = useMemo<DatiMensiliCedolinoAgricolo>(() => ({
     anno: Number(form.anno),
     mese: Number(form.mese),
@@ -175,10 +192,18 @@ export function CedolinoAgricolo() {
     redditoPresuntoAnnuo: form.redditoPresuntoAnnuo.trim()
       ? valoreNumero(form.redditoPresuntoAnnuo)
       : null,
-    giorniTrasferta: valoreNumero(form.giorniTrasferta),
-    indennitaTrasfertaGiornaliera: valoreNumero(form.indennitaTrasfertaGiornaliera),
+    giorniTrasferta: gruppiTrasferta.length > 0 ? 0 : valoreNumero(form.giorniTrasferta),
+    indennitaTrasfertaGiornaliera: gruppiTrasferta.length > 0
+      ? 0
+      : valoreNumero(form.indennitaTrasfertaGiornaliera),
     rimborsiSpeseDocumentate: valoreNumero(form.rimborsiSpeseDocumentate),
-  }), [form]);
+    trasferte: gruppiTrasferta.length > 0
+      ? gruppiTrasferta.map((gruppo) => ({
+        giorni: valoreNumero(gruppo.giorni) || 0,
+        importoGiorno: valoreNumero(gruppo.importo) || 0,
+      }))
+      : undefined,
+  }), [form, gruppiTrasferta]);
 
   // Tendina delle ore al giorno: mezz'ora per mezz'ora da 1 a 10, con il valore del contratto
   // (ore settimanali ÷ 6) sempre presente anche quando non cade su una mezz'ora.
@@ -194,6 +219,23 @@ export function CedolinoAgricolo() {
 
   const tariffa = tabella?.tariffe.find((t) =>
     t.livello.toUpperCase() === rapporto?.livello.toUpperCase());
+
+  function aggiornaGruppo(indice: number, campo: "giorni" | "importo", valore: string) {
+    setGruppiTrasferta((correnti) =>
+      correnti.map((gruppo, i) => (i === indice ? { ...gruppo, [campo]: valore } : gruppo)));
+    setAnteprima(null);
+    setErrore(null);
+  }
+
+  function aggiungiGruppo() {
+    setGruppiTrasferta((correnti) => [...correnti, { giorni: "", importo: "" }]);
+    setAnteprima(null);
+  }
+
+  function rimuoviGruppo(indice: number) {
+    setGruppiTrasferta((correnti) => correnti.filter((_, i) => i !== indice));
+    setAnteprima(null);
+  }
 
   function aggiorna(campo: keyof CampiForm, valore: string | boolean) {
     setForm((corrente) => {
@@ -253,6 +295,35 @@ export function CedolinoAgricolo() {
       setErrore(e instanceof Error ? e.message : "Impossibile scaricare il PDF agricolo.");
     } finally {
       setScaricando(false);
+    }
+  }
+
+  async function archivia() {
+    if (!rapportoId || !controllaDati()) return;
+    setArchiviando(true);
+    setErrore(null);
+    setEsitoArchiviazione(null);
+    try {
+      const esito = await api.archiviaCedolinoAgricolo(rapportoId, dati);
+      setEsitoArchiviazione(
+        `Busta ${String(esito.mese).padStart(2, "0")}/${esito.anno} archiviata `
+        + `(versione ${esito.versione}, netto ${esito.nettoInBusta.toLocaleString("it-IT", { minimumFractionDigits: 2 })} EUR). `
+        + esito.avviso);
+      if (azienda) void ricaricaArchiviate(azienda.id);
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Impossibile archiviare la busta agricola.");
+    } finally {
+      setArchiviando(false);
+    }
+  }
+
+  async function scaricaArchiviata(id: string) {
+    setErrore(null);
+    try {
+      const file = await api.cedolinoAgricoloArchiviatoPdf(id);
+      await scaricaBlob(file.blob, file.filename);
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Impossibile riscaricare la busta archiviata.");
     }
   }
 
@@ -319,14 +390,16 @@ export function CedolinoAgricolo() {
                     ? ` (${rapporto.oreSettimanali} h/sett. ÷ ${GIORNI_SETTIMANA_AGRICOLA} gg, modificabile)`
                     : " (modificabile)"}
                 </span>
-                <select value={form.oreGiorno} onChange={(e) => aggiorna("oreGiorno", e.target.value)}>
-                  {!form.oreGiorno && <option value="">Scegli le ore al giorno</option>}
+                <input type="number" min="0" step="0.01" list="opzioni-ore-giorno"
+                  value={form.oreGiorno}
+                  onChange={(e) => aggiorna("oreGiorno", e.target.value)}
+                  placeholder="scegli dalla tendina o scrivi" />
+                <datalist id="opzioni-ore-giorno">
                   {opzioniOreGiorno.map((valore) => (
-                    <option value={valore} key={valore}>
-                      {Number(valore).toLocaleString("it-IT")} ore{valore === oreGiornoContratto ? " (contratto)" : ""}
-                    </option>
+                    <option value={valore} key={valore}
+                      label={`${Number(valore).toLocaleString("it-IT")} ore${valore === oreGiornoContratto ? " (contratto)" : ""}`} />
                   ))}
-                </select>
+                </datalist>
               </label>
               <label>
                 <span>Ore ordinarie effettive (giornate × ore/giorno, correggibili)</span>
@@ -346,13 +419,43 @@ export function CedolinoAgricolo() {
               <label>
                 <span>Giorni di trasferta (fuori dal comune della sede)</span>
                 <input type="number" min="0" step="1" value={form.giorniTrasferta}
+                  disabled={gruppiTrasferta.length > 0}
                   onChange={(e) => aggiorna("giorniTrasferta", e.target.value)} />
               </label>
               <label>
                 <span>Indennità di trasferta al giorno (esente entro 46,48 €)</span>
                 <input type="number" min="0" step="0.01" value={form.indennitaTrasfertaGiornaliera}
+                  disabled={gruppiTrasferta.length > 0}
                   onChange={(e) => aggiorna("indennitaTrasfertaGiornaliera", e.target.value)} />
               </label>
+              <div className="wide-field">
+                <span>Trasferta a gruppi di giorni (facoltativa: se la compili sostituisce i due campi qui sopra)</span>
+                {gruppiTrasferta.map((gruppo, indice) => (
+                  // eslint-disable-next-line react/no-array-index-key
+                  <div key={indice} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+                    <input type="number" min="0" step="1" value={gruppo.giorni} placeholder="giorni"
+                      style={{ maxWidth: 110 }}
+                      onChange={(e) => aggiornaGruppo(indice, "giorni", e.target.value)} />
+                    <span>giorni ×</span>
+                    <input type="number" min="0" step="0.01" value={gruppo.importo} placeholder="€ al giorno"
+                      style={{ maxWidth: 130 }}
+                      onChange={(e) => aggiornaGruppo(indice, "importo", e.target.value)} />
+                    <span>€ al giorno</span>
+                    <button className="btn secondary" type="button" onClick={() => rimuoviGruppo(indice)}>
+                      Rimuovi
+                    </button>
+                  </div>
+                ))}
+                <div style={{ marginTop: 8 }}>
+                  <button className="btn secondary" type="button" onClick={aggiungiGruppo}>
+                    + Aggiungi gruppo di giorni
+                  </button>
+                </div>
+                <small style={{ display: "block", marginTop: 6, opacity: .7 }}>
+                  Il limite esente (46,48 €) vale sul singolo giorno. Una somma unica mensile
+                  documentata da scontrini va invece in «Rimborsi spese documentati».
+                </small>
+              </div>
               <label>
                 <span>Rimborsi spese documentati (esenti)</span>
                 <input type="number" min="0" step="0.01" value={form.rimborsiSpeseDocumentate}
@@ -410,7 +513,16 @@ export function CedolinoAgricolo() {
                 <Download size={16} aria-hidden="true" />
                 {scaricando ? "Preparazione PDF..." : "Scarica PDF bozza"}
               </button>
+              <button className="btn secondary" type="button"
+                disabled={otiNonSupportato || calcolando || scaricando || archiviando}
+                onClick={() => void archivia()}>
+                <Download size={16} aria-hidden="true" />
+                {archiviando ? "Archiviazione..." : "Archivia busta"}
+              </button>
             </div>
+            {esitoArchiviazione && (
+              <p role="status" style={{ marginTop: 12, fontSize: 13 }}>{esitoArchiviazione}</p>
+            )}
           </form>
         )}
 
@@ -449,6 +561,52 @@ export function CedolinoAgricolo() {
               Fonte applicata: {anteprima.fonteTabelle}. Il costo datoriale completo non viene
               dichiarato: i contributi definitivi sono determinati dall'INPS dopo PosAgri.
             </p>
+          </div>
+        )}
+
+        {archiviate.length > 0 && (
+          <div style={{ marginTop: 26 }}>
+            <div className="card-title-row">
+              <div>
+                <h2>Buste archiviate · {mesi[Number(form.mese)]} {form.anno}</h2>
+                <p>Documenti conservati: si riscaricano identici a come sono stati archiviati.</p>
+              </div>
+            </div>
+            <div className="tabella-scroll">
+              <table className="tabella-voci">
+                <thead>
+                  <tr>
+                    <th>Lavoratore</th>
+                    <th className="right">Giornate</th>
+                    <th className="right">Ore</th>
+                    <th className="right">Netto</th>
+                    <th className="right">Versione</th>
+                    <th className="right">PDF</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archiviate.map((busta) => (
+                    <tr key={busta.id}>
+                      <td><strong>{busta.nominativo || busta.rapportoLavoroId.slice(0, 8)}</strong>
+                        <small style={{ display: "block", opacity: .65 }}>
+                          CPL {busta.provinciaCpl} · {busta.livelloTariffa}
+                        </small>
+                      </td>
+                      <td className="right num">{busta.giornateLavorate}</td>
+                      <td className="right num">{numero(busta.oreOrdinarie)}</td>
+                      <td className="right num">{euro(busta.nettoInBusta)} EUR</td>
+                      <td className="right num">{busta.versione}</td>
+                      <td className="right">
+                        <button className="btn secondary" type="button"
+                          onClick={() => void scaricaArchiviata(busta.id)}>
+                          <Download size={14} aria-hidden="true" /> Scarica
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </section>

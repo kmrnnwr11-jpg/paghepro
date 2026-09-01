@@ -1262,6 +1262,138 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.ToTable("CcnlVersioni");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.CedolinoAgricoloEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ArchiviatoDa")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ArchiviatoIl")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("ArrotondamentoRiportato")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<Guid>("AziendaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("ContributiDipendente")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("DetrazioniGiaGoduteAnno")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<string>("FonteTabelle")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("GiornateLavorate")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("GiorniDetrazione")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("GiorniTrasferta")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<string>("HashPdfSha256")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("ImponibileInps")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("ImponibileIrpef")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("IndennitaTrasfertaGiornaliera")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("IrpefNetta")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<string>("LivelloTariffa")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Mese")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("NettoInBusta")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("OreOrdinarie")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<string>("PdfProtetto")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProvinciaCpl")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RapportoLavoroId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("RedditoPresuntoAnnuo")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("RimborsiSpeseDocumentate")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("TotaleCompetenze")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("TotaleTrattenute")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<string>("TrasferteJson")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("UltimoCedolino")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("UnaTantum")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<int>("Versione")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AziendaId", "Anno", "Mese");
+
+                    b.HasIndex("TenantId", "RapportoLavoroId", "Anno", "Mese")
+                        .IsUnique();
+
+                    b.ToTable("CedoliniAgricoli");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.CedolinoDocumentoEntity", b =>
                 {
                     b.Property<Guid>("Id")

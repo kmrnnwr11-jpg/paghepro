@@ -59,20 +59,29 @@ public sealed class MotoreCalcoloCedolinoAgricolo
         // competenze (entrano nel netto); gli imponibili vengono poi ridotti della sola quota
         // esente, così l'eccedenza oltre soglia resta tassata come retribuzione.
         decimal sommeEsenti = 0m;
-        var trasferta = CalcoloElementiAgevolati.Trasferta(
-            cartellino.GiorniTrasferta, cartellino.IndennitaTrasfertaGiornaliera,
-            _parametri.TrasfertaItaliaEsenteGiorno, TipoRimborsoTrasferta.Forfettario);
-        if (trasferta.Esente > 0m)
+        IReadOnlyList<TrasfertaGiorniAgricola> gruppiTrasferta = cartellino.Trasferte.Count > 0
+            ? cartellino.Trasferte
+            : cartellino.GiorniTrasferta > 0m && cartellino.IndennitaTrasfertaGiornaliera > 0m
+                ? [new TrasfertaGiorniAgricola(
+                    cartellino.GiorniTrasferta, cartellino.IndennitaTrasfertaGiornaliera)]
+                : [];
+        foreach (var gruppo in gruppiTrasferta)
         {
-            AggiungiRiga(cedolino, "AGR_TRASF", "Indennità di trasferta Italia (esente)",
-                TipoVoce.Competenza, quantita: cartellino.GiorniTrasferta,
-                @base: cartellino.IndennitaTrasfertaGiornaliera, importo: trasferta.Esente);
-            sommeEsenti += trasferta.Esente;
+            var trasferta = CalcoloElementiAgevolati.Trasferta(
+                gruppo.Giorni, gruppo.ImportoGiorno,
+                _parametri.TrasfertaItaliaEsenteGiorno, TipoRimborsoTrasferta.Forfettario);
+            if (trasferta.Esente > 0m)
+            {
+                AggiungiRiga(cedolino, "AGR_TRASF", "Indennità di trasferta Italia (esente)",
+                    TipoVoce.Competenza, quantita: gruppo.Giorni,
+                    @base: gruppo.ImportoGiorno, importo: trasferta.Esente);
+                sommeEsenti += trasferta.Esente;
+            }
+            if (trasferta.Imponibile > 0m)
+                AggiungiRiga(cedolino, "AGR_TRASF_IMP",
+                    "Indennità di trasferta oltre soglia (imponibile)", TipoVoce.Competenza,
+                    quantita: gruppo.Giorni, importo: trasferta.Imponibile);
         }
-        if (trasferta.Imponibile > 0m)
-            AggiungiRiga(cedolino, "AGR_TRASF_IMP",
-                "Indennità di trasferta oltre soglia (imponibile)", TipoVoce.Competenza,
-                quantita: cartellino.GiorniTrasferta, importo: trasferta.Imponibile);
         if (cartellino.RimborsiSpeseDocumentate > 0m)
         {
             decimal rimborso = Arrotondamento.Euro(cartellino.RimborsiSpeseDocumentate);

@@ -179,6 +179,145 @@ public sealed class AgricolturaApiTests : IDisposable
         Assert.Contains("BOZZA DA VALIDARE", testo);
     }
 
+    // ---- Archivio delle buste agricole -------------------------------------------------
+
+    [Fact]
+    public async Task Archivia_SalvaLaBusta_EIlPdfSiRileggeIdenticoDallArchivio()
+    {
+        using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
+        await CreaParametriNazionali2025Async();
+        Guid rapportoId = await CreaRapportoAgricoloAsync(_ultimoTenantId);
+
+        using var archiviazione = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/archivia", DatiOttobre2025());
+        Assert.Equal(HttpStatusCode.OK, archiviazione.StatusCode);
+        using var esito = JsonDocument.Parse(await archiviazione.Content.ReadAsStringAsync());
+        var bustaId = esito.RootElement.GetProperty("id").GetGuid();
+        Assert.Equal(600.00m, esito.RootElement.GetProperty("nettoInBusta").GetDecimal());
+        Assert.Equal(1, esito.RootElement.GetProperty("versione").GetInt32());
+        string hashArchiviato = esito.RootElement.GetProperty("hashPdfSha256").GetString()!;
+        Assert.Contains("non costituisce LUL", esito.RootElement.GetProperty("avviso").GetString());
+
+        using var pdf = await client.GetAsync($"/api/cedolini-agricoli/{bustaId}/pdf");
+        Assert.Equal(HttpStatusCode.OK, pdf.StatusCode);
+        Assert.Equal("AgricolaArchiviata", pdf.Headers.GetValues("X-PaghePro-Stato").Single());
+        Assert.Equal(hashArchiviato, pdf.Headers.GetValues("X-PaghePro-SHA256").Single());
+        using var documento = PdfDocument.Open(await pdf.Content.ReadAsByteArrayAsync());
+        string testo = string.Join("\n", documento.GetPages().Select(pagina => pagina.Text));
+        Assert.Contains("Rossi Mario", testo);
+        Assert.Contains("600,00", testo);
+        Assert.Contains("BOZZA DA VALIDARE", testo);
+    }
+
+    [Fact]
+    public async Task Archivia_LoStessoPeriodoDueVolte_SostituisceEAlzaLaVersione()
+    {
+        using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
+        await CreaParametriNazionali2025Async();
+        Guid rapportoId = await CreaRapportoAgricoloAsync(_ultimoTenantId);
+
+        using var prima = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/archivia", DatiOttobre2025());
+        Assert.Equal(HttpStatusCode.OK, prima.StatusCode);
+
+        // Correzione delle presenze: stesso rapporto e stesso mese.
+        var corretto = DatiOttobre2025() with { OreOrdinarie = 48m, GiornateLavorate = 6 };
+        using var seconda = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/archivia", corretto);
+        Assert.Equal(HttpStatusCode.OK, seconda.StatusCode);
+        using var esito = JsonDocument.Parse(await seconda.Content.ReadAsStringAsync());
+        Assert.Equal(2, esito.RootElement.GetProperty("versione").GetInt32());
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+        var buste = db.CedoliniAgricoli.Where(c => c.RapportoLavoroId == rapportoId).ToList();
+        var unica = Assert.Single(buste);
+        Assert.Equal(6, unica.GiornateLavorate);   // vale l'ultima archiviazione
+        Assert.Equal(2, unica.Versione);
+    }
+
+    [Fact]
+    public async Task BustaAgricolaArchiviata_RestaFuoriDallArchivioDeiCedoliniOrdinari()
+    {
+        using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
+        await CreaParametriNazionali2025Async();
+        Guid rapportoId = await CreaRapportoAgricoloAsync(_ultimoTenantId);
+
+        using var archiviazione = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/archivia", DatiOttobre2025());
+        Assert.Equal(HttpStatusCode.OK, archiviazione.StatusCode);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+        // L'invariante che protegge gli adempimenti: F24 da paghe, UniEmens e CU leggono la
+        // tabella Cedolini. Una busta agricola lì dentro produrrebbe versamenti sbagliati.
+        Assert.Empty(db.Cedolini.Where(c => c.RapportoLavoroId == rapportoId).ToList());
+        Assert.Single(db.CedoliniAgricoli.Where(c => c.RapportoLavoroId == rapportoId).ToList());
+    }
+
+    [Fact]
+    public async Task Elenco_MostraLeBusteArchiviateDellAziendaColNominativo()
+    {
+        using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
+        await CreaParametriNazionali2025Async();
+        Guid rapportoId = await CreaRapportoAgricoloAsync(_ultimoTenantId);
+        using var archiviazione = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/archivia", DatiOttobre2025());
+        Assert.Equal(HttpStatusCode.OK, archiviazione.StatusCode);
+
+        Guid aziendaId;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            aziendaId = db.Rapporti.Single(r => r.Id == rapportoId).AziendaId;
+        }
+
+        using var elenco = await client.GetAsync(
+            $"/api/aziende/{aziendaId}/cedolini-agricoli?anno=2025&mese=10");
+        Assert.Equal(HttpStatusCode.OK, elenco.StatusCode);
+        using var json = JsonDocument.Parse(await elenco.Content.ReadAsStringAsync());
+        var riga = Assert.Single(json.RootElement.EnumerateArray().ToList());
+        Assert.Equal("Rossi Mario", riga.GetProperty("nominativo").GetString());
+        Assert.Equal(600.00m, riga.GetProperty("nettoInBusta").GetDecimal());
+        Assert.Equal(8, riga.GetProperty("giornateLavorate").GetInt32());
+        Assert.Equal("CN", riga.GetProperty("provinciaCpl").GetString());
+
+        // Un mese senza buste non ne inventa.
+        using var vuoto = await client.GetAsync(
+            $"/api/aziende/{aziendaId}/cedolini-agricoli?anno=2025&mese=11");
+        using var jsonVuoto = JsonDocument.Parse(await vuoto.Content.ReadAsStringAsync());
+        Assert.Empty(jsonVuoto.RootElement.EnumerateArray().ToList());
+    }
+
+    [Fact]
+    public async Task Archivia_NonAccettaIlRapportoDiUnAltroTenant()
+    {
+        using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
+        await CreaParametriNazionali2025Async();
+        Guid tenantEstraneo;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            tenantEstraneo = Guid.NewGuid();
+            db.Tenants.Add(new TenantEntity
+            {
+                Id = tenantEstraneo,
+                RagioneSociale = "Studio estraneo archivio",
+                CreatoIl = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+        Guid rapportoEstraneo = await CreaRapportoAgricoloAsync(tenantEstraneo);
+
+        using var risposta = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoEstraneo}/cedolino/archivia", DatiOttobre2025());
+
+        Assert.Equal(HttpStatusCode.NotFound, risposta.StatusCode);
+        await using var verifica = _factory.Services.CreateAsyncScope();
+        var contesto = verifica.ServiceProvider.GetRequiredService<PagheDbContext>();
+        Assert.Empty(contesto.CedoliniAgricoli.ToList());
+    }
+
     [Fact]
     public async Task AnteprimaCollegata_NonLeggeIlRapportoDiUnAltroTenant()
     {

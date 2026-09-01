@@ -40,20 +40,25 @@ public static class AgricolturaEndpoints
     /// Dati variabili del mese. Provincia CPL, livello, OTD/OTI e residenza fiscale non arrivano
     /// dal browser: sono ricavati dal rapporto appartenente al tenant autenticato.
     /// </summary>
+    /// <summary>Un gruppo di giorni di trasferta pagati alla stessa indennità giornaliera.</summary>
+    public sealed record TrasfertaBatchInput(decimal Giorni, decimal ImportoGiorno);
+
     public sealed record DatiMensiliCedolinoAgricoloInput(
         int Anno, int Mese, decimal OreOrdinarie, int GiornateLavorate,
         int GiorniDetrazione, decimal UnaTantum, decimal DetrazioniGiaGoduteAnno,
         decimal ArrotondamentoRiportato, bool UltimoCedolino,
         decimal? RedditoPresuntoAnnuo,
         decimal GiorniTrasferta = 0m, decimal IndennitaTrasfertaGiornaliera = 0m,
-        decimal RimborsiSpeseDocumentate = 0m);
+        decimal RimborsiSpeseDocumentate = 0m,
+        List<TrasfertaBatchInput>? Trasferte = null);
 
     private sealed record CalcoloAgricoloDaRapporto(
         Cedolino Cedolino,
         IntestazioneCedolino Intestazione,
         RapportoAgricolo Rapporto,
         CartellinoAgricolo Cartellino,
-        ParametriAgricoli Parametri);
+        ParametriAgricoli Parametri,
+        Guid AziendaId);
 
     public static IEndpointRouteBuilder MapAgricoltura(this IEndpointRouteBuilder app)
     {
@@ -275,6 +280,139 @@ public static class AgricolturaEndpoints
             }
         }).RequireAuthorization().RequireRateLimiting("sensibili");
 
+        // Archiviazione della busta agricola. Va in un archivio PROPRIO (tabella
+        // CedoliniAgricoli): i flussi ordinari F24/UniEmens/CU leggono i cedolini ordinari e
+        // una busta agricola lì dentro produrrebbe adempimenti sbagliati in silenzio.
+        app.MapPost("/api/agricoltura/rapporti/{rapportoId:guid}/cedolino/archivia", async (
+            Guid rapportoId,
+            DatiMensiliCedolinoAgricoloInput input,
+            ClaimsPrincipal user,
+            PagheDbContext db,
+            ParametriNormativiService parametri,
+            CedoliniAgricoliService archivio,
+            CancellationToken ct) =>
+        {
+            var utenteId = Utente(user);
+            if (utenteId == Guid.Empty) return Results.Unauthorized();
+            try
+            {
+                var calcolo = await CalcolaDaRapportoAsync(
+                    Tenant(user), rapportoId, input, db, parametri, ct);
+                var pdf = CedolinoAgricoloPdf.Genera(
+                    calcolo.Cedolino, calcolo.Intestazione, calcolo.Rapporto,
+                    calcolo.Cartellino, calcolo.Parametri);
+
+                var busta = await archivio.ArchiviaAsync(Tenant(user), utenteId, new CedolinoAgricoloEntity
+                {
+                    AziendaId = calcolo.AziendaId,
+                    RapportoLavoroId = rapportoId,
+                    Anno = input.Anno,
+                    Mese = input.Mese,
+                    OreOrdinarie = input.OreOrdinarie,
+                    GiornateLavorate = input.GiornateLavorate,
+                    GiorniDetrazione = input.GiorniDetrazione,
+                    UnaTantum = input.UnaTantum,
+                    GiorniTrasferta = input.Trasferte is { Count: > 0 }
+                        ? input.Trasferte.Sum(t => t.Giorni)
+                        : input.GiorniTrasferta,
+                    IndennitaTrasfertaGiornaliera = input.Trasferte is { Count: > 0 }
+                        ? 0m
+                        : input.IndennitaTrasfertaGiornaliera,
+                    TrasferteJson = input.Trasferte is { Count: > 0 }
+                        ? System.Text.Json.JsonSerializer.Serialize(input.Trasferte)
+                        : null,
+                    RimborsiSpeseDocumentate = input.RimborsiSpeseDocumentate,
+                    DetrazioniGiaGoduteAnno = input.DetrazioniGiaGoduteAnno,
+                    ArrotondamentoRiportato = input.ArrotondamentoRiportato,
+                    UltimoCedolino = input.UltimoCedolino,
+                    RedditoPresuntoAnnuo = input.RedditoPresuntoAnnuo ?? 0m,
+                    TotaleCompetenze = calcolo.Cedolino.TotaleCompetenze,
+                    TotaleTrattenute = calcolo.Cedolino.TotaleTrattenute,
+                    ImponibileInps = calcolo.Cedolino.ImponibileInps,
+                    ContributiDipendente = calcolo.Cedolino.ContributiDipendente,
+                    ImponibileIrpef = calcolo.Cedolino.ImponibileIrpef,
+                    IrpefNetta = calcolo.Cedolino.IrpefNetta,
+                    NettoInBusta = calcolo.Cedolino.NettoInBusta,
+                    ProvinciaCpl = calcolo.Parametri.Provincia,
+                    LivelloTariffa = calcolo.Rapporto.Livello,
+                    FonteTabelle = calcolo.Parametri.Fonte,
+                }, pdf, ct);
+
+                return Results.Ok(new
+                {
+                    busta.Id,
+                    busta.Anno,
+                    busta.Mese,
+                    busta.NettoInBusta,
+                    busta.Versione,
+                    busta.HashPdfSha256,
+                    archiviatoIl = busta.ArchiviatoIl,
+                    avviso = "Busta archiviata come prospetto da validare: non costituisce LUL, "
+                        + "PosAgri o F24.",
+                });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { errore = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { errore = ex.Message });
+            }
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
+
+        // Elenco delle buste agricole archiviate dell'azienda (facoltativi anno e mese).
+        app.MapGet("/api/aziende/{aziendaId:guid}/cedolini-agricoli", async (
+            Guid aziendaId, ClaimsPrincipal user, PagheDbContext db,
+            CedoliniAgricoliService archivio, CancellationToken ct,
+            int? anno = null, int? mese = null) =>
+        {
+            var buste = await archivio.ElencoAsync(Tenant(user), aziendaId, anno, mese, ct);
+            var rapportoIds = buste.Select(b => b.RapportoLavoroId).Distinct().ToList();
+            var nominativi = await db.Rapporti.AsNoTracking()
+                .Where(r => r.TenantId == Tenant(user) && rapportoIds.Contains(r.Id)
+                    && r.Dipendente != null)
+                .Select(r => new { r.Id, Nominativo = r.Dipendente!.Cognome + " " + r.Dipendente.Nome })
+                .ToDictionaryAsync(x => x.Id, x => x.Nominativo.Trim(), ct);
+            return Results.Ok(buste.Select(b => new
+            {
+                b.Id,
+                b.RapportoLavoroId,
+                nominativo = nominativi.TryGetValue(b.RapportoLavoroId, out var n) ? n : "",
+                b.Anno,
+                b.Mese,
+                b.GiornateLavorate,
+                b.OreOrdinarie,
+                b.NettoInBusta,
+                b.ProvinciaCpl,
+                b.LivelloTariffa,
+                b.Versione,
+                archiviatoIl = b.ArchiviatoIl,
+            }));
+        }).RequireAuthorization();
+
+        // Riscarica il PDF archiviato: stesso documento consegnato, impronta verificata.
+        app.MapGet("/api/cedolini-agricoli/{id:guid}/pdf", async (
+            Guid id, ClaimsPrincipal user, CedoliniAgricoliService archivio,
+            HttpResponse response, CancellationToken ct) =>
+        {
+            try
+            {
+                var documento = await archivio.LeggiPdfAsync(Tenant(user), id, ct);
+                if (documento is null)
+                    return Results.NotFound(new { errore = "Busta agricola archiviata non trovata." });
+                response.Headers.CacheControl = "private, no-store";
+                response.Headers["X-Content-Type-Options"] = "nosniff";
+                response.Headers["X-PaghePro-Stato"] = "AgricolaArchiviata";
+                response.Headers["X-PaghePro-SHA256"] = documento.HashSha256;
+                return Results.File(documento.Pdf, "application/pdf", documento.NomeFile);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { errore = ex.Message });
+            }
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
+
         return app;
     }
 
@@ -341,6 +479,10 @@ public static class AgricolturaEndpoints
             GiorniTrasferta = input.GiorniTrasferta,
             IndennitaTrasfertaGiornaliera = input.IndennitaTrasfertaGiornaliera,
             RimborsiSpeseDocumentate = input.RimborsiSpeseDocumentate,
+            Trasferte = (input.Trasferte ?? [])
+                .Where(t => t.Giorni > 0m && t.ImportoGiorno > 0m)
+                .Select(t => new TrasfertaGiorniAgricola(t.Giorni, t.ImportoGiorno))
+                .ToList(),
         };
         var cedolino = new MotoreCalcoloCedolinoAgricolo(nazionali, agricoli)
             .Calcola(rapporto, cartellino);
@@ -383,7 +525,7 @@ public static class AgricolturaEndpoints
                 : $"{rapportoEntity.OreSettimanali:0.#} ore/sett.",
         };
 
-        return new(cedolino, intestazione, rapporto, cartellino, agricoli);
+        return new(cedolino, intestazione, rapporto, cartellino, agricoli, rapportoEntity.AziendaId);
     }
 
     private static void Valida(DatiMensiliCedolinoAgricoloInput input)
@@ -401,6 +543,15 @@ public static class AgricolturaEndpoints
             throw new ArgumentException("I giorni di trasferta non sono validi per il mese indicato.");
         if (input.IndennitaTrasfertaGiornaliera < 0m || input.RimborsiSpeseDocumentate < 0m)
             throw new ArgumentException("Trasferta e rimborsi spese non possono essere negativi.");
+        if (input.Trasferte is { Count: > 0 })
+        {
+            if (input.Trasferte.Any(t => t.Giorni < 0m || t.ImportoGiorno < 0m))
+                throw new ArgumentException(
+                    "I gruppi di trasferta non possono avere giorni o importi negativi.");
+            if (input.Trasferte.Sum(t => t.Giorni) > giorniMese)
+                throw new ArgumentException(
+                    "I giorni di trasferta dei gruppi superano i giorni del mese.");
+        }
     }
 
     private static void VerificaPeriodoRapporto(RapportoLavoroEntity rapporto, int anno, int mese)
@@ -428,6 +579,12 @@ public static class AgricolturaEndpoints
 
     private static string Sigla(TipoOperaioAgricolo tipo) =>
         tipo == TipoOperaioAgricolo.Determinato ? "OTD" : "OTI";
+
+    private static Guid Utente(ClaimsPrincipal user) =>
+        Guid.TryParse(
+            user.FindFirst("sub")?.Value
+                ?? user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            out var id) ? id : Guid.Empty;
 
     private static Guid Tenant(ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirst("tenant_id")?.Value, out var id) && id != Guid.Empty

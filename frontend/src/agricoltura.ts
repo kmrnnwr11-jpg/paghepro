@@ -39,6 +39,15 @@ export function validaDatiCedolinoAgricolo(dati: DatiMensiliCedolinoAgricolo): s
     errori.push("L'indennita di trasferta giornaliera non puo essere negativa.");
   if (!Number.isFinite(dati.rimborsiSpeseDocumentate) || dati.rimborsiSpeseDocumentate < 0)
     errori.push("I rimborsi spese documentati non possono essere negativi.");
+  if (dati.trasferte && dati.trasferte.length > 0) {
+    const invalido = dati.trasferte.some((t) =>
+      !Number.isFinite(t.giorni) || t.giorni < 0
+      || !Number.isFinite(t.importoGiorno) || t.importoGiorno < 0);
+    if (invalido)
+      errori.push("I gruppi di trasferta non possono avere giorni o importi negativi.");
+    else if (dati.trasferte.reduce((somma, t) => somma + t.giorni, 0) > giorniMese)
+      errori.push(`I giorni di trasferta dei gruppi superano i ${giorniMese} giorni del mese.`);
+  }
   if (!Number.isFinite(dati.detrazioniGiaGoduteAnno) || dati.detrazioniGiaGoduteAnno < 0)
     errori.push("Le detrazioni gia godute non possono essere negative.");
   if (!Number.isFinite(dati.arrotondamentoRiportato))

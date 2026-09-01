@@ -92,3 +92,15 @@ test("i giorni di detrazione seguono assunzione e cessazione dentro il mese", ()
   assert.equal(giorniDetrazioneNelMese(2026, 6, "09/07/2026", null), 0);
   assert.equal(giorniDetrazioneNelMese(2026, 7, "2026-07-09", null), 23);
 });
+
+test("i gruppi di trasferta passano se validi e vengono fermati se sforano il mese", () => {
+  assert.deepEqual(
+    validaDatiCedolinoAgricolo({ ...validi, trasferte: [{ giorni: 10, importoGiorno: 15 }, { giorni: 3, importoGiorno: 20 }] }),
+    []);
+  assert.deepEqual(
+    validaDatiCedolinoAgricolo({ ...validi, trasferte: [{ giorni: -1, importoGiorno: 15 }] }),
+    ["I gruppi di trasferta non possono avere giorni o importi negativi."]);
+  assert.deepEqual(
+    validaDatiCedolinoAgricolo({ ...validi, trasferte: [{ giorni: 30, importoGiorno: 15 }, { giorni: 5, importoGiorno: 20 }] }),
+    ["I giorni di trasferta dei gruppi superano i 31 giorni del mese."]);
+});

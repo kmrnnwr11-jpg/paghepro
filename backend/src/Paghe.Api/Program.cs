@@ -78,6 +78,7 @@ builder.Services.AddScoped<AvvisiPagamentoService>();
 builder.Services.AddScoped<ParametriNormativiService>();
 builder.Services.AddScoped<AnagraficheLavoroService>();
 builder.Services.AddScoped<CedoliniService>();
+builder.Services.AddScoped<CedoliniAgricoliService>();
 builder.Services.AddScoped<CedolinoWorkflowService>();
 builder.Services.AddScoped<RequisitiCedolinoService>();
 builder.Services.AddScoped<PraticheF24Service>();

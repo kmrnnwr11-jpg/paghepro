@@ -84,6 +84,13 @@ public sealed class CartellinoAgricolo
     public decimal RimborsiSpeseDocumentate { get; init; }
 
     /// <summary>
+    /// Trasferta a gruppi di giorni con importi giornalieri diversi (es. 10 giorni a 15 € e
+    /// 3 giorni a 20 €). Se la lista è vuota valgono i due campi singoli qui sopra. Il limite
+    /// di esenzione resta per singolo giorno, applicato gruppo per gruppo.
+    /// </summary>
+    public IReadOnlyList<TrasfertaGiorniAgricola> Trasferte { get; init; } = [];
+
+    /// <summary>
     /// Detrazioni già godute nei mesi precedenti dell'anno: la detrazione minima del tempo
     /// determinato è annua, non mensile, e senza questo dato verrebbe riconosciuta ogni mese.
     /// </summary>
@@ -98,3 +105,6 @@ public sealed class CartellinoAgricolo
     /// <summary>Ultimo cedolino del rapporto: il netto non si arrotonda e si recupera il riportato.</summary>
     public bool UltimoCedolino { get; init; }
 }
+
+/// <summary>Un gruppo di giorni di trasferta pagati alla stessa indennità giornaliera.</summary>
+public readonly record struct TrasfertaGiorniAgricola(decimal Giorni, decimal ImportoGiorno);

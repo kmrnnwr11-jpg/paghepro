@@ -68,6 +68,20 @@ dotnet run --project src/Paghe.Demo -c Release
   il controllo Aurora «Prepara il mese» classifica i rapporti `AGRICOLTURA_OPERAI` con lo
   stato `agricolo` (si elaborano dalla pagina agricola) invece di «bloccato» per dati
   aziendali INPS/CCNL che non riguardano il loro ciclo — il gate per gli ordinari non cambia.
+  **Archivio buste agricole** (sera): tabella dedicata `CedoliniAgricoli` SEPARATA dai cedolini
+  ordinari (una busta agricola in `Cedolini` finirebbe in F24/UniEmens/CU producendo
+  adempimenti sbagliati — invariante coperta da test); PDF conservato cifrato con hash
+  verificato alla rilettura, upsert per rapporto+periodo con versione, endpoint
+  archivia/elenco/riscarica + pulsante e lista nella pagina SPA; migrazioni
+  `ArchivioBusteAgricole` per entrambi i provider; 5 test nuovi in `AgricolturaApiTests`
+  (15/15). Resta un prospetto «da validare»: la macchina a stati dei cedolini ordinari non
+  si applica (i suoi controlli sono del ciclo ordinario) e PosAgri resta il punto aperto.
+  **Trasferta a gruppi di giorni** (stessa sera): `CartellinoAgricolo.Trasferte`
+  (lista giorni×importo, limite esente applicato per singolo giorno gruppo per gruppo,
+  una voce `AGR_TRASF` per gruppo), input `Trasferte` sugli endpoint del rapporto,
+  colonna `TrasferteJson` nell'archivio (migrazioni `TrasferteBatchAgricole`), tabella
+  editabile nella pagina SPA che sostituisce i due campi singoli quando compilata; la
+  somma unica mensile documentata resta sui «Rimborsi spese documentati».
   Pagina agricola «dal contratto»: le ore al giorno arrivano dalle ore settimanali del rapporto
   (÷ 6, settimana agricola), le ore del mese si propongono come giornate × ore/giorno e i giorni di
   detrazione dal periodo di assunzione/cessazione — tutte proposte modificabili (helper puri in

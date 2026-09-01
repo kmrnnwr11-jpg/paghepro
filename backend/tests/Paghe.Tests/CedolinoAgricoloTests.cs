@@ -269,6 +269,32 @@ public sealed class CedolinoAgricoloTests
     }
 
     [Fact]
+    public void TrasfertaAGruppi_SommaLeQuoteEsentiETassaSoloLeEccedenze()
+    {
+        var con = Calcola(new CartellinoAgricolo
+        {
+            Anno = 2025, Mese = 11,
+            OreOrdinarie = 156m, GiornateLavorate = 24, GiorniDetrazione = 30,
+            DetrazioniGiaGoduteAnno = 140.44m,
+            Trasferte =
+            [
+                new TrasfertaGiorniAgricola(10m, 15m),   // 150,00 esenti
+                new TrasfertaGiorniAgricola(3m, 20m),    // 60,00 esenti
+                new TrasfertaGiorniAgricola(2m, 50m),    // 92,96 esenti + 7,04 imponibili
+            ],
+        });
+
+        var esenti = con.Righe.Where(r => r.Codice == "AGR_TRASF").ToList();
+        Assert.Equal(3, esenti.Count);
+        Assert.Equal(302.96m, esenti.Sum(r => r.Importo));
+        Assert.Equal(7.04m, Assert.Single(con.Righe, r => r.Codice == "AGR_TRASF_IMP").Importo);
+        // Le quote esenti dei gruppi restano fuori dalla base contributiva.
+        Assert.Equal(
+            Math.Round(con.TotaleCompetenze - 302.96m, 0, MidpointRounding.AwayFromZero),
+            con.ImponibileInps);
+    }
+
+    [Fact]
     public void RimborsoSpeseDocumentate_EsenteNelNettoENonNegliImponibili()
     {
         var senza = Calcola(Novembre());

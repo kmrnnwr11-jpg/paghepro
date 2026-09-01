@@ -72,6 +72,8 @@ public class PagheDbContext : DbContext
     public DbSet<RicevutaSdiEntity> RicevuteSdi => Set<RicevutaSdiEntity>();
     public DbSet<DelegaEntity> Deleghe => Set<DelegaEntity>();
     public DbSet<PraticaF24Entity> PraticheF24 => Set<PraticaF24Entity>();
+    // Buste agricole archiviate: tabella separata dai cedolini ordinari, vedi l'entità.
+    public DbSet<CedolinoAgricoloEntity> CedoliniAgricoli => Set<CedolinoAgricoloEntity>();
     public DbSet<PraticaInailEntity> PraticheInail => Set<PraticaInailEntity>();
     public DbSet<AvvisoPagamentoEntity> AvvisiPagamento => Set<AvvisoPagamentoEntity>();
     public DbSet<DurcEntity> Durc => Set<DurcEntity>();
@@ -698,6 +700,34 @@ public class PagheDbContext : DbContext
         });
 
         // --- Pratiche F24 (telematico) ---
+        mb.Entity<CedolinoAgricoloEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.AziendaId, x.Anno, x.Mese });
+            // Una sola busta archiviata per rapporto e periodo: una correzione sostituisce,
+            // non affianca, così l'archivio non racconta due mesi diversi.
+            e.HasIndex(x => new { x.TenantId, x.RapportoLavoroId, x.Anno, x.Mese }).IsUnique();
+            foreach (var importo in new[]
+            {
+                nameof(CedolinoAgricoloEntity.OreOrdinarie),
+                nameof(CedolinoAgricoloEntity.UnaTantum),
+                nameof(CedolinoAgricoloEntity.GiorniTrasferta),
+                nameof(CedolinoAgricoloEntity.IndennitaTrasfertaGiornaliera),
+                nameof(CedolinoAgricoloEntity.RimborsiSpeseDocumentate),
+                nameof(CedolinoAgricoloEntity.DetrazioniGiaGoduteAnno),
+                nameof(CedolinoAgricoloEntity.ArrotondamentoRiportato),
+                nameof(CedolinoAgricoloEntity.RedditoPresuntoAnnuo),
+                nameof(CedolinoAgricoloEntity.TotaleCompetenze),
+                nameof(CedolinoAgricoloEntity.TotaleTrattenute),
+                nameof(CedolinoAgricoloEntity.ImponibileInps),
+                nameof(CedolinoAgricoloEntity.ContributiDipendente),
+                nameof(CedolinoAgricoloEntity.ImponibileIrpef),
+                nameof(CedolinoAgricoloEntity.IrpefNetta),
+                nameof(CedolinoAgricoloEntity.NettoInBusta),
+            })
+                e.Property(importo).HasPrecision(15, 2);
+        });
+
         mb.Entity<PraticaF24Entity>(e =>
         {
             e.HasKey(x => x.Id);

@@ -279,6 +279,17 @@ export interface DatiMensiliCedolinoAgricolo {
   redditoPresuntoAnnuo: number | null;
   giorniTrasferta: number; indennitaTrasfertaGiornaliera: number;
   rimborsiSpeseDocumentate: number;
+  trasferte?: { giorni: number; importoGiorno: number }[];
+}
+export interface BustaAgricolaArchiviata {
+  id: string; rapportoLavoroId: string; nominativo: string;
+  anno: number; mese: number; giornateLavorate: number; oreOrdinarie: number;
+  nettoInBusta: number; provinciaCpl: string; livelloTariffa: string;
+  versione: number; archiviatoIl: string;
+}
+export interface EsitoArchiviazioneAgricola {
+  id: string; anno: number; mese: number; nettoInBusta: number;
+  versione: number; hashPdfSha256: string; archiviatoIl: string; avviso: string;
 }
 export interface CedolinoAgricolo extends Cedolino {
   anno: number; mese: number; imponibileInps: number; contributiDipendente: number;
@@ -742,6 +753,31 @@ export const api = {
       `/api/agricoltura/rapporti/${rapportoId}/cedolino/anteprima`,
       { method: "POST", body: JSON.stringify(dati) },
     ),
+  archiviaCedolinoAgricolo: (rapportoId: string, dati: DatiMensiliCedolinoAgricolo) =>
+    req<EsitoArchiviazioneAgricola>(
+      `/api/agricoltura/rapporti/${rapportoId}/cedolino/archivia`,
+      { method: "POST", body: JSON.stringify(dati) },
+    ),
+  cedoliniAgricoli: (aziendaId: string, anno?: number, mese?: number) =>
+    req<BustaAgricolaArchiviata[]>(
+      `/api/aziende/${aziendaId}/cedolini-agricoli`
+      + (anno ? `?anno=${anno}${mese ? `&mese=${mese}` : ""}` : ""),
+    ),
+  cedolinoAgricoloArchiviatoPdf: async (id: string): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetchAutenticata(`/api/cedolini-agricoli/${id}/pdf`);
+    if (!res.ok) {
+      let messaggio = `Errore ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.errore) messaggio = body.errore as string;
+      } catch { /* corpo non JSON */ }
+      throw new Error(messaggio);
+    }
+    return {
+      blob: await res.blob(),
+      filename: `busta-agricola-archiviata-${id.slice(0, 8)}.pdf`,
+    };
+  },
   cedolinoAgricoloPdf: async (
     rapportoId: string,
     dati: DatiMensiliCedolinoAgricolo,

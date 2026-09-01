@@ -86,6 +86,11 @@ dotnet run --project src/Paghe.Demo -c Release
   stili già esistenti (classico/colori/editoriale, numeri identici) e la pagina Cedolini ha
   la tendina «Stile della busta»; un cedolino CHIUSO resta il PDF congelato alla chiusura.
   La busta agricola mantiene il suo stile dedicato (variante classica = lavoro futuro).
+  **Pagina Impostazioni vera** (Studio → Impostazioni): sostituito il mockup statico con
+  preferenze funzionanti sul dispositivo (`preferenze.ts`: stile busta predefinito riletto
+  dalla pagina Cedolini; toggle risposte brevi Aurora sulla stessa chiave del pannello),
+  stato AI dal vivo (`api.statoAi`) e tessere che aprono davvero le pagine di
+  configurazione via hash; guida aggiornata; test `preferenze.test.ts`.
   Pagina agricola «dal contratto»: le ore al giorno arrivano dalle ore settimanali del rapporto
   (÷ 6, settimana agricola), le ore del mese si propongono come giornate × ore/giorno e i giorni di
   detrazione dal periodo di assunzione/cessazione — tutte proposte modificabili (helper puri in

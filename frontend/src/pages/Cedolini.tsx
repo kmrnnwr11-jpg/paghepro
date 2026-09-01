@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { salvaStileBusta, stileBustaPreferito } from "../preferenze";
 import { ArrowLeft, Calculator, CheckCircle2, LockKeyhole } from "lucide-react";
 import { api, getRuolo, scaricaBlob, type Azienda, type CedolinoArchiviato, type DipendenteRapporto, type StatoWorkflowCedolino } from "../api";
 import { scegliAziendaPreferita } from "../aziendaCorrente";
@@ -26,7 +27,7 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
   const [caricamentoLista, setCaricamentoLista] = useState(false);
   const [caricamento, setCaricamento] = useState(true);
   const [scaricandoId, setScaricandoId] = useState<string | null>(null);
-  const [stileBusta, setStileBusta] = useState("classico");
+  const [stileBusta, setStileBusta] = useState<string>(() => stileBustaPreferito());
   const [errore, setErrore] = useState<string | null>(null);
   const [annoCu, setAnnoCu] = useState<number | null>(null);
   const [scaricandoCu, setScaricandoCu] = useState(false);
@@ -191,7 +192,7 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
               </label>
               <label>
                 <span>Stile della busta (PDF)</span>
-                <select value={stileBusta} onChange={(e) => setStileBusta(e.target.value)}>
+                <select value={stileBusta} onChange={(e) => { setStileBusta(e.target.value); salvaStileBusta(e.target.value); }}>
                   <option value="classico">Classico</option>
                   <option value="colori">Colori</option>
                   <option value="editoriale">Editoriale</option>

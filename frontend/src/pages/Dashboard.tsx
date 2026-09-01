@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Impostazioni } from "./Impostazioni";
 import {
   AlarmClock,
   Bell,
@@ -1652,7 +1653,7 @@ function ModuleScreen({
   if (active === "ires") return <Ires />;
   if (active === "imu") return <Imu />;
   if (active === "intrastat") return <Intrastat />;
-  if (active === "impostazioni") return <SettingsPanel />;
+  if (active === "impostazioni") return <Impostazioni />;
   if (active === "collega-sdi") return <CollegaProvider />;
   if (active === "utenti") return <UsersPanel />;
   if (active === "audit") return <RegistroAttivita />;
@@ -1818,38 +1819,6 @@ function F24Panel() {
         </div>
       </section>
     </div>
-  );
-}
-
-function SettingsPanel() {
-  const settings = [
-    ["Parametri fiscali", "Aliquote IRPEF e addizionali 2026", "Aggiornati", "green"],
-    ["CCNL Commercio", "Livelli e minimi tabellari", "Attivo", "blue"],
-    ["Brand documenti", "Logo, colori e intestazioni PDF", "Configurato", "green"],
-    ["Notifiche scadenze", "Promemoria F24, CU, UniEmens", "Attivo", "blue"],
-  ];
-
-  return (
-    <section className="glass-card page-card">
-      <div className="card-title-row">
-        <div>
-          <h1>Impostazioni</h1>
-          <p>Configurazione studio, parametri e automazioni operative</p>
-        </div>
-        <button className="btn secondary" type="button">Salva modifiche</button>
-      </div>
-      <div className="settings-grid">
-        {settings.map(([title, desc, state, tone]) => (
-          <article className="settings-card" key={title}>
-            <div>
-              <strong>{title}</strong>
-              <span>{desc}</span>
-            </div>
-            <em className={`status-pill ${tone}`}>{state}</em>
-          </article>
-        ))}
-      </div>
-    </section>
   );
 }
 

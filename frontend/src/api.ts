@@ -836,6 +836,9 @@ export const api = {
     }),
   // PreWorkflow = ricostruzione storica non validata; Bozza/Controllata/Validata = anteprima;
   // Chiusa = byte immutabili archiviati.
+  statoAi: () =>
+    req<{ provider: string; attivo: boolean; visione: boolean; consumoMese: number; limiteMensile: number }>(
+      "/api/ai/stato"),
   cedolinoPdf: async (id: string, stile?: string): Promise<{ blob: Blob; filename: string }> => {
     const token = getToken();
     const headers: Record<string, string> = {};

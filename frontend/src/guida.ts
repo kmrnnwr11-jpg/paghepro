@@ -481,11 +481,10 @@ export const aiutoPerSezione: Record<string, SchedaAiuto> = {
   impostazioni: {
     titolo: "Impostazioni",
     aCosaServe:
-      "Qui regoli il programma: parametri fiscali, contratto (CCNL), logo e colori dei documenti, promemoria.",
+      "Qui regoli le preferenze d'uso (stile della busta, risposte di Aurora) e trovi i collegamenti alle pagine dove si configura lo studio: scheda azienda, fatturazione, utenti, registro attività, conservazione dati.",
     passi: [
-      "Apri la voce che vuoi cambiare.",
-      "Modifica i dati.",
-      "Premi 'Salva modifiche'.",
+      "Scegli la preferenza dalla tendina: si salva da sola su questo dispositivo.",
+      "Per i dati dello studio, apri la voce dedicata e salva nella sua pagina.",
     ],
   },
 

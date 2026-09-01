@@ -44,7 +44,9 @@ public static class AgricolturaEndpoints
         int Anno, int Mese, decimal OreOrdinarie, int GiornateLavorate,
         int GiorniDetrazione, decimal UnaTantum, decimal DetrazioniGiaGoduteAnno,
         decimal ArrotondamentoRiportato, bool UltimoCedolino,
-        decimal? RedditoPresuntoAnnuo);
+        decimal? RedditoPresuntoAnnuo,
+        decimal GiorniTrasferta = 0m, decimal IndennitaTrasfertaGiornaliera = 0m,
+        decimal RimborsiSpeseDocumentate = 0m);
 
     private sealed record CalcoloAgricoloDaRapporto(
         Cedolino Cedolino,
@@ -336,6 +338,9 @@ public static class AgricolturaEndpoints
             DetrazioniGiaGoduteAnno = input.DetrazioniGiaGoduteAnno,
             ArrotondamentoRiportato = input.ArrotondamentoRiportato,
             UltimoCedolino = input.UltimoCedolino,
+            GiorniTrasferta = input.GiorniTrasferta,
+            IndennitaTrasfertaGiornaliera = input.IndennitaTrasfertaGiornaliera,
+            RimborsiSpeseDocumentate = input.RimborsiSpeseDocumentate,
         };
         var cedolino = new MotoreCalcoloCedolinoAgricolo(nazionali, agricoli)
             .Calcola(rapporto, cartellino);
@@ -392,6 +397,10 @@ public static class AgricolturaEndpoints
             throw new ArgumentException("I giorni di detrazione non sono validi per il mese indicato.");
         if (input.UnaTantum < 0m || input.DetrazioniGiaGoduteAnno < 0m)
             throw new ArgumentException("Una tantum e detrazioni gia godute non possono essere negative.");
+        if (input.GiorniTrasferta < 0m || input.GiorniTrasferta > giorniMese)
+            throw new ArgumentException("I giorni di trasferta non sono validi per il mese indicato.");
+        if (input.IndennitaTrasfertaGiornaliera < 0m || input.RimborsiSpeseDocumentate < 0m)
+            throw new ArgumentException("Trasferta e rimborsi spese non possono essere negativi.");
     }
 
     private static void VerificaPeriodoRapporto(RapportoLavoroEntity rapporto, int anno, int mese)

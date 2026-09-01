@@ -23,7 +23,10 @@ public sealed record RapportoDettaglioDto(
     string? DataDecorrenzaDomicilioFiscale,
     string? RiferimentoProgressiviFiscaliPregressi,
     decimal? RolResiduiIniziali,
-    decimal? ExFestivitaResidueIniziali);
+    decimal? ExFestivitaResidueIniziali,
+    decimal? NettoConcordatoMensile,
+    string? NettoConcordatoDecorrenza,
+    decimal OreSettimanali);
 
 /// <summary>Correzione della scheda dipendente: solo i campi presenti (non null) vengono cambiati.</summary>
 public sealed record CorreggiRapportoRequest(
@@ -45,7 +48,10 @@ public sealed record CorreggiRapportoRequest(
     string? DataDecorrenzaDomicilioFiscale = null,
     string? RiferimentoProgressiviFiscaliPregressi = null,
     decimal? RolResiduiIniziali = null,
-    decimal? ExFestivitaResidueIniziali = null);
+    decimal? ExFestivitaResidueIniziali = null,
+    decimal? NettoConcordatoMensile = null,
+    string? NettoConcordatoDecorrenza = null,
+    bool? RimuoviNettoConcordato = null);
 
 /// <summary>
 /// Endpoint per il dettaglio di un rapporto (scheda dipendente reale), isolato per tenant.
@@ -100,7 +106,10 @@ public static class RapportoEndpoints
                 DataDecorrenzaDomicilioFiscale: r.DataDecorrenzaDomicilioFiscale?.ToString("yyyy-MM-dd"),
                 RiferimentoProgressiviFiscaliPregressi: r.RiferimentoProgressiviFiscaliPregressi,
                 RolResiduiIniziali: r.RolResiduiIniziali,
-                ExFestivitaResidueIniziali: r.ExFestivitaResidueIniziali));
+                ExFestivitaResidueIniziali: r.ExFestivitaResidueIniziali,
+                NettoConcordatoMensile: r.NettoConcordatoMensile,
+                NettoConcordatoDecorrenza: r.NettoConcordatoDecorrenza?.ToString("yyyy-MM-dd"),
+                OreSettimanali: r.OreSettimanali));
         }).RequireAuthorization();
 
         // Correzione della scheda (es. dopo un import UNILAV/OCR letto male): aggiorna solo
@@ -129,6 +138,13 @@ public static class RapportoEndpoints
                     return Results.BadRequest(new { errore = "Decorrenza domicilio fiscale non valida (usa AAAA-MM-GG)." });
                 decorrenzaDomicilio = dd;
             }
+            DateOnly? decorrenzaNettoConcordato = null;
+            if (!string.IsNullOrWhiteSpace(req.NettoConcordatoDecorrenza))
+            {
+                if (!DateOnly.TryParse(req.NettoConcordatoDecorrenza, out var dn))
+                    return Results.BadRequest(new { errore = "Decorrenza del netto concordato non valida (usa AAAA-MM-GG)." });
+                decorrenzaNettoConcordato = dn;
+            }
 
             try
             {
@@ -152,7 +168,10 @@ public static class RapportoEndpoints
                         decorrenzaDomicilio,
                         req.RiferimentoProgressiviFiscaliPregressi,
                         req.RolResiduiIniziali,
-                        req.ExFestivitaResidueIniziali));
+                        req.ExFestivitaResidueIniziali,
+                        req.NettoConcordatoMensile,
+                        decorrenzaNettoConcordato,
+                        req.RimuoviNettoConcordato));
                 return r is null
                     ? Results.NotFound(new { errore = "Rapporto non trovato per il tenant indicato." })
                     : Results.Ok(new { aggiornato = true });

@@ -8,8 +8,13 @@ namespace Paghe.Persistence;
 public sealed class AnagraficheLavoroService
 {
     private readonly PagheDbContext _db;
+    private readonly TimeProvider _clock;
 
-    public AnagraficheLavoroService(PagheDbContext db) => _db = db;
+    public AnagraficheLavoroService(PagheDbContext db, TimeProvider? clock = null)
+    {
+        _db = db;
+        _clock = clock ?? TimeProvider.System;
+    }
 
     /// <summary>Crea un dipendente e il relativo rapporto di lavoro per un'azienda.</summary>
     public async Task<RapportoLavoroEntity> CreaDipendenteERapportoAsync(
@@ -100,7 +105,10 @@ public sealed class AnagraficheLavoroService
         DateOnly? DataDecorrenzaDomicilioFiscale = null,
         string? RiferimentoProgressiviFiscaliPregressi = null,
         decimal? RolResiduiIniziali = null,
-        decimal? ExFestivitaResidueIniziali = null);
+        decimal? ExFestivitaResidueIniziali = null,
+        decimal? NettoConcordatoMensile = null,
+        DateOnly? NettoConcordatoDecorrenza = null,
+        bool? RimuoviNettoConcordato = null);
 
     /// <summary>
     /// Corregge i dati di un dipendente/rapporto (isolato per tenant). Pensato per rivedere ciò che
@@ -140,6 +148,29 @@ public sealed class AnagraficheLavoroService
         if (c.PercentualePartTime is { } ppt) r.PercentualePartTime = ppt;
         if (c.ScattiAnzianita is { } sa) r.ScattiAnzianita = sa;
         if (c.Superminimo is { } sm) r.Superminimo = sm;
+        // Netto concordato: vale solo dal mese corrente in avanti. Le buste dei mesi passati
+        // non si ricostruiscono da un netto pattuito (stessa famiglia del blocco mesi futuri).
+        if (c.RimuoviNettoConcordato == true)
+        {
+            r.NettoConcordatoMensile = null;
+            r.NettoConcordatoDecorrenza = null;
+        }
+        else if (c.NettoConcordatoMensile is { } nettoConcordato)
+        {
+            if (nettoConcordato <= 0m)
+                throw new ArgumentException("Il netto concordato deve essere un importo positivo.");
+            var oggi = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+            var meseCorrente = new DateOnly(oggi.Year, oggi.Month, 1);
+            var decorrenza = c.NettoConcordatoDecorrenza is { } dec
+                ? new DateOnly(dec.Year, dec.Month, 1)
+                : meseCorrente;
+            if (decorrenza < meseCorrente)
+                throw new ArgumentException(
+                    "Il netto concordato vale dal mese corrente in avanti e non puo essere "
+                    + "retroattivo: le buste dei mesi passati restano calcolate dal lordo.");
+            r.NettoConcordatoMensile = nettoConcordato;
+            r.NettoConcordatoDecorrenza = decorrenza;
+        }
         if (c.Regione is not null) r.Regione = c.Regione.Trim();
         if (c.CodiceCatastaleComune is not null) r.CodiceCatastaleComune = c.CodiceCatastaleComune.Trim().ToUpperInvariant();
         // Provincia dell'unità operativa: stringa vuota = torna alla sede aziendale.

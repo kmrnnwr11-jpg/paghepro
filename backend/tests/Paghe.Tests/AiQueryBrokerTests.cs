@@ -417,6 +417,69 @@ public sealed class AiQueryBrokerTests : IDisposable
     }
 
     [Fact]
+    public async Task ControlloCedolini_RapportoAgricolo_NonRisultaBloccatoDaiDatiAziendali()
+    {
+        var tenant = Guid.NewGuid();
+        var aziendaId = Guid.NewGuid();
+        var agricoloId = Guid.NewGuid();
+        var ordinarioId = Guid.NewGuid();
+        await using (var db = NuovoContesto())
+        {
+            using var _ = Paghe.Persistence.Gdpr.AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            // Azienda agricola come arriva dall'import UNILAV: matricola e PAT ci sono, mancano
+            // codice sede INPS e CCNL predefinito (che per i braccianti sta sul rapporto).
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId, TenantId = tenant, RagioneSociale = "Campi Verdi Srls",
+                MatricolaInps = "5606820236", PatInail = "97503038",
+            });
+            foreach (var (rapportoId, cognome, ccnl) in new[]
+            {
+                (agricoloId, "Bracciante", "AGRICOLTURA_OPERAI"),
+                (ordinarioId, "Impiegato", "COMMERCIO_TERZIARIO"),
+            })
+            {
+                var dipendenteId = Guid.NewGuid();
+                db.Dipendenti.Add(new DipendenteEntity
+                {
+                    Id = dipendenteId, TenantId = tenant,
+                    CodiceFiscale = $"TEST{rapportoId.ToString("N")[..12].ToUpperInvariant()}",
+                    Nome = "Test", Cognome = cognome,
+                });
+                db.Rapporti.Add(new RapportoLavoroEntity
+                {
+                    Id = rapportoId, TenantId = tenant, AziendaId = aziendaId, DipendenteId = dipendenteId,
+                    CodiceCcnl = ccnl, Livello = "COMUNE",
+                    DataAssunzione = new DateOnly(2026, 6, 30),
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        await using var contesto = NuovoContesto();
+        var (broker, governor) = NuoviServizi(contesto);
+        var utente = Guid.NewGuid();
+        var (grant, errore) = await governor.EmettiAsync(
+            tenant, utente, MandatoSu(aziendaId, "Cedolini") with
+            {
+                PurposeCode = "PREPARAZIONE_MESE_PAGHE",
+                MaxLetture = 10,
+            });
+        Assert.Null(errore);
+
+        var esito = await broker.LeggiAsync(tenant, utente, grant!.Lease, "Cedolini");
+        Assert.True(esito.Consentito);
+        var righe = esito.Righe.Cast<RigaCedolinoMese>().ToList();
+
+        var agricolo = Assert.Single(righe, r => r.RapportoId == agricoloId);
+        Assert.Equal("agricolo", agricolo.Stato);
+        Assert.Contains("Agricoltura OTD", agricolo.Motivo);
+        // L'ordinario della stessa azienda resta davvero bloccato: il gate non si allenta.
+        var ordinario = Assert.Single(righe, r => r.RapportoId == ordinarioId);
+        Assert.Equal("bloccato", ordinario.Stato);
+    }
+
+    [Fact]
     public async Task ControlloCedoliniSenzaRapporti_RestituisceZeroSenzaConsumareQuota()
     {
         var tenant = Guid.NewGuid();

@@ -16,6 +16,10 @@ import {
   eRapportoAgricolo,
   eTipoContrattoOti,
   validaDatiCedolinoAgricolo,
+  giorniDetrazioneNelMese,
+  oreDaGiornate,
+  oreGiornaliereDaContratto,
+  GIORNI_SETTIMANA_AGRICOLA,
 } from "../agricoltura";
 
 const mesi = [
@@ -44,6 +48,10 @@ interface CampiForm {
   detrazioniGiaGoduteAnno: string;
   arrotondamentoRiportato: string;
   ultimoCedolino: boolean;
+  giorniTrasferta: string;
+  indennitaTrasfertaGiornaliera: string;
+  rimborsiSpeseDocumentate: string;
+  oreGiorno: string;
 }
 
 const annoCorrente = new Date().getFullYear();
@@ -58,6 +66,10 @@ const formIniziale: CampiForm = {
   detrazioniGiaGoduteAnno: "0",
   arrotondamentoRiportato: "0",
   ultimoCedolino: false,
+  giorniTrasferta: "0",
+  indennitaTrasfertaGiornaliera: "0",
+  rimborsiSpeseDocumentate: "0",
+  oreGiorno: "",
 };
 
 function valoreNumero(valore: string): number {
@@ -120,6 +132,20 @@ export function CedolinoAgricolo() {
     return () => { attivo = false; };
   }, [rapportoId]);
 
+  // Dal contratto: ore al giorno (ore settimanali ÷ 6) e giorni di detrazione del mese.
+  // Sono proposte modificabili: il datore può variare le ore, il motore usa quello che vede.
+  useEffect(() => {
+    if (!rapporto) return;
+    const oreGiorno = oreGiornaliereDaContratto(rapporto.oreSettimanali);
+    const detrazione = giorniDetrazioneNelMese(
+      Number(form.anno), Number(form.mese), rapporto.dataAssunzione, rapporto.dataCessazione);
+    setForm((corrente) => ({
+      ...corrente,
+      oreGiorno: oreGiorno === null ? "" : String(oreGiorno),
+      giorniDetrazione: detrazione === null ? corrente.giorniDetrazione : String(detrazione),
+    }));
+  }, [rapporto, form.anno, form.mese]);
+
   const provinciaRapporto = (rapporto?.provinciaLavoro || azienda?.provincia || "").toUpperCase();
   const anno = Number(form.anno);
   const disponibilita = province.find((p) => p.anno === anno && p.provincia.toUpperCase() === provinciaRapporto);
@@ -149,13 +175,38 @@ export function CedolinoAgricolo() {
     redditoPresuntoAnnuo: form.redditoPresuntoAnnuo.trim()
       ? valoreNumero(form.redditoPresuntoAnnuo)
       : null,
+    giorniTrasferta: valoreNumero(form.giorniTrasferta),
+    indennitaTrasfertaGiornaliera: valoreNumero(form.indennitaTrasfertaGiornaliera),
+    rimborsiSpeseDocumentate: valoreNumero(form.rimborsiSpeseDocumentate),
   }), [form]);
+
+  // Tendina delle ore al giorno: mezz'ora per mezz'ora da 1 a 10, con il valore del contratto
+  // (ore settimanali ÷ 6) sempre presente anche quando non cade su una mezz'ora.
+  const oreGiornoContratto = (() => {
+    const valore = oreGiornaliereDaContratto(rapporto?.oreSettimanali);
+    return valore === null ? "" : String(valore);
+  })();
+  const opzioniOreGiorno = useMemo(() => {
+    const base = Array.from({ length: 19 }, (_, i) => String(1 + i * 0.5));
+    const extra = [oreGiornoContratto, form.oreGiorno].filter((v) => v && !base.includes(v));
+    return [...base, ...extra].sort((a, b) => Number(a) - Number(b));
+  }, [oreGiornoContratto, form.oreGiorno]);
 
   const tariffa = tabella?.tariffe.find((t) =>
     t.livello.toUpperCase() === rapporto?.livello.toUpperCase());
 
   function aggiorna(campo: keyof CampiForm, valore: string | boolean) {
-    setForm((corrente) => ({ ...corrente, [campo]: valore }));
+    setForm((corrente) => {
+      const prossimo = { ...corrente, [campo]: valore };
+      // Giornate × ore al giorno → ore del mese proposte (si possono sempre correggere a mano);
+      // i giorni di trasferta seguono le giornate finché non vengono cambiati esplicitamente.
+      if (campo === "giornateLavorate" || campo === "oreGiorno") {
+        const ore = oreDaGiornate(valoreNumero(prossimo.giornateLavorate), valoreNumero(prossimo.oreGiorno));
+        if (ore !== null) prossimo.oreOrdinarie = String(ore);
+        if (campo === "giornateLavorate") prossimo.giorniTrasferta = String(valore);
+      }
+      return prossimo;
+    });
     setAnteprima(null);
     setErrore(null);
   }
@@ -257,14 +308,30 @@ export function CedolinoAgricolo() {
                 </select>
               </label>
               <label>
-                <span>Ore ordinarie effettive</span>
-                <input type="number" min="0" step="0.01" value={form.oreOrdinarie}
-                  onChange={(e) => aggiorna("oreOrdinarie", e.target.value)} placeholder="es. 64" />
-              </label>
-              <label>
                 <span>Giornate lavorate INPS</span>
                 <input type="number" min="0" step="1" value={form.giornateLavorate}
                   onChange={(e) => aggiorna("giornateLavorate", e.target.value)} placeholder="es. 8" />
+              </label>
+              <label>
+                <span>
+                  Ore al giorno dal contratto
+                  {rapporto?.oreSettimanali
+                    ? ` (${rapporto.oreSettimanali} h/sett. ÷ ${GIORNI_SETTIMANA_AGRICOLA} gg, modificabile)`
+                    : " (modificabile)"}
+                </span>
+                <select value={form.oreGiorno} onChange={(e) => aggiorna("oreGiorno", e.target.value)}>
+                  {!form.oreGiorno && <option value="">Scegli le ore al giorno</option>}
+                  {opzioniOreGiorno.map((valore) => (
+                    <option value={valore} key={valore}>
+                      {Number(valore).toLocaleString("it-IT")} ore{valore === oreGiornoContratto ? " (contratto)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Ore ordinarie effettive (giornate × ore/giorno, correggibili)</span>
+                <input type="number" min="0" step="0.01" value={form.oreOrdinarie}
+                  onChange={(e) => aggiorna("oreOrdinarie", e.target.value)} placeholder="es. 64" />
               </label>
               <label>
                 <span>Giorni di detrazione</span>
@@ -275,6 +342,21 @@ export function CedolinoAgricolo() {
                 <span>Altre competenze imponibili</span>
                 <input type="number" min="0" step="0.01" value={form.unaTantum}
                   onChange={(e) => aggiorna("unaTantum", e.target.value)} />
+              </label>
+              <label>
+                <span>Giorni di trasferta (fuori dal comune della sede)</span>
+                <input type="number" min="0" step="1" value={form.giorniTrasferta}
+                  onChange={(e) => aggiorna("giorniTrasferta", e.target.value)} />
+              </label>
+              <label>
+                <span>Indennità di trasferta al giorno (esente entro 46,48 €)</span>
+                <input type="number" min="0" step="0.01" value={form.indennitaTrasfertaGiornaliera}
+                  onChange={(e) => aggiorna("indennitaTrasfertaGiornaliera", e.target.value)} />
+              </label>
+              <label>
+                <span>Rimborsi spese documentati (esenti)</span>
+                <input type="number" min="0" step="0.01" value={form.rimborsiSpeseDocumentate}
+                  onChange={(e) => aggiorna("rimborsiSpeseDocumentate", e.target.value)} />
               </label>
               <label>
                 <span>Reddito annuo presunto reale</span>

@@ -55,6 +55,32 @@ public sealed class MotoreCalcoloCedolinoAgricolo
             AggiungiRiga(cedolino, "AGR_UNATANTUM", "Una tantum", TipoVoce.Competenza,
                 importo: Arrotondamento.Euro(cartellino.UnaTantum));
 
+        // Trasferta e rimborsi documentati: stessa regola del motore ordinario. Le voci sono
+        // competenze (entrano nel netto); gli imponibili vengono poi ridotti della sola quota
+        // esente, così l'eccedenza oltre soglia resta tassata come retribuzione.
+        decimal sommeEsenti = 0m;
+        var trasferta = CalcoloElementiAgevolati.Trasferta(
+            cartellino.GiorniTrasferta, cartellino.IndennitaTrasfertaGiornaliera,
+            _parametri.TrasfertaItaliaEsenteGiorno, TipoRimborsoTrasferta.Forfettario);
+        if (trasferta.Esente > 0m)
+        {
+            AggiungiRiga(cedolino, "AGR_TRASF", "Indennità di trasferta Italia (esente)",
+                TipoVoce.Competenza, quantita: cartellino.GiorniTrasferta,
+                @base: cartellino.IndennitaTrasfertaGiornaliera, importo: trasferta.Esente);
+            sommeEsenti += trasferta.Esente;
+        }
+        if (trasferta.Imponibile > 0m)
+            AggiungiRiga(cedolino, "AGR_TRASF_IMP",
+                "Indennità di trasferta oltre soglia (imponibile)", TipoVoce.Competenza,
+                quantita: cartellino.GiorniTrasferta, importo: trasferta.Imponibile);
+        if (cartellino.RimborsiSpeseDocumentate > 0m)
+        {
+            decimal rimborso = Arrotondamento.Euro(cartellino.RimborsiSpeseDocumentate);
+            AggiungiRiga(cedolino, "AGR_RIMB_SPESE", "Rimborso spese documentate (esente)",
+                TipoVoce.Competenza, importo: rimborso);
+            sommeEsenti += rimborso;
+        }
+
         // Le giornate non pagano nulla: sono il dato che finisce nella denuncia mensile PosAgri
         // all'INPS e nell'estratto conto del lavoratore. Restano in busta perché sono la cosa
         // che l'operaio agricolo controlla per prima.
@@ -64,7 +90,9 @@ public sealed class MotoreCalcoloCedolinoAgricolo
         decimal totaleCompetenze = Somma(cedolino, TipoVoce.Competenza);
 
         // ---- 2. Contributi: base arrotondata all'euro, una voce per contributo ---------
-        decimal imponibileContributivo = Math.Round(totaleCompetenze, 0, MidpointRounding.AwayFromZero);
+        // Le somme esenti (trasferta entro soglia, rimborsi documentati) non entrano nella base.
+        decimal imponibileContributivo = Math.Round(
+            totaleCompetenze - sommeEsenti, 0, MidpointRounding.AwayFromZero);
 
         decimal contributiDipendente = 0m;
         decimal contributiDatore = 0m;
@@ -94,7 +122,8 @@ public sealed class MotoreCalcoloCedolinoAgricolo
         // di assistenza contrattuale non sono oneri deducibili.
         decimal contributiDeducibili = Arrotondamento.Euro(
             imponibileContributivo * _agricoli.AliquotaContributiDeducibili);
-        decimal imponibileFiscale = Arrotondamento.Euro(totaleCompetenze - contributiDeducibili);
+        decimal imponibileFiscale = Arrotondamento.Euro(
+            totaleCompetenze - sommeEsenti - contributiDeducibili);
 
         // Aliquota del reddito che il lavoratore realizzerà davvero nell'anno, non del mese × 12.
         decimal redditoPresunto = rapporto.RedditoPresuntoAnnuo ?? imponibileFiscale * 12m;

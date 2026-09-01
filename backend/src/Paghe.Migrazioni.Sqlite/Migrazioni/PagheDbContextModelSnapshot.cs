@@ -2940,6 +2940,12 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<string>("Matricola")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateOnly?>("NettoConcordatoDecorrenza")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("NettoConcordatoMensile")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("NumeroMensilita")
                         .HasColumnType("INTEGER");
 

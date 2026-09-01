@@ -158,7 +158,36 @@ public sealed class CedoliniService
         var dominio = ToDominio(rapporto, aziendaDelRapporto);
         var parametri = await _parametri.CaricaParametriAsync(cartellino.Anno, ct);
         var ccnl = await _parametri.CaricaCcnlAsync(rapporto.CodiceCcnl, cartellino.Anno, ct);
-        var cedolino = new MotoreCalcoloCedolino(parametri, ccnl).Calcola(dominio, cartellino);
+        var motore = new MotoreCalcoloCedolino(parametri, ccnl);
+        Cedolino cedolino;
+        // Netto concordato: dal mese di decorrenza in poi il superminimo del mese è determinato
+        // dal netto pattuito (calcolo inverso, mai sotto il minimo CCNL). I periodi precedenti
+        // alla decorrenza restano calcolati dal lordo: nessuna busta passata viene ricostruita.
+        if (rapporto.NettoConcordatoMensile is { } nettoConcordato && nettoConcordato > 0m
+            && rapporto.NettoConcordatoDecorrenza is { } decorrenzaNetto
+            && new DateOnly(cartellino.Anno, cartellino.Mese, 1)
+                >= new DateOnly(decorrenzaNetto.Year, decorrenzaNetto.Month, 1))
+        {
+            var inverso = CalcoloInversoNetto.Calcola(motore, dominio, cartellino, nettoConcordato);
+            if (!inverso.Raggiungibile)
+                throw new ArgumentException(
+                    $"Netto concordato di {nettoConcordato:0.00} euro non raggiungibile per "
+                    + $"{cartellino.Mese:00}/{cartellino.Anno}: {inverso.Nota}");
+            dominio = dominio.ConSuperminimo(inverso.SuperminimoNecessario);
+            cedolino = motore.Calcola(dominio, cartellino);
+            cedolino.Righe.Add(new CedolinoRiga
+            {
+                Codice = "NETTO_CONC",
+                Descrizione = $"Netto concordato {nettoConcordato:0.00} euro: superminimo del mese "
+                    + "determinato dal netto pattuito",
+                Tipo = TipoVoce.Figurativa,
+                Importo = 0m,
+            });
+        }
+        else
+        {
+            cedolino = motore.Calcola(dominio, cartellino);
+        }
 
         // Il motore calcola la maturazione teorica da gennaio. Per ottenere il saldo realmente
         // leggibile dal dipendente aggiungiamo i riporti iniziali e tutti gli utilizzi dei soli

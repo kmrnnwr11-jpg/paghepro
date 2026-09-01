@@ -85,6 +85,6 @@ export function mandatoSoloLettura(grant: { operazioni: string[] }): boolean {
 export function contaStatiCedolini(righe: RigaCedolinoMeseAi[]) {
   return righe.reduce<Record<RigaCedolinoMeseAi["stato"], number>>(
     (totali, riga) => ({ ...totali, [riga.stato]: totali[riga.stato] + 1 }),
-    { cartellino_presente: 0, da_compilare: 0, gia_elaborato: 0, bloccato: 0, protetto: 0 },
+    { cartellino_presente: 0, da_compilare: 0, gia_elaborato: 0, bloccato: 0, protetto: 0, agricolo: 0 },
   );
 }

@@ -48,6 +48,7 @@ test("riepiloga correttamente un lotto misto", () => {
     gia_elaborato: 1,
     bloccato: 2,
     protetto: 1,
+    agricolo: 0,
   });
 });
 

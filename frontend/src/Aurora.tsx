@@ -1489,7 +1489,7 @@ export function AuroraPanel({
             </summary>
             <div className="au-attivita-corpo">
               <span className="au-riepilogo">
-                {conteggi.cartellino_presente} cartellini presenti · {conteggi.da_compilare} da compilare · {conteggi.gia_elaborato} già elaborati · {conteggi.bloccato} bloccati · {conteggi.protetto} protetti
+                {conteggi.cartellino_presente} cartellini presenti · {conteggi.da_compilare} da compilare · {conteggi.gia_elaborato} già elaborati · {conteggi.bloccato} bloccati · {conteggi.protetto} protetti · {conteggi.agricolo} agricoli (pagina Agricoltura OTD)
               </span>
               <ul className="au-righe">
                 {esitoCorrente.righe.map((riga) => (

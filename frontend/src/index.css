@@ -6064,6 +6064,7 @@ details[open] > summary .au-freccia {
 .au-badge-stato.cartellino_presente { color: #065f46; background: rgba(7, 135, 102, 0.12); }
 .au-badge-stato.bloccato { color: #991b1b; background: rgba(212, 56, 56, 0.12); }
 .au-badge-stato.da_compilare { color: #8a4b04; background: rgba(184, 100, 8, 0.12); }
+.au-badge-stato.agricolo { color: #1e3a8a; background: rgba(37, 99, 235, 0.12); }
 
 .au-eventi li {
   display: flex;

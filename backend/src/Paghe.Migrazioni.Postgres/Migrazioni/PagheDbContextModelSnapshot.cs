@@ -2947,6 +2947,12 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<string>("Matricola")
                         .HasColumnType("text");
 
+                    b.Property<DateOnly?>("NettoConcordatoDecorrenza")
+                        .HasColumnType("date");
+
+                    b.Property<decimal?>("NettoConcordatoMensile")
+                        .HasColumnType("numeric");
+
                     b.Property<int>("NumeroMensilita")
                         .HasColumnType("integer");
 

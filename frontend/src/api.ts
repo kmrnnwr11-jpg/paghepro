@@ -277,6 +277,8 @@ export interface DatiMensiliCedolinoAgricolo {
   giorniDetrazione: number; unaTantum: number; detrazioniGiaGoduteAnno: number;
   arrotondamentoRiportato: number; ultimoCedolino: boolean;
   redditoPresuntoAnnuo: number | null;
+  giorniTrasferta: number; indennitaTrasfertaGiornaliera: number;
+  rimborsiSpeseDocumentate: number;
 }
 export interface CedolinoAgricolo extends Cedolino {
   anno: number; mese: number; imponibileInps: number; contributiDipendente: number;
@@ -419,6 +421,7 @@ export interface RapportoDettaglio {
   codiceCatastaleComune: string; dataAssunzione: string;
   ferieResidueIniziali: number; permessiResiduiIniziali: number;
   dataCessazione?: string | null;
+  oreSettimanali?: number;
   /** Inquadramento contributivo richiesto dalla denuncia UniEmens. */
   tipoPartTimeInps?: string | null; cittadinanzaInps?: string | null;
   qualificaProfessionaleIstat?: string | null; tipoContribuzioneInps?: string | null;
@@ -1502,7 +1505,7 @@ export interface RigaCartellinoAi {
 export interface RigaCedolinoMeseAi {
   rapportoId: string;
   nominativo: string;
-  stato: "cartellino_presente" | "da_compilare" | "gia_elaborato" | "bloccato" | "protetto";
+  stato: "cartellino_presente" | "da_compilare" | "gia_elaborato" | "bloccato" | "protetto" | "agricolo";
   motivo: string;
   cedolinoId: string | null;
   statoCedolino: string | null;

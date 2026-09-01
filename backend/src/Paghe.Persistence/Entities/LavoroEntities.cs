@@ -71,6 +71,19 @@ public class RapportoLavoroEntity
     public decimal PercentualePartTime { get; set; } = 100m;
     public int ScattiAnzianita { get; set; }
     public decimal Superminimo { get; set; }
+
+    /// <summary>
+    /// Netto mensile pattuito col lavoratore («netto concordato»): a ogni elaborazione il motore
+    /// ricalcola il superminimo che lo produce, mai sotto il minimo CCNL. Null = paga dal lordo.
+    /// </summary>
+    public decimal? NettoConcordatoMensile { get; set; }
+
+    /// <summary>
+    /// Mese da cui vale il netto concordato (normalizzato al primo giorno). Mai retroattivo:
+    /// i periodi precedenti restano calcolati dal lordo, le buste passate non si ricostruiscono.
+    /// </summary>
+    public DateOnly? NettoConcordatoDecorrenza { get; set; }
+
     public string Regione { get; set; } = "";
     public string CodiceCatastaleComune { get; set; } = "";
 

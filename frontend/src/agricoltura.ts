@@ -32,6 +32,13 @@ export function validaDatiCedolinoAgricolo(dati: DatiMensiliCedolinoAgricolo): s
     errori.push(`I giorni di detrazione devono essere compresi tra 0 e ${giorniMese}.`);
   if (!Number.isFinite(dati.unaTantum) || dati.unaTantum < 0)
     errori.push("Le altre competenze non possono essere negative.");
+  if (!Number.isFinite(dati.giorniTrasferta)
+      || dati.giorniTrasferta < 0 || dati.giorniTrasferta > giorniMese)
+    errori.push(`I giorni di trasferta devono essere compresi tra 0 e ${giorniMese}.`);
+  if (!Number.isFinite(dati.indennitaTrasfertaGiornaliera) || dati.indennitaTrasfertaGiornaliera < 0)
+    errori.push("L'indennita di trasferta giornaliera non puo essere negativa.");
+  if (!Number.isFinite(dati.rimborsiSpeseDocumentate) || dati.rimborsiSpeseDocumentate < 0)
+    errori.push("I rimborsi spese documentati non possono essere negativi.");
   if (!Number.isFinite(dati.detrazioniGiaGoduteAnno) || dati.detrazioniGiaGoduteAnno < 0)
     errori.push("Le detrazioni gia godute non possono essere negative.");
   if (!Number.isFinite(dati.arrotondamentoRiportato))
@@ -41,4 +48,40 @@ export function validaDatiCedolinoAgricolo(dati: DatiMensiliCedolinoAgricolo): s
       || dati.redditoPresuntoAnnuo <= 0)
     errori.push("Indica il reddito annuo presunto reale del rapporto.");
   return errori;
+}
+
+/** Settimana agricola standard: 39 ore su 6 giorni (CCNL operai agricoli e florovivaisti). */
+export const GIORNI_SETTIMANA_AGRICOLA = 6;
+
+/** Ore al giorno dal contratto: ore settimanali ÷ giorni della settimana agricola. */
+export function oreGiornaliereDaContratto(oreSettimanali: number | undefined, giorniSettimana = GIORNI_SETTIMANA_AGRICOLA): number | null {
+  if (!oreSettimanali || !Number.isFinite(oreSettimanali) || oreSettimanali <= 0) return null;
+  return Math.round((oreSettimanali / giorniSettimana) * 100) / 100;
+}
+
+/** Ore del mese proposte: giornate lavorate × ore al giorno. Restano modificabili dall'utente. */
+export function oreDaGiornate(giornate: number, oreGiorno: number): number | null {
+  if (!Number.isFinite(giornate) || !Number.isFinite(oreGiorno) || giornate < 0 || oreGiorno <= 0) return null;
+  return Math.round(giornate * oreGiorno * 100) / 100;
+}
+
+function dataItaliana(valore?: string | null): Date | null {
+  if (!valore) return null;
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(valore.trim());
+  if (m) return new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(valore.trim());
+  return iso ? new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))) : null;
+}
+
+/** Giorni di calendario del mese coperti dal rapporto (dall'assunzione alla cessazione). */
+export function giorniDetrazioneNelMese(anno: number, mese: number, dataAssunzione?: string | null, dataCessazione?: string | null): number | null {
+  if (!Number.isInteger(anno) || !Number.isInteger(mese) || mese < 1 || mese > 12) return null;
+  const inizioMese = Date.UTC(anno, mese - 1, 1);
+  const fineMese = Date.UTC(anno, mese, 0);
+  const assunzione = dataItaliana(dataAssunzione)?.getTime() ?? inizioMese;
+  const cessazione = dataItaliana(dataCessazione)?.getTime() ?? fineMese;
+  const da = Math.max(inizioMese, assunzione);
+  const a = Math.min(fineMese, cessazione);
+  if (a < da) return 0;
+  return Math.round((a - da) / 86_400_000) + 1;
 }

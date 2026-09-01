@@ -347,8 +347,13 @@ public sealed class ProfessionalQueryBroker(
                 || controllato
                 || cedolino?.Stato == nameof(StatoCedolino.Validata)
                 || cedolino?.Stato == nameof(StatoCedolino.Chiusa);
+            // Un operaio agricolo non passa dal ciclo ordinario: ha tariffa provinciale, ore e
+            // giornate distinte e si elabora dalla pagina Agricoltura OTD. Segnarlo «bloccato»
+            // per la posizione INPS/CCNL aziendale sarebbe un'informazione falsa.
+            var agricolo = string.Equals(r.CodiceCcnl, "AGRICOLTURA_OPERAI", StringComparison.OrdinalIgnoreCase);
             var stato = protetto ? "protetto"
                 : cedolino is not null ? "gia_elaborato"
+                : agricolo ? "agricolo"
                 : !aziendaCompleta ? "bloccato"
                 : !cartellini.Contains(r.Id) ? "da_compilare"
                 : "cartellino_presente";
@@ -360,6 +365,7 @@ public sealed class ProfessionalQueryBroker(
             {
                 "protetto" => "Cedolino validato o chiuso: sola lettura.",
                 "gia_elaborato" => "Esiste già una bozza del cedolino.",
+                "agricolo" => "Rapporto agricolo (CCNL operai agricoli): si elabora dalla pagina Agricoltura OTD, fuori dal ciclo ordinario del mese.",
                 "bloccato" => "Completare posizione INPS, PAT INAIL e CCNL dell'azienda.",
                 "da_compilare" => "Cartellino del mese non ancora compilato.",
                 // Formulazione senza ambiguità: «applicherà i blocchi» veniva letto (anche
@@ -378,7 +384,8 @@ public sealed class ProfessionalQueryBroker(
                 && r.Dipendente != null && r.Dipendente.TenantId == tenantId
                 && r.DataAssunzione <= fine && (r.DataCessazione == null || r.DataCessazione >= inizio))
             .OrderBy(r => r.Dipendente!.Cognome).ThenBy(r => r.Dipendente!.Nome)
-            .Select(r => new RapportoMinimo(r.Id, (r.Dipendente!.Cognome + " " + r.Dipendente.Nome).Trim()))
+            .Select(r => new RapportoMinimo(
+                r.Id, (r.Dipendente!.Cognome + " " + r.Dipendente.Nome).Trim(), r.CodiceCcnl))
             .Take(limite)
             .ToListAsync(ct);
 
@@ -399,5 +406,5 @@ public sealed class ProfessionalQueryBroker(
     private sealed record Proiezione(string Risorsa, List<object> Righe, int Totale, string? Errore);
     private sealed record PianoLettura(
         string Risorsa, int Totale, int Quantita, string? Errore);
-    private sealed record RapportoMinimo(Guid Id, string Nominativo);
+    private sealed record RapportoMinimo(Guid Id, string Nominativo, string CodiceCcnl);
 }

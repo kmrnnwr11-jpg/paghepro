@@ -44,6 +44,56 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Netto concordato con conguaglio + trasferta nel motore agricolo (1 settembre 2026)**:
+  due incrementi nati da un caso cliente reale. (1) **Netto concordato**
+  (docs/NETTO-CONCORDATO-CONGUAGLIO.md): sul rapporto si fissa il netto mensile pattuito e a
+  ogni elaborazione il superminimo del mese viene ricalcolato dal calcolo inverso
+  (`CalcoloInversoNetto`) così il netto in busta è quello pattuito — mai sotto il minimo CCNL
+  (elaborazione rifiutata), mai retroattivo (decorrenza dal mese corrente in avanti, PATCH
+  rifiuta date passate: le buste dei mesi già trascorsi non si ricostruiscono da un netto),
+  voce di trasparenza `NETTO_CONC` in busta. Campi `NettoConcordatoMensile`/`Decorrenza`,
+  migrazioni `NettoConcordato` per entrambi i provider, 6 test in `NettoConcordatoTests`.
+  (2) **Trasferta e rimborsi documentati nel motore agricolo**: `CartellinoAgricolo` porta
+  giorni/indennità di trasferta (esente entro il limite dell'anno, eccedenza imponibile,
+  stesse regole di `CalcoloElementiAgevolati`) e rimborsi spese documentate; le somme esenti
+  restano fuori da imponibile INPS e IRPEF; input esposto sugli endpoint agricoli del
+  rapporto. Caricata inoltre la **tabella CPL Piacenza 2026** (fonte E.B.A.P., OTD dal
+  01/06/2026, 6 livelli; trattenute FAP 8,84% + FIMI 0,3333% + CAC 0,25% dagli artt. 53-54
+  del CPL 2024-27) nel solo DB di sviluppo, marcata «da validare col consulente». Suite
+  completa **1.098/1.098** verde. Limite etico confermato due volte in questo lavoro: il
+  software non genera buste retroattive costruite sui netti pagati e non inventa
+  presenze/trasferte; le liste presenze «riconciliate a ritroso» vengono rifiutate.
+  Ritocchi UI della stessa giornata: campi trasferta/rimborsi nella pagina «Agricoltura OTD»;
+  «Tipo contribuente» non più bloccante nella scheda azienda (resta tra i «da completare»);
+  il controllo Aurora «Prepara il mese» classifica i rapporti `AGRICOLTURA_OPERAI` con lo
+  stato `agricolo` (si elaborano dalla pagina agricola) invece di «bloccato» per dati
+  aziendali INPS/CCNL che non riguardano il loro ciclo — il gate per gli ordinari non cambia.
+  Pagina agricola «dal contratto»: le ore al giorno arrivano dalle ore settimanali del rapporto
+  (÷ 6, settimana agricola), le ore del mese si propongono come giornate × ore/giorno e i giorni di
+  detrazione dal periodo di assunzione/cessazione — tutte proposte modificabili (helper puri in
+  `agricoltura.ts` con test; `OreSettimanali` aggiunto a `RapportoDettaglioDto`).
+
+- **CU telematica: il file passa il controllo ufficiale AdE (29 agosto 2026)**: primo pezzo
+  del «gate di vendibilità» del dossier concorrenza. `TracciatoCuUfficiale` (Paghe.Core/
+  AdeTelematico) scrive la fornitura CUR26 (redditi 2025) dalle specifiche tecniche ufficiali:
+  record da 1.900 caratteri, A/B/Z posizionali, C/D/G a struttura variabile con la tabella di
+  75 elementi «codice campo + valore», quadri DA/DB/DC, quadro CT e coda Z. Tre forniture
+  generate dai test (anno intero con quadro CT; cessazione a metà anno con mesi UniEmens
+  parziali; due certificazioni) sono state **elaborate dal modulo di controllo ufficiale
+  `ModuliControlloCUR26.jar` v1.1.0 con esito positivo**: file `.dcm` prodotto, zero errori nel
+  diagnostico — stessa strada dell'F24. Regole vere emerse dal controllo e ora nel codice: i
+  posizionali numerici assenti si riempiono a zeri (non spazi), un CF con checksum errato
+  scarta la singola CU, e con redditi presenti sono obbligatori DB001390 (trattamento
+  integrativo, cod. 2), DB001718 (cod. 2) e la tipologia reddituale DB001751=1. Il modello
+  `SostitutoCu` porta ora il legale rappresentante (record B); il servizio
+  `CostruisciTracciatoTelematicoAsync` costruisce il file di tutta l'azienda con gli avvisi sui
+  dati mancanti senza inventarli; endpoint `GET /api/aziende/{id}/cu/{anno}/telematico`
+  (solo redditi 2025); `ControlloCur26` affianca `ControlloF24A0` nel runner Java. Dichiarati
+  fuori perimetro: lavoro autonomo (H), locazioni (L), TFR a tassazione separata (DF),
+  assistenza fiscale 730, familiari a carico, annotazioni codificate, persistenza pratica e
+  schermata SPA. Dettagli e procedura in `docs/integrazione-ufficiale/README.md`; test golden
+  in `TracciatoCuUfficialeTests` (dump con `CU_DUMP*`).
+
 - **Aurora vede l'archivio clienti e agisce sull'interfaccia (29 agosto 2026, sera)**:
   seconda richiesta del fondatore sul consenso pieno («Aurora deve vedere le aziende e
   portarmi sulle pagine che chiedo»). Col consenso attivo ogni turno riceve nel prompt

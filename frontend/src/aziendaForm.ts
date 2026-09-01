@@ -293,7 +293,6 @@ export function validaAzienda(f: NuovaAzienda, opzioni: OpzioniValidazioneAziend
   else if (!/^[A-Za-z]{2}$/.test(f.provincia.trim())) e.provincia = "La provincia deve essere 2 lettere (es. MI).";
   if (f.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) e.email = "Formato email non valido.";
   if (f.pec?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.pec.trim())) e.pec = "Formato PEC non valido.";
-  if (!f.tipoContribuente?.trim()) e.tipoContribuente = "Scegli il tipo contribuente.";
   if (f.iban?.trim() && !/^IT[0-9A-Z]{25}$/i.test(f.iban.replace(/\s+/g, ""))) e.iban = "IBAN italiano non valido o incompleto.";
   if (f.haDipendenti) {
     const provvisori = Boolean(opzioni.datiContributiviProvvisori);

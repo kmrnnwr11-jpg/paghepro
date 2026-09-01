@@ -71,6 +71,19 @@ public sealed class CartellinoAgricolo
     public decimal UnaTantum { get; init; }
 
     /// <summary>
+    /// Giorni di trasferta in Italia fuori dal comune della sede di lavoro. Come nel motore
+    /// ordinario: l'esenzione spetta solo se la trasferta è avvenuta davvero e documentata —
+    /// il motore applica il limite giornaliero, non attesta i presupposti.
+    /// </summary>
+    public decimal GiorniTrasferta { get; init; }
+
+    /// <summary>Indennità forfettaria riconosciuta per ogni giorno di trasferta.</summary>
+    public decimal IndennitaTrasfertaGiornaliera { get; init; }
+
+    /// <summary>Rimborso a piè di lista di spese documentate e tracciabili (esente).</summary>
+    public decimal RimborsiSpeseDocumentate { get; init; }
+
+    /// <summary>
     /// Detrazioni già godute nei mesi precedenti dell'anno: la detrazione minima del tempo
     /// determinato è annua, non mensile, e senza questo dato verrebbe riconosciuta ogni mese.
     /// </summary>

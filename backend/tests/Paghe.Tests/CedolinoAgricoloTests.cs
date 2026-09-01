@@ -225,4 +225,64 @@ public sealed class CedolinoAgricoloTests
             File.WriteAllBytes(destinazione, pdf);
         }
     }
+
+    // ---- Trasferta e rimborsi documentati: stessa regola del motore ordinario ----------
+
+    [Fact]
+    public void TrasfertaEntroSoglia_EsenteNelNettoENonNegliImponibili()
+    {
+        var senza = Calcola(Novembre());
+        var con = Calcola(new CartellinoAgricolo
+        {
+            Anno = 2025, Mese = 11,
+            OreOrdinarie = 156m, GiornateLavorate = 24, GiorniDetrazione = 30,
+            DetrazioniGiaGoduteAnno = 140.44m,
+            GiorniTrasferta = 10m, IndennitaTrasfertaGiornaliera = 15m,
+        });
+
+        var voce = Assert.Single(con.Righe, r => r.Codice == "AGR_TRASF");
+        Assert.Equal(150.00m, voce.Importo);         // 10 g × 15 €, tutto sotto i 46,48 €/giorno
+        Assert.DoesNotContain(con.Righe, r => r.Codice == "AGR_TRASF_IMP");
+        Assert.Equal(senza.ImponibileInps, con.ImponibileInps);
+        Assert.Equal(senza.ImponibileIrpef, con.ImponibileIrpef);
+        Assert.Equal(senza.TotaleTrattenute, con.TotaleTrattenute);
+        Assert.Equal(senza.NettoInBusta + 150.00m, con.NettoInBusta);
+    }
+
+    [Fact]
+    public void TrasfertaOltreSoglia_TassaSoloLEccedenza()
+    {
+        var con = Calcola(new CartellinoAgricolo
+        {
+            Anno = 2025, Mese = 11,
+            OreOrdinarie = 156m, GiornateLavorate = 24, GiorniDetrazione = 30,
+            DetrazioniGiaGoduteAnno = 140.44m,
+            GiorniTrasferta = 2m, IndennitaTrasfertaGiornaliera = 50m,
+        });
+
+        Assert.Equal(92.96m, Assert.Single(con.Righe, r => r.Codice == "AGR_TRASF").Importo);
+        Assert.Equal(7.04m, Assert.Single(con.Righe, r => r.Codice == "AGR_TRASF_IMP").Importo);
+        // L'eccedenza entra nella base contributiva: imponibile = competenze − quota esente.
+        Assert.Equal(
+            Math.Round(con.TotaleCompetenze - 92.96m, 0, MidpointRounding.AwayFromZero),
+            con.ImponibileInps);
+    }
+
+    [Fact]
+    public void RimborsoSpeseDocumentate_EsenteNelNettoENonNegliImponibili()
+    {
+        var senza = Calcola(Novembre());
+        var con = Calcola(new CartellinoAgricolo
+        {
+            Anno = 2025, Mese = 11,
+            OreOrdinarie = 156m, GiornateLavorate = 24, GiorniDetrazione = 30,
+            DetrazioniGiaGoduteAnno = 140.44m,
+            RimborsiSpeseDocumentate = 45.50m,
+        });
+
+        Assert.Equal(45.50m, Assert.Single(con.Righe, r => r.Codice == "AGR_RIMB_SPESE").Importo);
+        Assert.Equal(senza.ImponibileInps, con.ImponibileInps);
+        Assert.Equal(senza.ImponibileIrpef, con.ImponibileIrpef);
+        Assert.Equal(senza.TotaleTrattenute, con.TotaleTrattenute);
+    }
 }

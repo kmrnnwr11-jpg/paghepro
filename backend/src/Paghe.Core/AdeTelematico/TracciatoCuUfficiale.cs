@@ -109,10 +109,11 @@ public sealed class TracciatoCuUfficiale
             r.An(329, 24, s.RappresentanteCognome);
             r.An(353, 20, s.RappresentanteNome);
         }
+        r.Nu(373, 11, 0);                     // CF società dichiarante: assente (zero-fill)
         r.Nu(402, 8, numeroCertificazioni);
         r.An(410, 1, conQuadroCt ? "1" : "0");
         r.An(411, 1, "1");                    // firma della comunicazione
-        // Impegno alla trasmissione: solo quando trasmette un intermediario.
+        // Impegno alla trasmissione: compilato solo quando trasmette un intermediario.
         if (!inProprio)
         {
             r.An(412, 16, cfFornitore);
@@ -122,6 +123,8 @@ public sealed class TracciatoCuUfficiale
         }
         else
         {
+            r.Nu(428, 1, 0);
+            r.Nu(429, 8, 0);
             r.An(437, 1, "0");
         }
         r.An(527, 1, "0");                    // casella casi particolari
@@ -196,6 +199,8 @@ public sealed class TracciatoCuUfficiale
             r.Nu(18, 8, 1);
             r.An(26, 16, Pulisci(p.CodiceFiscale));
             r.Nu(42, 5, progressivo);
+            r.Nu(47, 17, 0);  // protocollo sostituzione: assente (zero-fill)
+            r.Nu(64, 6, 0);
             r.An(89, 1, "0"); // flag conferma certificazione
         });
     }
@@ -228,6 +233,9 @@ public sealed class TracciatoCuUfficiale
         {
             // Trattamento integrativo: il motore non lo eroga, quindi codice 2 (non erogato).
             t.Nu("DB001390", 2);
+            // Somma che non concorre alla formazione del reddito: 2 = nessuna agevolazione
+            // (impatriati/rientro cervelli) compresa nei redditi certificati. Obbligatorio.
+            t.Nu("DB001718", 2);
             // Tipologie reddituali (sezione obbligatoria): codice 1 = lavoro dipendente art. 49 TUIR.
             t.Nu("DB001751", 1);
             t.Vp("DB001752", f.RedditoTempoIndeterminato + f.RedditoTempoDeterminato);

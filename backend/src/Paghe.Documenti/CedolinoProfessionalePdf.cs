@@ -40,7 +40,7 @@ internal static class CedolinoProfessionalePdf
         pagina.MarginTop(0.7f, Unit.Centimetre);
         pagina.MarginBottom(0.7f, Unit.Centimetre);
         pagina.PageColor(Bianco);
-        pagina.DefaultTextStyle(stile => stile.FontFamily("Lato").FontSize(6.6f).FontColor(Testo));
+        pagina.DefaultTextStyle(stile => stile.FontFamily(dati.FontFamily).FontSize(6.6f).FontColor(Testo));
 
         pagina.Header().Element(c => TestataDitta(c, dati));
         pagina.Content().PaddingTop(4).Column(colonna =>
@@ -660,6 +660,9 @@ internal static class CedolinoProfessionalePdf
         {
             riga.RelativeItem().Text(NotaStato(dati.Emissione.Stato))
                 .FontSize(5.3f).SemiBold().FontColor(Avviso);
+            if (!string.IsNullOrWhiteSpace(dati.DicituraStudio))
+                riga.RelativeItem().AlignCenter().Text(dati.DicituraStudio)
+                    .FontSize(5.3f).FontColor(Secondario);
             riga.ConstantItem(70).AlignRight().Text(testo =>
             {
                 testo.DefaultTextStyle(stile => stile.FontSize(5.4f).FontColor(Secondario));

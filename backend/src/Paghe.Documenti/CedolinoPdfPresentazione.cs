@@ -16,7 +16,9 @@ internal sealed record CedolinoPresentazione(
     IReadOnlyList<RigaCedolinoPresentata> Righe,
     IReadOnlyList<RigaFigurativaPresentata> RigheFigurativeRilevanti,
     string? IbanMascherato,
-    ProgressiviAnnui? Progressivi = null);
+    ProgressiviAnnui? Progressivi = null,
+    string FontFamily = "Lato",
+    string? DicituraStudio = null);
 
 internal sealed record RigaCedolinoPresentata(
     string Codice,
@@ -45,7 +47,9 @@ internal static class CedolinoPdfPresentazione
         IntestazioneCedolino intestazione,
         Cartellino? cartellino,
         ContestoEmissioneCedolino? emissione = null,
-        ProgressiviAnnui? progressivi = null)
+        ProgressiviAnnui? progressivi = null,
+        string fontFamily = "Lato",
+        string? dicituraStudio = null)
     {
         emissione ??= ContestoEmissioneCedolino.Bozza;
         string periodo = cedolino.Mese is >= 1 and <= 12
@@ -83,7 +87,9 @@ internal static class CedolinoPdfPresentazione
             righe,
             righeFigurative,
             MascheraIban(intestazione.IbanDipendente),
-            progressivi);
+            progressivi,
+            fontFamily,
+            dicituraStudio);
     }
 
     private static bool ÈFigurativaRilevante(string codice) =>

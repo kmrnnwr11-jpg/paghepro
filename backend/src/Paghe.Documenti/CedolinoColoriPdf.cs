@@ -36,7 +36,7 @@ internal static class CedolinoColoriPdf
         pagina.MarginTop(0.8f, Unit.Centimetre);
         pagina.MarginBottom(0.8f, Unit.Centimetre);
         pagina.PageColor(Bianco);
-        pagina.DefaultTextStyle(stile => stile.FontFamily("Lato").FontSize(6.8f).FontColor(Testo));
+        pagina.DefaultTextStyle(stile => stile.FontFamily(dati.FontFamily).FontSize(6.8f).FontColor(Testo));
 
         pagina.Content().Column(colonna =>
         {
@@ -723,6 +723,9 @@ internal static class CedolinoColoriPdf
         {
             riga.RelativeItem().Text(NotaStato(dati.Emissione.Stato))
                 .FontSize(5.3f).SemiBold().FontColor(Avviso);
+            if (!string.IsNullOrWhiteSpace(dati.DicituraStudio))
+                riga.RelativeItem().AlignCenter().Text(dati.DicituraStudio)
+                    .FontSize(5.3f).FontColor(Etichetta);
             riga.ConstantItem(70).AlignRight().Text(testo =>
             {
                 testo.DefaultTextStyle(stile => stile.FontSize(5.4f).FontColor(Etichetta));

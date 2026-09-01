@@ -2947,6 +2947,39 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.ToTable("PraticheInail");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.PreferenzaUtenteEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AggiornatoIl")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Chiave")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Valore")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UtenteId", "Chiave")
+                        .IsUnique();
+
+                    b.ToTable("PreferenzeUtenti");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.PromemoriaEntity", b =>
                 {
                     b.Property<Guid>("Id")

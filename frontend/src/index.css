@@ -8204,3 +8204,23 @@ details[open] > summary .au-freccia {
   .fai-mese-elenco b { flex-basis: 100%; }
   .fai-mese-elenco li { flex-wrap: wrap; gap: 2px; }
 }
+
+
+/* ---- Preferenze d'aspetto (pagina Impostazioni) ---- */
+@font-face {
+  font-family: "Lato";
+  src: url("/font/Lato-Regular.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Lato";
+  src: url("/font/Lato-Bold.ttf") format("truetype");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+body.font-lato { font-family: "Lato", system-ui, -apple-system, "Segoe UI", sans-serif; }
+body.scala-grande { zoom: 1.1; }
+body.scala-molto-grande { zoom: 1.22; }
+body.densita-compatta .glass-card { padding: 12px; }
+body.densita-compatta .form-grid { gap: 8px; }
+body.densita-compatta .data-table.spacious td,
+body.densita-compatta .data-table.spacious th { padding-top: 5px; padding-bottom: 5px; }

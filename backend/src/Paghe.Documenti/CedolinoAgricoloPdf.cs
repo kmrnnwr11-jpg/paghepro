@@ -30,7 +30,9 @@ public static class CedolinoAgricoloPdf
         IntestazioneCedolino intestazione,
         RapportoAgricolo rapporto,
         CartellinoAgricolo cartellino,
-        ParametriAgricoli parametri)
+        ParametriAgricoli parametri,
+        string fontFamily = "Lato",
+        string? dicituraStudio = null)
     {
         ArgumentNullException.ThrowIfNull(cedolino);
         ArgumentNullException.ThrowIfNull(intestazione);
@@ -40,7 +42,7 @@ public static class CedolinoAgricoloPdf
 
         DocumentiConfig.Inizializza();
         return Document.Create(documento => documento.Page(pagina =>
-            Pagina(pagina, cedolino, intestazione, rapporto, cartellino, parametri))).GeneratePdf();
+            Pagina(pagina, cedolino, intestazione, rapporto, cartellino, parametri, fontFamily, dicituraStudio))).GeneratePdf();
     }
 
     private static void Pagina(
@@ -49,14 +51,16 @@ public static class CedolinoAgricoloPdf
         IntestazioneCedolino intestazione,
         RapportoAgricolo rapporto,
         CartellinoAgricolo cartellino,
-        ParametriAgricoli parametri)
+        ParametriAgricoli parametri,
+        string fontFamily,
+        string? dicituraStudio)
     {
         pagina.Size(PageSizes.A4);
         pagina.MarginHorizontal(0.9f, Unit.Centimetre);
         pagina.MarginTop(0.8f, Unit.Centimetre);
         pagina.MarginBottom(0.8f, Unit.Centimetre);
         pagina.PageColor(Bianco);
-        pagina.DefaultTextStyle(stile => stile.FontFamily("Lato").FontSize(7f).FontColor(Testo));
+        pagina.DefaultTextStyle(stile => stile.FontFamily(fontFamily).FontSize(7f).FontColor(Testo));
 
         pagina.Content().Column(colonna =>
         {
@@ -75,6 +79,9 @@ public static class CedolinoAgricoloPdf
         {
             riga.RelativeItem().Text("BOZZA DA VALIDARE - non costituisce LUL, UniEmens/PosAgri o F24.")
                 .FontSize(6.2f).SemiBold().FontColor(Avviso);
+            if (!string.IsNullOrWhiteSpace(dicituraStudio))
+                riga.RelativeItem().AlignCenter().Text(dicituraStudio)
+                    .FontSize(6f).FontColor(Secondario);
             riga.ConstantItem(90).AlignRight()
                 .DefaultTextStyle(stile => stile.FontSize(6).FontColor(Secondario))
                 .Text(testo =>

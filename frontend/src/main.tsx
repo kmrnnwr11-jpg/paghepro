@@ -4,6 +4,8 @@ import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './auth'
 import { piattaformaNativa } from './mobile/piattaforma'
+import { applicaAspetto } from "./preferenze";
+applicaAspetto();
 
 document.documentElement.classList.toggle('app-nativa', piattaformaNativa)
 

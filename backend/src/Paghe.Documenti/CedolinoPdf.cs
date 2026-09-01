@@ -21,7 +21,9 @@ public static class CedolinoPdf
         Cartellino? cartellino,
         ContestoEmissioneCedolino? emissione = null,
         StileCedolino stile = StileCedolino.Classico,
-        ProgressiviAnnui? progressivi = null)
+        ProgressiviAnnui? progressivi = null,
+        string fontFamily = "Lato",
+        string? dicituraStudio = null)
     {
         ArgumentNullException.ThrowIfNull(cedolino);
         ArgumentNullException.ThrowIfNull(intestazione);
@@ -29,7 +31,7 @@ public static class CedolinoPdf
         DocumentiConfig.Inizializza();
         var presentazione = CedolinoPdfPresentazione.Crea(
             cedolino, intestazione, cartellino, emissione ?? ContestoEmissioneCedolino.Bozza,
-            progressivi);
+            progressivi, fontFamily, dicituraStudio);
         return stile switch
         {
             StileCedolino.Colori => CedolinoColoriPdf.Genera(presentazione),

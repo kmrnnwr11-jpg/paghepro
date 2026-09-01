@@ -79,6 +79,7 @@ builder.Services.AddScoped<ParametriNormativiService>();
 builder.Services.AddScoped<AnagraficheLavoroService>();
 builder.Services.AddScoped<CedoliniService>();
 builder.Services.AddScoped<CedoliniAgricoliService>();
+builder.Services.AddScoped<PreferenzeUtenteService>();
 builder.Services.AddScoped<CedolinoWorkflowService>();
 builder.Services.AddScoped<RequisitiCedolinoService>();
 builder.Services.AddScoped<PraticheF24Service>();
@@ -294,17 +295,21 @@ builder.Services.AddSwaggerGen();
 var originiCors = builder.Configuration.GetSection("Cors:Origini").Get<string[]>() ?? [];
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 {
+    // Content-Disposition va esposta esplicitamente: senza, il browser su un altro origin
+    // non legge il nome file dei PDF scaricati e la SPA ripiega su un nome generico.
     if (builder.Environment.IsDevelopment())
         p.WithOrigins(
                 "http://localhost:5173", "https://localhost:5173",
                 "capacitor://localhost", "https://localhost")
-            .AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+            .AllowAnyHeader().AllowAnyMethod().AllowCredentials()
+            .WithExposedHeaders("Content-Disposition");
     else
         p.WithOrigins(originiCors
                 .Concat(["capacitor://localhost", "https://localhost"])
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray())
-            .AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+            .AllowAnyHeader().AllowAnyMethod().AllowCredentials()
+            .WithExposedHeaders("Content-Disposition");
     // Gli origin Capacitor sono sempre ammessi; i siti web esterni restano esplicitamente configurati.
 }));
 
@@ -1013,6 +1018,45 @@ secured.MapPost("/api/auth/2fa/disattiva", async (Codice2faRequest req, ClaimsPr
         ? Results.Ok(new { dueFattoriAttivo = false })
         : Results.BadRequest(new { errore = "Codice non valido." });
 }).RequireRateLimiting("auth");
+
+// Cambio password dell'utente collegato: prima si dimostra di conoscere quella attuale.
+secured.MapPost("/api/auth/cambia-password", async (
+    CambiaPasswordRequest req, ClaimsPrincipal user, AuthService auth) =>
+{
+    if (UtenteCorrente(user) is not { } uid) return Results.Unauthorized();
+    try
+    {
+        return await auth.CambiaPasswordAsync(uid, req.PasswordAttuale, req.NuovaPassword)
+            ? Results.Ok(new { cambiata = true })
+            : Results.BadRequest(new { errore = "La password attuale non è corretta." });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+}).RequireRateLimiting("auth");
+
+// Preferenze d'uso dell'utente (stile busta, font documenti, aspetto): whitelist nel servizio.
+secured.MapGet("/api/preferenze", async (ClaimsPrincipal user, PreferenzeUtenteService svc) =>
+{
+    if (UtenteCorrente(user) is not { } uid) return Results.Unauthorized();
+    return Results.Ok(await svc.LeggiTutteAsync(TenantCorrente(user), uid));
+});
+
+secured.MapPut("/api/preferenze", async (
+    PreferenzaRequest req, ClaimsPrincipal user, PreferenzeUtenteService svc) =>
+{
+    if (UtenteCorrente(user) is not { } uid) return Results.Unauthorized();
+    try
+    {
+        await svc.SalvaAsync(TenantCorrente(user), uid, req.Chiave ?? "", req.Valore ?? "");
+        return Results.Ok(new { salvata = true });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { errore = ex.Message });
+    }
+});
 
 // Elenco dei livelli di un CCNL per un dato anno (default: anno corrente del seed).
 app.MapGet("/api/ccnl/{codice}/livelli", async (string codice, int? anno, ParametriNormativiService svc) =>
@@ -2098,6 +2142,7 @@ secured.MapGet("/api/cedolini/{id:guid}", async (Guid id, CedoliniService svc, C
 // i byte cifrati e verificati del documento archiviato, senza ricalcolare o rileggere anagrafiche.
 secured.MapGet("/api/cedolini/{id:guid}/pdf", async (
     Guid id, CedolinoWorkflowService workflow, ClaimsPrincipal user, HttpResponse response,
+    PreferenzeUtenteService preferenze,
     string? stile = null) =>
 {
     // Stile dell'impaginazione: i numeri sono identici nei tre stili. Il PDF di un cedolino
@@ -2108,7 +2153,19 @@ secured.MapGet("/api/cedolini/{id:guid}/pdf", async (
         return Results.BadRequest(new { errore = "Stile non valido: usa classico, colori o editoriale." });
     try
     {
-        var documento = await workflow.LeggiPdfAsync(TenantCorrente(user), id, stile: stileScelto);
+        string fontDocumenti = Paghe.Documenti.FontDocumenti.Predefinito;
+        string? dicituraStudio = null;
+        if (UtenteCorrente(user) is { } uidPdf)
+        {
+            fontDocumenti = Paghe.Documenti.FontDocumenti.Famiglia(await preferenze.LeggiAsync(
+                TenantCorrente(user), uidPdf, PreferenzeUtenteService.FontDocumenti, "lato"));
+            var dicitura = await preferenze.LeggiAsync(
+                TenantCorrente(user), uidPdf, PreferenzeUtenteService.DicituraStudio, "");
+            dicituraStudio = string.IsNullOrWhiteSpace(dicitura) ? null : dicitura;
+        }
+        var documento = await workflow.LeggiPdfAsync(
+            TenantCorrente(user), id, stile: stileScelto,
+            fontFamily: fontDocumenti, dicituraStudio: dicituraStudio);
         if (documento is null)
             return Results.NotFound(new { errore = "Cedolino non trovato." });
         response.Headers.CacheControl = "private, no-store";

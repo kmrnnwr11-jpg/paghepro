@@ -226,6 +226,26 @@ public sealed class CedolinoAgricoloTests
         }
     }
 
+    [Fact]
+    public void PdfConFontEDicituraPersonalizzati_IncorporaLaFamigliaEStampaLaDicitura()
+    {
+        var pdf = CedolinoAgricoloPdf.Genera(
+            Calcola(Ottobre()),
+            new IntestazioneCedolino { Azienda = "Azienda Agricola Prova", Dipendente = "Rossi Mario" },
+            Rapporto(),
+            Ottobre(),
+            SeedAgricoltura.Cuneo2025(),
+            fontFamily: "Carlito",
+            dicituraStudio: "Elaborato da Studio Prova");
+
+        string grezzo = System.Text.Encoding.ASCII.GetString(pdf);
+        Assert.Contains("Carlito", grezzo);          // la famiglia viaggia incorporata nel file
+        using var documento = PdfDocument.Open(pdf);
+        string testo = string.Join("\n", documento.GetPages().Select(p => p.Text));
+        Assert.Contains("Elaborato da Studio Prova", testo);
+        Assert.Contains("BOZZA DA VALIDARE", testo); // la dicitura non sostituisce gli obblighi
+    }
+
     // ---- Trasferta e rimborsi documentati: stessa regola del motore ordinario ----------
 
     [Fact]

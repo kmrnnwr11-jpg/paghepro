@@ -2940,6 +2940,39 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.ToTable("PraticheInail");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.PreferenzaUtenteEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AggiornatoIl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Chiave")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Valore")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UtenteId", "Chiave")
+                        .IsUnique();
+
+                    b.ToTable("PreferenzeUtenti");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.PromemoriaEntity", b =>
                 {
                     b.Property<Guid>("Id")

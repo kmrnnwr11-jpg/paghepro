@@ -33,7 +33,7 @@ internal static class CedolinoEditorialePdf
 
     private static void PaginaProspetto(PageDescriptor pagina, CedolinoPresentazione dati)
     {
-        ConfiguraPagina(pagina);
+        ConfiguraPagina(pagina, dati);
         pagina.Content().Column(colonna =>
         {
             colonna.Spacing(7);
@@ -49,7 +49,7 @@ internal static class CedolinoEditorialePdf
 
     private static void PaginaDettagli(PageDescriptor pagina, CedolinoPresentazione dati)
     {
-        ConfiguraPagina(pagina);
+        ConfiguraPagina(pagina, dati);
         pagina.Content().Column(colonna =>
         {
             colonna.Spacing(8);
@@ -74,7 +74,7 @@ internal static class CedolinoEditorialePdf
 
     private static void PaginaGuida(PageDescriptor pagina, CedolinoPresentazione dati)
     {
-        ConfiguraPagina(pagina);
+        ConfiguraPagina(pagina, dati);
         pagina.DefaultTextStyle(testo => testo.FontSize(9.5f).FontColor(Grafite));
         pagina.Content().Column(colonna =>
         {
@@ -97,14 +97,14 @@ internal static class CedolinoEditorialePdf
         pagina.Footer().Element(c => PiedePagina(c, dati));
     }
 
-    private static void ConfiguraPagina(PageDescriptor pagina)
+    private static void ConfiguraPagina(PageDescriptor pagina, CedolinoPresentazione dati)
     {
         pagina.Size(PageSizes.A4);
         pagina.MarginHorizontal(1.6f, Unit.Centimetre);
         pagina.MarginTop(1.35f, Unit.Centimetre);
         pagina.MarginBottom(1.15f, Unit.Centimetre);
         pagina.PageColor(Carta);
-        pagina.DefaultTextStyle(testo => testo.FontFamily("Lato").FontSize(8.5f).FontColor(Inchiostro));
+        pagina.DefaultTextStyle(testo => testo.FontFamily(dati.FontFamily).FontSize(8.5f).FontColor(Inchiostro));
     }
 
     private static void TestataPrincipale(IContainer contenitore, CedolinoPresentazione dati)
@@ -834,6 +834,9 @@ internal static class CedolinoEditorialePdf
             riga.RelativeItem().Text(
                     NotaStato(dati.Emissione))
                 .FontSize(7).SemiBold().FontColor(Rame);
+            if (!string.IsNullOrWhiteSpace(dati.DicituraStudio))
+                riga.RelativeItem().AlignCenter().Text(dati.DicituraStudio)
+                    .FontSize(7).FontColor(Grafite);
             riga.ConstantItem(80).AlignRight().Text(testo =>
             {
                 testo.DefaultTextStyle(stile => stile.FontSize(7).FontColor(Grafite));

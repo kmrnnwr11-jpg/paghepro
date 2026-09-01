@@ -248,6 +248,7 @@ public static class AgricolturaEndpoints
             ClaimsPrincipal user,
             PagheDbContext db,
             ParametriNormativiService parametri,
+            PreferenzeUtenteService preferenze,
             HttpResponse response,
             CancellationToken ct) =>
         {
@@ -255,12 +256,15 @@ public static class AgricolturaEndpoints
             {
                 var calcolo = await CalcolaDaRapportoAsync(
                     Tenant(user), rapportoId, input, db, parametri, ct);
+                var (fontDocumenti, dicituraStudio) = await PreferenzeDocumentiAsync(user, preferenze, ct);
                 var pdf = CedolinoAgricoloPdf.Genera(
                     calcolo.Cedolino,
                     calcolo.Intestazione,
                     calcolo.Rapporto,
                     calcolo.Cartellino,
-                    calcolo.Parametri);
+                    calcolo.Parametri,
+                    fontFamily: fontDocumenti,
+                    dicituraStudio: dicituraStudio);
 
                 response.Headers.CacheControl = "private, no-store";
                 response.Headers["X-Content-Type-Options"] = "nosniff";
@@ -268,7 +272,8 @@ public static class AgricolturaEndpoints
                 return Results.File(
                     pdf,
                     "application/pdf",
-                    $"busta-agricola-{input.Anno}-{input.Mese:00}-bozza.pdf");
+                    CedoliniAgricoliService.NomeFileBusta(
+                        calcolo.Intestazione.Dipendente, input.Anno, input.Mese, "bozza"));
             }
             catch (KeyNotFoundException ex)
             {
@@ -290,6 +295,7 @@ public static class AgricolturaEndpoints
             PagheDbContext db,
             ParametriNormativiService parametri,
             CedoliniAgricoliService archivio,
+            PreferenzeUtenteService preferenze,
             CancellationToken ct) =>
         {
             var utenteId = Utente(user);
@@ -298,9 +304,12 @@ public static class AgricolturaEndpoints
             {
                 var calcolo = await CalcolaDaRapportoAsync(
                     Tenant(user), rapportoId, input, db, parametri, ct);
+                var (fontDocumenti, dicituraStudio) = await PreferenzeDocumentiAsync(user, preferenze, ct);
                 var pdf = CedolinoAgricoloPdf.Genera(
                     calcolo.Cedolino, calcolo.Intestazione, calcolo.Rapporto,
-                    calcolo.Cartellino, calcolo.Parametri);
+                    calcolo.Cartellino, calcolo.Parametri,
+                    fontFamily: fontDocumenti,
+                    dicituraStudio: dicituraStudio);
 
                 var busta = await archivio.ArchiviaAsync(Tenant(user), utenteId, new CedolinoAgricoloEntity
                 {
@@ -579,6 +588,19 @@ public static class AgricolturaEndpoints
 
     private static string Sigla(TipoOperaioAgricolo tipo) =>
         tipo == TipoOperaioAgricolo.Determinato ? "OTD" : "OTI";
+
+    /// <summary>Font e dicitura dello studio dalle preferenze dell'utente collegato.</summary>
+    private static async Task<(string Font, string? Dicitura)> PreferenzeDocumentiAsync(
+        ClaimsPrincipal user, PreferenzeUtenteService preferenze, CancellationToken ct)
+    {
+        var utente = Utente(user);
+        if (utente == Guid.Empty) return (FontDocumenti.Predefinito, null);
+        var font = FontDocumenti.Famiglia(await preferenze.LeggiAsync(
+            Tenant(user), utente, PreferenzeUtenteService.FontDocumenti, "lato", ct));
+        var dicitura = await preferenze.LeggiAsync(
+            Tenant(user), utente, PreferenzeUtenteService.DicituraStudio, "", ct);
+        return (font, string.IsNullOrWhiteSpace(dicitura) ? null : dicitura);
+    }
 
     private static Guid Utente(ClaimsPrincipal user) =>
         Guid.TryParse(

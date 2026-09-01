@@ -36,6 +36,10 @@ public sealed record Codice2faRequest(string Codice);
 /// <summary>Richiesta di bootstrap del super-admin: token segreto di piattaforma.</summary>
 public sealed record BootstrapSuperAdminRequest(string Token);
 
+public sealed record CambiaPasswordRequest(string PasswordAttuale, string NuovaPassword);
+
+public sealed record PreferenzaRequest(string? Chiave, string? Valore);
+
 /// <summary>Accesso con Google: "credential" è l'ID token restituito da Google Identity Services.</summary>
 public sealed record GoogleLoginRequest(string Credential);
 

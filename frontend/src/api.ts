@@ -773,9 +773,12 @@ export const api = {
       } catch { /* corpo non JSON */ }
       throw new Error(messaggio);
     }
+    const dispo = res.headers.get("Content-Disposition") ?? "";
+    const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(dispo);
     return {
       blob: await res.blob(),
-      filename: `busta-agricola-archiviata-${id.slice(0, 8)}.pdf`,
+      filename: decodeURIComponent(match?.[1]?.replace(/"$/, "")
+        ?? `busta-agricola-archiviata-${id.slice(0, 8)}.pdf`),
     };
   },
   cedolinoAgricoloPdf: async (
@@ -836,6 +839,25 @@ export const api = {
     }),
   // PreWorkflow = ricostruzione storica non validata; Bozza/Controllata/Validata = anteprima;
   // Chiusa = byte immutabili archiviati.
+  preferenze: () => req<Record<string, string>>("/api/preferenze"),
+  salvaPreferenza: (chiave: string, valore: string) =>
+    req<{ salvata: boolean }>("/api/preferenze", {
+      method: "PUT", body: JSON.stringify({ chiave, valore }),
+    }),
+  cambiaPassword: (passwordAttuale: string, nuovaPassword: string) =>
+    req<{ cambiata: boolean }>("/api/auth/cambia-password", {
+      method: "POST", body: JSON.stringify({ passwordAttuale, nuovaPassword }),
+    }),
+  dueFattoriInizia: () =>
+    req<{ segreto: string; uriOtpauth: string }>("/api/auth/2fa/inizia", { method: "POST" }),
+  dueFattoriAttiva: (codice: string) =>
+    req<{ dueFattoriAttivo: boolean }>("/api/auth/2fa/attiva", {
+      method: "POST", body: JSON.stringify({ codice }),
+    }),
+  dueFattoriDisattiva: (codice: string) =>
+    req<{ dueFattoriAttivo: boolean }>("/api/auth/2fa/disattiva", {
+      method: "POST", body: JSON.stringify({ codice }),
+    }),
   statoAi: () =>
     req<{ provider: string; attivo: boolean; visione: boolean; consumoMese: number; limiteMensile: number }>(
       "/api/ai/stato"),

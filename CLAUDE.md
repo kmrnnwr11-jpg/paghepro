@@ -91,6 +91,18 @@ dotnet run --project src/Paghe.Demo -c Release
   dalla pagina Cedolini; toggle risposte brevi Aurora sulla stessa chiave del pannello),
   stato AI dal vivo (`api.statoAi`) e tessere che aprono davvero le pagine di
   configurazione via hash; guida aggiornata; test `preferenze.test.ts`.
+  **Personalizzazione completa (2 settembre, /goal)**: preferenze utente sul SERVER
+  (`PreferenzeUtenti` con whitelist e validatori per chiave, migrazioni `PreferenzeUtente`,
+  GET/PUT `/api/preferenze`, cache locale come fallback offline); **font dei PDF a scelta**
+  (Carlito e IBM Plex Sans incorporati come risorsa OFL accanto a Lato — Font/LICENZE.md —
+  registrati in `DocumentiConfig`, famiglia parametrica in tutti e 4 i renderer);
+  **dicitura dello studio** a piè di pagina (mai al posto delle diciture obbligatorie:
+  coperto da test); endpoint PDF (ordinari e agricoli) leggono font+dicitura dalle
+  preferenze server; **aspetto interfaccia** (taglia testo, font UI Lato, densità) applicato
+  via classi body da `applicaAspetto()`; **cambio password** (`/api/auth/cambia-password`,
+  verifica della attuale, min 8) e **UI 2FA** (attiva/disattiva sugli endpoint esistenti)
+  nella pagina Impostazioni. `colore_accento` esiste ed è validato ma NON ancora applicato
+  nei renderer (i colori sono const: refactor dedicato) — il controllo non è esposto in UI.
   Pagina agricola «dal contratto»: le ore al giorno arrivano dalle ore settimanali del rapporto
   (÷ 6, settimana agricola), le ore del mese si propongono come giornate × ore/giorno e i giorni di
   detrazione dal periodo di assunzione/cessazione — tutte proposte modificabili (helper puri in

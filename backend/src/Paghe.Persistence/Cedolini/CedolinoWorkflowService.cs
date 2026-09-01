@@ -212,7 +212,9 @@ public sealed class CedolinoWorkflowService
         Guid tenantId,
         Guid cedolinoId,
         CancellationToken ct = default,
-        StileCedolino stile = StileCedolino.Classico)
+        StileCedolino stile = StileCedolino.Classico,
+        string fontFamily = "Lato",
+        string? dicituraStudio = null)
     {
         var c = await _db.Cedolini.AsNoTracking()
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == cedolinoId, ct);
@@ -263,7 +265,9 @@ public sealed class CedolinoWorkflowService
             dati.Cartellino,
             new ContestoEmissioneCedolino(stato.ToString()),
             stile: stile,
-            progressivi: dati.Progressivi);
+            progressivi: dati.Progressivi,
+            fontFamily: fontFamily,
+            dicituraStudio: dicituraStudio);
         return new DocumentoCedolino(
             anteprima, NomeFile(c, stato), stato, Definitivo: false,
             CedolinoSnapshotCodec.Hash(anteprima));

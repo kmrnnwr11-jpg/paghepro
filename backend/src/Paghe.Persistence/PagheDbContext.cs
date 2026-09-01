@@ -74,6 +74,7 @@ public class PagheDbContext : DbContext
     public DbSet<PraticaF24Entity> PraticheF24 => Set<PraticaF24Entity>();
     // Buste agricole archiviate: tabella separata dai cedolini ordinari, vedi l'entità.
     public DbSet<CedolinoAgricoloEntity> CedoliniAgricoli => Set<CedolinoAgricoloEntity>();
+    public DbSet<PreferenzaUtenteEntity> PreferenzeUtenti => Set<PreferenzaUtenteEntity>();
     public DbSet<PraticaInailEntity> PraticheInail => Set<PraticaInailEntity>();
     public DbSet<AvvisoPagamentoEntity> AvvisiPagamento => Set<AvvisoPagamentoEntity>();
     public DbSet<DurcEntity> Durc => Set<DurcEntity>();
@@ -700,6 +701,14 @@ public class PagheDbContext : DbContext
         });
 
         // --- Pratiche F24 (telematico) ---
+        mb.Entity<PreferenzaUtenteEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.UtenteId, x.Chiave }).IsUnique();
+            e.Property(x => x.Chiave).HasMaxLength(64);
+            e.Property(x => x.Valore).HasMaxLength(200);
+        });
+
         mb.Entity<CedolinoAgricoloEntity>(e =>
         {
             e.HasKey(x => x.Id);

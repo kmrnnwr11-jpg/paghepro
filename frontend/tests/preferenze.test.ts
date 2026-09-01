@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { salvaStileBusta, stileBustaPreferito } from "../src/preferenze.ts";
+import { applicaAspetto, salvaStileBusta, stileBustaPreferito } from "../src/preferenze.ts";
 
 function memoria(): Storage {
   const dati = new Map<string, string>();
@@ -27,4 +27,8 @@ test("la preferenza salvata viene riletta, i valori sconosciuti vengono ignorati
   assert.equal(stileBustaPreferito(store), "colori");
   store.setItem("preferenza_stile_busta", "valore-corrotto");
   assert.equal(stileBustaPreferito(store), "classico");
+});
+
+test("applicaAspetto non esplode fuori dal browser (test e script)", () => {
+  assert.doesNotThrow(() => applicaAspetto());
 });

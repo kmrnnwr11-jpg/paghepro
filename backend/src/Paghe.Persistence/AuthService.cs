@@ -118,6 +118,23 @@ public sealed class AuthService
     /// esiste già un super-admin. Una volta creato il primo, il canale si chiude da sé: il token
     /// non è più utilizzabile. Non c'è più promozione automatica da email registrabile.
     /// </summary>
+    /// <summary>
+    /// Cambia la password dell'utente dopo aver verificato quella attuale. Un account senza
+    /// password (accesso solo Google) non può impostarla da qui.
+    /// </summary>
+    public async Task<bool> CambiaPasswordAsync(
+        Guid utenteId, string passwordAttuale, string nuovaPassword, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(nuovaPassword) || nuovaPassword.Length < 8)
+            throw new ArgumentException("La nuova password deve avere almeno 8 caratteri.");
+        var utente = await _db.Utenti.FirstOrDefaultAsync(u => u.Id == utenteId, ct);
+        if (utente is null || string.IsNullOrEmpty(utente.PasswordHash)) return false;
+        if (!PasswordHasher.Verifica(passwordAttuale, utente.PasswordHash)) return false;
+        utente.PasswordHash = PasswordHasher.Hash(nuovaPassword);
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
     public async Task<bool> BootstrapSuperAdminAsync(Guid utenteId, string? token, CancellationToken ct = default)
     {
         var atteso = _config?["SuperAdmin:BootstrapToken"];

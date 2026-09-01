@@ -29,7 +29,24 @@ public static class DocumentiConfig
         {
             if (_inizializzato) return;
             QuestPDF.Settings.License = LicenseType.Community;
+            RegistraFontIncorporati();
             _inizializzato = true;
+        }
+    }
+
+    /// <summary>
+    /// Registra le famiglie alternative incorporate come risorsa (Carlito, IBM Plex Sans):
+    /// nei PDF il font viaggia dentro il file, quindi solo licenze OFL (vedi Font/LICENZE.md).
+    /// Lato non serve registrarlo: è il font predefinito fornito da QuestPDF.
+    /// </summary>
+    private static void RegistraFontIncorporati()
+    {
+        var assembly = typeof(DocumentiConfig).Assembly;
+        foreach (var risorsa in assembly.GetManifestResourceNames())
+        {
+            if (!risorsa.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase)) continue;
+            using var flusso = assembly.GetManifestResourceStream(risorsa);
+            if (flusso is not null) QuestPDF.Drawing.FontManager.RegisterFont(flusso);
         }
     }
 }
@@ -43,3 +60,19 @@ public static class DocumentiConfig
 /// <param name="Claim">Riga breve facoltativa (es. "Elaborazione paghe e contributi").</param>
 /// <param name="Logo">Logo PNG/JPEG facoltativo, mostrato in piccolo accanto al nome.</param>
 public sealed record MarchioSoftware(string Nome, string? Claim = null, byte[]? Logo = null);
+
+/// <summary>
+/// Mappa la chiave di preferenza («lato», «plex», «carlito») sulla famiglia registrata.
+/// Chiave sconosciuta o vuota = Lato: mai un font non incorporato nei PDF.
+/// </summary>
+public static class FontDocumenti
+{
+    public const string Predefinito = "Lato";
+
+    public static string Famiglia(string? chiave) => chiave?.Trim().ToLowerInvariant() switch
+    {
+        "plex" => "IBM Plex Sans",
+        "carlito" => "Carlito",
+        _ => Predefinito,
+    };
+}

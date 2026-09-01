@@ -170,6 +170,9 @@ public sealed class AgricolturaApiTests : IDisposable
         Assert.Equal("application/pdf", risposta.Content.Headers.ContentType?.MediaType);
         Assert.Contains("no-store", risposta.Headers.CacheControl?.ToString() ?? "");
         Assert.Equal("BozzaAgricola", risposta.Headers.GetValues("X-PaghePro-Stato").Single());
+        Assert.Contains(
+            "busta-agricola-Rossi-Mario-2025-10-bozza.pdf",
+            risposta.Content.Headers.ContentDisposition?.ToString() ?? "");
         var dati = await risposta.Content.ReadAsByteArrayAsync();
         using var pdf = PdfDocument.Open(dati);
         string testo = string.Join("\n", pdf.GetPages().Select(p => p.Text));
@@ -202,6 +205,9 @@ public sealed class AgricolturaApiTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, pdf.StatusCode);
         Assert.Equal("AgricolaArchiviata", pdf.Headers.GetValues("X-PaghePro-Stato").Single());
         Assert.Equal(hashArchiviato, pdf.Headers.GetValues("X-PaghePro-SHA256").Single());
+        Assert.Contains(
+            "busta-agricola-Rossi-Mario-2025-10-archiviata.pdf",
+            pdf.Content.Headers.ContentDisposition?.ToString() ?? "");
         using var documento = PdfDocument.Open(await pdf.Content.ReadAsByteArrayAsync());
         string testo = string.Join("\n", documento.GetPages().Select(pagina => pagina.Text));
         Assert.Contains("Rossi Mario", testo);

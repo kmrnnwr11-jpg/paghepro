@@ -111,7 +111,27 @@ public sealed class CedoliniAgricoliService
             throw new InvalidOperationException(
                 "L'impronta del PDF archiviato non corrisponde: documento non integro.");
 
+        var nominativo = await _db.Rapporti.AsNoTracking()
+            .Where(r => r.Id == busta.RapportoLavoroId && r.TenantId == tenantId
+                && r.Dipendente != null)
+            .Select(r => r.Dipendente!.Cognome + " " + r.Dipendente.Nome)
+            .FirstOrDefaultAsync(ct);
+
         return new DocumentoCedolinoAgricolo(
-            pdf, $"busta-agricola-{busta.Anno}-{busta.Mese:00}-archiviata.pdf", busta.HashPdfSha256);
+            pdf,
+            NomeFileBusta(nominativo, busta.Anno, busta.Mese, "archiviata"),
+            busta.HashPdfSha256);
+    }
+
+    /// <summary>
+    /// Nome file leggibile del PDF: lavoratore e periodo, senza caratteri vietati dai
+    /// filesystem (es. <c>busta-agricola-Rossi-Mario-2026-07-archiviata.pdf</c>).
+    /// </summary>
+    public static string NomeFileBusta(string? nominativo, int anno, int mese, string suffisso)
+    {
+        string pulito = string.Concat((nominativo ?? "").Trim().Split(Path.GetInvalidFileNameChars()))
+            .Replace(' ', '-');
+        string chi = pulito.Length == 0 ? "" : $"-{pulito}";
+        return $"busta-agricola{chi}-{anno}-{mese:00}-{suffisso}.pdf";
     }
 }

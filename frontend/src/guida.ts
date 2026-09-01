@@ -481,7 +481,7 @@ export const aiutoPerSezione: Record<string, SchedaAiuto> = {
   impostazioni: {
     titolo: "Impostazioni",
     aCosaServe:
-      "Qui regoli le preferenze d'uso (stile della busta, risposte di Aurora) e trovi i collegamenti alle pagine dove si configura lo studio: scheda azienda, fatturazione, utenti, registro attività, conservazione dati.",
+      "Qui regoli tutto il personalizzabile: stile e font dei documenti PDF, dicitura del tuo studio in fondo alle buste, dimensione del testo e aspetto dell'interfaccia, risposte di Aurora, password e verifica in due passaggi. Le preferenze si salvano sul tuo account e ti seguono su ogni dispositivo.",
     passi: [
       "Scegli la preferenza dalla tendina: si salva da sola su questo dispositivo.",
       "Per i dati dello studio, apri la voce dedicata e salva nella sua pagina.",

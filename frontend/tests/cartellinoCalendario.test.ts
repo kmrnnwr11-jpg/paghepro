@@ -4,8 +4,36 @@ import {
   calendarioIniziale,
   applicaProgressiviSettimanali,
   cambiaCausaleGiornata,
+  festivitaNazionali,
   validaCalendarioArchiviabile,
 } from "../src/cartellinoCalendario.ts";
+
+test("le festività nazionali dell'anno sono undici, Pasquetta compresa e calcolata", () => {
+  const feste2026 = festivitaNazionali(2026);
+  assert.equal(feste2026.size, 11);
+  assert.equal(feste2026.get("2026-01-01"), "Capodanno");
+  assert.equal(feste2026.get("2026-08-15"), "Ferragosto");
+  assert.equal(feste2026.get("2026-12-25"), "Natale");
+  // Pasqua 2026 = 5 aprile, quindi il lunedì dell'Angelo è il 6.
+  assert.equal(feste2026.get("2026-04-06"), "Lunedì dell'Angelo");
+  // Pasqua 2027 = 28 marzo: la mobile cambia anno per anno.
+  assert.equal(festivitaNazionali(2027).get("2027-03-29"), "Lunedì dell'Angelo");
+});
+
+test("dicembre 2026 nasce con Natale e Immacolata già segnati come festività", () => {
+  const calendario = calendarioIniziale(2026, 12, 8);
+  const perData = new Map(calendario.map((giornata) => [giornata.data, giornata]));
+
+  // 8 dicembre (martedì) e 25 dicembre (venerdì): festivi senza ore ordinarie.
+  assert.equal(perData.get("2026-12-08")?.causale, "Festivita");
+  assert.equal(perData.get("2026-12-08")?.oreOrdinarie, 0);
+  assert.equal(perData.get("2026-12-25")?.causale, "Festivita");
+  // Santo Stefano cade di sabato: resta riposo settimanale, non si sovrappone.
+  assert.equal(perData.get("2026-12-26")?.causale, "RiposoSettimanale");
+  // Un giorno lavorativo qualunque resta precompilato dall'orario.
+  assert.equal(perData.get("2026-12-09")?.causale, "Lavorata");
+  assert.equal(perData.get("2026-12-09")?.oreOrdinarie, 8);
+});
 
 test("luglio 2026 precompila lunedi-venerdi senza trasformare il sabato in lavoro", () => {
   const calendario = calendarioIniziale(2026, 7, 8);

@@ -61,20 +61,78 @@ export function giornataVuota(
   return campo ? { ...giornata, [campo]: oreValide } : giornata;
 }
 
-/** Mese standard su cinque giorni: lunedi-venerdi lavorati, sabato e domenica a riposo. */
+/**
+ * Pasqua col metodo di Gauss/Meeus (calendario gregoriano): serve solo per il lunedì
+ * dell'Angelo, l'unica festività nazionale mobile.
+ */
+function pasqua(anno: number): Date {
+  const a = anno % 19;
+  const b = Math.floor(anno / 100);
+  const c = anno % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mese = Math.floor((h + l - 7 * m + 114) / 31);
+  const giorno = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(anno, mese - 1, giorno);
+}
+
+const FESTIVITA_FISSE: readonly [number, number, string][] = [
+  [1, 1, "Capodanno"],
+  [1, 6, "Epifania"],
+  [4, 25, "Liberazione"],
+  [5, 1, "Festa del Lavoro"],
+  [6, 2, "Festa della Repubblica"],
+  [8, 15, "Ferragosto"],
+  [11, 1, "Ognissanti"],
+  [12, 8, "Immacolata"],
+  [12, 25, "Natale"],
+  [12, 26, "Santo Stefano"],
+];
+
+/**
+ * Festività nazionali dell'anno (data ISO → nome): le dieci a data fissa più il lunedì
+ * dell'Angelo. Il santo patrono dipende dal comune e non viene dedotto: si aggiunge a
+ * mano sulla giornata.
+ */
+export function festivitaNazionali(anno: number): Map<string, string> {
+  const iso = (mese: number, giorno: number) =>
+    `${anno}-${String(mese).padStart(2, "0")}-${String(giorno).padStart(2, "0")}`;
+  const feste = new Map<string, string>(
+    FESTIVITA_FISSE.map(([mese, giorno, nome]) => [iso(mese, giorno), nome]),
+  );
+  const pasquetta = pasqua(anno);
+  pasquetta.setDate(pasquetta.getDate() + 1);
+  feste.set(iso(pasquetta.getMonth() + 1, pasquetta.getDate()), "Lunedì dell'Angelo");
+  return feste;
+}
+
+/**
+ * Mese standard su cinque giorni: lunedi-venerdi lavorati, sabato e domenica a riposo.
+ * Le festività nazionali che cadono in un giorno lavorativo nascono già come Festivita:
+ * l'operatore corregge solo le eccezioni, non ricopia il calendario civile.
+ */
 export function calendarioIniziale(
   anno: number,
   mese: number,
   oreGiorno: number,
 ): GiornataCartellino[] {
   const giorni = new Date(anno, mese, 0).getDate();
+  const feste = festivitaNazionali(anno);
   const calendario = Array.from({ length: giorni }, (_, indice) => {
     const giorno = indice + 1;
     const data = new Date(anno, mese - 1, giorno);
     const iso = `${anno}-${String(mese).padStart(2, "0")}-${String(giorno).padStart(2, "0")}`;
     const fineSettimana = data.getDay() === 0 || data.getDay() === 6;
-    return fineSettimana
-      ? giornataVuota(iso, "RiposoSettimanale", 0)
+    if (fineSettimana) return giornataVuota(iso, "RiposoSettimanale", 0);
+    return feste.has(iso)
+      ? giornataVuota(iso, "Festivita", 0)
       : giornataVuota(iso, "Lavorata", oreGiorno);
   });
   // Se il mese non comincia di lunedì il riporto della prima settimana non è conoscibile

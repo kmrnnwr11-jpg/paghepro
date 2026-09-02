@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Calculator, CalendarDays, CheckCircle2, Download, Pencil, Users, X } from "lucide-react";
 import {
   api, scaricaBlob,
@@ -12,6 +12,7 @@ import {
   campoOre,
   cambiaCausaleGiornata,
   causaleConsenteStraordinario,
+  festivitaNazionali,
   validaCalendarioArchiviabile,
 } from "../cartellinoCalendario";
 import { creaSequenziatoreRichieste } from "../ultimaRichiesta";
@@ -142,6 +143,7 @@ export function Presenze() {
   const [azienda, setAzienda] = useState<Azienda | null>(null);
   const [anno, setAnno] = useState(oggi.getFullYear());
   const [mese, setMese] = useState(oggi.getMonth() + 1);
+  const festeAnno = useMemo(() => festivitaNazionali(anno), [anno]);
   const [board, setBoard] = useState<PresenzeMese | null>(null);
   const [dati, setDati] = useState<Record<string, DatiCartellino>>({});
   const [aperto, setAperto] = useState<string | null>(null);
@@ -895,6 +897,12 @@ export function Presenze() {
                                                   <td>
                                                     <strong>{data.getDate()}</strong>{" "}
                                                     <span className="muto">{GIORNI_SETTIMANA[data.getDay()]}</span>
+                                                    {festeAnno.get(g.data) && (
+                                                      <>
+                                                        {" "}
+                                                        <span className="muto">· {festeAnno.get(g.data)}</span>
+                                                      </>
+                                                    )}
                                                   </td>
                                                   <td>
                                                     <select

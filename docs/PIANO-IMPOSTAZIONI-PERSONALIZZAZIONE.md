@@ -9,12 +9,13 @@ la porta a sistema completo, per fasi, ognuna consegnabile da sola.
 
 1. **Le preferenze non toccano mai i numeri.** Stili, font e colori cambiano solo
    l'impaginazione: lordo, contributi e netto restano identici in ogni combinazione
-   (è già così per i tre stili busta, e resta il vincolo di ogni voce futura).
+   (è verificato sui quindici stili busta, e resta il vincolo di ogni voce futura).
 2. **Font solo con licenza incorporabile.** Nei PDF il font viaggia dentro il file
    (obbligo per documenti consegnati): si ammettono solo famiglie open (SIL OFL)
-   incorporate come risorsa — oggi Lato; ogni aggiunta porta la sua licenza nel repo.
+   incorporate come risorsa — oggi Lato, Carlito e IBM Plex Sans; ogni aggiunta porta la sua
+   licenza nel repo.
 3. **Tre livelli di preferenza, con precedenza chiara**:
-   dispositivo (localStorage, già fatto) → utente/studio (server, da fare) → azienda
+   dispositivo (localStorage) → utente/studio (server, fatto) → azienda
    (già su AziendaEntity: logo, canale notifiche, CCNL default). La più specifica vince.
 4. **Un documento chiuso non cambia mai**: qualunque preferenza vale dalla prossima
    stampa; i PDF congelati alla chiusura restano quelli.
@@ -22,18 +23,26 @@ la porta a sistema completo, per fasi, ognuna consegnabile da sola.
    (regola Karpathy del progetto). Questo piano elenca il possibile; si implementa
    ciò che serve, nell'ordine delle fasi.
 
-## Stato di partenza (verificato sul codice, 1-2/9/2026)
+## Stato attuale (verificato sul codice, 2/9/2026)
 
-- Pagina Impostazioni reale con: stile busta predefinito (dispositivo), risposte brevi
-  Aurora, stato AI live, tessere verso le pagine di configurazione.
-- PDF: famiglia **Lato completa incorporata** (9 pesi + corsivi) via `DocumentiConfig`;
-  renderer con font cablato. Stili busta: Classico / Colori / Editoriale già scelti da
-  tendina; busta agricola con stile dedicato.
+- Pagina Impostazioni reale con: stile busta predefinito sincronizzato sul server, risposte brevi
+  Aurora, stato AI live e collegamenti verso le pagine di configurazione. L'interfaccia è ora
+  organizzata in cinque categorie (Documenti, Interfaccia, Aurora, Sicurezza, Studio), con menu
+  laterale su desktop e scorrimento orizzontale su mobile, un solo pannello alla volta e anteprima
+  grafica A4 priva di dati reali. I collegamenti rispettano la visibilità per ruolo.
+- Il salvataggio distingue risposta server e sola copia locale; le scritture rapide della stessa
+  preferenza sono serializzate, così l'ultima scelta non può essere superata da una risposta lenta.
+- PDF: **Lato, Carlito e IBM Plex Sans** incorporati e selezionabili via `DocumentiConfig`.
+  Il catalogo offre **15 stili**: Classico, Modulare ed Editoriale in cinque temi ciascuno;
+  **Modulare Blu è il predefinito** per gli account senza una scelta salvata. Le preferenze
+  esplicite restano valide; la busta agricola mantiene uno stile dedicato e separato.
 - Interfaccia: 41 variabili CSS già in uso, ma `font-family` del corpo **cablato**
   (`system-ui`) e tema scuro assente (design glass non tokenizzato per il dark).
-- Server: nessuna tabella preferenze utente/studio.
+- Server: tabella e API preferenze utente/studio con whitelist e isolamento tenant.
 
 ## Fase 1 — Preferenze sul server (fondazione)
+
+**Stato: completata il 2 settembre 2026.**
 
 Le preferenze del dispositivo non seguono l'utente tra computer e telefono.
 
@@ -48,6 +57,8 @@ Le preferenze del dispositivo non seguono l'utente tra computer e telefono.
 
 ## Fase 2 — Personalizzazione documenti (il pezzo che si vede coi clienti)
 
+**Stato: font, dicitura e catalogo palette completati; default per azienda ancora aperto.**
+
 - **Font dei PDF**: 2-3 famiglie alternative a Lato, tutte OFL e incorporate (candidate:
   Inter, Source Sans 3, IBM Plex Sans; per lo stile Classico eventuale variante serif
   tipo Source Serif). `DocumentiConfig` registra le famiglie; i renderer leggono la
@@ -57,14 +68,17 @@ Le preferenze del dispositivo non seguono l'utente tra computer e telefono.
 - **Dicitura dello studio a piè di pagina** (es. «Elaborato da Studio X») su buste e
   prospetti: testo libero corto, sanificato, mai sopra le diciture obbligatorie
   (BOZZA/non-LUL restano intoccabili).
-- **Colore d'accento dello stile Colori** (e della busta agricola): palette limitata
-  proposta (6-8 tinte verificate per contrasto/stampa B/N), non color-picker libero.
+- **Palette documenti**: cinque temi predefiniti per ciascuna delle tre impaginazioni, con
+  contrasto verificato e nessun color-picker libero. L'eventuale colore separato della busta
+  agricola resta fuori da questo catalogo.
 - **Default per azienda**: stile e font per singolo cliente (colonna su AziendaEntity),
   che vince sulla preferenza di studio.
 - Stima: 1 giornata (font) + mezza (dicitura + accento + default azienda). Test golden
   PDF per ogni famiglia (una pagina, font incorporati, testo estraibile).
 
 ## Fase 3 — Aspetto dell'interfaccia
+
+**Stato: completata senza tema scuro; il tema scuro resta un progetto separato.**
 
 - **Dimensione del testo**: tre taglie (Normale / Grande / Molto grande) via
   `--scala-testo` sulle variabili esistenti — accessibilità prima di tutto.
@@ -87,8 +101,11 @@ Le preferenze del dispositivo non seguono l'utente tra computer e telefono.
 
 ## Fase 5 — Account e sicurezza nella pagina
 
-- Cambio password, attivazione 2FA con QR (endpoint `/api/auth/2fa/*` già esistenti,
-  manca la UI), elenco sessioni attive con revoca.
+**Stato: cambio password e gestione 2FA completati; elenco sessioni e revoca restano aperti.**
+
+- Cambio password e attivazione/disattivazione 2FA usano gli endpoint `/api/auth/2fa/*`, con
+  stato iniziale letto dal server, etichette accessibili, codice a sei cifre, blocco dei doppi
+  invii ed esiti distinti. Restano da aggiungere QR ed elenco sessioni attive con revoca.
 - Stima: 1 giornata.
 
 ## Fuori perimetro dichiarato

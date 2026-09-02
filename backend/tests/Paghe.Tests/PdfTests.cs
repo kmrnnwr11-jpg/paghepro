@@ -5,14 +5,74 @@ using Paghe.Core.Fatturazione;
 using Paghe.Core.Parametri;
 using Paghe.Documenti;
 using UglyToad.PdfPig;
+using UglyToad.PdfPig.Content;
 using Xunit;
 
 namespace Paghe.Tests;
 
 public class PdfTests
 {
+    public static IEnumerable<object[]> TuttiGliStili =>
+        CatalogoStiliCedolino.Tutti.Select(voce => new object[] { voce.Stile });
+
+    public static IEnumerable<object[]> TuttiGliStiliEFont =>
+        from voce in CatalogoStiliCedolino.Tutti
+        from font in new[]
+        {
+            FontDocumenti.Predefinito,
+            FontDocumenti.Famiglia("carlito"),
+            FontDocumenti.Famiglia("plex"),
+        }
+        select new object[] { voce.Stile, font };
+
     private static bool IsPdf(byte[] bytes) =>
         bytes.Length > 4 && Encoding.ASCII.GetString(bytes, 0, 5) == "%PDF-";
+
+    [Theory]
+    [MemberData(nameof(TuttiGliStiliEFont))]
+    public void CedolinoPdf_OgniStileEFontUsaA4EIlNumeroDiPagineDellaSuaFamiglia(
+        StileCedolino stile, string fontFamily)
+    {
+        var motore = new MotoreCalcoloCedolino(Seed.Parametri2026(), Seed.CcnlCommercio2026());
+        var cedolino = motore.Calcola(
+            new RapportoLavoro
+            {
+                CodiceCcnl = "COMMERCIO_TERZIARIO", Livello = "3", Qualifica = Qualifica.Impiegato,
+                Regione = "Lombardia", CodiceCatastaleComune = "F205",
+            },
+            new Cartellino { Anno = 2026, Mese = 7 });
+
+        byte[] pdf = CedolinoPdf.Genera(
+            cedolino,
+            new IntestazioneCedolino
+            {
+                Azienda = "Alfa Srl", Dipendente = "Rossi Mario", CodiceCnel = "H011",
+            },
+            cartellino: null,
+            stile: stile,
+            fontFamily: fontFamily);
+
+        string? directoryFormati = Environment.GetEnvironmentVariable("PAGHE_PDF_FORMATI_DIR");
+        if (!string.IsNullOrWhiteSpace(directoryFormati))
+        {
+            Directory.CreateDirectory(directoryFormati);
+            File.WriteAllBytes(
+                Path.Combine(directoryFormati,
+                    $"formato-{CatalogoStiliCedolino.Chiave(stile)}-{FontDocumenti.Chiave(fontFamily)}.pdf"),
+                pdf);
+        }
+
+        using var documento = PdfDocument.Open(pdf);
+        int pagineAttese = CatalogoStiliCedolino.Descrivi(stile).Famiglia switch
+        {
+            FamigliaStileCedolino.Classico => 1,
+            FamigliaStileCedolino.Modulare => 1,
+            FamigliaStileCedolino.Editoriale => 3,
+            _ => throw new ArgumentOutOfRangeException(nameof(stile)),
+        };
+        Assert.Equal(pagineAttese, documento.NumberOfPages);
+        Assert.All(documento.GetPages(), pagina => Assert.Equal(PageSize.A4, pagina.Size));
+    }
 
     [Fact]
     public void CedolinoPdf_ProduceUnPdfValido()
@@ -33,7 +93,7 @@ public class PdfTests
     }
 
     [Fact]
-    public void CedolinoPdf_ConPresenzeEAssenze_ProduceUnPdfValido()
+    public void CedolinoPdf_ClassicoConPresenzeEAssenze_ProduceUnPdfValido()
     {
         var cartellino = new Cartellino
         {
@@ -80,7 +140,7 @@ public class PdfTests
             TipoContratto = "Tempo indeterminato",
             Mensilita = 14,
             Orario = "Tempo pieno · 40 ore settimanali",
-        }, cartellino);
+        }, cartellino, stile: StileCedolino.Classico);
 
         // Opt-in per rigenerare il fac-simile revisionabile senza introdurre scritture nei test normali.
         var percorsoAnteprima = Environment.GetEnvironmentVariable("PAGHE_PDF_OUTPUT");
@@ -221,11 +281,13 @@ public class PdfTests
 
         Assert.Contains("Dati presenze non disponibili in questo documento", testo);
         Assert.Contains("CALENDARIO GIORNALIERO NON DISPONIBILE", testo);
-        Assert.Contains("ANF / assegni familiari: dato non disponibile in questo documento", testo);
+        Assert.Contains("ANF / assegni familiari", testo, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Dato non disponibile in questo documento", testo,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void CedolinoPdf_ScenarioDensoNonPerdeLeVoci()
+    public void CedolinoPdf_ClassicoScenarioDensoNonPerdeLeVoci()
     {
         var cedolino = new Cedolino
         {
@@ -248,7 +310,15 @@ public class PdfTests
             });
         }
 
-        byte[] pdf = CedolinoPdf.Genera(cedolino, "Azienda con ragione sociale particolarmente lunga Srl", "Rossi Mario");
+        byte[] pdf = CedolinoPdf.Genera(
+            cedolino,
+            new IntestazioneCedolino
+            {
+                Azienda = "Azienda con ragione sociale particolarmente lunga Srl",
+                Dipendente = "Rossi Mario",
+            },
+            cartellino: null,
+            stile: StileCedolino.Classico);
         var percorsoAnteprimaDensa = Environment.GetEnvironmentVariable("PAGHE_PDF_DENSO_OUTPUT");
         if (!string.IsNullOrWhiteSpace(percorsoAnteprimaDensa))
         {
@@ -268,7 +338,7 @@ public class PdfTests
     }
 
     [Fact]
-    public void CedolinoPdf_Calendario31Giorni_RestaNelCorpoDelCedolino()
+    public void CedolinoPdf_ClassicoCalendario31Giorni_RestaNelCorpoDelCedolino()
     {
         var giornate = Enumerable.Range(1, 31)
             .Select(giorno =>
@@ -306,7 +376,7 @@ public class PdfTests
             Azienda = "Alfa Srl",
             Dipendente = "Rossi Mario",
             CodiceCnel = "H011",
-        }, cartellino);
+        }, cartellino, stile: StileCedolino.Classico);
 
         var percorsoAnteprima = Environment.GetEnvironmentVariable("PAGHE_PDF_CALENDARIO_OUTPUT");
         if (!string.IsNullOrWhiteSpace(percorsoAnteprima))
@@ -351,9 +421,7 @@ public class PdfTests
     }
 
     [Theory]
-    [InlineData(StileCedolino.Classico)]
-    [InlineData(StileCedolino.Colori)]
-    [InlineData(StileCedolino.Editoriale)]
+    [MemberData(nameof(TuttiGliStili))]
     public void CedolinoPdf_NonSiQualificaComeLibroUnicoDelLavoro(StileCedolino stile)
     {
         var cedolino = new Cedolino
@@ -399,9 +467,7 @@ public class PdfTests
     }
 
     [Theory]
-    [InlineData(StileCedolino.Classico)]
-    [InlineData(StileCedolino.Colori)]
-    [InlineData(StileCedolino.Editoriale)]
+    [MemberData(nameof(TuttiGliStili))]
     public void CedolinoPdf_MantieneTitoloEAvvisoInOgniStatoWorkflow(StileCedolino stile)
     {
         string[] stati = ["Bozza", "PreWorkflow", "Controllata", "Validata", "Chiusa"];
@@ -427,9 +493,7 @@ public class PdfTests
     }
 
     [Theory]
-    [InlineData(StileCedolino.Classico)]
-    [InlineData(StileCedolino.Colori)]
-    [InlineData(StileCedolino.Editoriale)]
+    [MemberData(nameof(TuttiGliStili))]
     public void CedolinoPdf_EsponeTariffeSaldiCostiERigheFigurativeSenzaPrecisioneNascosta(
         StileCedolino stile)
     {
@@ -521,23 +585,37 @@ public class PdfTests
                 Azienda = "Officina Nord S.r.l.",
                 Dipendente = "Giulia Bianchi",
                 CodiceCnel = "H011",
+                DataNascita = "03/04/1985",
+                ComuneResidenza = "Milano (MI)",
+                DataAssunzione = "01/10/2020",
+                DataCessazione = "31/07/2026",
             },
             cartellino: null,
             new ContestoEmissioneCedolino("Chiusa"),
-            stile);
+            stile,
+            progressivi: new ProgressiviAnnui(
+                MesiCompresi: 7,
+                ImponibileInps: 12_345.67m,
+                ImponibileIrpef: 10_234.56m,
+                IrpefNetta: 2_345.67m,
+                Detrazioni: 1_234.56m));
 
         string? directoryAnteprime = Environment.GetEnvironmentVariable("PAGHE_PDF_VARIANTI_DIR");
         if (!string.IsNullOrWhiteSpace(directoryAnteprime))
         {
             Directory.CreateDirectory(directoryAnteprime);
             File.WriteAllBytes(
-                Path.Combine(directoryAnteprime, $"cedolino-{stile.ToString().ToLowerInvariant()}.pdf"),
+                Path.Combine(directoryAnteprime, $"cedolino-{CatalogoStiliCedolino.Chiave(stile)}.pdf"),
                 pdf);
         }
 
         string testo = EstrattoreTestoPdf.EstraiTesto(pdf).ToUpperInvariant();
         Assert.Contains("PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL", testo);
         Assert.Contains("BOZZA / NON CERTIFICATO", testo);
+        Assert.Contains("03/04/1985", testo);
+        Assert.Contains("MILANO (MI)", testo);
+        Assert.Contains("01/10/2020", testo);
+        Assert.Contains("31/07/2026", testo);
         Assert.Contains("RETRIBUZIONE FISSA", testo);
         Assert.Contains("2.015,1500", testo);
         Assert.Contains("TARIFFA ORARIA", testo);
@@ -557,6 +635,10 @@ public class PdfTests
         Assert.Contains("PREST_RECUPERABILI", testo);
         Assert.Contains("QUATTORDICESIMA_SEPARATA", testo);
         Assert.DoesNotContain("INPS_DATORE", testo);
+        Assert.Contains("12.345,67", testo);
+        Assert.Contains("10.234,56", testo);
+        Assert.Contains("2.345,67", testo);
+        Assert.Contains("1.234,56", testo);
     }
 
     [Fact]

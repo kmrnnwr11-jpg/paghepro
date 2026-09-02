@@ -43,13 +43,21 @@ public sealed record TestataAziendaUniEmens(
     string Matricola,
     string Composizione = "FP");
 
-/// <summary>Azienda denunciante nel mese di competenza.</summary>
+/// <summary>
+/// Azienda denunciante nel mese di competenza. La posizione contributiva ordinaria è
+/// facoltativa perché un datore soltanto agricolo denuncia con la sezione
+/// <see cref="PosAgri"/> (identificata dal CIDA) e può non avere una matricola INPS.
+/// </summary>
 public sealed record AziendaUniEmens(
     int Anno,
     int Mese,
     string CfAzienda,
     string RagioneSociale,
-    PosizioneContributivaUniEmens Posizione);
+    PosizioneContributivaUniEmens? Posizione = null)
+{
+    /// <summary>Posizioni agricole del mese (sezione PosAgri del tracciato).</summary>
+    public IReadOnlyList<PosAgriUniEmens> PosAgri { get; init; } = [];
+}
 
 /// <summary>
 /// Posizione contributiva INPS (matricola a 10 cifre). <paramref name="Composizione"/> indica

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { salvaStileBusta, stileBustaPreferito } from "../preferenze";
+import {
+  salvaStileBusta,
+  stileBustaPreferito,
+  sincronizzaPreferenzeDalServer,
+  type StileBusta,
+} from "../preferenze";
+import { SceltaStileBusta } from "../SceltaStileBusta";
 import { ArrowLeft, Calculator, CheckCircle2, LockKeyhole } from "lucide-react";
 import { api, getRuolo, scaricaBlob, type Azienda, type CedolinoArchiviato, type DipendenteRapporto, type StatoWorkflowCedolino } from "../api";
 import { scegliAziendaPreferita } from "../aziendaCorrente";
@@ -27,7 +33,7 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
   const [caricamentoLista, setCaricamentoLista] = useState(false);
   const [caricamento, setCaricamento] = useState(true);
   const [scaricandoId, setScaricandoId] = useState<string | null>(null);
-  const [stileBusta, setStileBusta] = useState<string>(() => stileBustaPreferito());
+  const [stileBusta, setStileBusta] = useState<StileBusta>(() => stileBustaPreferito());
   const [errore, setErrore] = useState<string | null>(null);
   const [annoCu, setAnnoCu] = useState<number | null>(null);
   const [scaricandoCu, setScaricandoCu] = useState(false);
@@ -45,6 +51,8 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
   useEffect(() => {
     (async () => {
       try {
+        await sincronizzaPreferenzeDalServer();
+        setStileBusta(stileBustaPreferito());
         const aziende = await api.aziende();
         const a = scegliAziendaPreferita(aziende);
         setAzienda(a);
@@ -119,9 +127,9 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
   }
 
   async function chiudi(c: CedolinoArchiviato) {
-    if (!window.confirm("Dopo la chiusura dati e PDF non potranno più cambiare. Vuoi chiudere questo cedolino?")) return;
+    if (!window.confirm("Dopo la chiusura dati, stile e PDF non potranno più cambiare. Vuoi congelare il cedolino con lo stile selezionato?")) return;
     setErrore(null); setAzioneInCorso(c.id);
-    try { applicaStato(await api.chiudiCedolino(c.id, c.versione)); }
+    try { applicaStato(await api.chiudiCedolino(c.id, c.versione, stileBusta)); }
     catch (e) { setErrore(e instanceof Error ? e.message : "Impossibile chiudere il cedolino."); }
     finally { setAzioneInCorso(null); }
   }
@@ -192,14 +200,13 @@ export function Cedolini({ onTornaPresenze }: { onTornaPresenze: () => void }) {
               </label>
               <label>
                 <span>Stile della busta (PDF)</span>
-                <select value={stileBusta} onChange={(e) => { setStileBusta(e.target.value); salvaStileBusta(e.target.value); }}>
-                  <option value="classico">Classico</option>
-                  <option value="colori">Colori</option>
-                  <option value="editoriale">Editoriale</option>
-                </select>
+                <SceltaStileBusta value={stileBusta} onChange={(stile) => {
+                  setStileBusta(stile);
+                  salvaStileBusta(stile);
+                }} />
                 <small style={{ display: "block", marginTop: 4, opacity: .7 }}>
-                  I numeri sono identici nei tre stili. Un cedolino chiuso resta nel PDF
-                  congelato alla chiusura.
+                  I dati e i numeri sono identici nei 15 stili. Alla chiusura, questa scelta
+                  viene congelata insieme al PDF.
                 </small>
               </label>
               <div className="empty-state wide-field">

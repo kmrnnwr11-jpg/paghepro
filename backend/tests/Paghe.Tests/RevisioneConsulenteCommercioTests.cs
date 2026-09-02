@@ -309,9 +309,7 @@ public sealed class RevisioneConsulenteCommercioTests : IDisposable
     }
 
     [Theory]
-    [InlineData(StileCedolino.Classico)]
-    [InlineData(StileCedolino.Colori)]
-    [InlineData(StileCedolino.Editoriale)]
+    [MemberData(nameof(PdfTests.TuttiGliStili), MemberType = typeof(PdfTests))]
     public void PdfOfficinaNord_RestaSimulazione_EsponeValoriRiconciliabili(StileCedolino stile)
     {
         var cedolino = Calcola();

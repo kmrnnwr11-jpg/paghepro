@@ -197,17 +197,17 @@ const SLIDES = [
   },
   {
     tipo:"feature", menu:"Impostazioni", icona:"⚙️",
-    titolo:"13 · Impostazioni dello studio",
-    tagline:"Parametri fiscali, contratto CCNL, intestazione dei PDF e notifiche: si configurano una volta sola.",
+    titolo:"13 · Impostazioni organizzate",
+    tagline:"Documenti, interfaccia, Aurora, sicurezza e studio: ogni scelta è nella sua categoria.",
     img:"img/v-impostazioni.png", hotspot:{x:88,y:17},
     passi:[
-      "<b>Parametri fiscali</b>: aliquote IRPEF e addizionali aggiornate per l'anno in corso.",
-      "<b>CCNL</b>: il contratto collettivo con livelli e minimi tabellari (es. Commercio).",
-      "<b>Brand documenti</b>: logo, colori e intestazioni che appariranno sui PDF dello studio.",
-      "<b>Notifiche scadenze</b>: attivi i promemoria automatici per F24, CU e UniEmens. Ricordati di premere <b>“Salva modifiche”</b>."
+      "In <b>Documenti</b> scegli uno dei 15 stili della busta paga, il carattere PDF e la dicitura dello studio.",
+      "In <b>Interfaccia</b> regoli dimensione del testo, carattere e spaziatura con anteprima immediata.",
+      "In <b>Aurora</b> scegli la lunghezza delle risposte senza cambiare permessi o accesso ai dati.",
+      "In <b>Sicurezza</b> cambi password e gestisci la verifica in due passaggi; da <b>Studio</b> apri le aree consentite dal tuo ruolo."
     ],
-    tip:"Configura queste cose una volta all'inizio: poi il software lavora con i tuoi parametri senza chiederteli ogni volta.",
-    narr:"Nelle Impostazioni configuri lo studio una volta sola: i parametri fiscali con le aliquote dell'anno, il contratto collettivo di riferimento, il logo e i colori che appariranno sui tuoi PDF, e le notifiche automatiche delle scadenze. Imposti tutto all'inizio e poi il software lavora con i tuoi parametri. Ricordati solo di salvare le modifiche."
+    tip:"Il badge in alto indica se le preferenze sono sincronizzate oppure salvate soltanto su questo dispositivo.",
+    narr:"Le Impostazioni sono divise in cinque categorie. Personalizzi buste paga e interfaccia, controlli Aurora, proteggi l'account e raggiungi la configurazione dello studio. Le scelte rapide si salvano automaticamente; la dicitura del PDF ha un pulsante di salvataggio dedicato."
   },
   {
     tipo:"feature", menu:"Utenti e permessi", icona:"🔐",

@@ -58,6 +58,8 @@ services:
         sync: false
       # Google Gemini è la riserva automatica: riceve la richiesta soltanto se DeepSeek non
       # risponde. Per le immagini viene usato direttamente, perché DeepSeek non ha la vista.
+      - key: Ai__ModelloChat
+        value: deepseek-v4-pro
       - key: Ai__UsaGeminiComeFallback
         value: "true"
       - key: Ai__GeminiApiKey

@@ -146,7 +146,10 @@ public sealed class CedolinoWorkflowService
         Guid cedolinoId,
         Guid attoreId,
         int versioneAttesa,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        StileCedolino stile = CatalogoStiliCedolino.Predefinito,
+        string fontFamily = FontDocumenti.Predefinito,
+        string? dicituraStudio = null)
     {
         ValidaAttore(attoreId);
         var c = await CaricaAsync(tenantId, cedolinoId, ct);
@@ -173,6 +176,10 @@ public sealed class CedolinoWorkflowService
         var validazione = JsonSerializer.Deserialize<DatiValidazioneCedolino>(validazioneJson)
             ?? throw new InvalidOperationException("Dati della validazione non leggibili.");
 
+        // Anche l'aspetto fa parte del documento immutabile: viene scelto una volta, validato
+        // dal catalogo e registrato insieme ai byte. Le ristampe non lo ricalcolano mai.
+        _ = CatalogoStiliCedolino.Descrivi(stile);
+        string fontConvalidato = FontDocumenti.Famiglia(FontDocumenti.Chiave(fontFamily));
         byte[] pdf = CedolinoPdf.Genera(
             dati.Cedolino,
             dati.Intestazione,
@@ -182,7 +189,10 @@ public sealed class CedolinoWorkflowService
                 firma,
                 $"Snapshot {snapshot.Id:D}",
                 $"Validazione registrata: {validazione.Nominativo} - {validazione.Riferimento}"),
-            progressivi: dati.Progressivi);
+            stile: stile,
+            progressivi: dati.Progressivi,
+            fontFamily: fontConvalidato,
+            dicituraStudio: dicituraStudio);
 
         var documentoId = Guid.NewGuid();
         var documento = new CedolinoDocumentoEntity
@@ -195,6 +205,7 @@ public sealed class CedolinoWorkflowService
                 ContestoDatiProtetti.PdfSnapshotCedolino(tenantId, documentoId, cedolinoId))!,
             HashPdfSha256 = CedolinoSnapshotCodec.Hash(pdf),
             HashFirmaSiglaTimbroSha256 = CedolinoSnapshotCodec.Hash(firma),
+            VersioneRenderer = $"cedolino-v2:{CatalogoStiliCedolino.Chiave(stile)}:{FontDocumenti.Chiave(fontConvalidato)}",
             CreatoIl = OraUtc(),
             CreatoDa = attoreId,
         };
@@ -212,7 +223,7 @@ public sealed class CedolinoWorkflowService
         Guid tenantId,
         Guid cedolinoId,
         CancellationToken ct = default,
-        StileCedolino stile = StileCedolino.Classico,
+        StileCedolino stile = CatalogoStiliCedolino.Predefinito,
         string fontFamily = "Lato",
         string? dicituraStudio = null)
     {

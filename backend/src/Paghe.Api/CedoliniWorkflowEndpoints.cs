@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Security.Claims;
+using Paghe.Documenti;
 using Paghe.Persistence;
 using Paghe.Persistence.Cedolini;
 using Paghe.Persistence.Sicurezza;
@@ -38,12 +39,38 @@ public static class CedoliniWorkflowEndpoints
         }).RequireAuthorization();
 
         app.MapPost("/api/cedolini/{id:guid}/chiudi", async (
-            Guid id, ComandoVersioneCedolino req, CedolinoWorkflowService workflow,
-            ClaimsPrincipal user, CancellationToken ct) =>
+            Guid id, ChiudiCedolinoRequest req, CedolinoWorkflowService workflow,
+            PreferenzeUtenteService preferenze, ClaimsPrincipal user, CancellationToken ct) =>
         {
             if (!ÈAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+            Guid tenantId = Tenant(user);
+            Guid utenteId = Utente(user);
+            bool stileEsplicito = !string.IsNullOrWhiteSpace(req.Stile);
+            string chiaveStile = stileEsplicito
+                ? req.Stile!.Trim()
+                : await preferenze.LeggiAsync(
+                    tenantId, utenteId, PreferenzeUtenteService.StileBusta,
+                    CatalogoStiliCedolino.ChiavePredefinita, ct);
+            if (!CatalogoStiliCedolino.ProvaDaChiave(chiaveStile, out var stile))
+            {
+                if (stileEsplicito)
+                    return Results.BadRequest(new
+                    {
+                        errore = $"Stile non valido. Scegli uno dei {CatalogoStiliCedolino.Tutti.Count} stili disponibili.",
+                    });
+
+                // Un valore legacy non più riconosciuto non deve impedire la chiusura.
+                stile = StileCedolino.Classico;
+            }
+
+            string fontFamily = FontDocumenti.Famiglia(await preferenze.LeggiAsync(
+                tenantId, utenteId, PreferenzeUtenteService.FontDocumenti, "lato", ct));
+            string dicitura = await preferenze.LeggiAsync(
+                tenantId, utenteId, PreferenzeUtenteService.DicituraStudio, "", ct);
             return await Esegui(() => workflow.ChiudiAsync(
-                Tenant(user), id, Utente(user), req.VersioneAttesa, ct));
+                tenantId, id, utenteId, req.VersioneAttesa, ct,
+                stile, fontFamily, string.IsNullOrWhiteSpace(dicitura) ? null : dicitura));
         }).RequireAuthorization();
 
         // Nessun GET del file grezzo: l'immagine autentica può comparire soltanto nel PDF chiuso.
@@ -180,6 +207,8 @@ public static class CedoliniWorkflowEndpoints
 }
 
 public sealed record ComandoVersioneCedolino(int VersioneAttesa);
+
+public sealed record ChiudiCedolinoRequest(int VersioneAttesa, string? Stile = null);
 
 public sealed record ValidaCedolinoRequest(
     int VersioneAttesa,

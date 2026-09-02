@@ -1,12 +1,15 @@
 // Service worker minimale: rende l'app installabile (PWA) e apribile anche offline.
 // Salva il "guscio" dell'app (pagina + JS/CSS/icone). NON tocca le chiamate dati/login,
 // che passano sempre dalla rete così i dati restano sempre aggiornati e sicuri.
-const CACHE = "paghepro-v1";
+const CACHE = "paghepro-v2";
 const GUSCIO = ["/", "/index.html", "/favicon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
+  // "reload" salta la cache HTTP: il guscio salvato è sempre quello appena pubblicato.
   event.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(GUSCIO)).then(() => self.skipWaiting()),
+    caches.open(CACHE)
+      .then((c) => c.addAll(GUSCIO.map((u) => new Request(u, { cache: "reload" }))))
+      .then(() => self.skipWaiting()),
   );
 });
 
@@ -29,8 +32,20 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return;
 
   // Apertura della pagina: prova la rete, e se manca usa il guscio salvato → l'app si apre offline.
+  // Ogni apertura riuscita rinfresca anche la copia offline: dopo un aggiornamento (o un
+  // riavvio del server) il ripiego non può più riproporre un'interfaccia vecchia di mesi.
   if (req.mode === "navigate") {
-    event.respondWith(fetch(req).catch(() => caches.match("/index.html")));
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copia = res.clone();
+            caches.open(CACHE).then((c) => c.put("/index.html", copia));
+          }
+          return res;
+        })
+        .catch(() => caches.match("/index.html")),
+    );
     return;
   }
 

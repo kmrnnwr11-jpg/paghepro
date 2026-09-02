@@ -59,6 +59,12 @@ public sealed class CedoliniAgricoliService
         busta.TenantId = tenantId;
         busta.ArchiviatoIl = _clock.GetUtcNow().UtcDateTime;
         busta.ArchiviatoDa = attoreId;
+        // La validazione è dichiarata contestualmente all'archiviazione: senza nominativo
+        // non esiste, e la data è quella dell'atto.
+        busta.ValidataDa = string.IsNullOrWhiteSpace(busta.ValidataDa)
+            ? null
+            : busta.ValidataDa.Trim();
+        busta.ValidataIl = busta.ValidataDa is null ? null : busta.ArchiviatoIl;
         busta.Versione = (esistente?.Versione ?? 0) + 1;
         busta.HashPdfSha256 = CedolinoSnapshotCodec.Hash(pdf);
         busta.PdfProtetto = _db.Protettore.ProteggiConContesto(

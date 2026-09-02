@@ -85,6 +85,16 @@ dire per ciascuna: **giusto**, **sbagliato** (e come si fa), oppure **dipende** 
     fini fiscali** osservata è 7,80% ed è tenuta come parametro, non come formula. Le domande
     già formulate sono in `docs/buste-reali/busta-05-agricoltura-otd-cuneo-2025.md`.
 
+### Fac-simile e 15 stili
+
+17. Usare lo stesso caso validato per controllare almeno una stampa per ciascuna delle tre
+    impaginazioni (Classico, Modulare, Editoriale): tutte devono riportare le medesime voci,
+    progressivi, totali e diciture. Partire da **Modulare Blu**, che è il default del prodotto;
+    le cinque palette di ogni impaginazione cambiano solo colore.
+18. Confermare leggibilità di codici e importi su A4, stampa in scala di grigi, firma/sigla/timbro
+    e presenza visibile di «non costituisce LUL» / «bozza / non certificato». La scelta estetica
+    non sostituisce la validazione dei calcoli né l'eventuale processo autorizzato del LUL.
+
 ## 4. Come registrare le risposte
 
 Ogni risposta del consulente va scritta in un file dentro `docs/buste-reali/`, come è già stato

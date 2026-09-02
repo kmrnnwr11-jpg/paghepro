@@ -68,6 +68,16 @@ public sealed class CedolinoAgricoloEntity
     public DateTime ArchiviatoIl { get; set; }
     public Guid ArchiviatoDa { get; set; }
 
+    /// <summary>
+    /// Nominativo (ed eventuale qualifica) del professionista che ha dichiarato di aver
+    /// controllato la busta al momento dell'archiviazione. Null = prospetto da validare:
+    /// il PDF conserva la dicitura «BOZZA DA VALIDARE».
+    /// </summary>
+    public string? ValidataDa { get; set; }
+
+    /// <summary>Quando è stata dichiarata la validazione (coincide con l'archiviazione).</summary>
+    public DateTime? ValidataIl { get; set; }
+
     /// <summary>Quante volte la busta del periodo è stata riarchiviata dopo una correzione.</summary>
     public int Versione { get; set; } = 1;
 }

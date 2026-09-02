@@ -1376,6 +1376,12 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ValidataDa")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ValidataIl")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("Versione")
                         .HasColumnType("INTEGER");
 

@@ -11,19 +11,25 @@ namespace Paghe.Documenti;
 /// Le pagine possono aumentare quando le voci sono numerose: nessun dato viene compresso
 /// o troncato per rispettare artificialmente il formato standard di tre pagine.
 /// </summary>
-internal static class CedolinoEditorialePdf
+internal sealed class CedolinoEditorialePdf
 {
-    private static readonly CultureInfo It = CultureInfo.GetCultureInfo("it-IT");
+    private readonly TemaCedolinoPdf _tema;
+    private readonly CultureInfo It = CultureInfo.GetCultureInfo("it-IT");
 
-    private const string Carta = "#F7F5F0";
-    private const string Inchiostro = "#17233B";
-    private const string Grafite = "#4F5663";
-    private const string Filetto = "#C9CDD3";
-    private const string Rame = "#B6653C";
-    private const string RameChiaro = "#F4E7DE";
-    private const string Bianco = "#FFFFFF";
+    private string Carta => _tema.Carta;
+    private string Inchiostro => _tema.Inchiostro;
+    private string Grafite => _tema.Secondario;
+    private string Filetto => _tema.BordoTenue;
+    private string Rame => _tema.Accento;
+    private string RameChiaro => _tema.Fondo;
+    private string Bianco => _tema.Bianco;
 
-    internal static byte[] Genera(CedolinoPresentazione dati) =>
+    private CedolinoEditorialePdf(TemaCedolinoPdf tema) => _tema = tema;
+
+    internal static byte[] Genera(CedolinoPresentazione dati, TemaCedolinoPdf tema) =>
+        new CedolinoEditorialePdf(tema).GeneraInterno(dati);
+
+    private byte[] GeneraInterno(CedolinoPresentazione dati) =>
         Document.Create(documento =>
         {
             documento.Page(pagina => PaginaProspetto(pagina, dati));
@@ -31,7 +37,7 @@ internal static class CedolinoEditorialePdf
             documento.Page(pagina => PaginaGuida(pagina, dati));
         }).GeneratePdf();
 
-    private static void PaginaProspetto(PageDescriptor pagina, CedolinoPresentazione dati)
+    private void PaginaProspetto(PageDescriptor pagina, CedolinoPresentazione dati)
     {
         ConfiguraPagina(pagina, dati);
         pagina.Content().Column(colonna =>
@@ -47,18 +53,22 @@ internal static class CedolinoEditorialePdf
         pagina.Footer().Element(c => PiedePagina(c, dati));
     }
 
-    private static void PaginaDettagli(PageDescriptor pagina, CedolinoPresentazione dati)
+    private void PaginaDettagli(PageDescriptor pagina, CedolinoPresentazione dati)
     {
         ConfiguraPagina(pagina, dati);
         pagina.Content().Column(colonna =>
         {
-            colonna.Spacing(8);
+            // Mantiene il fascicolo di dettaglio su una sola pagina anche quando sono presenti
+            // progressivi e righe figurative: una pagina di continuazione quasi vuota rende il
+            // documento più difficile da archiviare e confrontare.
+            colonna.Spacing(6);
             colonna.Item().Element(c => TestataCompatta(c, dati, "Dettagli informativi del mese"));
             colonna.Item().Background(RameChiaro).Padding(10).Text(
                     MessaggioAllegato(dati.Emissione))
                 .FontSize(8.5f).SemiBold().FontColor(Inchiostro);
             colonna.Item().Element(c => RetribuzioneDiRiferimento(c, dati.Cedolino));
             colonna.Item().Element(c => RiepiloghiTecnici(c, dati.Cedolino));
+            colonna.Item().Element(c => ProgressiviAnno(c, dati.Progressivi));
             colonna.Item().Element(c => CostiStimati(c, dati.Cedolino));
             if (dati.RigheFigurativeRilevanti.Count > 0)
                 colonna.Item().Element(c => DettaglioFigurativo(c, dati.RigheFigurativeRilevanti));
@@ -72,7 +82,7 @@ internal static class CedolinoEditorialePdf
         pagina.Footer().Element(c => PiedePagina(c, dati));
     }
 
-    private static void PaginaGuida(PageDescriptor pagina, CedolinoPresentazione dati)
+    private void PaginaGuida(PageDescriptor pagina, CedolinoPresentazione dati)
     {
         ConfiguraPagina(pagina, dati);
         pagina.DefaultTextStyle(testo => testo.FontSize(9.5f).FontColor(Grafite));
@@ -97,17 +107,22 @@ internal static class CedolinoEditorialePdf
         pagina.Footer().Element(c => PiedePagina(c, dati));
     }
 
-    private static void ConfiguraPagina(PageDescriptor pagina, CedolinoPresentazione dati)
+    private void ConfiguraPagina(PageDescriptor pagina, CedolinoPresentazione dati)
     {
         pagina.Size(PageSizes.A4);
         pagina.MarginHorizontal(1.6f, Unit.Centimetre);
         pagina.MarginTop(1.35f, Unit.Centimetre);
         pagina.MarginBottom(1.15f, Unit.Centimetre);
         pagina.PageColor(Carta);
-        pagina.DefaultTextStyle(testo => testo.FontFamily(dati.FontFamily).FontSize(8.5f).FontColor(Inchiostro));
+        pagina.DefaultTextStyle(testo => testo.FontFamily(dati.FontFamily).FontSize(8.5f)
+            // Mantiene le tre sezioni editoriali sulle tre pagine previste anche con IBM Plex,
+            // le cui metriche altrimenti isolano calendario e stato dati su un quarto foglio.
+            .LineHeight(string.Equals(dati.FontFamily, "IBM Plex Sans", StringComparison.Ordinal)
+                ? 0.9f : 1f)
+            .FontColor(Inchiostro));
     }
 
-    private static void TestataPrincipale(IContainer contenitore, CedolinoPresentazione dati)
+    private void TestataPrincipale(IContainer contenitore, CedolinoPresentazione dati)
     {
         contenitore.Column(testata =>
         {
@@ -157,7 +172,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void BannerSimulazione(IContainer contenitore) =>
+    private void BannerSimulazione(IContainer contenitore) =>
         contenitore.Background(Rame).PaddingVertical(5).PaddingHorizontal(8).Row(riga =>
         {
             riga.RelativeItem().Text(CedolinoPdfPresentazione.TitoloSimulazione)
@@ -166,7 +181,7 @@ internal static class CedolinoEditorialePdf
                 .FontSize(10).SemiBold().FontColor(Bianco);
         });
 
-    private static void NettoPrincipale(IContainer contenitore, Cedolino cedolino)
+    private void NettoPrincipale(IContainer contenitore, Cedolino cedolino)
     {
         contenitore.BorderTop(0.7f).BorderBottom(0.7f).BorderColor(Filetto)
             .PaddingVertical(14).Row(riga =>
@@ -195,7 +210,7 @@ internal static class CedolinoEditorialePdf
             });
     }
 
-    private static void AnagraficaERapporto(IContainer contenitore, CedolinoPresentazione dati)
+    private void AnagraficaERapporto(IContainer contenitore, CedolinoPresentazione dati)
     {
         contenitore.Row(riga =>
         {
@@ -204,7 +219,10 @@ internal static class CedolinoEditorialePdf
                 CampoEditoriale(sinistra, "Dipendente", dati.Intestazione.Dipendente, evidenza: true);
                 CampoEditoriale(sinistra, "Matricola", dati.Intestazione.Matricola);
                 CampoEditoriale(sinistra, "Codice fiscale", dati.Intestazione.CodiceFiscaleDipendente);
+                CampoEditoriale(sinistra, "Data di nascita", dati.Intestazione.DataNascita);
+                CampoEditoriale(sinistra, "Comune di residenza", dati.Intestazione.ComuneResidenza);
                 CampoEditoriale(sinistra, "Data assunzione", dati.Intestazione.DataAssunzione);
+                CampoEditoriale(sinistra, "Data cessazione", dati.Intestazione.DataCessazione);
                 CampoEditoriale(sinistra, "Riferimento pagamento", dati.IbanMascherato);
             });
             riga.RelativeItem().BorderLeft(0.6f).BorderColor(Filetto).PaddingLeft(18).Column(destra =>
@@ -224,7 +242,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void TabellaVoci(IContainer contenitore, IReadOnlyList<RigaCedolinoPresentata> righe)
+    private void TabellaVoci(IContainer contenitore, IReadOnlyList<RigaCedolinoPresentata> righe)
     {
         contenitore.Column(colonna =>
         {
@@ -272,7 +290,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void Totali(IContainer contenitore, Cedolino cedolino)
+    private void Totali(IContainer contenitore, Cedolino cedolino)
     {
         contenitore.BorderTop(1).BorderColor(Inchiostro).PaddingTop(8).Row(riga =>
         {
@@ -290,7 +308,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void Firme(IContainer contenitore, CedolinoPresentazione dati)
+    private void Firme(IContainer contenitore, CedolinoPresentazione dati)
     {
         contenitore.PaddingTop(8).Row(riga =>
         {
@@ -322,7 +340,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void TestataCompatta(
+    private void TestataCompatta(
         IContainer contenitore,
         CedolinoPresentazione dati,
         string titolo)
@@ -349,7 +367,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void RetribuzioneDiRiferimento(IContainer contenitore, Cedolino cedolino)
+    private void RetribuzioneDiRiferimento(IContainer contenitore, Cedolino cedolino)
     {
         contenitore.Column(colonna =>
         {
@@ -363,7 +381,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void RiepiloghiTecnici(IContainer contenitore, Cedolino cedolino)
+    private void RiepiloghiTecnici(IContainer contenitore, Cedolino cedolino)
     {
         contenitore.Column(colonna =>
         {
@@ -401,7 +419,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void CostiStimati(IContainer contenitore, Cedolino cedolino)
+    private void CostiStimati(IContainer contenitore, Cedolino cedolino)
     {
         contenitore.Column(colonna =>
         {
@@ -428,7 +446,31 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void FerieEPermessi(IContainer contenitore, CedolinoPresentazione dati)
+    private void ProgressiviAnno(IContainer contenitore, ProgressiviAnnui? progressivi)
+    {
+        contenitore.Column(colonna =>
+        {
+            colonna.Item().Element(c => TitoloSezione(c, "Progressivi annuali"));
+            if (progressivi is null)
+            {
+                colonna.Item().PaddingTop(5)
+                    .Text("Progressivi annui non disponibili in questo documento.")
+                    .FontSize(8).FontColor(Grafite);
+                return;
+            }
+
+            colonna.Item().PaddingTop(5).Row(riga =>
+            {
+                MiniDato(riga, "Imponibile previdenziale progressivo", Euro(progressivi.ImponibileInps));
+                MiniDato(riga, "Imponibile IRPEF progressivo", Euro(progressivi.ImponibileIrpef));
+                MiniDato(riga, "IRPEF pagata progressiva", Euro(progressivi.IrpefNetta));
+                MiniDato(riga, "Detrazioni progressive", Euro(progressivi.Detrazioni));
+                MiniDato(riga, "Mesi elaborati", progressivi.MesiCompresi.ToString(It));
+            });
+        });
+    }
+
+    private void FerieEPermessi(IContainer contenitore, CedolinoPresentazione dati)
     {
         contenitore.Column(colonna =>
         {
@@ -466,7 +508,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void RigaSaldo(
+    private void RigaSaldo(
         TableDescriptor tabella, string istituto, decimal? saldoPrecedente,
         decimal maturato, decimal goduto, decimal residuo)
     {
@@ -477,7 +519,7 @@ internal static class CedolinoEditorialePdf
         tabella.Cell().Element(CellaCalendario).AlignRight().Text(Numero(residuo)).SemiBold();
     }
 
-    private static void DettaglioFigurativo(
+    private void DettaglioFigurativo(
         IContainer contenitore, IReadOnlyList<RigaFigurativaPresentata> righe)
     {
         contenitore.Column(colonna =>
@@ -511,7 +553,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void PresenzeDelMese(IContainer contenitore, Cartellino? cartellino)
+    private void PresenzeDelMese(IContainer contenitore, Cartellino? cartellino)
     {
         contenitore.Column(colonna =>
         {
@@ -545,7 +587,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void VociInformativeSenzaImporto(
+    private void VociInformativeSenzaImporto(
         IContainer contenitore,
         IReadOnlyList<RigaCedolinoPresentata> righe)
     {
@@ -582,7 +624,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void VariabiliDelMese(IContainer contenitore, CedolinoPresentazione dati)
+    private void VariabiliDelMese(IContainer contenitore, CedolinoPresentazione dati)
     {
         var cartellino = dati.Cartellino;
         if (cartellino is null) return;
@@ -616,7 +658,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void CalendarioGiornaliero(IContainer contenitore, Cartellino? cartellino)
+    private void CalendarioGiornaliero(IContainer contenitore, Cartellino? cartellino)
     {
         contenitore.Column(colonna =>
         {
@@ -664,25 +706,25 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void StatoDati(IContainer contenitore, CedolinoPresentazione dati)
+    private void StatoDati(IContainer contenitore, CedolinoPresentazione dati)
     {
-        contenitore.BorderTop(0.7f).BorderColor(Filetto).PaddingTop(9).Column(colonna =>
+        string statoProgressivi = dati.Progressivi is null
+            ? "Progressivi annui non disponibili."
+            : "Progressivi annui riportati sopra.";
+        string riferimentoPagamento = string.IsNullOrWhiteSpace(dati.IbanMascherato)
+            ? "Riferimento pagamento non disponibile."
+            : $"Riferimento pagamento: {dati.IbanMascherato}.";
+
+        contenitore.BorderTop(0.7f).BorderColor(Filetto).PaddingTop(4).Text(testo =>
         {
-            colonna.Item().Text("Disponibilità dei dati").FontSize(9).SemiBold().FontColor(Inchiostro);
-            colonna.Item().PaddingTop(4).Text("Progressivo anno: dato non disponibile in questo documento.")
-                .FontSize(8).FontColor(Grafite);
-            colonna.Item().Text(TestoAssegniFamiliari(dati.Cartellino))
-                .FontSize(8).FontColor(Grafite);
-            colonna.Item().Text("Data o prova del pagamento: dato non disponibile in questo documento.")
-                .FontSize(8).FontColor(Grafite);
-            colonna.Item().Text(string.IsNullOrWhiteSpace(dati.IbanMascherato)
-                    ? "Riferimento per il pagamento: dato non disponibile in questo documento."
-                    : $"Riferimento per il pagamento: {dati.IbanMascherato}.")
-                .FontSize(8).FontColor(Grafite);
+            testo.DefaultTextStyle(stile => stile.FontSize(7).FontColor(Grafite));
+            testo.Span("Disponibilità dati — ").SemiBold().FontColor(Inchiostro);
+            testo.Span($"{statoProgressivi} {TestoAssegniFamiliari(dati.Cartellino)} " +
+                       $"Data/prova pagamento non disponibile. {riferimentoPagamento}");
         });
     }
 
-    private static void FormulaNetto(IContainer contenitore, Cedolino cedolino)
+    private void FormulaNetto(IContainer contenitore, Cedolino cedolino)
     {
         contenitore.Background(Inchiostro).Padding(16).Column(colonna =>
         {
@@ -701,7 +743,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void SpiegazioneFerie(IContainer contenitore, CedolinoPresentazione dati)
+    private void SpiegazioneFerie(IContainer contenitore, CedolinoPresentazione dati)
     {
         contenitore.Column(colonna =>
         {
@@ -727,7 +769,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void SpiegazioneSaldo(
+    private void SpiegazioneSaldo(
         IContainer contenitore, string istituto, string unita, decimal? saldoPrecedente,
         decimal maturato, decimal goduto, decimal residuo)
     {
@@ -743,7 +785,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void SpiegazioneExtra(IContainer contenitore, CedolinoPresentazione dati)
+    private void SpiegazioneExtra(IContainer contenitore, CedolinoPresentazione dati)
     {
         contenitore.Column(colonna =>
         {
@@ -771,7 +813,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void VociCheFormanoIlNetto(IContainer contenitore, CedolinoPresentazione dati)
+    private void VociCheFormanoIlNetto(IContainer contenitore, CedolinoPresentazione dati)
     {
         contenitore.Column(colonna =>
         {
@@ -798,7 +840,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void Glossario(IContainer contenitore)
+    private void Glossario(IContainer contenitore)
     {
         contenitore.Column(colonna =>
         {
@@ -827,7 +869,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void PiedePagina(IContainer contenitore, CedolinoPresentazione dati)
+    private void PiedePagina(IContainer contenitore, CedolinoPresentazione dati)
     {
         contenitore.PaddingTop(7).BorderTop(0.6f).BorderColor(Filetto).Row(riga =>
         {
@@ -848,7 +890,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static string EtichettaStato(string? stato) => stato?.Trim().ToLowerInvariant() switch
+    private string EtichettaStato(string? stato) => stato?.Trim().ToLowerInvariant() switch
     {
         "preworkflow" => "ARCHIVIO PRE-WORKFLOW",
         "controllata" => "DATI CONGELATI - DA VALIDARE",
@@ -857,7 +899,7 @@ internal static class CedolinoEditorialePdf
         _ => "STATO: BOZZA",
     };
 
-    private static string NotaStato(ContestoEmissioneCedolino emissione) =>
+    private string NotaStato(ContestoEmissioneCedolino emissione) =>
         emissione.Stato?.Trim().ToLowerInvariant() switch
         {
             "preworkflow" => "BOZZA / NON CERTIFICATO - Ricostruzione da archivio pre-workflow non definitiva.",
@@ -867,7 +909,7 @@ internal static class CedolinoEditorialePdf
             _ => "BOZZA / NON CERTIFICATO - Documento di simulazione da sottoporre al professionista.",
         };
 
-    private static string MessaggioAllegato(ContestoEmissioneCedolino emissione)
+    private string MessaggioAllegato(ContestoEmissioneCedolino emissione)
     {
         const string premessa =
             "BOZZA / NON CERTIFICATO. ALLEGATO INFORMATIVO DEL PROSPETTO DI SIMULAZIONE. ";
@@ -884,7 +926,7 @@ internal static class CedolinoEditorialePdf
         };
     }
 
-    private static void CampoEditoriale(
+    private void CampoEditoriale(
         ColumnDescriptor colonna,
         string etichetta,
         string? valore,
@@ -899,7 +941,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void RigaDato(ColumnDescriptor colonna, string etichetta, string valore)
+    private void RigaDato(ColumnDescriptor colonna, string etichetta, string valore)
     {
         colonna.Item().PaddingVertical(2).Row(riga =>
         {
@@ -908,7 +950,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void RigaDatoOrizzontale(IContainer contenitore, string etichetta, string valore)
+    private void RigaDatoOrizzontale(IContainer contenitore, string etichetta, string valore)
     {
         contenitore.BorderBottom(0.45f).BorderColor(Filetto).PaddingVertical(4).Row(riga =>
         {
@@ -917,7 +959,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void MiniDato(RowDescriptor riga, string etichetta, string valore)
+    private void MiniDato(RowDescriptor riga, string etichetta, string valore)
     {
         riga.RelativeItem().PaddingRight(8).Column(c =>
         {
@@ -926,7 +968,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void TotaleEditoriale(RowDescriptor riga, string etichetta, decimal valore)
+    private void TotaleEditoriale(RowDescriptor riga, string etichetta, decimal valore)
     {
         riga.RelativeItem(1.65f).PaddingHorizontal(8).Column(c =>
         {
@@ -935,7 +977,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void FormulaParte(RowDescriptor riga, string etichetta, decimal valore, string simbolo)
+    private void FormulaParte(RowDescriptor riga, string etichetta, decimal valore, string simbolo)
     {
         riga.RelativeItem().Row(c =>
         {
@@ -949,7 +991,7 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void Definizione(ColumnDescriptor colonna, string termine, string spiegazione)
+    private void Definizione(ColumnDescriptor colonna, string termine, string spiegazione)
     {
         colonna.Item().PaddingBottom(5).Text(testo =>
         {
@@ -958,23 +1000,23 @@ internal static class CedolinoEditorialePdf
         });
     }
 
-    private static void TitoloSezione(IContainer contenitore, string titolo) =>
+    private void TitoloSezione(IContainer contenitore, string titolo) =>
         contenitore.PaddingBottom(6).BorderBottom(0.7f).BorderColor(Filetto)
             .Text(titolo).FontSize(10.5f).SemiBold().FontColor(Inchiostro);
 
-    private static IContainer CellaTitolo(IContainer contenitore) =>
+    private IContainer CellaTitolo(IContainer contenitore) =>
         contenitore.BorderBottom(0.8f).BorderColor(Inchiostro).PaddingVertical(5).PaddingHorizontal(3)
             .DefaultTextStyle(testo => testo.FontSize(7).SemiBold().FontColor(Inchiostro));
 
-    private static IContainer CellaVoce(IContainer contenitore) =>
+    private IContainer CellaVoce(IContainer contenitore) =>
         contenitore.BorderBottom(0.4f).BorderColor(Filetto).PaddingVertical(3).PaddingHorizontal(3)
             .DefaultTextStyle(testo => testo.FontSize(8.1f).FontColor(Inchiostro));
 
-    private static IContainer CellaCalendario(IContainer contenitore) =>
+    private IContainer CellaCalendario(IContainer contenitore) =>
         contenitore.BorderBottom(0.35f).BorderColor(Filetto).PaddingVertical(2.2f).PaddingHorizontal(3)
             .DefaultTextStyle(testo => testo.FontSize(7.5f).FontColor(Inchiostro));
 
-    private static string TestoFiscaleAzienda(IntestazioneCedolino dati)
+    private string TestoFiscaleAzienda(IntestazioneCedolino dati)
     {
         var parti = new List<string>();
         if (!string.IsNullOrWhiteSpace(dati.PartitaIva)) parti.Add($"P.IVA {dati.PartitaIva}");
@@ -982,7 +1024,7 @@ internal static class CedolinoEditorialePdf
         return parti.Count == 0 ? "P.IVA / C.F. non disponibili" : string.Join("   ·   ", parti);
     }
 
-    private static string Descrivi(CausaleGiornata causale) => causale switch
+    private string Descrivi(CausaleGiornata causale) => causale switch
     {
         CausaleGiornata.Ferie => "Ferie",
         CausaleGiornata.Malattia => "Malattia",
@@ -995,7 +1037,7 @@ internal static class CedolinoEditorialePdf
         _ => "Lavorata",
     };
 
-    private static string TestoAssegniFamiliari(Cartellino? cartellino) =>
+    private string TestoAssegniFamiliari(Cartellino? cartellino) =>
         cartellino?.StatoAssegniFamiliari switch
         {
             StatoAssegniFamiliari.NonSpettanti => "ANF / assegni familiari: non spettanti nel mese.",
@@ -1005,20 +1047,20 @@ internal static class CedolinoEditorialePdf
             _ => "ANF / assegni familiari: da verificare prima della chiusura.",
         };
 
-    private static string Euro(decimal valore) => $"€ {valore.ToString("N2", It)}";
-    private static string Euro4(decimal valore) => $"€ {valore.ToString("N4", It)}";
-    private static bool ÈRigaEconomica(RigaCedolinoPresentata riga) =>
+    private string Euro(decimal valore) => $"€ {valore.ToString("N2", It)}";
+    private string Euro4(decimal valore) => $"€ {valore.ToString("N4", It)}";
+    private bool ÈRigaEconomica(RigaCedolinoPresentata riga) =>
         riga.Competenza is not null and not 0m || riga.Trattenuta is not null and not 0m;
-    private static string Importo(decimal? valore) => valore is decimal v ? v.ToString("N2", It) : "";
-    private static string Importo4(decimal? valore) => valore is decimal v ? v.ToString("N4", It) : "";
-    private static string Numero(decimal valore) => valore.ToString("0.##", It);
-    private static string Numero(decimal? valore) => valore is decimal v ? Numero(v) : "";
-    private static string Valore(string? valore) => string.IsNullOrWhiteSpace(valore) ? "-" : valore;
-    private static string Cap(string valore) => string.IsNullOrEmpty(valore)
+    private string Importo(decimal? valore) => valore is decimal v ? v.ToString("N2", It) : "";
+    private string Importo4(decimal? valore) => valore is decimal v ? v.ToString("N4", It) : "";
+    private string Numero(decimal valore) => valore.ToString("0.##", It);
+    private string Numero(decimal? valore) => valore is decimal v ? Numero(v) : "";
+    private string Valore(string? valore) => string.IsNullOrWhiteSpace(valore) ? "-" : valore;
+    private string Cap(string valore) => string.IsNullOrEmpty(valore)
         ? valore
         : char.ToUpper(valore[0], It) + valore[1..];
-    private static string Capitalize(string valore) => Cap(valore);
-    private static string Unisci(string? primo, string? secondo)
+    private string Capitalize(string valore) => Cap(valore);
+    private string Unisci(string? primo, string? secondo)
     {
         var valori = new[] { primo, secondo }.Where(v => !string.IsNullOrWhiteSpace(v));
         string unito = string.Join(" · ", valori);

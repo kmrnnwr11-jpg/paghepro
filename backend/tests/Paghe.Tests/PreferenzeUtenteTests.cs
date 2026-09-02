@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Paghe.Documenti;
 using Paghe.Persistence;
 using Xunit;
 
@@ -32,7 +33,9 @@ public sealed class PreferenzeUtenteTests : IDisposable
 
         await svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.StileBusta, "colori");
         await svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.FontDocumenti, "carlito");
-        Assert.Equal("colori", await svc.LeggiAsync(tenant, utente, PreferenzeUtenteService.StileBusta, "classico"));
+        Assert.Equal("colori", await svc.LeggiAsync(
+            tenant, utente, PreferenzeUtenteService.StileBusta,
+            CatalogoStiliCedolino.ChiavePredefinita));
 
         await svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.StileBusta, "editoriale");
         var tutte = await svc.LeggiTutteAsync(tenant, utente);
@@ -40,7 +43,27 @@ public sealed class PreferenzeUtenteTests : IDisposable
         Assert.Equal("editoriale", tutte[PreferenzeUtenteService.StileBusta]);
 
         await svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.StileBusta, "");
-        Assert.Equal("classico", await svc.LeggiAsync(tenant, utente, PreferenzeUtenteService.StileBusta, "classico"));
+        Assert.Equal("colori", await svc.LeggiAsync(
+            tenant, utente, PreferenzeUtenteService.StileBusta,
+            CatalogoStiliCedolino.ChiavePredefinita));
+    }
+
+    [Fact]
+    public async Task TuttiIQuindiciStili_SonoAmmessiDallaPreferenza()
+    {
+        var (tenant, utente) = (Guid.NewGuid(), Guid.NewGuid());
+        await using var db = NuovoContesto();
+        var svc = new PreferenzeUtenteService(db);
+
+        foreach (string stile in CatalogoStiliCedolino.Chiavi)
+        {
+            await svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.StileBusta, stile);
+            Assert.Equal(stile, await svc.LeggiAsync(
+                tenant, utente, PreferenzeUtenteService.StileBusta,
+                CatalogoStiliCedolino.ChiavePredefinita));
+        }
+
+        Assert.Empty(await svc.LeggiTutteAsync(Guid.NewGuid(), utente));
     }
 
     [Fact]
@@ -65,14 +88,25 @@ public sealed class PreferenzeUtenteTests : IDisposable
     [Fact]
     public async Task LePreferenzeDiUnTenant_NonSiVedonoDaUnAltro()
     {
-        var utente = Guid.NewGuid();
+        var (utenteA, utenteB) = (Guid.NewGuid(), Guid.NewGuid());
         var (tenantA, tenantB) = (Guid.NewGuid(), Guid.NewGuid());
         await using var db = NuovoContesto();
         var svc = new PreferenzeUtenteService(db);
 
-        await svc.SalvaAsync(tenantA, utente, PreferenzeUtenteService.DicituraStudio, "Studio Rossi");
+        await svc.SalvaAsync(tenantA, utenteA, PreferenzeUtenteService.DicituraStudio, "Studio Rossi");
+        await svc.SalvaAsync(tenantA, utenteA, PreferenzeUtenteService.StileBusta, "classico");
 
-        Assert.Empty(await svc.LeggiTutteAsync(tenantB, utente));
-        Assert.Equal("", await svc.LeggiAsync(tenantB, utente, PreferenzeUtenteService.DicituraStudio, ""));
+        Assert.Empty(await svc.LeggiTutteAsync(tenantB, utenteA));
+        Assert.Empty(await svc.LeggiTutteAsync(tenantA, utenteB));
+        Assert.Equal("", await svc.LeggiAsync(tenantB, utenteA, PreferenzeUtenteService.DicituraStudio, ""));
+        Assert.Equal("colori", await svc.LeggiAsync(
+            tenantB, utenteA, PreferenzeUtenteService.StileBusta,
+            CatalogoStiliCedolino.ChiavePredefinita));
+        Assert.Equal("colori", await svc.LeggiAsync(
+            tenantA, utenteB, PreferenzeUtenteService.StileBusta,
+            CatalogoStiliCedolino.ChiavePredefinita));
+        Assert.Equal("classico", await svc.LeggiAsync(
+            tenantA, utenteA, PreferenzeUtenteService.StileBusta,
+            CatalogoStiliCedolino.ChiavePredefinita));
     }
 }

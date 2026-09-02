@@ -32,7 +32,9 @@ public static class CedolinoAgricoloPdf
         CartellinoAgricolo cartellino,
         ParametriAgricoli parametri,
         string fontFamily = "Lato",
-        string? dicituraStudio = null)
+        string? dicituraStudio = null,
+        string? validataDa = null,
+        DateOnly? validataIl = null)
     {
         ArgumentNullException.ThrowIfNull(cedolino);
         ArgumentNullException.ThrowIfNull(intestazione);
@@ -42,7 +44,8 @@ public static class CedolinoAgricoloPdf
 
         DocumentiConfig.Inizializza();
         return Document.Create(documento => documento.Page(pagina =>
-            Pagina(pagina, cedolino, intestazione, rapporto, cartellino, parametri, fontFamily, dicituraStudio))).GeneratePdf();
+            Pagina(pagina, cedolino, intestazione, rapporto, cartellino, parametri, fontFamily,
+                dicituraStudio, validataDa, validataIl))).GeneratePdf();
     }
 
     private static void Pagina(
@@ -53,7 +56,9 @@ public static class CedolinoAgricoloPdf
         CartellinoAgricolo cartellino,
         ParametriAgricoli parametri,
         string fontFamily,
-        string? dicituraStudio)
+        string? dicituraStudio,
+        string? validataDa,
+        DateOnly? validataIl)
     {
         pagina.Size(PageSizes.A4);
         pagina.MarginHorizontal(0.9f, Unit.Centimetre);
@@ -77,8 +82,21 @@ public static class CedolinoAgricoloPdf
 
         pagina.Footer().Row(riga =>
         {
-            riga.RelativeItem().Text("BOZZA DA VALIDARE - non costituisce LUL, UniEmens/PosAgri o F24.")
-                .FontSize(6.2f).SemiBold().FontColor(Avviso);
+            // La dicitura di bozza cade solo davanti a una validazione dichiarata da una
+            // persona con nome e cognome; chi ha controllato resta registrato nell'archivio,
+            // ma sul documento non si stampa (scelta del fondatore, 2/9/2026). Il limite
+            // «non costituisce LUL/PosAgri/F24» resta sempre: descrive cosa il prospetto è.
+            if (string.IsNullOrWhiteSpace(validataDa))
+                riga.RelativeItem().Text("BOZZA DA VALIDARE - non costituisce LUL, UniEmens/PosAgri o F24.")
+                    .FontSize(6.2f).SemiBold().FontColor(Avviso);
+            else
+                riga.RelativeItem().Text(
+                        "Prospetto controllato e validato"
+                        + (validataIl is { } dataValidazione
+                            ? $" il {dataValidazione.ToString("dd/MM/yyyy", It)}"
+                            : "")
+                        + " - non costituisce LUL, UniEmens/PosAgri o F24.")
+                    .FontSize(6.2f).SemiBold().FontColor(Verde);
             if (!string.IsNullOrWhiteSpace(dicituraStudio))
                 riga.RelativeItem().AlignCenter().Text(dicituraStudio)
                     .FontSize(6f).FontColor(Secondario);

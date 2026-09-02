@@ -30,6 +30,7 @@ ENV_ARGS=(
   ASPNETCORE_URLS=http://127.0.0.1:5171
   Ai__Provider=DeepSeek
   "Ai__ApiKey=$(cat "$CHIAVE_DEEPSEEK_FILE")"
+  Ai__ModelloChat=deepseek-v4-pro
   Ai__UsaGeminiComeFallback=true
   "Ai__GeminiApiKey=$(cat "$CHIAVE_GEMINI_FILE")"
   # gemini-3.7-flash risponde 503 "high demand" nelle prove del 24 agosto 2026: la riserva

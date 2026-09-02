@@ -108,8 +108,33 @@ lunghezza massima — mentre l'archivio conserva la grafia vera: «Nicolò D'Ami
 - **Anagrafica**: la schermata per generare la denuncia dalla SPA (oggi c'è solo l'endpoint).
 - **Eventi tutelati**: malattia, maternità, CIG e i relativi codici evento sulle settimane
   (coperture "1" e "2"), conguagli e recuperi. Il generatore copre il mese ordinario.
-- **Gestioni speciali**: collaboratori, sport e spettacolo, pubblica amministrazione,
-  agricoltura (`PosAgri`, che servirà al modulo agricolo).
+- **Gestioni speciali**: collaboratori, sport e spettacolo, pubblica amministrazione.
+  La sezione agricola `PosAgri` ha una prima versione (settembre 2026): l'endpoint
+  `POST /api/aziende/{id}/posagri/mese` costruisce la denuncia dalle buste agricole
+  archiviate — giornate e imponibile dall'archivio, mai stimati — con i codici della
+  posizione INPS (CIDA, zona tariffaria, codici contratto/retribuzione/inquadramento
+  dell'allegato tecnico) forniti nella richiesta, perché l'anagrafica non li ha ancora.
+  Attenzione al formato: in `PosAgri` gli importi sono centesimi interi
+  (10,50 € → 1050), diversamente dal resto del flusso.
+
+  **Esito del controllo ufficiale (2 settembre 2026)**: un flusso PosAgri generato dal
+  test (`POSAGRI_DUMP=file.xml dotnet test --filter FullyQualifiedName~PosAgri`, poi la
+  stessa procedura Docker qui sopra) è stato elaborato dal validatore 4.2.0. La
+  **validazione dello schema di ingresso passa** e i controlli estesi non segnalano
+  alcun errore di struttura, formato o tabella: zona tariffaria `00` (nessuna
+  agevolazione), contratto `001`, retribuzione `O`, categoria `01`, area `3` e importi
+  in centesimi sono tutti accettati. Gli unici due errori bloccanti sono «Azienda non
+  presente» e «Caratteristiche aziendali non presenti per la coppia CIDA - Codice
+  fiscale azienda» (DR01923): il CIDA di prova non esiste negli archivi INPS. È lo
+  stesso confine dell'F24 sezione INPS: **l'esito pieno richiede il CIDA vero
+  dell'azienda** (si trova nel cassetto previdenziale aziende agricole o lo conosce il
+  consulente) insieme al suo codice fiscale reale. Regole dei codici imparate
+  dall'Appendice I dell'allegato tecnico: la zona tariffaria 01-05 dichiara
+  un'agevolazione contributiva (fiscalizzazione, zona svantaggiata, montana) e chi non
+  ne ha manda `00`; il codice contratto dell'operaio tradizionale extracomunitario è
+  `004`, non `001`; la categoria contrattuale è a due cifre (florovivaisti = `02`).
+  Restano da fare: persistenza dei codici in anagrafica, archiviazione della pratica e
+  schermata SPA.
 - **Archiviazione della pratica** UniEmens con i suoi stati, come già avviene per l'F24.
 - L'**invio** resta sui canali ufficiali: cassetto previdenziale INPS o intermediario
   abilitato. Il software prepara il file, non lo trasmette.

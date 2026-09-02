@@ -82,8 +82,8 @@ dotnet run --project src/Paghe.Demo -c Release
   colonna `TrasferteJson` nell'archivio (migrazioni `TrasferteBatchAgricole`), tabella
   editabile nella pagina SPA che sostituisce i due campi singoli quando compilata; la
   somma unica mensile documentata resta sui «Rimborsi spese documentati».
-  **Scelta dello stile busta** (notte): `GET /api/cedolini/{id}/pdf?stile=` espone i tre
-  stili già esistenti (classico/colori/editoriale, numeri identici) e la pagina Cedolini ha
+  **Scelta dello stile busta** (notte): `GET /api/cedolini/{id}/pdf?stile=` esponeva i tre
+  layout originari (classico/colori/editoriale, numeri identici) e la pagina Cedolini ha
   la tendina «Stile della busta»; un cedolino CHIUSO resta il PDF congelato alla chiusura.
   La busta agricola mantiene il suo stile dedicato (variante classica = lavoro futuro).
   **Pagina Impostazioni vera** (Studio → Impostazioni): sostituito il mockup statico con
@@ -101,12 +101,37 @@ dotnet run --project src/Paghe.Demo -c Release
   preferenze server; **aspetto interfaccia** (taglia testo, font UI Lato, densità) applicato
   via classi body da `applicaAspetto()`; **cambio password** (`/api/auth/cambia-password`,
   verifica della attuale, min 8) e **UI 2FA** (attiva/disattiva sugli endpoint esistenti)
-  nella pagina Impostazioni. `colore_accento` esiste ed è validato ma NON ancora applicato
-  nei renderer (i colori sono const: refactor dedicato) — il controllo non è esposto in UI.
+  nella pagina Impostazioni. `colore_accento` esiste ed è validato ma non è esposto come
+  preferenza libera: le palette entrano soltanto attraverso il catalogo chiuso degli stili.
   Pagina agricola «dal contratto»: le ore al giorno arrivano dalle ore settimanali del rapporto
   (÷ 6, settimana agricola), le ore del mese si propongono come giornate × ore/giorno e i giorni di
   detrazione dal periodo di assunzione/cessazione — tutte proposte modificabili (helper puri in
   `agricoltura.ts` con test; `OreSettimanali` aggiunto a `RapportoDettaglioDto`).
+
+- **Quindici stili completi per il cedolino ordinario (2 settembre 2026, `/goal`)**:
+  catalogo stabile di **3 impaginazioni × 5 temi** — Classico Ufficio/Blu/Verde/Bordeaux/
+  Antracite, Modulare Blu/Verde/Bordeaux/Viola/Petrolio, Editoriale Rame/Blu/Verde/Bordeaux/
+  Grafite. `CatalogoStiliCedolino` è l'unica whitelist backend; rifiuta chiavi ed enum numerici
+  sconosciuti e pilota renderer e palette immutabili. Cedolini e Impostazioni mostrano selezione
+  raggruppata e anteprima; **Modulare Blu (`colori`) è il default di prodotto** in assenza di una
+  scelta, mentre preferenze valide già salvate (compreso Classico) non vengono sovrascritte e un
+  valore legacy corrotto ricade sul Classico. La preferenza server vale per le anteprime, mentre la chiusura registra
+  `cedolino-v2:<stile>:<font>` e conserva i byte cifrati, quindi ristampe e cambi preferenza non
+  alterano il documento. Tutti i layout espongono anche i progressivi annui e mantengono le
+  diciture «PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL» e «BOZZA / NON CERTIFICATO».
+  Test parametrizzati coprono le 15 combinazioni, contenuto, contrasto, API, tenant, preferenze e
+  immutabilità; verifica visuale A4 effettuata sui 15 PDF (Classico/Modulare una pagina,
+  Editoriale tre pagine senza continuazioni vuote).
+
+- **Pagina Impostazioni organizzata (2 settembre 2026)**: workspace in cinque categorie —
+  Documenti, Interfaccia, Aurora, Sicurezza e Studio — con menu laterale desktop e categorie
+  orizzontali su mobile. Un solo pannello resta visibile; Documenti include una mini-anteprima A4
+  senza dati reali. Le scorciatoie riusano la policy per ruolo di `navigazione.ts`; password e 2FA
+  hanno etichette, busy state, feedback distinti e stato iniziale letto dal server con isolamento
+  tenant. `salvaPreferenzaConEsito` conserva il fallback locale, ritenta le modifiche offline,
+  impedisce alle code di attraversare la sessione e serializza le scritture per chiave; il badge
+  aggrega anche chiavi parallele. Test frontend e verifica browser coprono categorie, ruoli, gare
+  di salvataggio, cambio sessione e reflow a 320/375 px; aggiornata anche la guida illustrata.
 
 - **CU telematica: il file passa il controllo ufficiale AdE (29 agosto 2026)**: primo pezzo
   del «gate di vendibilità» del dossier concorrenza. `TracciatoCuUfficiale` (Paghe.Core/

@@ -1,6 +1,6 @@
 # Ricerca cedolino professionale e presenze - 2026
 
-Aggiornata all'11 luglio 2026. Questo documento distingue requisiti normativi, pattern osservati
+Aggiornata al 2 settembre 2026. Questo documento distingue requisiti normativi, pattern osservati
 nei prodotti di mercato e backlog tecnico di PaghePro. Non autorizza a chiamare "ufficiale" un
 output non validato.
 
@@ -12,6 +12,14 @@ controlli bloccanti, elaborazione, confronto, approvazione/chiusura e produzione
 cedolino, LUL, F24 e UniEmens. Copiare solo il loro aspetto darebbe una falsa sensazione di
 affidabilita.
 
+Per questo PaghePro non replica l'interfaccia o il marchio di un concorrente: usa un unico modello
+semantico del cedolino e offre varianti grafiche originali. Il catalogo consegnato contiene
+**15 stili**: tre impaginazioni complete (Classico, Modulare, Editoriale) in cinque temi ciascuna.
+Classico e Modulare privilegiano una pagina A4; Editoriale usa tre pagine per separare prospetto,
+dettagli e guida di lettura. **Modulare Blu è il default generale** perché mette subito in evidenza
+netto, trattenute e residui senza aumentare le pagine; gli altri 14 stili restano selezionabili.
+Palette, font e impaginazione non modificano mai i calcoli.
+
 Fonti prodotto consultate:
 
 - Zucchetti, elaborazione busta paga e presenze:
@@ -22,6 +30,9 @@ Fonti prodotto consultate:
   e https://www.teamsystem.com/hr/teamsystem-hr/funzionalita/rilevazione-presenze/
 - INAZ, controlli prima della chiusura:
   https://www.inaz.it/software/cruscotto-controlli/
+
+Queste fonti servono a confrontare completezza del processo, leggibilità e controlli. Non sono
+state usate per copiare schermate, denominazioni commerciali o modelli grafici proprietari.
 
 ## Requisiti ufficiali principali
 
@@ -71,5 +82,13 @@ LUL e UniEmens devono usare lo stesso snapshot e mantenere isolamento per tenant
 - Conferma esplicita e validazioni server precedono l'elaborazione.
 - Malattia e infortunio stornano le giornate ordinarie prima di applicare le componenti dedicate.
 - Il PDF mostra il riepilogo del cartellino ed e marcato `BOZZA DA VALIDARE`.
+- Il catalogo espone 15 combinazioni originali con la stessa presentazione canonica: anagrafiche,
+  CCNL/codice CNEL, voci, imponibili, trattenute, progressivi, ferie/ROL/ex festività, costi
+  parziali stimati e righe figurative restano coerenti fra tutti i layout.
+- Le chiavi esterne sono validate con whitelist; una chiave numerica o sconosciuta viene rifiutata.
+  Stile e font scelti alla chiusura diventano metadati del renderer e i byte PDF archiviati non
+  vengono rigenerati durante la ristampa.
+- I 15 prospetti sono A4 e mantengono sempre `PROSPETTO PAGA DI SIMULAZIONE – NON COSTITUISCE LUL`
+  e `BOZZA / NON CERTIFICATO`. Il catalogo non cambia lo stato di validazione del motore paghe.
 
 Questa tranche non completa i tre gap sopra e non rende il cedolino certificato.

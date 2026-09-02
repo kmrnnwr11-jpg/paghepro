@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Paghe.Core.Domain;
+using Paghe.Documenti;
 using Paghe.Persistence;
 using Paghe.Persistence.Cedolini;
 using Paghe.Persistence.Entities;
@@ -63,10 +64,17 @@ public sealed class CedolinoWorkflowTests : IDisposable
             Assert.Equal(3, validata.Versione);
 
             var chiusa = await workflow.ChiudiAsync(
-                scenario.TenantId, scenario.CedolinoId, attore, 3);
+                scenario.TenantId, scenario.CedolinoId, attore, 3,
+                stile: StileCedolino.EditorialeBlu,
+                fontFamily: "Carlito",
+                dicituraStudio: "Elaborato da Studio Test");
             Assert.Equal(StatoCedolino.Chiusa, chiusa.Stato);
             Assert.Equal(4, chiusa.Versione);
             Assert.False(string.IsNullOrWhiteSpace(chiusa.HashPdf));
+
+            var metadati = await db.CedoliniDocumenti.AsNoTracking().SingleAsync(d =>
+                d.TenantId == scenario.TenantId && d.CedolinoId == scenario.CedolinoId);
+            Assert.Equal("cedolino-v2:editoriale-blu:carlito", metadati.VersioneRenderer);
         }
 
         byte[] prima;
@@ -81,6 +89,8 @@ public sealed class CedolinoWorkflowTests : IDisposable
             {
                 var testo = string.Join('\n', pdf.GetPages().Select(p => p.Text));
                 Assert.Contains("Validazione registrata: Dott.ssa Maria Verdi", testo);
+                Assert.Contains("Elaborato da Studio Test", testo);
+                Assert.Contains("Come leggere questo cedolino", testo);
                 Assert.Contains("consegna", testo, StringComparison.OrdinalIgnoreCase);
                 Assert.Contains(
                     "COSTO MEDIO PARZIALE STIMATO ANNUO/12",
@@ -111,7 +121,10 @@ public sealed class CedolinoWorkflowTests : IDisposable
 
         await using (var db = NuovoContesto())
         {
-            var seconda = await Workflow(db).LeggiPdfAsync(scenario.TenantId, scenario.CedolinoId);
+            var seconda = await Workflow(db).LeggiPdfAsync(
+                scenario.TenantId, scenario.CedolinoId,
+                stile: StileCedolino.ClassicoAntracite,
+                fontFamily: "Lato");
             Assert.NotNull(seconda);
             Assert.Equal(prima, seconda!.Dati); // ristampa davvero byte per byte identica
 

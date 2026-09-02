@@ -75,4 +75,12 @@ public static class FontDocumenti
         "carlito" => "Carlito",
         _ => Predefinito,
     };
+
+    /// <summary>Chiave stabile da registrare insieme alla versione del renderer congelato.</summary>
+    public static string Chiave(string? famiglia) => famiglia?.Trim() switch
+    {
+        "IBM Plex Sans" => "plex",
+        "Carlito" => "carlito",
+        _ => "lato",
+    };
 }

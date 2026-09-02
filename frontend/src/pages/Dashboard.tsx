@@ -189,6 +189,9 @@ function salvaStrumentiRecenti(voci: StrumentoRecente[]): void {
 
 function sezioneDaHash(): SectionKey {
   const candidata = decodeURIComponent(window.location.hash.slice(1)).trim().toLowerCase();
+  // Le sotto-pagine delle impostazioni (#impostazioni/sicurezza) restano nella
+  // sezione Impostazioni: la scelta della categoria la gestisce la pagina stessa.
+  if (candidata.startsWith("impostazioni/")) return "impostazioni";
   if (candidata === "audit" && !["admin", "superadmin"].includes(getRuolo() ?? ""))
     return "dashboard";
   if (candidata === "retention" && getRuolo() !== "admin")

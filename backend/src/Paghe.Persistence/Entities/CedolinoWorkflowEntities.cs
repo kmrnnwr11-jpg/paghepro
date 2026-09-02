@@ -27,7 +27,7 @@ public sealed class CedolinoDocumentoEntity
     public string PdfProtetto { get; set; } = "";
     public string HashPdfSha256 { get; set; } = "";
     public string HashFirmaSiglaTimbroSha256 { get; set; } = "";
-    public string VersioneRenderer { get; set; } = "cedolino-editoriale-v1";
+    public string VersioneRenderer { get; set; } = "cedolino-v1:non-specificato";
     public DateTime CreatoIl { get; set; }
     public Guid CreatoDa { get; set; }
 }

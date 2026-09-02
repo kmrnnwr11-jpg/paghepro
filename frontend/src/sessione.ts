@@ -1,5 +1,6 @@
 import { SecureSession } from "@paghepro/secure-session";
 import { buildMobile } from "./mobile/piattaforma";
+import { pulisciCachePreferenzeCorrenti } from "./preferenze";
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.trim()
   || (import.meta.env.DEV ? "http://localhost:5171" : "");
@@ -18,6 +19,19 @@ let accessToken: string | null = null;
 let accessScadeMs = 0;
 let rinnovoInCorso: Promise<SessioneAccesso> | null = null;
 
+function utenteDalToken(token: string): string | null {
+  try {
+    const parte = token.split(".")[1];
+    if (!parte) return null;
+    const base64 = parte.replace(/-/g, "+").replace(/_/g, "/")
+      .padEnd(Math.ceil(parte.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(base64)) as { sub?: unknown };
+    return typeof payload.sub === "string" && payload.sub.trim() ? payload.sub.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getAccessToken(): string | null {
   return accessToken;
 }
@@ -27,6 +41,8 @@ export function accessoInScadenza(): boolean {
 }
 
 export async function applicaSessione(sessione: SessioneAccesso): Promise<void> {
+  const utenteId = utenteDalToken(sessione.token);
+  if (!utenteId) throw new Error("La sessione non identifica l'utente.");
   if (buildMobile) {
     if (!sessione.refreshToken)
       throw new Error("Il server non ha restituito la sessione mobile sicura.");
@@ -37,14 +53,17 @@ export async function applicaSessione(sessione: SessioneAccesso): Promise<void> 
   accessScadeMs = Date.parse(sessione.scadeUtc);
   localStorage.setItem("ruolo", sessione.ruolo);
   localStorage.setItem("tenant_corrente", sessione.tenantId);
+  localStorage.setItem("utente_corrente", utenteId);
   window.dispatchEvent(new CustomEvent("paghepro:sessione", { detail: { autenticato: true } }));
 }
 
 export async function cancellaSessioneLocale(): Promise<void> {
   accessToken = null;
   accessScadeMs = 0;
+  pulisciCachePreferenzeCorrenti();
   localStorage.removeItem("ruolo");
   localStorage.removeItem("tenant_corrente");
+  localStorage.removeItem("utente_corrente");
   // Rimuove anche l'eventuale residuo della vecchia implementazione vulnerabile.
   localStorage.removeItem("token");
   if (buildMobile) await SecureSession.clear().catch(() => undefined);

@@ -1,6 +1,7 @@
 // Client API tipizzato verso il backend Paghe SaaS.
 
 import { dimenticaAziendaCorrente } from "./aziendaCorrente";
+import { endpointGestioneSessione } from "./apiSessione";
 import { buildMobile, condividiDocumento, piattaformaNativa } from "./mobile/piattaforma";
 import {
   accessoInScadenza,
@@ -71,7 +72,8 @@ export class ApiError extends Error {
 
 export async function fetchAutenticata(path: string, options: RequestInit = {}): Promise<Response> {
   const autenticazione = path.startsWith("/api/auth/");
-  if (!autenticazione && accessoInScadenza())
+  const gestioneSessione = endpointGestioneSessione(path);
+  if (!gestioneSessione && accessoInScadenza())
     await rinnovaSessione();
 
   let token = getToken();
@@ -90,7 +92,7 @@ export async function fetchAutenticata(path: string, options: RequestInit = {}):
     credentials: buildMobile ? "omit" : "include",
   });
 
-  if (res.status === 401 && token && !autenticazione) {
+  if (res.status === 401 && token && !gestioneSessione) {
     await rinnovaSessione();
     token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -280,12 +282,14 @@ export interface DatiMensiliCedolinoAgricolo {
   giorniTrasferta: number; indennitaTrasfertaGiornaliera: number;
   rimborsiSpeseDocumentate: number;
   trasferte?: { giorni: number; importoGiorno: number }[];
+  /** Chi dichiara di aver controllato la busta: col nominativo il PDF perde «BOZZA DA VALIDARE». */
+  validataDa?: string;
 }
 export interface BustaAgricolaArchiviata {
   id: string; rapportoLavoroId: string; nominativo: string;
   anno: number; mese: number; giornateLavorate: number; oreOrdinarie: number;
   nettoInBusta: number; provinciaCpl: string; livelloTariffa: string;
-  versione: number; archiviatoIl: string;
+  versione: number; archiviatoIl: string; validataDa?: string | null;
 }
 export interface EsitoArchiviazioneAgricola {
   id: string; anno: number; mese: number; nettoInBusta: number;
@@ -821,9 +825,9 @@ export const api = {
   }) => req<StatoWorkflowCedolino>(`/api/cedolini/${id}/valida`, {
     method: "POST", body: JSON.stringify(dati),
   }),
-  chiudiCedolino: (id: string, versioneAttesa: number) =>
+  chiudiCedolino: (id: string, versioneAttesa: number, stile?: string) =>
     req<StatoWorkflowCedolino>(`/api/cedolini/${id}/chiudi`, {
-      method: "POST", body: JSON.stringify({ versioneAttesa }),
+      method: "POST", body: JSON.stringify({ versioneAttesa, stile }),
     }),
   // forza=true: ricalcolo confermato di un mese con F24 già inviato (correzione errore).
   archiviaCedolino: (rapportoId: string, cartellino: Cartellino, forza = false) =>
@@ -848,6 +852,8 @@ export const api = {
     req<{ cambiata: boolean }>("/api/auth/cambia-password", {
       method: "POST", body: JSON.stringify({ passwordAttuale, nuovaPassword }),
     }),
+  dueFattoriStato: () =>
+    req<{ dueFattoriAttivo: boolean }>("/api/auth/2fa/stato"),
   dueFattoriInizia: () =>
     req<{ segreto: string; uriOtpauth: string }>("/api/auth/2fa/inizia", { method: "POST" }),
   dueFattoriAttiva: (codice: string) =>
@@ -866,7 +872,7 @@ export const api = {
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
     const percorso = `/api/cedolini/${id}/pdf`
-      + (stile && stile !== "classico" ? `?stile=${encodeURIComponent(stile)}` : "");
+      + (stile ? `?stile=${encodeURIComponent(stile)}` : "");
     const res = await fetchAutenticata(percorso, { headers });
     if (!res.ok) {
       let messaggio = `Errore ${res.status}`;

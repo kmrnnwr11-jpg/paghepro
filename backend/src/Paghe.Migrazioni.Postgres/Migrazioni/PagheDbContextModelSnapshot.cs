@@ -1381,6 +1381,12 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)");
 
+                    b.Property<string>("ValidataDa")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ValidataIl")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Versione")
                         .HasColumnType("integer");
 

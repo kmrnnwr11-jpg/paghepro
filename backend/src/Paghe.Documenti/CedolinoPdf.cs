@@ -20,7 +20,7 @@ public static class CedolinoPdf
         IntestazioneCedolino intestazione,
         Cartellino? cartellino,
         ContestoEmissioneCedolino? emissione = null,
-        StileCedolino stile = StileCedolino.Classico,
+        StileCedolino stile = CatalogoStiliCedolino.Predefinito,
         ProgressiviAnnui? progressivi = null,
         string fontFamily = "Lato",
         string? dicituraStudio = null)
@@ -32,18 +32,21 @@ public static class CedolinoPdf
         var presentazione = CedolinoPdfPresentazione.Crea(
             cedolino, intestazione, cartellino, emissione ?? ContestoEmissioneCedolino.Bozza,
             progressivi, fontFamily, dicituraStudio);
-        return stile switch
+        var opzione = CatalogoStiliCedolino.Descrivi(stile);
+        var tema = CatalogoStiliCedolino.Tema(stile);
+        return opzione.Famiglia switch
         {
-            StileCedolino.Colori => CedolinoColoriPdf.Genera(presentazione),
-            StileCedolino.Editoriale => CedolinoEditorialePdf.Genera(presentazione),
-            _ => CedolinoProfessionalePdf.Genera(presentazione),
+            FamigliaStileCedolino.Classico => CedolinoProfessionalePdf.Genera(presentazione, tema),
+            FamigliaStileCedolino.Modulare => CedolinoColoriPdf.Genera(presentazione, tema),
+            FamigliaStileCedolino.Editoriale => CedolinoEditorialePdf.Genera(presentazione, tema),
+            _ => throw new ArgumentOutOfRangeException(nameof(stile), stile, "Famiglia cedolino non definita."),
         };
     }
 }
 
 /// <summary>
-/// Aspetto della busta paga. Il contenuto è identico nei tre stili: cambia solo
-/// l'impaginazione, così lo studio sceglie senza che i numeri cambino.
+/// Aspetto della busta paga. Il contenuto nasce dalla stessa presentazione canonica:
+/// i quindici stili cambiano soltanto impaginazione e palette, mai i numeri.
 /// </summary>
 public enum StileCedolino
 {
@@ -55,6 +58,19 @@ public enum StileCedolino
 
     /// <summary>Impaginazione editoriale estesa con prospetto, dettagli e guida di lettura.</summary>
     Editoriale,
+
+    ClassicoBlu,
+    ClassicoVerde,
+    ClassicoBordeaux,
+    ClassicoAntracite,
+    ColoriVerde,
+    ColoriBordeaux,
+    ColoriViola,
+    ColoriPetrolio,
+    EditorialeBlu,
+    EditorialeVerde,
+    EditorialeBordeaux,
+    EditorialeGrafite,
 }
 
 /// <summary>

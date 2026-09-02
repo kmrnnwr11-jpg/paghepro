@@ -53,6 +53,7 @@ interface CampiForm {
   indennitaTrasfertaGiornaliera: string;
   rimborsiSpeseDocumentate: string;
   oreGiorno: string;
+  validataDa: string;
 }
 
 const annoCorrente = new Date().getFullYear();
@@ -71,6 +72,7 @@ const formIniziale: CampiForm = {
   indennitaTrasfertaGiornaliera: "0",
   rimborsiSpeseDocumentate: "0",
   oreGiorno: "",
+  validataDa: "",
 };
 
 function valoreNumero(valore: string): number {
@@ -203,6 +205,7 @@ export function CedolinoAgricolo() {
         importoGiorno: valoreNumero(gruppo.importo) || 0,
       }))
       : undefined,
+    validataDa: form.validataDa.trim() || undefined,
   }), [form, gruppiTrasferta]);
 
   // Tendina delle ore al giorno: mezz'ora per mezz'ora da 1 a 10, con il valore del contratto
@@ -501,6 +504,19 @@ export function CedolinoAgricolo() {
 
             {errore && <p className="errore" role="alert" style={{ marginTop: 14 }}>{errore}</p>}
 
+            <div className="field" style={{ marginTop: 14 }}>
+              <label htmlFor="agri-validata-da">
+                Controllata e validata da (nome e qualifica)
+              </label>
+              <input id="agri-validata-da" type="text" value={form.validataDa}
+                placeholder="Es. Mario Bianchi - Consulente del Lavoro"
+                onChange={(e) => aggiorna("validataDa", e.target.value)} />
+              <small style={{ opacity: .7 }}>
+                Con un nominativo la busta viene archiviata come prospetto validato e il PDF
+                perde la scritta «BOZZA DA VALIDARE». Vuoto = resta bozza da validare.
+              </small>
+            </div>
+
             <div className="actions-row" style={{ marginTop: 16 }}>
               <button className="btn primary" type="submit"
                 disabled={otiNonSupportato || calcolando || scaricando}>
@@ -590,6 +606,10 @@ export function CedolinoAgricolo() {
                       <td><strong>{busta.nominativo || busta.rapportoLavoroId.slice(0, 8)}</strong>
                         <small style={{ display: "block", opacity: .65 }}>
                           CPL {busta.provinciaCpl} · {busta.livelloTariffa}
+                          {" · "}
+                          {busta.validataDa
+                            ? `Validata da ${busta.validataDa}`
+                            : "Bozza da validare"}
                         </small>
                       </td>
                       <td className="right num">{busta.giornateLavorate}</td>

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Paghe.Documenti;
 using Paghe.Persistence.Entities;
 
 namespace Paghe.Persistence;
@@ -29,7 +30,7 @@ public sealed class PreferenzeUtenteService
     private static readonly IReadOnlyDictionary<string, Func<string, string?>> Validatori =
         new Dictionary<string, Func<string, string?>>(StringComparer.Ordinal)
         {
-            [StileBusta] = Scelta("classico", "colori", "editoriale"),
+            [StileBusta] = Scelta(CatalogoStiliCedolino.Chiavi.ToArray()),
             [FontDocumenti] = Scelta("lato", "plex", "carlito"),
             [DicituraStudio] = ValidaDicitura,
             [ColoreAccento] = valore => PaletteAccento.Contains(valore, StringComparer.OrdinalIgnoreCase)

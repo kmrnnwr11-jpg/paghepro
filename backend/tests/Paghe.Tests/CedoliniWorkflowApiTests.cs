@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Paghe.Api;
 using Paghe.Core.Domain;
+using Paghe.Documenti;
 using Paghe.Persistence;
 using Paghe.Persistence.Entities;
 using Paghe.Persistence.Sicurezza;
@@ -92,6 +93,48 @@ public sealed class CedoliniWorkflowApiTests : IDisposable
 
         using var admin = await ClientAutenticatoAsync(scenario.Admin);
 
+        using (var stileNumerico = await admin.GetAsync(
+                   $"/api/cedolini/{scenario.CedolinoAdminId}/pdf?stile=999"))
+            Assert.Equal(HttpStatusCode.BadRequest, stileNumerico.StatusCode);
+
+        using (var anteprimaPredefinita = await admin.GetAsync(
+                   $"/api/cedolini/{scenario.CedolinoAdminId}/pdf"))
+        {
+            Assert.Equal(HttpStatusCode.OK, anteprimaPredefinita.StatusCode);
+            string testo = EstrattoreTestoPdf.EstraiTesto(
+                await anteprimaPredefinita.Content.ReadAsByteArrayAsync());
+            Assert.Contains("DATI DEL LAVORATORE", testo);
+        }
+
+        using (var pdfStatelessPredefinito = await admin.PostAsJsonAsync(
+                   "/api/cedolini/pdf",
+                   new CedolinoPdfRequest(
+                       new RapportoLavoro
+                       {
+                           CodiceCcnl = "COMMERCIO_TERZIARIO",
+                           Livello = "3",
+                           Qualifica = Qualifica.Impiegato,
+                           Regione = "Lombardia",
+                           CodiceCatastaleComune = "F205",
+                       },
+                       new Cartellino { Anno = 2026, Mese = 6 },
+                       "Alfa Stateless Srl",
+                       "Rossi Mario")))
+        {
+            Assert.Equal(HttpStatusCode.OK, pdfStatelessPredefinito.StatusCode);
+            string testo = EstrattoreTestoPdf.EstraiTesto(
+                await pdfStatelessPredefinito.Content.ReadAsByteArrayAsync());
+            Assert.Contains("DATI DEL LAVORATORE", testo);
+        }
+
+        foreach (string stile in CatalogoStiliCedolino.Chiavi)
+        {
+            using var anteprima = await admin.GetAsync(
+                $"/api/cedolini/{scenario.CedolinoAdminId}/pdf?stile={Uri.EscapeDataString(stile)}");
+            Assert.Equal(HttpStatusCode.OK, anteprima.StatusCode);
+            Assert.True((await anteprima.Content.ReadAsByteArrayAsync()).AsSpan().StartsWith("%PDF"u8));
+        }
+
         using (var versioneErrata = await admin.PostAsJsonAsync(
                    $"/api/cedolini/{scenario.CedolinoAdminId}/controlla",
                    new { versioneAttesa = 99 }))
@@ -145,12 +188,26 @@ public sealed class CedoliniWorkflowApiTests : IDisposable
                    new { versioneAttesa = 2 }))
             Assert.Equal(HttpStatusCode.Conflict, chiusuraVecchia.StatusCode);
 
+        using (var stileChiusuraInvalido = await admin.PostAsJsonAsync(
+                   $"/api/cedolini/{scenario.CedolinoAdminId}/chiudi",
+                   new { versioneAttesa = 3, stile = "999" }))
+            Assert.Equal(HttpStatusCode.BadRequest, stileChiusuraInvalido.StatusCode);
+
         using (var chiusura = await admin.PostAsJsonAsync(
                    $"/api/cedolini/{scenario.CedolinoAdminId}/chiudi",
                    new { versioneAttesa = 3 }))
         {
             Assert.Equal(HttpStatusCode.OK, chiusura.StatusCode);
             Assert.Equal(("Chiusa", 4), await LeggiStatoVersioneAsync(chiusura));
+        }
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            var documento = await db.CedoliniDocumenti.AsNoTracking().SingleAsync(
+                d => d.TenantId == scenario.TenantId
+                    && d.CedolinoId == scenario.CedolinoAdminId);
+            Assert.Equal("cedolino-v2:colori:lato", documento.VersioneRenderer);
         }
 
         using var pdf = await admin.GetAsync(
@@ -165,6 +222,53 @@ public sealed class CedoliniWorkflowApiTests : IDisposable
             StringComparison.OrdinalIgnoreCase);
         var bytes = await pdf.Content.ReadAsByteArrayAsync();
         Assert.True(bytes.AsSpan().StartsWith("%PDF"u8));
+
+        using var ristampaAltroStile = await admin.GetAsync(
+            $"/api/cedolini/{scenario.CedolinoAdminId}/pdf?stile=classico-antracite");
+        Assert.Equal(HttpStatusCode.OK, ristampaAltroStile.StatusCode);
+        Assert.Equal(bytes, await ristampaAltroStile.Content.ReadAsByteArrayAsync());
+
+        // Una preferenza inserita da una versione storica e non più riconosciuta non blocca
+        // la chiusura: il ripiego compatibile resta Classico, distinto dal nuovo default.
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.PreferenzeUtenti.Add(new PreferenzaUtenteEntity
+            {
+                Id = Guid.NewGuid(),
+                TenantId = scenario.TenantId,
+                UtenteId = scenario.Admin.Id,
+                Chiave = PreferenzeUtenteService.StileBusta,
+                Valore = "stile-legacy-sconosciuto",
+                AggiornatoIl = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using (var validaSecondoCedolino = await admin.PostAsJsonAsync(
+                   $"/api/cedolini/{scenario.CedolinoOperatoreId}/valida",
+                   new
+                   {
+                       versioneAttesa = 2,
+                       nominativo = "Dott.ssa Maria Verdi",
+                       qualifica = "Consulente del lavoro",
+                       riferimento = "RIF-LEGACY",
+                   }))
+            Assert.Equal(HttpStatusCode.OK, validaSecondoCedolino.StatusCode);
+
+        using (var chiudeConPreferenzaLegacy = await admin.PostAsJsonAsync(
+                   $"/api/cedolini/{scenario.CedolinoOperatoreId}/chiudi",
+                   new { versioneAttesa = 3 }))
+            Assert.Equal(HttpStatusCode.OK, chiudeConPreferenzaLegacy.StatusCode);
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            var documento = await db.CedoliniDocumenti.AsNoTracking().SingleAsync(
+                d => d.TenantId == scenario.TenantId
+                    && d.CedolinoId == scenario.CedolinoOperatoreId);
+            Assert.Equal("cedolino-v2:classico:lato", documento.VersioneRenderer);
+        }
     }
 
     private async Task<Scenario> CreaScenarioAsync()

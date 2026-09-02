@@ -296,6 +296,121 @@ public sealed class AgricolturaApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Archivia_ConValidazioneDichiarata_IlPdfPerdeLaDicituraBozza()
+    {
+        using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
+        await CreaParametriNazionali2025Async();
+        Guid rapportoId = await CreaRapportoAgricoloAsync(_ultimoTenantId);
+
+        var dati = DatiOttobre2025() with { ValidataDa = "Luigi Verdi - Consulente del Lavoro" };
+        using var archiviazione = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/archivia", dati);
+        Assert.Equal(HttpStatusCode.OK, archiviazione.StatusCode);
+        using var esito = JsonDocument.Parse(await archiviazione.Content.ReadAsStringAsync());
+        Assert.Equal("Luigi Verdi - Consulente del Lavoro",
+            esito.RootElement.GetProperty("validataDa").GetString());
+        Assert.Contains("validata da Luigi Verdi",
+            esito.RootElement.GetProperty("avviso").GetString());
+        var bustaId = esito.RootElement.GetProperty("id").GetGuid();
+
+        using var pdf = await client.GetAsync($"/api/cedolini-agricoli/{bustaId}/pdf");
+        Assert.Equal(HttpStatusCode.OK, pdf.StatusCode);
+        using var documento = PdfDocument.Open(await pdf.Content.ReadAsByteArrayAsync());
+        string testo = string.Join("\n", documento.GetPages().Select(pagina => pagina.Text));
+        Assert.Contains("Prospetto controllato e validato il", testo);
+        Assert.DoesNotContain("BOZZA DA VALIDARE", testo);
+        // Chi valida resta nell'archivio ma non si stampa sul documento.
+        Assert.DoesNotContain("validato da", testo);
+        // Il limite di legge resta anche sulla busta validata.
+        Assert.Contains("non costituisce LUL", testo);
+    }
+
+    // ---- Denuncia PosAgri (UniEmens agricolo) ------------------------------------------
+
+    [Fact]
+    public async Task PosAgri_CostruisceLaDenunciaDalleBusteArchiviate_EValidaLoSchema()
+    {
+        using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
+        await CreaParametriNazionali2025Async();
+        Guid rapportoId = await CreaRapportoAgricoloAsync(_ultimoTenantId);
+        using var archiviazione = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/archivia", DatiOttobre2025());
+        Assert.Equal(HttpStatusCode.OK, archiviazione.StatusCode);
+
+        Guid aziendaId;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            aziendaId = db.Rapporti.Single(r => r.Id == rapportoId).AziendaId;
+        }
+
+        using var risposta = await client.PostAsJsonAsync(
+            $"/api/aziende/{aziendaId}/posagri/mese", DenunciaOttobre2025());
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var json = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+
+        // Lo schema ufficiale INPS incorporato non segnala errori.
+        Assert.Empty(json.RootElement.GetProperty("erroriSchema").EnumerateArray().ToList());
+        Assert.True(json.RootElement.GetProperty("bozzaDaValidare").GetBoolean());
+
+        var lavoratore = Assert.Single(
+            json.RootElement.GetProperty("lavoratori").EnumerateArray().ToList());
+        Assert.Equal("Rossi Mario", lavoratore.GetProperty("nominativo").GetString());
+        Assert.Equal(8, lavoratore.GetProperty("giornate").GetInt32());
+        decimal retribuzione = lavoratore.GetProperty("retribuzione").GetDecimal();
+
+        string xml = json.RootElement.GetProperty("xml").GetString()!;
+        // Con POSAGRI_DUMP il flusso viene scritto su file per il passaggio dal software
+        // di controllo ufficiale INPS (stessa strada di CU_DUMP e del validatore UniEmens).
+        string? dump = Environment.GetEnvironmentVariable("POSAGRI_DUMP");
+        if (!string.IsNullOrWhiteSpace(dump))
+            File.WriteAllText(dump, xml);
+        Assert.Contains("<CIDA>2470456</CIDA>", xml);
+        Assert.Contains("<CodiceFiscaleLavoratore>RSSMRA80A01D205V</CodiceFiscaleLavoratore>", xml);
+        Assert.Contains("<NumeroGiornate>8</NumeroGiornate>", xml);
+        Assert.Contains("<DataAssunzione>2025-10-01</DataAssunzione>", xml);
+        Assert.Contains("<QuadraturaNumLav>1</QuadraturaNumLav>", xml);
+        // Nella sezione PosAgri gli importi sono centesimi interi: 662 € → 66200.
+        Assert.Contains($"<Retribuzione>{(long)(retribuzione * 100)}</Retribuzione>", xml);
+        // La denuncia agricola non contiene una posizione contributiva ordinaria.
+        Assert.DoesNotContain("<PosContributiva", xml);
+    }
+
+    [Fact]
+    public async Task PosAgri_SenzaBusteArchiviate_RifiutaSenzaInventare()
+    {
+        using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
+        await CreaParametriNazionali2025Async();
+        Guid rapportoId = await CreaRapportoAgricoloAsync(_ultimoTenantId);
+        Guid aziendaId;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            aziendaId = db.Rapporti.Single(r => r.Id == rapportoId).AziendaId;
+        }
+
+        using var risposta = await client.PostAsJsonAsync(
+            $"/api/aziende/{aziendaId}/posagri/mese", DenunciaOttobre2025());
+        Assert.Equal(HttpStatusCode.BadRequest, risposta.StatusCode);
+        using var json = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        Assert.Contains("Nessuna busta agricola archiviata",
+            json.RootElement.GetProperty("errore").GetString());
+    }
+
+    /// <summary>
+    /// Codici della posizione INPS di prova, presi dalle tabelle dell'Appendice I
+    /// dell'allegato tecnico UniEmens (i valori veri della posizione li fornisce il
+    /// consulente): contratto 001 «operaio tradizionale», retribuzione O «giornate
+    /// effettivamente svolte», categoria contrattuale 01 «tradizionale», area 3
+    /// «mansioni generiche». La zona tariffaria 01-05 dichiara un'agevolazione:
+    /// l'azienda di prova non ne ha e manda 00.
+    /// </summary>
+    private static AgricolturaEndpoints.PosAgriMeseInput DenunciaOttobre2025() => new(
+        Anno: 2025, Mese: 10, Cida: "2470456", TipoManodopera: "2", ZonaTariffaria: "00",
+        CodiceContratto: "001", CodiceRetribuzione: "O", CodiceIstatFondo: "013000",
+        CategoriaContrattuale: "01", Area: "3", Livello: "C");
+
+    [Fact]
     public async Task Archivia_NonAccettaIlRapportoDiUnAltroTenant()
     {
         using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
@@ -400,12 +515,16 @@ public sealed class AgricolturaApiTests : IDisposable
             Comune = "Cuneo",
             Provincia = "CN",
             HaDipendenti = true,
+            // Serve alla denuncia PosAgri: il tracciato vuole la persona fisica mittente.
+            LegaleRappresentanteCodiceFiscale = "VRDLGI90A01F205J",
         };
         var dipendente = new DipendenteEntity
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
-            CodiceFiscale = "RSSMRA80A01D205X",
+            // Carattere di controllo vero: i validatori ufficiali (INPS compreso) scartano
+            // i codici fiscali con checksum sbagliato, quindi anche i dati di prova lo hanno.
+            CodiceFiscale = "RSSMRA80A01D205V",
             Nome = "Mario",
             Cognome = "Rossi",
         };

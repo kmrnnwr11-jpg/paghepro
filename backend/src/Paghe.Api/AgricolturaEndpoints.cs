@@ -50,7 +50,20 @@ public static class AgricolturaEndpoints
         decimal? RedditoPresuntoAnnuo,
         decimal GiorniTrasferta = 0m, decimal IndennitaTrasfertaGiornaliera = 0m,
         decimal RimborsiSpeseDocumentate = 0m,
-        List<TrasfertaBatchInput>? Trasferte = null);
+        List<TrasfertaBatchInput>? Trasferte = null,
+        // Solo per l'archiviazione: chi dichiara di aver controllato la busta. Con un
+        // nominativo il PDF conservato perde «BOZZA DA VALIDARE»; vuoto = resta bozza.
+        string? ValidataDa = null);
+
+    /// <summary>
+    /// Richiesta della denuncia PosAgri del mese: periodo più i codici della posizione INPS
+    /// (tabelle dell'allegato tecnico UniEmens), che oggi non stanno in anagrafica.
+    /// </summary>
+    public sealed record PosAgriMeseInput(
+        int Anno, int Mese, string Cida, string TipoManodopera, string ZonaTariffaria,
+        string CodiceContratto, string CodiceRetribuzione, string CodiceIstatFondo,
+        string CategoriaContrattuale, string Area, string Livello,
+        string TipoDichiarazione = "P");
 
     private sealed record CalcoloAgricoloDaRapporto(
         Cedolino Cedolino,
@@ -305,14 +318,22 @@ public static class AgricolturaEndpoints
                 var calcolo = await CalcolaDaRapportoAsync(
                     Tenant(user), rapportoId, input, db, parametri, ct);
                 var (fontDocumenti, dicituraStudio) = await PreferenzeDocumentiAsync(user, preferenze, ct);
+                string? validataDa = string.IsNullOrWhiteSpace(input.ValidataDa)
+                    ? null
+                    : input.ValidataDa.Trim();
                 var pdf = CedolinoAgricoloPdf.Genera(
                     calcolo.Cedolino, calcolo.Intestazione, calcolo.Rapporto,
                     calcolo.Cartellino, calcolo.Parametri,
                     fontFamily: fontDocumenti,
-                    dicituraStudio: dicituraStudio);
+                    dicituraStudio: dicituraStudio,
+                    validataDa: validataDa,
+                    validataIl: validataDa is null
+                        ? null
+                        : DateOnly.FromDateTime(DateTime.UtcNow));
 
                 var busta = await archivio.ArchiviaAsync(Tenant(user), utenteId, new CedolinoAgricoloEntity
                 {
+                    ValidataDa = validataDa,
                     AziendaId = calcolo.AziendaId,
                     RapportoLavoroId = rapportoId,
                     Anno = input.Anno,
@@ -356,8 +377,12 @@ public static class AgricolturaEndpoints
                     busta.Versione,
                     busta.HashPdfSha256,
                     archiviatoIl = busta.ArchiviatoIl,
-                    avviso = "Busta archiviata come prospetto da validare: non costituisce LUL, "
-                        + "PosAgri o F24.",
+                    validataDa = busta.ValidataDa,
+                    avviso = busta.ValidataDa is null
+                        ? "Busta archiviata come prospetto da validare: non costituisce LUL, "
+                            + "PosAgri o F24."
+                        : $"Busta archiviata, controllata e validata da {busta.ValidataDa}: "
+                            + "non costituisce LUL, PosAgri o F24.",
                 });
             }
             catch (KeyNotFoundException ex)
@@ -397,6 +422,7 @@ public static class AgricolturaEndpoints
                 b.LivelloTariffa,
                 b.Versione,
                 archiviatoIl = b.ArchiviatoIl,
+                validataDa = b.ValidataDa,
             }));
         }).RequireAuthorization();
 
@@ -419,6 +445,49 @@ public static class AgricolturaEndpoints
             catch (InvalidOperationException ex)
             {
                 return Results.Conflict(new { errore = ex.Message });
+            }
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
+
+        // Denuncia mensile della manodopera agricola (sezione PosAgri del flusso UniEmens,
+        // erede della DMAG), costruita dalle buste agricole archiviate del periodo. I codici
+        // della posizione INPS (CIDA, zona, contratto, inquadramento) arrivano dalla request:
+        // sono dati dell'allegato tecnico che l'archivio non ha ancora e non deve inventare.
+        app.MapPost("/api/aziende/{aziendaId:guid}/posagri/mese", async (
+            Guid aziendaId, PosAgriMeseInput input, ClaimsPrincipal user,
+            PosAgriService servizio, CancellationToken ct) =>
+        {
+            if (input.Anno is < 2000 or > 2100 || input.Mese is < 1 or > 12)
+                return Results.BadRequest(new { errore = "Periodo della denuncia non valido." });
+            try
+            {
+                var esito = await servizio.GeneraDelMeseAsync(
+                    Tenant(user), aziendaId, input.Anno, input.Mese,
+                    new CodiciPosAgri(
+                        input.Cida, input.TipoManodopera, input.ZonaTariffaria,
+                        input.CodiceContratto, input.CodiceRetribuzione,
+                        input.CodiceIstatFondo, input.CategoriaContrattuale,
+                        input.Area, input.Livello, input.TipoDichiarazione), ct);
+                return Results.Ok(new
+                {
+                    xml = esito.Xml,
+                    erroriSchema = esito.ErroriSchema,
+                    daCompletare = esito.DaCompletare,
+                    lavoratori = esito.Lavoratori,
+                    bozzaDaValidare = true,
+                    avvertenza = "Bozza da validare col consulente: la retribuzione denunciata "
+                        + "è l'imponibile contributivo delle buste archiviate. Il file va "
+                        + "passato dal software di controllo ufficiale INPS e caricato dal "
+                        + "cassetto previdenziale o da un intermediario abilitato: il "
+                        + "software non trasmette.",
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { errore = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { errore = ex.Message });
             }
         }).RequireAuthorization().RequireRateLimiting("sensibili");
 

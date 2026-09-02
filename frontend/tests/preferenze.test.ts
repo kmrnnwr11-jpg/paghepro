@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import { applicaAspetto, salvaStileBusta, stileBustaPreferito } from "../src/preferenze.ts";
+import {
+  ambitoPreferenzeCorrente,
+  aggiornaCachePreferenzeDalServer,
+  applicaAspetto,
+  CATALOGO_STILI_BUSTA,
+  haPreferenzeDaSincronizzare,
+  preferenzaLocale,
+  pulisciCachePreferenzeCorrenti,
+  salvaPreferenzaConEsito,
+  salvaPreferenzaOvunque,
+  salvaStileBusta,
+  STILE_BUSTA_PREDEFINITO,
+  stileBustaPreferito,
+} from "../src/preferenze.ts";
 
 function memoria(): Storage {
   const dati = new Map<string, string>();
@@ -14,21 +28,178 @@ function memoria(): Storage {
   } as Storage;
 }
 
-test("senza preferenza salvata vale lo stile classico", () => {
-  assert.equal(stileBustaPreferito(memoria()), "classico");
-  assert.equal(stileBustaPreferito(null), "classico");
+test("senza preferenza salvata vale Modulare Blu", () => {
+  assert.equal(STILE_BUSTA_PREDEFINITO, "colori");
+  assert.equal(stileBustaPreferito(memoria()), "colori");
+  assert.equal(stileBustaPreferito(null), "colori");
 });
 
-test("la preferenza salvata viene riletta, i valori sconosciuti vengono ignorati", () => {
+test("la preferenza salvata viene riletta e un valore corrotto ricade sul Classico", () => {
   const store = memoria();
-  salvaStileBusta("colori", store);
-  assert.equal(stileBustaPreferito(store), "colori");
+  salvaStileBusta("editoriale-blu", store);
+  assert.equal(stileBustaPreferito(store), "editoriale-blu");
   salvaStileBusta("stile-inventato", store);   // ignorato
-  assert.equal(stileBustaPreferito(store), "colori");
+  assert.equal(stileBustaPreferito(store), "editoriale-blu");
   store.setItem("preferenza_stile_busta", "valore-corrotto");
   assert.equal(stileBustaPreferito(store), "classico");
+  salvaStileBusta("classico", store);
+  assert.equal(stileBustaPreferito(store), "classico");
+});
+
+test("il catalogo espone 15 stili unici e ciascuno può essere salvato", () => {
+  assert.equal(CATALOGO_STILI_BUSTA.length, 15);
+  assert.equal(new Set(CATALOGO_STILI_BUSTA.map((stile) => stile.id)).size, 15);
+  const store = memoria();
+  for (const stile of CATALOGO_STILI_BUSTA) {
+    salvaStileBusta(stile.id, store);
+    assert.equal(stileBustaPreferito(store), stile.id);
+  }
+});
+
+test("le chiavi del catalogo frontend restano allineate alla whitelist backend", () => {
+  const sorgenteBackend = readFileSync(new URL(
+    "../../backend/src/Paghe.Documenti/CatalogoStiliCedolino.cs",
+    import.meta.url,
+  ), "utf8");
+  const chiaviBackend = [...sorgenteBackend.matchAll(
+    /new\(StileCedolino\.[A-Za-z]+,\s*"([^"]+)"/g,
+  )].map((corrispondenza) => corrispondenza[1]);
+  const defaultBackend = sorgenteBackend.match(/ChiavePredefinita\s*=\s*"([^"]+)"/)?.[1];
+  assert.deepEqual(chiaviBackend, CATALOGO_STILI_BUSTA.map((stile) => stile.id));
+  assert.equal(defaultBackend, STILE_BUSTA_PREDEFINITO);
+});
+
+test("la cache delle preferenze è isolata per tenant e utente e non conserva valori assenti", () => {
+  const store = memoria();
+  store.setItem("tenant_corrente", "tenant-a");
+  store.setItem("utente_corrente", "utente-a");
+  aggiornaCachePreferenzeDalServer({
+    stile_busta: "editoriale-blu",
+    dicitura_studio: "Studio Alfa",
+  }, store);
+  assert.equal(stileBustaPreferito(store), "editoriale-blu");
+  assert.equal(preferenzaLocale("dicitura_studio", "", store), "Studio Alfa");
+
+  store.setItem("utente_corrente", "utente-b");
+  assert.equal(stileBustaPreferito(store), "colori");
+  store.setItem("tenant_corrente", "tenant-b");
+  store.setItem("utente_corrente", "utente-a");
+  assert.equal(stileBustaPreferito(store), "colori");
+
+  store.setItem("tenant_corrente", "tenant-b");
+  store.setItem("utente_corrente", "utente-b");
+  assert.equal(stileBustaPreferito(store), "colori");
+  assert.equal(preferenzaLocale("dicitura_studio", "", store), "");
+
+  salvaStileBusta("colori-viola", store);
+  salvaPreferenzaOvunque("dicitura_studio", "valore stale", store);
+  aggiornaCachePreferenzeDalServer({}, store);
+  assert.equal(stileBustaPreferito(store), "colori");
+  assert.equal(preferenzaLocale("dicitura_studio", "", store), "");
+
+  aggiornaCachePreferenzeDalServer({ stile_busta: "classico-verde" }, store);
+  pulisciCachePreferenzeCorrenti(store);
+  assert.equal(stileBustaPreferito(store), "colori");
+});
+
+test("una risposta GET della sessione precedente non entra nella cache della nuova", () => {
+  const store = memoria();
+  store.setItem("tenant_corrente", "tenant-a");
+  store.setItem("utente_corrente", "utente-a");
+  const ambitoA = ambitoPreferenzeCorrente(store);
+
+  store.setItem("tenant_corrente", "tenant-b");
+  store.setItem("utente_corrente", "utente-b");
+  assert.equal(aggiornaCachePreferenzeDalServer(
+    { dicitura_studio: "Dato di A" }, store, ambitoA,
+  ), false);
+  assert.equal(preferenzaLocale("dicitura_studio", "", store), "");
 });
 
 test("applicaAspetto non esplode fuori dal browser (test e script)", () => {
   assert.doesNotThrow(() => applicaAspetto());
+});
+
+test("i salvataggi rapidi della stessa preferenza arrivano al server in ordine", async () => {
+  const store = memoria();
+  const ordine: string[] = [];
+  let richiesteAttive = 0;
+  let massimoRichiesteAttive = 0;
+  const invia = async (_chiave: string, valore: string) => {
+    richiesteAttive++;
+    massimoRichiesteAttive = Math.max(massimoRichiesteAttive, richiesteAttive);
+    await new Promise((risolvi) => setTimeout(risolvi, 4));
+    ordine.push(valore);
+    richiesteAttive--;
+  };
+
+  const esiti = await Promise.all([
+    salvaPreferenzaConEsito("scala_testo", "normale", store, invia),
+    salvaPreferenzaConEsito("scala_testo", "grande", store, invia),
+    salvaPreferenzaConEsito("scala_testo", "molto-grande", store, invia),
+  ]);
+
+  assert.deepEqual(ordine, ["normale", "grande", "molto-grande"]);
+  assert.equal(massimoRichiesteAttive, 1);
+  assert.deepEqual(esiti, ["server", "server", "server"]);
+  assert.equal(preferenzaLocale("scala_testo", "", store), "molto-grande");
+});
+
+test("un errore server conserva la preferenza locale senza dichiararla sincronizzata", async () => {
+  const store = memoria();
+  const esito = await salvaPreferenzaConEsito(
+    "densita",
+    "compatta",
+    store,
+    async () => { throw new Error("offline"); },
+  );
+
+  assert.equal(esito, "locale");
+  assert.equal(preferenzaLocale("densita", "", store), "compatta");
+});
+
+test("una scrittura accodata non viene inviata dopo il cambio di sessione", async () => {
+  const store = memoria();
+  store.setItem("tenant_corrente", "tenant-a");
+  store.setItem("utente_corrente", "utente-a");
+  const inviati: string[] = [];
+  let sbloccaPrima: (() => void) | undefined;
+  const attesaPrima = new Promise<void>((risolvi) => { sbloccaPrima = risolvi; });
+  const invia = async (_chiave: string, valore: string) => {
+    inviati.push(valore);
+    if (valore === "grande") await attesaPrima;
+  };
+
+  const prima = salvaPreferenzaConEsito("scala_testo", "grande", store, invia);
+  const seconda = salvaPreferenzaConEsito("scala_testo", "molto-grande", store, invia);
+  await new Promise((risolvi) => setTimeout(risolvi, 0));
+  store.setItem("tenant_corrente", "tenant-b");
+  store.setItem("utente_corrente", "utente-b");
+  sbloccaPrima?.();
+
+  assert.equal(await prima, "server");
+  assert.equal(await seconda, "locale");
+  assert.deepEqual(inviati, ["grande"]);
+});
+
+test("una modifica offline non viene sovrascritta e diventa pulita dopo il retry", async () => {
+  const store = memoria();
+  store.setItem("tenant_corrente", "tenant-a");
+  store.setItem("utente_corrente", "utente-a");
+  assert.equal(await salvaPreferenzaConEsito(
+    "densita", "compatta", store, async () => { throw new Error("offline"); },
+  ), "locale");
+  assert.equal(haPreferenzeDaSincronizzare(store), true);
+
+  // Il successo successivo di un'altra chiave non può nascondere il fallback rimasto.
+  assert.equal(await salvaPreferenzaConEsito("font_ui", "lato", store, async () => undefined), "server");
+  assert.equal(haPreferenzeDaSincronizzare(store), true);
+
+  aggiornaCachePreferenzeDalServer({ densita: "comoda" }, store);
+  assert.equal(preferenzaLocale("densita", "", store), "compatta");
+
+  assert.equal(await salvaPreferenzaConEsito("densita", "compatta", store, async () => undefined), "server");
+  assert.equal(haPreferenzeDaSincronizzare(store), false);
+  aggiornaCachePreferenzeDalServer({ densita: "comoda" }, store);
+  assert.equal(preferenzaLocale("densita", "", store), "comoda");
 });

@@ -204,6 +204,14 @@ public sealed class AuthService
     private static RisultatoAccesso Negato(EsitoAccesso esito, UtenteEntity utente) =>
         new(esito, null, new IdentitaAccessoAudit(utente.TenantId, utente.Id));
 
+    /// <summary>Legge lo stato 2FA dell'utente soltanto dentro il tenant autenticato.</summary>
+    public Task<bool?> StatoDueFattoriAsync(
+        Guid tenantId, Guid utenteId, CancellationToken ct = default) =>
+        _db.Utenti
+            .Where(u => u.TenantId == tenantId && u.Id == utenteId)
+            .Select(u => (bool?)u.DueFattoriAttivo)
+            .SingleOrDefaultAsync(ct);
+
     /// <summary>
     /// Avvia la configurazione del 2FA: genera un segreto (non ancora attivo) e lo salva, restituendo
     /// segreto e URI <c>otpauth</c> per l'app authenticator. L'attivazione avviene con <see cref="AttivaDueFattoriAsync"/>.

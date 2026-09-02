@@ -184,7 +184,7 @@ public sealed class CedolinoAgricoloTests
                 CodiceFiscaleAzienda = "01234567897",
                 PartitaIva = "01234567897",
                 Dipendente = "Rossi Mario",
-                CodiceFiscaleDipendente = "RSSMRA80A01D205X",
+                CodiceFiscaleDipendente = "RSSMRA80A01D205V",
                 Matricola = "AGR-001",
                 DataAssunzione = "01/10/2025",
                 Qualifica = "Operaio agricolo comune",

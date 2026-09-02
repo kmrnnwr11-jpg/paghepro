@@ -143,6 +143,26 @@ public sealed class AiChatApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Chat_ConSezioneAgricoltura_IlPromptDescriveLaPaginaAperta()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        using var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "A cosa serve il campo reddito annuo presunto?",
+            storia = Array.Empty<object>(),
+            sezioneUi = "Anteprima busta agricola",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+        string istruzioni = inviato.RootElement
+            .GetProperty("messages")[0].GetProperty("content").GetString()!;
+        Assert.Contains("Anteprima busta agricola", istruzioni);
+        Assert.Contains("tariffa del contratto provinciale", istruzioni);
+        Assert.Contains("reddito annuo presunto", istruzioni);
+    }
+
+    [Fact]
     public async Task Chat_ConRisposteBrevi_AggiungeLaRegolaDiStileAlleIstruzioni()
     {
         using var client = await NuovoClientAutenticatoAsync();

@@ -83,12 +83,18 @@ public static class UniEmensXmlWriter
         return el;
     }
 
-    private static XElement Azienda(AziendaUniEmens a) =>
-        new("Azienda",
+    private static XElement Azienda(AziendaUniEmens a)
+    {
+        var el = new XElement("Azienda",
             new XElement("AnnoMeseDenuncia", $"{a.Anno:0000}-{a.Mese:00}"),
             new XElement("CFAzienda", a.CfAzienda),
-            new XElement("RagSocAzienda", TestoTracciato(a.RagioneSociale, 50)),
-            Posizione(a.Posizione));
+            new XElement("RagSocAzienda", TestoTracciato(a.RagioneSociale, 50)));
+        if (a.Posizione is { } posizione)
+            el.Add(Posizione(posizione));
+        foreach (var agricola in a.PosAgri)
+            el.Add(PosAgri(agricola));
+        return el;
+    }
 
     private static XElement Posizione(PosizioneContributivaUniEmens p)
     {
@@ -205,6 +211,83 @@ public static class UniEmensXmlWriter
                 new XAttribute(
                     "TipoInfoAggEvento", evento.TipoInformazioneAggiuntiva!),
                 evento.InformazioneAggiuntiva));
+        return el;
+    }
+
+    /// <summary>
+    /// Nella sezione PosAgri gli importi sono centesimi di euro interi (tipo <c>ImportoType</c>:
+    /// 10,50 € → 1050), a differenza del resto del flusso.
+    /// </summary>
+    private static string CentesimiInteri(decimal v) =>
+        ((long)Math.Round(v * 100m, MidpointRounding.AwayFromZero))
+            .ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Cognome e nome agricoli hanno un alfabeto proprio (<c>CognomeLavType</c>): lettere,
+    /// spazio, apostrofo, trattino e punto — senza i segni <c>*</c> e <c>/</c> ammessi altrove.
+    /// </summary>
+    private static string TestoAgri(string? valore, int lunghezzaMassima)
+    {
+        var ammessi = TestoTracciato(valore, int.MaxValue)
+            .Where(c => char.IsAsciiLetterUpper(c) || c is ' ' or '\'' or '-' or '.')
+            .ToArray();
+        string pulito = new string(ammessi).Trim();
+        return pulito.Length > lunghezzaMassima ? pulito[..lunghezzaMassima] : pulito;
+    }
+
+    private static XElement PosAgri(PosAgriUniEmens p)
+    {
+        // Ordine della sequenza dello schema: CIDA, TipoManodopera, denunce individuali,
+        // denuncia aziendale. Gli elementi facoltativi non gestiti (somministrazione,
+        // TipoDitta2) non vengono scritti.
+        var el = new XElement("PosAgri",
+            new XAttribute("TipoDichiarazione", p.TipoDichiarazione),
+            new XElement("CIDA", p.Cida),
+            new XElement("TipoManodopera", p.TipoManodopera));
+        foreach (var lavoratore in p.Lavoratori)
+            el.Add(AgriIndividuale(lavoratore));
+        el.Add(new XElement("DenunciaAgriAziendale",
+            new XElement("QuadraturaNumLav", Intero(p.Aziendale.QuadraturaNumLav)),
+            new XElement("FlagAutRisPreInt", p.Aziendale.FlagAutRisPreInt),
+            new XElement("DichBeneficiContributivi", p.Aziendale.DichBeneficiContributivi),
+            new XElement("DichTrattQuotaLav", p.Aziendale.DichTrattQuotaLav)));
+        return el;
+    }
+
+    private static XElement AgriIndividuale(DenunciaAgriIndividualeUniEmens d)
+    {
+        var el = new XElement("DenunciaAgriIndividuale",
+            new XElement("CodiceFiscaleLavoratore", d.CodiceFiscale),
+            new XElement("Cognome", TestoAgri(d.Cognome, 40)),
+            new XElement("Nome", TestoAgri(d.Nome, 30)));
+        foreach (var retribuzione in d.Retribuzioni)
+            el.Add(AgriRetribuzione(retribuzione));
+        return el;
+    }
+
+    private static XElement AgriRetribuzione(DatiAgriRetribuzioneUniEmens r)
+    {
+        var el = new XElement("DatiAgriRetribuzione",
+            new XElement("ZonaTariffaria", r.ZonaTariffaria),
+            new XElement("TipoContratto",
+                new XElement("CodiceContratto", r.CodiceContratto)),
+            new XElement("TipoRetribuzione",
+                new XElement("CodiceRetribuzione", r.CodiceRetribuzione)));
+        AggiungiSePresente(el, "NumeroGiornate", r.NumeroGiornate);
+        el.Add(new XElement("CodiceIstatFondo", r.CodiceIstatFondo));
+        el.Add(new XElement("DataAssunzione",
+            r.DataAssunzione.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        if (r.DataCessazione is { } cessazione)
+            el.Add(new XElement("DataCessazione",
+                cessazione.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        if (r.Retribuzione is { } retribuzione)
+            el.Add(new XElement("Retribuzione", CentesimiInteri(retribuzione)));
+        el.Add(new XElement("CategoriaContrattuale", r.CategoriaContrattuale));
+        el.Add(new XElement("Area", r.Area));
+        el.Add(new XElement("Livello", r.Livello));
+        el.Add(new XElement("FlagRiallineamento", r.FlagRiallineamento));
+        el.Add(new XElement("FlagEmersioneLav", r.FlagEmersioneLav));
+        el.Add(new XElement("FlagDimissioni", r.FlagDimissioni));
         return el;
     }
 

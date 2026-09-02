@@ -68,6 +68,7 @@ public sealed class DueFattoriTests : IDisposable
     public async Task Login_DopoAttivazione2FA_RichiedeEVerificaIlCodice()
     {
         Guid utenteId;
+        Guid tenantId;
         string segreto;
 
         await using (var db = NuovoContesto())
@@ -75,6 +76,10 @@ public sealed class DueFattoriTests : IDisposable
             var auth = new AuthService(db);
             var utente = await auth.RegistraAsync("Alfa Srl", "due@alfa.it", "password1");
             utenteId = utente.Id;
+            tenantId = utente.TenantId;
+
+            Assert.False(await auth.StatoDueFattoriAsync(tenantId, utenteId));
+            Assert.Null(await auth.StatoDueFattoriAsync(Guid.NewGuid(), utenteId));
 
             // Prima di attivare: login con sola password funziona.
             Assert.Equal(EsitoAccesso.Ok, (await auth.AccediAsync("due@alfa.it", "password1")).Esito);
@@ -86,6 +91,7 @@ public sealed class DueFattoriTests : IDisposable
             // Codice sbagliato non attiva; codice giusto sì.
             Assert.False(await auth.AttivaDueFattoriAsync(utenteId, "000000"));
             Assert.True(await auth.AttivaDueFattoriAsync(utenteId, Totp.GeneraCodice(segreto)));
+            Assert.True(await auth.StatoDueFattoriAsync(tenantId, utenteId));
         }
 
         await using (var db = NuovoContesto())

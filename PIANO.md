@@ -257,6 +257,21 @@ come ufficiale prima dei controlli e della validazione professionale.
   quando esistono calendario giornaliero o variabili da dettagliare. IBAN mascherato, font incorporati,
   testata ripetuta nelle continuazioni e controlli su storni/valori mancanti; resta marcato “bozza da
   validare” e non viene qualificato come LUL.
+- [x] 🔧 **Catalogo di 15 stili busta (2 settembre 2026)**: tre impaginazioni complete
+  (Classico, Modulare, Editoriale) in cinque temi professionali ciascuna, selezionabili da
+  Cedolini e Impostazioni. Tutte ricevono la stessa presentazione canonica e mostrano gli stessi
+  importi, progressivi, ratei, righe figurative e avvisi; chiavi API e preferenze sono validate
+  fail-closed. Alla chiusura stile, font e PDF vengono congelati e ogni ristampa restituisce gli
+  stessi byte. **Modulare Blu è il predefinito** quando l'utente non ha ancora scelto; preferenze
+  valide già salvate e PDF chiusi restano invariati. I prospetti restano «non costituisce LUL» e
+  «bozza / non certificato».
+- [x] 🔧 **Impostazioni organizzate e responsive (2 settembre 2026)**: cinque categorie con
+  navigazione interna (Documenti, Interfaccia, Aurora, Sicurezza, Studio), anteprima grafica A4
+  senza dati reali, controlli accessibili e collegamenti filtrati per ruolo. Il salvataggio indica
+  correttamente server o sola copia locale, aggrega le richieste parallele, conserva e ritenta le
+  modifiche offline e impedisce alle code di attraversare un cambio sessione. Password e 2FA
+  bloccano i doppi invii; lo stato 2FA arriva dal server con query isolata per tenant. Verificata a
+  320/375 px e desktop senza overflow; guida illustrata riallineata alla nuova schermata.
 - [x] 🔧 Corretto il doppio pagamento di malattia/infortunio: la quota ordinaria delle giornate
   viene stornata prima di applicare indennità e integrazioni (ancora da validare per CCNL).
 - [x] 🔧 **Revisione fail-closed Officina Nord, luglio 2026 (25 agosto 2026)**: H011 richiede

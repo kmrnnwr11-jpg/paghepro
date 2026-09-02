@@ -72,6 +72,7 @@ import {
   type ConversazioneSalvata,
 } from "./auroraCronologia";
 import { creaSequenziatoreRichieste } from "./ultimaRichiesta";
+import { preferenzaLocale, salvaPreferenzaOvunque } from "./preferenze";
 
 // Chat e strumenti usano esclusivamente il mandato visibile dello scope azienda-periodo corrente.
 
@@ -96,9 +97,6 @@ const SUGGERIMENTI_CON_TESTO = [
 
 const BOZZA_TESTO_SELEZIONATO = "Spiegami questo testo in parole semplici.";
 const BOZZA_DOCUMENTO = "Spiegami questo documento in parole semplici.";
-
-// Preferenza «Risposte brevi»: cambia solo lo stile delle risposte, resta sul browser.
-const CHIAVE_RISPOSTE_BREVI = "aurora_risposte_brevi";
 
 function periodoCorrente() {
   const oggi = new Date();
@@ -230,7 +228,7 @@ export function AuroraPanel({
   const [storia, setStoria] = useState<MessaggioChatAi[]>([]);
   const [bozza, setBozza] = useState("");
   const [risposteBrevi, setRisposteBrevi] = useState(
-    () => localStorage.getItem(CHIAVE_RISPOSTE_BREVI) === "1",
+    () => preferenzaLocale("risposte_brevi_aurora", "0") === "1",
   );
   const [inCorso, setInCorso] = useState(false);
   const [stato, setStato] = useState<StatoChatAi | null>(null);
@@ -573,7 +571,7 @@ export function AuroraPanel({
   const commutaRisposteBrevi = () => {
     const nuovo = !risposteBrevi;
     setRisposteBrevi(nuovo);
-    localStorage.setItem(CHIAVE_RISPOSTE_BREVI, nuovo ? "1" : "0");
+    salvaPreferenzaOvunque("risposte_brevi_aurora", nuovo ? "1" : "0");
   };
 
   const concediConsenso = async () => {

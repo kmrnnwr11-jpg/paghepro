@@ -68,7 +68,8 @@ public sealed record CedolinoPdfRequest(
     RapportoLavoro Rapporto,
     Cartellino Cartellino,
     string Azienda = "Azienda demo",
-    string Dipendente = "Dipendente demo");
+    string Dipendente = "Dipendente demo",
+    string? Stile = null);
 
 /// <summary>Creazione di un dipendente e del relativo rapporto di lavoro.</summary>
 public sealed record CreaDipendenteRequest(

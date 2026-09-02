@@ -579,7 +579,7 @@ public static class AiChatEndpoints
         string oggi = DateTime.UtcNow.ToString("dddd d MMMM yyyy", new CultureInfo("it-IT"));
         string contesto = sezioneUi is null
             ? "La schermata corrente non è indicata."
-            : $"La schermata corrente è «{sezioneUi}»: è solo un'etichetta descrittiva.";
+            : $"La schermata corrente è «{sezioneUi}».{SuggerimentoSezione(sezioneUi)}";
         // Il fatto che un cliente sia selezionato è stato dell'interfaccia inviato dal
         // browser, non una lettura d'archivio: nessun dato del cliente arriva al modello.
         string cliente = clienteSelezionato
@@ -616,7 +616,9 @@ public static class AiChatEndpoints
                 solo l'essenziale e di' che per la versione completa basta spegnere il
                 pulsante «Risposte brevi» sotto la chat.
               """
-            : "- Risposte brevi: poche righe, elenchi puntati solo quando servono davvero.";
+            : "- Stile: prima la risposta alla domanda, in una o due frasi; poi solo i passaggi "
+              + "essenziali se servono. Risposte brevi: poche righe, niente premesse, niente "
+              + "riepiloghi finali, non ripetere la domanda; elenchi puntati solo quando servono davvero.";
 
         return $"""
             Sei Aurora, l'assistente dello studio dentro PaghePro, il software italiano di paghe,
@@ -758,21 +760,66 @@ public static class AiChatEndpoints
 
     private static string? NormalizzaSezione(string? sezione)
     {
+        // L'etichetta della schermata è testo descrittivo del browser: si sanifica e si
+        // tronca, non si scarta. La vecchia whitelist buttava via proprio le pagine nuove
+        // (Agricoltura, Impostazioni) lasciando Aurora cieca dove serviva di più.
         if (string.IsNullOrWhiteSpace(sezione)) return null;
-        string pulita = sezione.Replace("\0", "", StringComparison.Ordinal).Trim().ToLowerInvariant();
-        return pulita switch
+        var pulita = new string(sezione
+            .Where(c => !char.IsControl(c))
+            .ToArray()).Trim();
+        if (pulita.Length == 0) return null;
+        return pulita.Length <= 60 ? pulita : pulita[..60];
+    }
+
+    /// <summary>
+    /// Mini-guida della schermata corrente per il prompt: cosa fa la pagina e quali campi ha,
+    /// così Aurora risponde sul posto giusto invece che in astratto. Abbinamento tollerante
+    /// per token, perché la SPA manda l'etichetta visibile, non una chiave fissa.
+    /// </summary>
+    private static string SuggerimentoSezione(string sezione)
+    {
+        string t = sezione.ToLowerInvariant();
+        string? guida = t switch
         {
-            "dashboard" => "Dashboard",
-            "aziende" => "Aziende",
-            "dipendenti" => "Dipendenti",
-            "presenze" => "Presenze",
-            "cedolini" => "Cedolini",
-            "fatture" => "Fatture",
-            "f24" => "F24",
-            "scadenze" => "Scadenze",
-            "contabilita" => "Contabilità",
+            _ when t.Contains("agricol") =>
+                "È l'anteprima della busta agricola OTD: si sceglie il lavoratore, si inseriscono "
+                + "giornate e ore del mese (le ore al giorno si propongono dal contratto e sono "
+                + "modificabili), trasferta (anche a gruppi di giorni) e il reddito annuo presunto, "
+                + "obbligatorio. Produce una bozza PDF con la tariffa del contratto provinciale: "
+                + "non è LUL e non genera PosAgri o F24.",
+            _ when t.Contains("impostazion") =>
+                "È la pagina delle preferenze sincronizzate col profilo: stile e font della busta, "
+                + "dicitura dello studio sui PDF, aspetto dell'interfaccia, risposte brevi di "
+                + "Aurora, cambio password e 2FA, più i collegamenti alla configurazione dello studio.",
+            _ when t.Contains("presenze") =>
+                "È il cartellino del mese dei dipendenti ordinari: straordinari, ferie, permessi, "
+                + "malattia; da qui si genera la busta paga del mese.",
+            _ when t.Contains("cedolin") || t.Contains("buste") =>
+                "È l'archivio delle buste paga ordinarie col workflow Bozza→Controllata→Validata→"
+                + "Chiusa, la tendina «Stile della busta» e il download PDF.",
+            _ when t.Contains("aziend") =>
+                "È l'archivio clienti con la scheda completa: dati fiscali, posizioni INPS/INAIL, "
+                + "CCNL predefinito e logo dei documenti; si importa anche da visura.",
+            _ when t.Contains("dipendent") =>
+                "È l'archivio dei lavoratori: anagrafiche, rapporti, import UNILAV (PDF o testo "
+                + "incollato) e correzione dei dati.",
+            _ when t.Contains("f24") =>
+                "È la pagina dei versamenti F24 del mese, costruiti dai cedolini archiviati.",
+            _ when t.Contains("scadenz") =>
+                "È lo scadenzario: DURC, versamenti in arrivo e promemoria con messaggio precompilato.",
+            _ when t.Contains("fattur") =>
+                "È la fatturazione elettronica: emissione, validazione e invio allo SdI.",
+            _ when t.Contains("elabora") =>
+                "È l'elaborazione del mese: calcolo dei cedolini di tutti i dipendenti ordinari.",
+            _ when t.Contains("certificazione") || t == "cu" =>
+                "È la Certificazione Unica da consegnare al lavoratore.",
+            _ when t.Contains("contabil") =>
+                "Sono i registri contabili: spese, prima nota e liquidazione IVA.",
+            _ when t.Contains("dashboard") || t.Contains("home") =>
+                "È la panoramica dello studio: scelta del cliente, cose da fare e scadenze.",
             _ => null,
         };
+        return guida is null ? "" : " " + guida;
     }
 
     internal static string ComponiMessaggioModello(

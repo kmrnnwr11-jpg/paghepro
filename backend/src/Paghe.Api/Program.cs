@@ -79,6 +79,7 @@ builder.Services.AddScoped<ParametriNormativiService>();
 builder.Services.AddScoped<AnagraficheLavoroService>();
 builder.Services.AddScoped<CedoliniService>();
 builder.Services.AddScoped<CedoliniAgricoliService>();
+builder.Services.AddScoped<PosAgriService>();
 builder.Services.AddScoped<PreferenzeUtenteService>();
 builder.Services.AddScoped<CedolinoWorkflowService>();
 builder.Services.AddScoped<RequisitiCedolinoService>();
@@ -359,7 +360,18 @@ app.Use(async (context, next) =>
 if (frontendIntegrato)
 {
     app.UseDefaultFiles();
-    app.UseStaticFiles();
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        // La pagina e il service worker si rivalidano sempre (no-cache = chiedi al server,
+        // con ETag costa una richiesta leggera): dopo un aggiornamento il browser vede
+        // subito l'interfaccia nuova. Gli asset con hash nel nome restano cacheabili.
+        OnPrepareResponse = ctx =>
+        {
+            if (ctx.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(ctx.File.Name, "sw.js", StringComparison.OrdinalIgnoreCase))
+                ctx.Context.Response.Headers.CacheControl = "no-cache";
+        },
+    });
 }
 
 app.UseCors();
@@ -988,6 +1000,15 @@ secured.MapPost("/api/admin/studi/{id:guid}/riattiva",
 static Guid? UtenteCorrente(ClaimsPrincipal user) =>
     Guid.TryParse(user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id)
         ? id : null;
+
+secured.MapGet("/api/auth/2fa/stato", async (ClaimsPrincipal user, AuthService auth) =>
+{
+    if (UtenteCorrente(user) is not { } uid) return Results.Unauthorized();
+    var attivo = await auth.StatoDueFattoriAsync(TenantCorrente(user), uid);
+    return attivo is { } valore
+        ? Results.Ok(new { dueFattoriAttivo = valore })
+        : Results.NotFound(new { errore = "Utente non trovato." });
+});
 
 secured.MapPost("/api/auth/2fa/inizia", async (ClaimsPrincipal user, AuthService auth) =>
 {
@@ -2145,24 +2166,40 @@ secured.MapGet("/api/cedolini/{id:guid}/pdf", async (
     PreferenzeUtenteService preferenze,
     string? stile = null) =>
 {
-    // Stile dell'impaginazione: i numeri sono identici nei tre stili. Il PDF di un cedolino
-    // CHIUSO resta il documento congelato alla chiusura, qualunque stile venga chiesto.
-    var stileScelto = Paghe.Documenti.StileCedolino.Classico;
-    if (!string.IsNullOrWhiteSpace(stile)
-        && !Enum.TryParse(stile, ignoreCase: true, out stileScelto))
-        return Results.BadRequest(new { errore = "Stile non valido: usa classico, colori o editoriale." });
+    // Query presente = scelta esplicita della pagina; query assente = preferenza dell'utente.
+    // Un PDF già chiuso resta comunque il documento congelato, qualunque stile venga chiesto.
+    bool stileEsplicito = !string.IsNullOrWhiteSpace(stile);
+    string chiaveStile = stileEsplicito
+        ? stile!.Trim()
+        : CatalogoStiliCedolino.ChiavePredefinita;
     try
     {
-        string fontDocumenti = Paghe.Documenti.FontDocumenti.Predefinito;
+        string fontDocumenti = FontDocumenti.Predefinito;
         string? dicituraStudio = null;
         if (UtenteCorrente(user) is { } uidPdf)
         {
-            fontDocumenti = Paghe.Documenti.FontDocumenti.Famiglia(await preferenze.LeggiAsync(
+            if (!stileEsplicito)
+                chiaveStile = await preferenze.LeggiAsync(
+                    TenantCorrente(user), uidPdf, PreferenzeUtenteService.StileBusta,
+                    CatalogoStiliCedolino.ChiavePredefinita);
+            fontDocumenti = FontDocumenti.Famiglia(await preferenze.LeggiAsync(
                 TenantCorrente(user), uidPdf, PreferenzeUtenteService.FontDocumenti, "lato"));
             var dicitura = await preferenze.LeggiAsync(
                 TenantCorrente(user), uidPdf, PreferenzeUtenteService.DicituraStudio, "");
             dicituraStudio = string.IsNullOrWhiteSpace(dicitura) ? null : dicitura;
         }
+
+        if (!CatalogoStiliCedolino.ProvaDaChiave(chiaveStile, out var stileScelto))
+        {
+            if (stileEsplicito)
+                return Results.BadRequest(new
+                {
+                    errore = $"Stile non valido. Scegli uno dei {CatalogoStiliCedolino.Tutti.Count} stili disponibili.",
+                });
+            // Protezione per eventuali preferenze storiche corrotte: il documento resta leggibile.
+            stileScelto = StileCedolino.Classico;
+        }
+
         var documento = await workflow.LeggiPdfAsync(
             TenantCorrente(user), id, stile: stileScelto,
             fontFamily: fontDocumenti, dicituraStudio: dicituraStudio);
@@ -2341,12 +2378,21 @@ secured.MapPost("/api/cedolini/pdf", async (CedolinoPdfRequest req, ParametriNor
 {
     try
     {
+        string chiaveStile = string.IsNullOrWhiteSpace(req.Stile)
+            ? CatalogoStiliCedolino.ChiavePredefinita
+            : req.Stile.Trim();
+        if (!CatalogoStiliCedolino.ProvaDaChiave(chiaveStile, out var stileScelto))
+            return Results.BadRequest(new
+            {
+                errore = $"Stile non valido. Scegli uno dei {CatalogoStiliCedolino.Tutti.Count} stili disponibili.",
+            });
         var motore = await CostruisciMotore(svc, req.Rapporto, req.Cartellino.Anno);
         var cedolino = motore.Calcola(req.Rapporto, req.Cartellino);
         byte[] pdf = CedolinoPdf.Genera(
             cedolino,
             new IntestazioneCedolino { Azienda = req.Azienda, Dipendente = req.Dipendente },
-            req.Cartellino);
+            req.Cartellino,
+            stile: stileScelto);
         return Results.File(
             pdf,
             "application/pdf",
@@ -2805,7 +2851,13 @@ app.MapMethods(
 // Fallback SPA: rotte client-side e hash possono essere aperti direttamente senza 404.
 // È registrato solo quando l'immagine contiene davvero il frontend compilato.
 if (frontendIntegrato)
-    app.MapFallbackToFile("index.html");
+    // Anche la pagina servita dal ripescaggio SPA si rivalida sempre: senza, il browser
+    // può tenersi l'interfaccia vecchia dopo un aggiornamento (visto dal vivo sul VPS).
+    app.MapFallbackToFile("index.html", new StaticFileOptions
+    {
+        OnPrepareResponse = ctx =>
+            ctx.Context.Response.Headers.CacheControl = "no-cache",
+    });
 
 app.Run();
 

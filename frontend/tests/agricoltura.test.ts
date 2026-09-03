@@ -138,5 +138,5 @@ test("riassuntoPaginaAgricola descrive solo i campi compilati", () => {
     giorniTrasferta: "0",
     indennitaTrasferta: "0",
   });
-  assert.equal(minimo, "periodo 8/2026.");
+  assert.equal(minimo, "periodo 8/2026; reddito annuo presunto non ancora indicato.");
 });

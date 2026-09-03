@@ -121,8 +121,11 @@ export function riassuntoPaginaAgricola(dati: {
   if (dati.giornate.trim()) parti.push(`giornate lavorate ${dati.giornate}`);
   if (dati.oreMese.trim()) parti.push(`ore del mese ${dati.oreMese}`);
   if (dati.oreGiorno.trim()) parti.push(`ore al giorno ${dati.oreGiorno}`);
-  if (dati.redditoPresuntoAnnuo.trim())
-    parti.push(`reddito annuo presunto ${dati.redditoPresuntoAnnuo} EUR`);
+  // Il reddito presunto è obbligatorio per il calcolo: se manca lo si dichiara mancante,
+  // così Aurora non lo dà per compilato.
+  parti.push(dati.redditoPresuntoAnnuo.trim()
+    ? `reddito annuo presunto ${dati.redditoPresuntoAnnuo} EUR`
+    : "reddito annuo presunto non ancora indicato");
   const gruppi = dati.trasferte.filter((g) => num(g.giorni) > 0 && num(g.importo) > 0);
   if (gruppi.length > 0)
     parti.push(`trasferte ${gruppi.map((g) => `${g.giorni} giorni a ${g.importo} EUR`).join(" + ")}`);

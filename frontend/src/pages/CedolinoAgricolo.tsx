@@ -55,7 +55,6 @@ interface CampiForm {
   indennitaTrasfertaGiornaliera: string;
   rimborsiSpeseDocumentate: string;
   oreGiorno: string;
-  validataDa: string;
 }
 
 const annoCorrente = new Date().getFullYear();
@@ -74,7 +73,6 @@ const formIniziale: CampiForm = {
   indennitaTrasfertaGiornaliera: "0",
   rimborsiSpeseDocumentate: "0",
   oreGiorno: "",
-  validataDa: "",
 };
 
 function valoreNumero(valore: string): number {
@@ -228,7 +226,6 @@ export function CedolinoAgricolo() {
         importoGiorno: valoreNumero(gruppo.importo) || 0,
       }))
       : undefined,
-    validataDa: form.validataDa.trim() || undefined,
   }), [form, gruppiTrasferta]);
 
   // Tendina delle ore al giorno: mezz'ora per mezz'ora da 1 a 10, con il valore del contratto
@@ -331,9 +328,14 @@ export function CedolinoAgricolo() {
     setEsitoArchiviazione(null);
     try {
       const esito = await api.archiviaCedolinoAgricolo(rapportoId, dati);
+      const errori = (esito.segnalazioni ?? []).filter((s) => s.livello === "ERRORE").length;
+      const avvisi = (esito.segnalazioni ?? []).filter((s) => s.livello === "AVVISO").length;
       setEsitoArchiviazione(
         `Busta ${String(esito.mese).padStart(2, "0")}/${esito.anno} archiviata `
         + `(versione ${esito.versione}, netto ${esito.nettoInBusta.toLocaleString("it-IT", { minimumFractionDigits: 2 })} EUR). `
+        + (errori + avvisi > 0
+          ? `Validatore: ${errori} errori, ${avvisi} avvisi (dettaglio in calce alla bozza). `
+          : "")
         + esito.avviso);
       if (azienda) void ricaricaArchiviate(azienda.id);
     } catch (e) {
@@ -490,7 +492,8 @@ export function CedolinoAgricolo() {
               <label>
                 <span>Reddito annuo presunto reale</span>
                 <input type="number" min="0.01" step="0.01" value={form.redditoPresuntoAnnuo}
-                  onChange={(e) => aggiorna("redditoPresuntoAnnuo", e.target.value)} placeholder="obbligatorio" />
+                  onChange={(e) => aggiorna("redditoPresuntoAnnuo", e.target.value)}
+                  placeholder="vuoto = dalla scheda o stimato" />
               </label>
               <label>
                 <span>Detrazioni gia godute nell'anno</span>
@@ -527,18 +530,11 @@ export function CedolinoAgricolo() {
 
             {errore && <p className="errore" role="alert" style={{ marginTop: 14 }}>{errore}</p>}
 
-            <div className="field" style={{ marginTop: 14 }}>
-              <label htmlFor="agri-validata-da">
-                Controllata e validata da (nome e qualifica)
-              </label>
-              <input id="agri-validata-da" type="text" value={form.validataDa}
-                placeholder="Es. Mario Bianchi - Consulente del Lavoro"
-                onChange={(e) => aggiorna("validataDa", e.target.value)} />
-              <small style={{ opacity: .7 }}>
-                Con un nominativo la busta viene archiviata come prospetto validato e il PDF
-                perde la scritta «BOZZA DA VALIDARE». Vuoto = resta bozza da validare.
-              </small>
-            </div>
+            <p style={{ marginTop: 14, fontSize: 12, opacity: .72 }}>
+              Le buste si archiviano sempre come bozza. La validazione riguarda
+              l&apos;<strong>elaborazione mensile</strong> dell&apos;azienda e viene rifiutata
+              finché il validatore segnala errori su una qualunque busta del mese.
+            </p>
 
             <div className="actions-row" style={{ marginTop: 16 }}>
               <button className="btn primary" type="submit"
@@ -580,6 +576,33 @@ export function CedolinoAgricolo() {
               <div className="kpi-card"><span>IRPEF netta</span><strong>{euro(anteprima.cedolino.irpefNetta)} EUR</strong></div>
               <div className="kpi-card"><span>Netto in busta</span><strong>{euro(anteprima.cedolino.nettoInBusta)} EUR</strong></div>
             </div>
+            {(anteprima.segnalazioni?.length ?? 0) > 0 && (
+              <div className="empty-state" role="alert"
+                style={{ textAlign: "left", marginTop: 14, display: "block" }}>
+                <strong>
+                  Controlli del validatore: {anteprima.segnalazioni!
+                    .filter((s) => s.livello === "ERRORE").length} errori, {anteprima.segnalazioni!
+                    .filter((s) => s.livello === "AVVISO").length} avvisi
+                </strong>
+                <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                  {anteprima.segnalazioni!.map((s, i) => (
+                    <li key={`${s.codice}-${i}`} style={{ fontSize: 12, marginTop: 4 }}>
+                      <strong>{s.livello}</strong> · {s.messaggio}
+                    </li>
+                  ))}
+                </ul>
+                <small style={{ display: "block", marginTop: 8, opacity: .7 }}>
+                  Gli errori bloccano la validazione dell&apos;elaborazione mensile;
+                  la bozza resta consultabile e riporta le stesse segnalazioni in calce.
+                </small>
+              </div>
+            )}
+            {anteprima.origineRedditoPresunto && anteprima.origineRedditoPresunto !== "richiesta" && (
+              <p style={{ marginTop: 10, fontSize: 12, opacity: .72 }}>
+                Reddito annuo presunto {euro(anteprima.redditoPresuntoAnnuo ?? 0)} EUR
+                (origine: {anteprima.origineRedditoPresunto}).
+              </p>
+            )}
             <div className="table-wrap" style={{ marginTop: 16 }}>
               <table className="data-table spacious">
                 <thead><tr><th>Codice</th><th>Voce</th><th className="right">Quantita</th><th className="right">Base</th><th className="right">Importo</th></tr></thead>

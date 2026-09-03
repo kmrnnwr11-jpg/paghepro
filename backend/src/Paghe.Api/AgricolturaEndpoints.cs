@@ -71,7 +71,10 @@ public static class AgricolturaEndpoints
         RapportoAgricolo Rapporto,
         CartellinoAgricolo Cartellino,
         ParametriAgricoli Parametri,
-        Guid AziendaId);
+        Guid AziendaId,
+        List<SegnalazioneBustaAgricola> Segnalazioni,
+        string OrigineRedditoPresunto,
+        ElaborazioneAgricolaEntity? Elaborazione);
 
     public static IEndpointRouteBuilder MapAgricoltura(this IEndpointRouteBuilder app)
     {
@@ -240,6 +243,13 @@ public static class AgricolturaEndpoints
                     provinciaCpl = calcolo.Parametri.Provincia,
                     tipoOperaio = Sigla(calcolo.Rapporto.Tipo),
                     livelloTariffa = calcolo.Rapporto.Livello,
+                    qualifica = calcolo.Intestazione.Qualifica,
+                    giorniDetrazione = calcolo.Cartellino.GiorniDetrazione,
+                    redditoPresuntoAnnuo = calcolo.Rapporto.RedditoPresuntoAnnuo,
+                    origineRedditoPresunto = calcolo.OrigineRedditoPresunto,
+                    segnalazioni = calcolo.Segnalazioni,
+                    statoElaborazione = calcolo.Elaborazione?.Stato
+                        ?? ElaborazioneAgricolaEntity.StatoBozza,
                     bozzaDaValidare = true,
                     archiviato = false,
                     avvertenza = "Anteprima non archiviata: non costituisce LUL, UniEmens/PosAgri o F24.",
@@ -277,7 +287,13 @@ public static class AgricolturaEndpoints
                     calcolo.Cartellino,
                     calcolo.Parametri,
                     fontFamily: fontDocumenti,
-                    dicituraStudio: dicituraStudio);
+                    dicituraStudio: dicituraStudio,
+                    // Lo stato in calce è quello dell'ELABORAZIONE mensile, mai della busta.
+                    validataDa: StatoValidato(calcolo.Elaborazione)?.ValidataDa,
+                    validataIl: StatoValidato(calcolo.Elaborazione)?.ValidataIl is { } quando
+                        ? DateOnly.FromDateTime(quando)
+                        : null,
+                    segnalazioni: calcolo.Segnalazioni);
 
                 response.Headers.CacheControl = "private, no-store";
                 response.Headers["X-Content-Type-Options"] = "nosniff";
@@ -318,44 +334,44 @@ public static class AgricolturaEndpoints
                 var calcolo = await CalcolaDaRapportoAsync(
                     Tenant(user), rapportoId, input, db, parametri, ct);
                 var (fontDocumenti, dicituraStudio) = await PreferenzeDocumentiAsync(user, preferenze, ct);
-                string? validataDa = string.IsNullOrWhiteSpace(input.ValidataDa)
-                    ? null
-                    : input.ValidataDa.Trim();
+                // L'archiviazione produce SEMPRE una bozza: lo stato validato appartiene
+                // all'elaborazione mensile e si ottiene solo dal suo endpoint di validazione.
                 var pdf = CedolinoAgricoloPdf.Genera(
                     calcolo.Cedolino, calcolo.Intestazione, calcolo.Rapporto,
                     calcolo.Cartellino, calcolo.Parametri,
                     fontFamily: fontDocumenti,
                     dicituraStudio: dicituraStudio,
-                    validataDa: validataDa,
-                    validataIl: validataDa is null
-                        ? null
-                        : DateOnly.FromDateTime(DateTime.UtcNow));
+                    segnalazioni: calcolo.Segnalazioni);
 
                 var busta = await archivio.ArchiviaAsync(Tenant(user), utenteId, new CedolinoAgricoloEntity
                 {
-                    ValidataDa = validataDa,
                     AziendaId = calcolo.AziendaId,
                     RapportoLavoroId = rapportoId,
                     Anno = input.Anno,
                     Mese = input.Mese,
                     OreOrdinarie = input.OreOrdinarie,
                     GiornateLavorate = input.GiornateLavorate,
-                    GiorniDetrazione = input.GiorniDetrazione,
+                    GiorniDetrazione = calcolo.Cartellino.GiorniDetrazione,
                     UnaTantum = input.UnaTantum,
-                    GiorniTrasferta = input.Trasferte is { Count: > 0 }
-                        ? input.Trasferte.Sum(t => t.Giorni)
-                        : input.GiorniTrasferta,
-                    IndennitaTrasfertaGiornaliera = input.Trasferte is { Count: > 0 }
-                        ? 0m
-                        : input.IndennitaTrasfertaGiornaliera,
-                    TrasferteJson = input.Trasferte is { Count: > 0 }
-                        ? System.Text.Json.JsonSerializer.Serialize(input.Trasferte)
+                    GiorniTrasferta = calcolo.Cartellino.Trasferte.Sum(t => t.Giorni),
+                    IndennitaTrasfertaGiornaliera = 0m,
+                    TrasferteJson = calcolo.Cartellino.Trasferte.Count > 0
+                        ? System.Text.Json.JsonSerializer.Serialize(calcolo.Cartellino.Trasferte
+                            .Select(t => new TrasfertaBatchInput(t.Giorni, t.ImportoGiorno)))
                         : null,
                     RimborsiSpeseDocumentate = input.RimborsiSpeseDocumentate,
                     DetrazioniGiaGoduteAnno = input.DetrazioniGiaGoduteAnno,
-                    ArrotondamentoRiportato = input.ArrotondamentoRiportato,
-                    UltimoCedolino = input.UltimoCedolino,
-                    RedditoPresuntoAnnuo = input.RedditoPresuntoAnnuo ?? 0m,
+                    ArrotondamentoRiportato = calcolo.Cartellino.ArrotondamentoRiportato,
+                    UltimoCedolino = calcolo.Cartellino.UltimoCedolino,
+                    RedditoPresuntoAnnuo = calcolo.Rapporto.RedditoPresuntoAnnuo ?? 0m,
+                    OrigineRedditoPresunto = calcolo.OrigineRedditoPresunto,
+                    ArrotondamentoDelMese = calcolo.Cartellino.UltimoCedolino
+                        ? 0m
+                        : calcolo.Cedolino.Righe
+                            .FirstOrDefault(r => r.Codice == "AGR_ARROT")?.Importo ?? 0m,
+                    SegnalazioniJson = calcolo.Segnalazioni.Count > 0
+                        ? System.Text.Json.JsonSerializer.Serialize(calcolo.Segnalazioni)
+                        : null,
                     TotaleCompetenze = calcolo.Cedolino.TotaleCompetenze,
                     TotaleTrattenute = calcolo.Cedolino.TotaleTrattenute,
                     ImponibileInps = calcolo.Cedolino.ImponibileInps,
@@ -368,6 +384,21 @@ public static class AgricolturaEndpoints
                     FonteTabelle = calcolo.Parametri.Fonte,
                 }, pdf, ct);
 
+                // Una busta riarchiviata cambia i numeri del mese: un'elaborazione già
+                // validata torna bozza, la validazione va ripetuta sui dati nuovi.
+                var elaborazione = await db.ElaborazioniAgricole.FirstOrDefaultAsync(
+                    e => e.TenantId == Tenant(user) && e.AziendaId == calcolo.AziendaId
+                        && e.Anno == input.Anno && e.Mese == input.Mese, ct);
+                bool validazioneDecaduta = false;
+                if (elaborazione?.Stato == ElaborazioneAgricolaEntity.StatoValidata)
+                {
+                    elaborazione.Stato = ElaborazioneAgricolaEntity.StatoBozza;
+                    elaborazione.ValidataDa = null;
+                    elaborazione.ValidataIl = null;
+                    await db.SaveChangesAsync(ct);
+                    validazioneDecaduta = true;
+                }
+
                 return Results.Ok(new
                 {
                     busta.Id,
@@ -377,12 +408,15 @@ public static class AgricolturaEndpoints
                     busta.Versione,
                     busta.HashPdfSha256,
                     archiviatoIl = busta.ArchiviatoIl,
-                    validataDa = busta.ValidataDa,
-                    avviso = busta.ValidataDa is null
-                        ? "Busta archiviata come prospetto da validare: non costituisce LUL, "
-                            + "PosAgri o F24."
-                        : $"Busta archiviata, controllata e validata da {busta.ValidataDa}: "
-                            + "non costituisce LUL, PosAgri o F24.",
+                    segnalazioni = calcolo.Segnalazioni,
+                    origineRedditoPresunto = calcolo.OrigineRedditoPresunto,
+                    statoElaborazione = ElaborazioneAgricolaEntity.StatoBozza,
+                    validazioneDecaduta,
+                    avviso = "Busta archiviata come prospetto da validare: non costituisce LUL, "
+                        + "PosAgri o F24. La validazione avviene sull'elaborazione mensile."
+                        + (validazioneDecaduta
+                            ? " L'elaborazione del mese era validata ed è tornata bozza."
+                            : ""),
                 });
             }
             catch (KeyNotFoundException ex)
@@ -491,8 +525,312 @@ public static class AgricolturaEndpoints
             }
         }).RequireAuthorization().RequireRateLimiting("sensibili");
 
+        // ---- Elaborazione mensile: stato unico del mese (bozza/validata) ----------------
+
+        app.MapGet("/api/aziende/{aziendaId:guid}/agricoltura/elaborazioni/{anno:int}/{mese:int}", async (
+            Guid aziendaId, int anno, int mese, ClaimsPrincipal user,
+            PagheDbContext db, CedoliniAgricoliService archivio, CancellationToken ct) =>
+        {
+            var quadro = await QuadroElaborazioneAsync(Tenant(user), aziendaId, anno, mese, db, archivio, ct);
+            return Results.Ok(new
+            {
+                anno,
+                mese,
+                stato = quadro.Elaborazione?.Stato ?? ElaborazioneAgricolaEntity.StatoBozza,
+                validataDa = quadro.Elaborazione?.ValidataDa,
+                validataIl = quadro.Elaborazione?.ValidataIl,
+                buste = quadro.Righe.Count,
+                erroriAperti = quadro.Righe.SelectMany(r => r.Segnalazioni)
+                    .Concat(quadro.SegnalazioniMensili)
+                    .Count(s => s.Livello == LivelloSegnalazione.Errore),
+                righe = quadro.Righe.Select(r => new
+                {
+                    r.Nominativo,
+                    r.Busta.RapportoLavoroId,
+                    r.Busta.NettoInBusta,
+                    segnalazioni = r.Segnalazioni,
+                }),
+                segnalazioniMensili = quadro.SegnalazioniMensili,
+            });
+        }).RequireAuthorization();
+
+        // Valida l'elaborazione del mese: rifiuta finché una qualunque busta archiviata ha
+        // ERRORI dal validatore, poi ristampa i PDF con lo stato validato in calce.
+        app.MapPost("/api/aziende/{aziendaId:guid}/agricoltura/elaborazioni/{anno:int}/{mese:int}/valida", async (
+            Guid aziendaId, int anno, int mese, ValidaElaborazioneInput input,
+            ClaimsPrincipal user, PagheDbContext db, CedoliniAgricoliService archivio,
+            ParametriNormativiService parametri, PreferenzeUtenteService preferenze,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(input.ValidataDa))
+                return Results.BadRequest(new
+                {
+                    errore = "Indica nome e cognome di chi ha controllato l'elaborazione.",
+                });
+            var tenantId = Tenant(user);
+            var quadro = await QuadroElaborazioneAsync(tenantId, aziendaId, anno, mese, db, archivio, ct);
+            if (quadro.Righe.Count == 0)
+                return Results.BadRequest(new
+                {
+                    errore = "Nessuna busta agricola archiviata per il periodo: non c'è nulla da validare.",
+                });
+
+            // La validazione non si fida delle segnalazioni fotografate all'archiviazione:
+            // ricalcola ogni busta dagli input conservati, con il validatore di oggi, e
+            // pretende che i numeri non siano cambiati nel frattempo.
+            var errori = new List<object>();
+            var ricalcoli = new List<(RigaQuadro Riga, CalcoloAgricoloDaRapporto Calcolo)>();
+            foreach (var riga in quadro.Righe)
+            {
+                CalcoloAgricoloDaRapporto calcolo;
+                try
+                {
+                    calcolo = await CalcolaDaRapportoAsync(
+                        tenantId, riga.Busta.RapportoLavoroId,
+                        InputDaBustaArchiviata(riga.Busta), db, parametri, ct);
+                }
+                catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException)
+                {
+                    errori.Add(new
+                    {
+                        lavoratore = riga.Nominativo, codice = "RICALCOLO_FALLITO",
+                        messaggio = ex.Message,
+                    });
+                    continue;
+                }
+                if (calcolo.Cedolino.NettoInBusta != riga.Busta.NettoInBusta)
+                    errori.Add(new
+                    {
+                        lavoratore = riga.Nominativo, codice = "NUMERI_CAMBIATI",
+                        messaggio = $"Il ricalcolo dà un netto di {calcolo.Cedolino.NettoInBusta:0.00} € "
+                            + $"contro i {riga.Busta.NettoInBusta:0.00} € archiviati: i parametri sono "
+                            + "cambiati, riarchiviare la busta prima di validare.",
+                    });
+                errori.AddRange(calcolo.Segnalazioni
+                    .Where(s => s.Livello == LivelloSegnalazione.Errore)
+                    .Select(s => (object)new
+                    {
+                        lavoratore = riga.Nominativo, codice = s.Codice, messaggio = s.Messaggio,
+                    }));
+                ricalcoli.Add((riga, calcolo));
+            }
+            if (string.IsNullOrWhiteSpace(quadro.Azienda?.MatricolaInps))
+                errori.Add(new
+                {
+                    lavoratore = "", codice = "MATRICOLA_INPS_MANCANTE",
+                    messaggio = "L'azienda non ha la matricola/posizione INPS: in un'elaborazione "
+                        + "validata è obbligatoria.",
+                });
+            errori.AddRange(quadro.SegnalazioniMensili
+                .Where(s => s.Livello == LivelloSegnalazione.Errore)
+                .Select(s => (object)new { lavoratore = "", codice = s.Codice, messaggio = s.Messaggio }));
+            if (errori.Count > 0)
+                return Results.BadRequest(new
+                {
+                    errore = "L'elaborazione non è validabile: il validatore segnala errori aperti.",
+                    errori,
+                });
+
+            var elaborazione = quadro.Elaborazione;
+            if (elaborazione is null)
+            {
+                elaborazione = new ElaborazioneAgricolaEntity
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, AziendaId = aziendaId,
+                    Anno = anno, Mese = mese,
+                };
+                db.ElaborazioniAgricole.Add(elaborazione);
+            }
+            else
+            {
+                db.ElaborazioniAgricole.Attach(elaborazione);
+            }
+            elaborazione.Stato = ElaborazioneAgricolaEntity.StatoValidata;
+            elaborazione.ValidataDa = input.ValidataDa.Trim();
+            elaborazione.ValidataIl = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+
+            // Ristampa dei PDF archiviati con lo stato dell'elaborazione: stessi numeri
+            // (garantito dal ricalcolo del quadro), piè di pagina validato.
+            var (fontDocumenti, dicituraStudio) = await PreferenzeDocumentiAsync(user, preferenze, ct);
+            int ristampate = 0;
+            foreach (var (riga, calcolo) in ricalcoli)
+            {
+                var pdf = CedolinoAgricoloPdf.Genera(
+                    calcolo.Cedolino, calcolo.Intestazione, calcolo.Rapporto,
+                    calcolo.Cartellino, calcolo.Parametri,
+                    fontFamily: fontDocumenti, dicituraStudio: dicituraStudio,
+                    validataDa: elaborazione.ValidataDa,
+                    validataIl: DateOnly.FromDateTime(elaborazione.ValidataIl.Value));
+                await archivio.AggiornaPdfAsync(tenantId, riga.Busta.Id, pdf, ct);
+                ristampate++;
+            }
+
+            return Results.Ok(new
+            {
+                stato = elaborazione.Stato,
+                validataDa = elaborazione.ValidataDa,
+                validataIl = elaborazione.ValidataIl,
+                busteRistampate = ristampate,
+                avvisi = ricalcoli.SelectMany(r => r.Calcolo.Segnalazioni)
+                    .Concat(quadro.SegnalazioniMensili)
+                    .Where(s => s.Livello == LivelloSegnalazione.Avviso),
+            });
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
+
+        // ---- Riepilogo mensile aziendale: totali, elenco e segnalazioni -----------------
+
+        app.MapGet("/api/aziende/{aziendaId:guid}/agricoltura/riepilogo/{anno:int}/{mese:int}", async (
+            Guid aziendaId, int anno, int mese, ClaimsPrincipal user,
+            PagheDbContext db, CedoliniAgricoliService archivio, HttpResponse response,
+            CancellationToken ct, string formato = "json") =>
+        {
+            var quadro = await QuadroElaborazioneAsync(Tenant(user), aziendaId, anno, mese, db, archivio, ct);
+            if (quadro.Righe.Count == 0)
+                return Results.NotFound(new
+                {
+                    errore = "Nessuna busta agricola archiviata per il periodo.",
+                });
+            var riepilogo = new RiepilogoAgricoloMensile
+            {
+                Anno = anno,
+                Mese = mese,
+                StatoElaborazione = quadro.Elaborazione?.Stato ?? ElaborazioneAgricolaEntity.StatoBozza,
+                ValidataDa = quadro.Elaborazione?.ValidataDa,
+                Righe = quadro.Righe.Select(r => new RigaRiepilogoAgricolo(
+                    r.Nominativo,
+                    r.Busta.OreOrdinarie,
+                    r.Busta.GiornateLavorate,
+                    r.Busta.TotaleCompetenze,
+                    TotaleTrasferte(r.Busta),
+                    r.Busta.TotaleTrattenute,
+                    r.Busta.ContributiDipendente,
+                    r.Busta.ArrotondamentoDelMese,
+                    r.Busta.NettoInBusta,
+                    r.Segnalazioni)).ToList(),
+                SegnalazioniMensili = quadro.SegnalazioniMensili,
+            };
+
+            switch (formato.ToLowerInvariant())
+            {
+                case "csv":
+                    response.Headers.CacheControl = "private, no-store";
+                    return Results.File(
+                        System.Text.Encoding.UTF8.GetBytes(riepilogo.Csv()),
+                        "text/csv",
+                        $"riepilogo-agricolo-{anno}-{mese:00}.csv");
+                case "pdf":
+                    response.Headers.CacheControl = "private, no-store";
+                    return Results.File(
+                        RiepilogoAgricoloPdf.Genera(
+                            riepilogo, quadro.Azienda?.RagioneSociale ?? "Azienda"),
+                        "application/pdf",
+                        $"riepilogo-agricolo-{anno}-{mese:00}.pdf");
+                default:
+                    return Results.Ok(riepilogo);
+            }
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
+
         return app;
     }
+
+    public sealed record ValidaElaborazioneInput(string ValidataDa);
+
+    private sealed record RigaQuadro(
+        CedolinoAgricoloEntity Busta,
+        string Nominativo,
+        List<SegnalazioneBustaAgricola> Segnalazioni);
+
+    /// <summary>Ricostruisce l'input mensile dai dati conservati nella busta archiviata.</summary>
+    private static DatiMensiliCedolinoAgricoloInput InputDaBustaArchiviata(CedolinoAgricoloEntity busta) => new(
+        busta.Anno, busta.Mese, busta.OreOrdinarie, busta.GiornateLavorate,
+        busta.GiorniDetrazione, busta.UnaTantum, busta.DetrazioniGiaGoduteAnno,
+        busta.ArrotondamentoRiportato, busta.UltimoCedolino,
+        busta.RedditoPresuntoAnnuo > 0m ? busta.RedditoPresuntoAnnuo : null,
+        GiorniTrasferta: busta.TrasferteJson is { Length: > 0 } ? 0m : busta.GiorniTrasferta,
+        IndennitaTrasfertaGiornaliera: busta.TrasferteJson is { Length: > 0 }
+            ? 0m : busta.IndennitaTrasfertaGiornaliera,
+        RimborsiSpeseDocumentate: busta.RimborsiSpeseDocumentate,
+        Trasferte: busta.TrasferteJson is { Length: > 0 } json
+            ? System.Text.Json.JsonSerializer.Deserialize<List<TrasfertaBatchInput>>(json)
+            : null);
+
+    /// <summary>Totale delle indennità di trasferta dichiarate nella busta archiviata.</summary>
+    private static decimal TotaleTrasferte(CedolinoAgricoloEntity busta) =>
+        busta.TrasferteJson is { Length: > 0 } json
+            ? (System.Text.Json.JsonSerializer.Deserialize<List<TrasfertaBatchInput>>(json) ?? [])
+                .Sum(t => t.Giorni * t.ImportoGiorno)
+            : busta.GiorniTrasferta * busta.IndennitaTrasfertaGiornaliera;
+
+    private sealed record QuadroElaborazione(
+        ElaborazioneAgricolaEntity? Elaborazione,
+        List<RigaQuadro> Righe,
+        List<SegnalazioneBustaAgricola> SegnalazioniMensili,
+        AziendaEntity? Azienda);
+
+    /// <summary>
+    /// Fotografia dell'elaborazione mensile: per ogni busta archiviata ricalcola dagli
+    /// stessi input il cedolino e le segnalazioni (validatore incluso), più i controlli
+    /// che hanno senso solo sull'insieme (cessazioni difformi a parità di assunzione,
+    /// arrotondamenti rimasti a carico dell'azienda per i cessati).
+    /// </summary>
+    private static async Task<QuadroElaborazione> QuadroElaborazioneAsync(
+        Guid tenantId, Guid aziendaId, int anno, int mese,
+        PagheDbContext db, CedoliniAgricoliService archivio, CancellationToken ct)
+    {
+        var elaborazione = await db.ElaborazioniAgricole.AsNoTracking().FirstOrDefaultAsync(
+            e => e.TenantId == tenantId && e.AziendaId == aziendaId
+                && e.Anno == anno && e.Mese == mese, ct);
+        var azienda = await db.Aziende.AsNoTracking().FirstOrDefaultAsync(
+            a => a.Id == aziendaId && a.TenantId == tenantId, ct);
+        var buste = await archivio.ElencoAsync(tenantId, aziendaId, anno, mese, ct);
+
+        var rapportoIds = buste.Select(b => b.RapportoLavoroId).ToList();
+        var rapporti = await db.Rapporti.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && rapportoIds.Contains(r.Id))
+            .Include(r => r.Dipendente)
+            .ToDictionaryAsync(r => r.Id, ct);
+
+        var righe = new List<RigaQuadro>();
+        foreach (var busta in buste.OrderBy(b =>
+            rapporti.TryGetValue(b.RapportoLavoroId, out var r)
+                ? $"{r.Dipendente?.Cognome} {r.Dipendente?.Nome}" : ""))
+        {
+            rapporti.TryGetValue(busta.RapportoLavoroId, out var rapporto);
+            string nominativo = rapporto?.Dipendente is { } d
+                ? $"{d.Cognome} {d.Nome}".Trim() : "";
+            var segnalazioni = busta.SegnalazioniJson is { Length: > 0 } json
+                ? System.Text.Json.JsonSerializer.Deserialize<List<SegnalazioneBustaAgricola>>(json) ?? []
+                : [];
+            righe.Add(new RigaQuadro(busta, nominativo, segnalazioni));
+        }
+
+        var segnalazioniMensili = ValidatoreBustaAgricola.ValidaCessazioniOmogenee(
+            righe.Where(r => rapporti.ContainsKey(r.Busta.RapportoLavoroId))
+                .Select(r =>
+                {
+                    var rapporto = rapporti[r.Busta.RapportoLavoroId];
+                    return (r.Nominativo, rapporto.DataAssunzione, rapporto.DataCessazione);
+                })
+                .ToList());
+
+        // Arrotondamenti anticipati che nessuna busta successiva potrà più recuperare.
+        foreach (var riga in righe)
+        {
+            if (riga.Busta.ArrotondamentoDelMese <= 0m) continue;
+            var rapporto = rapporti.GetValueOrDefault(riga.Busta.RapportoLavoroId);
+            if (rapporto?.DataCessazione is { } cess
+                && cess <= new DateOnly(anno, mese, DateTime.DaysInMonth(anno, mese)))
+                segnalazioniMensili.Add(new(LivelloSegnalazione.Avviso, "ARROTONDAMENTO_NON_RECUPERABILE",
+                    $"{riga.Nominativo}: arrotondamento di {riga.Busta.ArrotondamentoDelMese:0.00} € "
+                    + "anticipato nell'ultima busta del rapporto: resta a carico dell'azienda."));
+        }
+
+        return new QuadroElaborazione(elaborazione, righe, segnalazioniMensili, azienda);
+    }
+
+    private static ElaborazioneAgricolaEntity? StatoValidato(ElaborazioneAgricolaEntity? e) =>
+        e?.Stato == ElaborazioneAgricolaEntity.StatoValidata ? e : null;
 
     private static async Task<CalcoloAgricoloDaRapporto> CalcolaDaRapportoAsync(
         Guid tenantId,
@@ -520,9 +858,6 @@ public static class AgricolturaEndpoints
 
         VerificaPeriodoRapporto(rapportoEntity, input.Anno, input.Mese);
         var tipo = TipoDaContratto(rapportoEntity.TipoContratto);
-        if (input.RedditoPresuntoAnnuo is null or <= 0m)
-            throw new ArgumentException(
-                "Indica il reddito annuo presunto reale del rapporto: per un agricolo non si puo annualizzare il singolo mese.");
 
         string provincia = (rapportoEntity.ProvinciaLavoro ?? azienda.Provincia).Trim().ToUpperInvariant();
         if (string.IsNullOrWhiteSpace(provincia))
@@ -533,13 +868,78 @@ public static class AgricolturaEndpoints
 
         var nazionali = await parametriService.CaricaParametriAsync(input.Anno, ct);
         var agricoli = await parametriService.CaricaParametriAgricoliAsync(input.Anno, provincia, ct);
+        var segnalazioni = new List<SegnalazioneBustaAgricola>();
+
+        // --- Giorni di detrazione: si calcolano dalle date del rapporto (dato autorevole),
+        // non dall'input. Un valore diverso arrivato dal client viene corretto e segnalato.
+        DateOnly? assunzione = rapportoEntity.DataAssunzione == default
+            ? null : rapportoEntity.DataAssunzione;
+        int giorniDetrazione = ValidatoreBustaAgricola.GiorniDetrazioneNelMese(
+            input.Anno, input.Mese, assunzione, rapportoEntity.DataCessazione);
+        if (input.GiorniDetrazione != giorniDetrazione)
+            segnalazioni.Add(new(LivelloSegnalazione.Errore, "GIORNI_DETRAZIONE_CORRETTI",
+                $"Giorni di detrazione indicati {input.GiorniDetrazione}, ma dal periodo del "
+                + $"rapporto nel mese risultano {giorniDetrazione}: corretti automaticamente."));
+
+        // --- Reddito annuo presunto: richiesta → scheda del rapporto → default aziendale →
+        // stima dal contratto. L'origine resta tracciata sulla busta.
+        (decimal redditoPresunto, string origineReddito) = RedditoPresunto(
+            input, rapportoEntity, azienda, agricoli, segnalazioni);
+
+        // --- Trasferte: mapping esplicito giorni/importo, normalizzazione dichiarata
+        // (inversioni palesi, gruppi con lo stesso importo) e controlli di coerenza.
+        IReadOnlyList<TrasfertaGiorniAgricola> trasferte = ValidatoreBustaAgricola.NormalizzaTrasferte(
+            (input.Trasferte ?? [])
+                .Where(t => t.Giorni > 0m && t.ImportoGiorno > 0m)
+                .Select(t => new TrasfertaGiorniAgricola(t.Giorni, t.ImportoGiorno))
+                .Concat(input.GiorniTrasferta > 0m && input.IndennitaTrasfertaGiornaliera > 0m
+                    && input.Trasferte is not { Count: > 0 }
+                    ? [new TrasfertaGiorniAgricola(input.GiorniTrasferta, input.IndennitaTrasfertaGiornaliera)]
+                    : Array.Empty<TrasfertaGiorniAgricola>())
+                .ToList(),
+            input.GiornateLavorate,
+            segnalazioni);
+
+        // --- Arrotondamento del mese precedente: se la busta precedente è in archivio, il
+        // riporto è il suo, non quello digitato. Ultimo cedolino anche quando la cessazione
+        // cade nel mese elaborato.
+        var bustaPrecedente = await db.CedoliniAgricoli.AsNoTracking().FirstOrDefaultAsync(
+            c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId
+                && c.Anno == (input.Mese == 1 ? input.Anno - 1 : input.Anno)
+                && c.Mese == (input.Mese == 1 ? 12 : input.Mese - 1), ct);
+        decimal riportato = bustaPrecedente?.ArrotondamentoDelMese ?? input.ArrotondamentoRiportato;
+        if (bustaPrecedente is not null && input.ArrotondamentoRiportato != 0m
+            && input.ArrotondamentoRiportato != riportato)
+            segnalazioni.Add(new(LivelloSegnalazione.Avviso, "RIPORTO_ARROTONDAMENTO_ARCHIVIO",
+                $"Riporto arrotondamenti indicato {input.ArrotondamentoRiportato:0.00} €, ma la "
+                + $"busta archiviata del mese precedente ne anticipa {riportato:0.00} €: vale l'archivio."));
+        var fineMese = new DateOnly(input.Anno, input.Mese, DateTime.DaysInMonth(input.Anno, input.Mese));
+        bool ultimoCedolino = input.UltimoCedolino
+            || (rapportoEntity.DataCessazione is { } cessazioneNelMese
+                && cessazioneNelMese >= new DateOnly(input.Anno, input.Mese, 1)
+                && cessazioneNelMese <= fineMese);
+
+        segnalazioni.AddRange(ValidatoreBustaAgricola.Valida(
+            input.Anno, input.Mese, input.OreOrdinarie, input.GiornateLavorate, trasferte,
+            assunzione, rapportoEntity.DataCessazione,
+            nazionali.TrasfertaItaliaEsenteGiorno,
+            oreGiornaliereContratto: rapportoEntity.OreSettimanali > 0m
+                ? Math.Round(rapportoEntity.OreSettimanali / 6m, 2)
+                : null,
+            matricolaInpsAzienda: azienda.MatricolaInps));
+
+        if (!string.IsNullOrWhiteSpace(input.ValidataDa))
+            segnalazioni.Add(new(LivelloSegnalazione.Avviso, "VALIDAZIONE_SINGOLA_IGNORATA",
+                "La validazione non è più della singola busta: si valida l'elaborazione "
+                + "mensile dell'azienda, che rifiuta finché restano errori."));
+
         var rapporto = new RapportoAgricolo
         {
             Provincia = agricoli.Provincia,
             Tipo = tipo,
             Livello = rapportoEntity.Livello,
             DetrazioniLavoroDipendente = rapportoEntity.DetrazioniLavoroDipendente,
-            RedditoPresuntoAnnuo = input.RedditoPresuntoAnnuo,
+            RedditoPresuntoAnnuo = redditoPresunto,
             Regione = rapportoEntity.Regione,
             CodiceCatastaleComune = rapportoEntity.CodiceCatastaleComune,
         };
@@ -549,21 +949,20 @@ public static class AgricolturaEndpoints
             Mese = input.Mese,
             OreOrdinarie = input.OreOrdinarie,
             GiornateLavorate = input.GiornateLavorate,
-            GiorniDetrazione = input.GiorniDetrazione,
+            GiorniDetrazione = giorniDetrazione,
             UnaTantum = input.UnaTantum,
             DetrazioniGiaGoduteAnno = input.DetrazioniGiaGoduteAnno,
-            ArrotondamentoRiportato = input.ArrotondamentoRiportato,
-            UltimoCedolino = input.UltimoCedolino,
-            GiorniTrasferta = input.GiorniTrasferta,
-            IndennitaTrasfertaGiornaliera = input.IndennitaTrasfertaGiornaliera,
+            ArrotondamentoRiportato = riportato,
+            UltimoCedolino = ultimoCedolino,
             RimborsiSpeseDocumentate = input.RimborsiSpeseDocumentate,
-            Trasferte = (input.Trasferte ?? [])
-                .Where(t => t.Giorni > 0m && t.ImportoGiorno > 0m)
-                .Select(t => new TrasfertaGiorniAgricola(t.Giorni, t.ImportoGiorno))
-                .ToList(),
+            Trasferte = trasferte,
         };
         var cedolino = new MotoreCalcoloCedolinoAgricolo(nazionali, agricoli)
             .Calcola(rapporto, cartellino);
+
+        var elaborazione = await db.ElaborazioniAgricole.AsNoTracking().FirstOrDefaultAsync(
+            e => e.TenantId == tenantId && e.AziendaId == rapportoEntity.AziendaId
+                && e.Anno == input.Anno && e.Mese == input.Mese, ct);
 
         string comuneAzienda = string.Join(" ", new[] { azienda.Cap, azienda.Comune }
             .Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -593,7 +992,10 @@ public static class AgricolturaEndpoints
             ComuneResidenza = comuneResidenza is null
                 ? null
                 : $"{comuneResidenza.Nome} ({comuneResidenza.Provincia})",
-            Qualifica = rapportoEntity.Qualifica,
+            // La qualifica NON viene dalla scheda (dove un default «Impiegato» sarebbe un
+            // falso): per un rapporto OTD/OTI col CCNL operai agricoli è per definizione
+            // «Operaio agricolo», col livello della tabella provinciale accanto.
+            Qualifica = $"Operaio agricolo — Area/Livello: {TitoloLivello(rapportoEntity.Livello)}",
             Livello = rapportoEntity.Livello,
             Ccnl = "Operai agricoli e florovivaisti",
             TipoContratto = rapportoEntity.TipoContratto,
@@ -603,7 +1005,67 @@ public static class AgricolturaEndpoints
                 : $"{rapportoEntity.OreSettimanali:0.#} ore/sett.",
         };
 
-        return new(cedolino, intestazione, rapporto, cartellino, agricoli, rapportoEntity.AziendaId);
+        return new(cedolino, intestazione, rapporto, cartellino, agricoli,
+            rapportoEntity.AziendaId, segnalazioni, origineReddito, elaborazione);
+    }
+
+    /// <summary>
+    /// Reddito annuo presunto e sua origine: richiesta esplicita → scheda del rapporto →
+    /// default aziendale → stima dal contratto (retribuzione del mese al netto della quota
+    /// deducibile × mesi previsti). La stima è dichiarata con un avviso, mai silenziosa.
+    /// </summary>
+    private static (decimal Reddito, string Origine) RedditoPresunto(
+        DatiMensiliCedolinoAgricoloInput input,
+        RapportoLavoroEntity rapporto,
+        AziendaEntity azienda,
+        ParametriAgricoli agricoli,
+        List<SegnalazioneBustaAgricola> segnalazioni)
+    {
+        if (input.RedditoPresuntoAnnuo is { } richiesto and > 0m)
+            return (richiesto, "richiesta");
+        if (rapporto.RedditoPresuntoAnnuo is { } daScheda and > 0m)
+            return (daScheda, "anagrafica");
+        if (azienda.RedditoPresuntoAgricoloAnnuo is { } daAzienda and > 0m)
+        {
+            segnalazioni.Add(new(LivelloSegnalazione.Avviso, "REDDITO_PRESUNTO_DEFAULT",
+                $"Reddito annuo presunto dal default aziendale ({daAzienda:0.00} €): "
+                + "verificare che valga per questo lavoratore."));
+            return (daAzienda, "default");
+        }
+
+        var tariffa = agricoli.Tariffa(rapporto.Livello);
+        int mesi = MesiPrevistiDiContratto(input.Anno, rapporto.DataAssunzione, rapporto.DataCessazione);
+        decimal stima = Math.Round(
+            input.OreOrdinarie * tariffa.PagaOraria
+                * (1m - agricoli.AliquotaDeducibileEffettiva) * mesi,
+            2, MidpointRounding.AwayFromZero);
+        if (stima <= 0m)
+            throw new ArgumentException(
+                "Indica il reddito annuo presunto (in scheda dipendente o nella richiesta): "
+                + "senza ore del mese non è nemmeno stimabile dal contratto.");
+        segnalazioni.Add(new(LivelloSegnalazione.Avviso, "REDDITO_PRESUNTO_CALCOLATO",
+            $"Reddito annuo presunto stimato dal contratto: {stima:0.00} € "
+            + $"(imponibile del mese × {mesi} mesi previsti). Confermarlo in scheda dipendente."));
+        return (stima, "calcolato");
+    }
+
+    /// <summary>Mesi di calendario coperti dal contratto nell'anno elaborato (almeno 1).</summary>
+    private static int MesiPrevistiDiContratto(int anno, DateOnly assunzione, DateOnly? cessazione)
+    {
+        int primoMese = assunzione != default && assunzione.Year == anno ? assunzione.Month
+            : assunzione != default && assunzione.Year > anno ? 12 : 1;
+        int ultimoMese = cessazione is { } c && c.Year == anno ? c.Month
+            : cessazione is { } c2 && c2.Year < anno ? 1 : 12;
+        return Math.Max(1, ultimoMese - primoMese + 1);
+    }
+
+    /// <summary>«COMUNE» → «Comune»; i codici composti restano come sono.</summary>
+    private static string TitoloLivello(string livello)
+    {
+        string pulito = livello.Trim();
+        return pulito.Length > 1 && pulito.All(char.IsLetter)
+            ? char.ToUpperInvariant(pulito[0]) + pulito[1..].ToLowerInvariant()
+            : pulito;
     }
 
     private static void Valida(DatiMensiliCedolinoAgricoloInput input)

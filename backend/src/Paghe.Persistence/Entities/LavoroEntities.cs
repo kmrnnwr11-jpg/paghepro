@@ -84,6 +84,13 @@ public class RapportoLavoroEntity
     /// </summary>
     public DateOnly? NettoConcordatoDecorrenza { get; set; }
 
+    /// <summary>
+    /// Reddito annuo presunto del rapporto (usato per gli agricoli: aliquota media IRPEF,
+    /// detrazioni, trattamento integrativo). Null = vale il default aziendale, altrimenti
+    /// la stima dal contratto; l'origine del valore usato resta tracciata sulla busta.
+    /// </summary>
+    public decimal? RedditoPresuntoAnnuo { get; set; }
+
     public string Regione { get; set; } = "";
     public string CodiceCatastaleComune { get; set; } = "";
 

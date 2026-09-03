@@ -26,7 +26,8 @@ public sealed record RapportoDettaglioDto(
     decimal? ExFestivitaResidueIniziali,
     decimal? NettoConcordatoMensile,
     string? NettoConcordatoDecorrenza,
-    decimal OreSettimanali);
+    decimal OreSettimanali,
+    decimal? RedditoPresuntoAnnuo = null);
 
 /// <summary>Correzione della scheda dipendente: solo i campi presenti (non null) vengono cambiati.</summary>
 public sealed record CorreggiRapportoRequest(
@@ -51,7 +52,9 @@ public sealed record CorreggiRapportoRequest(
     decimal? ExFestivitaResidueIniziali = null,
     decimal? NettoConcordatoMensile = null,
     string? NettoConcordatoDecorrenza = null,
-    bool? RimuoviNettoConcordato = null);
+    bool? RimuoviNettoConcordato = null,
+    decimal? RedditoPresuntoAnnuo = null,
+    bool? RimuoviRedditoPresuntoAnnuo = null);
 
 /// <summary>
 /// Endpoint per il dettaglio di un rapporto (scheda dipendente reale), isolato per tenant.
@@ -109,7 +112,8 @@ public static class RapportoEndpoints
                 ExFestivitaResidueIniziali: r.ExFestivitaResidueIniziali,
                 NettoConcordatoMensile: r.NettoConcordatoMensile,
                 NettoConcordatoDecorrenza: r.NettoConcordatoDecorrenza?.ToString("yyyy-MM-dd"),
-                OreSettimanali: r.OreSettimanali));
+                OreSettimanali: r.OreSettimanali,
+                RedditoPresuntoAnnuo: r.RedditoPresuntoAnnuo));
         }).RequireAuthorization();
 
         // Correzione della scheda (es. dopo un import UNILAV/OCR letto male): aggiorna solo
@@ -171,7 +175,9 @@ public static class RapportoEndpoints
                         req.ExFestivitaResidueIniziali,
                         req.NettoConcordatoMensile,
                         decorrenzaNettoConcordato,
-                        req.RimuoviNettoConcordato));
+                        req.RimuoviNettoConcordato,
+                        req.RedditoPresuntoAnnuo,
+                        req.RimuoviRedditoPresuntoAnnuo));
                 return r is null
                     ? Results.NotFound(new { errore = "Rapporto non trovato per il tenant indicato." })
                     : Results.Ok(new { aggiornato = true });

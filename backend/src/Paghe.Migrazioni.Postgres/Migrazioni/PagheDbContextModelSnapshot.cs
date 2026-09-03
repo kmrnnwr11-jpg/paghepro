@@ -816,6 +816,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<decimal?>("RedditoPresuntoAgricoloAnnuo")
+                        .HasColumnType("numeric");
+
                     b.Property<string>("RegimeFiscale")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1277,6 +1280,10 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<DateTime>("ArchiviatoIl")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal>("ArrotondamentoDelMese")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
                     b.Property<decimal>("ArrotondamentoRiportato")
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)");
@@ -1341,6 +1348,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)");
 
+                    b.Property<string>("OrigineRedditoPresunto")
+                        .HasColumnType("text");
+
                     b.Property<string>("PdfProtetto")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1359,6 +1369,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.Property<decimal>("RimborsiSpeseDocumentate")
                         .HasPrecision(15, 2)
                         .HasColumnType("numeric(15,2)");
+
+                    b.Property<string>("SegnalazioniJson")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -1859,6 +1872,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("DeducibileIrpef")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Descrizione")
                         .IsRequired()
                         .HasColumnType("text");
@@ -2031,6 +2047,44 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
                     b.HasIndex("TenantId", "AziendaId", "DataScadenza");
 
                     b.ToTable("Durc");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.ElaborazioneAgricolaEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("AziendaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Mese")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Stato")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ValidataDa")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("ValidataIl")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AziendaId", "Anno", "Mese")
+                        .IsUnique();
+
+                    b.ToTable("ElaborazioniAgricole");
                 });
 
             modelBuilder.Entity("Paghe.Persistence.Entities.EsecuzioneRetentionEntity", b =>
@@ -3152,6 +3206,9 @@ namespace Paghe.Migrazioni.Postgres.Migrazioni
 
                     b.Property<string>("QualificaProfessionaleIstat")
                         .HasColumnType("text");
+
+                    b.Property<decimal?>("RedditoPresuntoAnnuo")
+                        .HasColumnType("numeric");
 
                     b.Property<string>("Regione")
                         .IsRequired()

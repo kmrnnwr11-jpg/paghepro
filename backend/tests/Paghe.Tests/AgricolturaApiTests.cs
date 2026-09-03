@@ -157,6 +157,31 @@ public sealed class AgricolturaApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Qualifica_DerivaDalTipoManodopera_MaiIlDefaultImpiegato()
+    {
+        using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
+        await CreaParametriNazionali2025Async();
+        // In scheda il rapporto porta ancora il default sbagliato «Impiegato»: la busta
+        // NON deve fidarsene, per un OTD col CCNL agricolo la qualifica è derivata.
+        Guid rapportoId = await CreaRapportoAgricoloAsync(_ultimoTenantId, qualifica: "Impiegato");
+
+        using var anteprima = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/anteprima", DatiOttobre2025());
+        Assert.Equal(HttpStatusCode.OK, anteprima.StatusCode);
+        using var json = JsonDocument.Parse(await anteprima.Content.ReadAsStringAsync());
+        Assert.Equal("Operaio agricolo — Area/Livello: Comune",
+            json.RootElement.GetProperty("qualifica").GetString());
+
+        using var pdf = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/pdf", DatiOttobre2025());
+        Assert.Equal(HttpStatusCode.OK, pdf.StatusCode);
+        using var documento = PdfDocument.Open(await pdf.Content.ReadAsByteArrayAsync());
+        string testo = string.Join("\n", documento.GetPages().Select(p => p.Text));
+        Assert.Contains("Operaio agricolo", testo);
+        Assert.DoesNotContain("Impiegato", testo);
+    }
+
+    [Fact]
     public async Task PdfCollegato_EUnaBozzaAgricolaCompletaENonCacheabile()
     {
         using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
@@ -296,22 +321,42 @@ public sealed class AgricolturaApiTests : IDisposable
     }
 
     [Fact]
-    public async Task Archivia_ConValidazioneDichiarata_IlPdfPerdeLaDicituraBozza()
+    public async Task Validazione_EDellElaborazioneMensile_NonDellaSingolaBusta()
     {
         using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
         await CreaParametriNazionali2025Async();
         Guid rapportoId = await CreaRapportoAgricoloAsync(_ultimoTenantId);
 
-        var dati = DatiOttobre2025() with { ValidataDa = "Luigi Verdi - Consulente del Lavoro" };
+        // La vecchia validazione per singola busta viene ignorata: la busta resta bozza.
+        var dati = DatiOttobre2025() with
+        {
+            GiorniDetrazione = 31,
+            ValidataDa = "Luigi Verdi - Consulente del Lavoro",
+        };
         using var archiviazione = await client.PostAsJsonAsync(
             $"/api/agricoltura/rapporti/{rapportoId}/cedolino/archivia", dati);
         Assert.Equal(HttpStatusCode.OK, archiviazione.StatusCode);
         using var esito = JsonDocument.Parse(await archiviazione.Content.ReadAsStringAsync());
-        Assert.Equal("Luigi Verdi - Consulente del Lavoro",
-            esito.RootElement.GetProperty("validataDa").GetString());
-        Assert.Contains("validata da Luigi Verdi",
-            esito.RootElement.GetProperty("avviso").GetString());
+        Assert.Equal("Bozza", esito.RootElement.GetProperty("statoElaborazione").GetString());
+        Assert.Contains(esito.RootElement.GetProperty("segnalazioni").EnumerateArray(),
+            s => s.GetProperty("codice").GetString() == "VALIDAZIONE_SINGOLA_IGNORATA");
         var bustaId = esito.RootElement.GetProperty("id").GetGuid();
+
+        Guid aziendaId;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            aziendaId = db.Rapporti.Single(r => r.Id == rapportoId).AziendaId;
+        }
+
+        // Si valida l'ELABORAZIONE del mese; i PDF archiviati vengono ristampati validati.
+        using var valida = await client.PostAsJsonAsync(
+            $"/api/aziende/{aziendaId}/agricoltura/elaborazioni/2025/10/valida",
+            new AgricolturaEndpoints.ValidaElaborazioneInput("Luigi Verdi - Consulente del Lavoro"));
+        Assert.Equal(HttpStatusCode.OK, valida.StatusCode);
+        using var esitoValida = JsonDocument.Parse(await valida.Content.ReadAsStringAsync());
+        Assert.Equal("Validata", esitoValida.RootElement.GetProperty("stato").GetString());
+        Assert.Equal(1, esitoValida.RootElement.GetProperty("busteRistampate").GetInt32());
 
         using var pdf = await client.GetAsync($"/api/cedolini-agricoli/{bustaId}/pdf");
         Assert.Equal(HttpStatusCode.OK, pdf.StatusCode);
@@ -323,6 +368,67 @@ public sealed class AgricolturaApiTests : IDisposable
         Assert.DoesNotContain("validato da", testo);
         // Il limite di legge resta anche sulla busta validata.
         Assert.Contains("non costituisce LUL", testo);
+
+        // Riarchiviare una busta del mese fa decadere la validazione: si torna bozza.
+        using var riarchivia = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/archivia",
+            DatiOttobre2025() with { GiorniDetrazione = 31, OreOrdinarie = 48m, GiornateLavorate = 6 });
+        Assert.Equal(HttpStatusCode.OK, riarchivia.StatusCode);
+        using var esitoRiarchivia = JsonDocument.Parse(await riarchivia.Content.ReadAsStringAsync());
+        Assert.True(esitoRiarchivia.RootElement.GetProperty("validazioneDecaduta").GetBoolean());
+
+        using var stato = await client.GetAsync(
+            $"/api/aziende/{aziendaId}/agricoltura/elaborazioni/2025/10");
+        using var esitoStato = JsonDocument.Parse(await stato.Content.ReadAsStringAsync());
+        Assert.Equal("Bozza", esitoStato.RootElement.GetProperty("stato").GetString());
+    }
+
+    [Fact]
+    public async Task Validazione_ConErroriApertiDelValidatore_Fallisce()
+    {
+        using var client = await ClientAutenticatoAsync(RuoloPolicy.Admin);
+        await CreaParametriNazionali2025Async();
+        Guid rapportoId = await CreaRapportoAgricoloAsync(_ultimoTenantId);
+
+        // 12 giorni di trasferta su 8 giornate lavorate: ERRORE del validatore. La busta si
+        // archivia comunque come bozza (l'anomalia va vista, non nascosta)...
+        var dati = DatiOttobre2025() with
+        {
+            GiorniDetrazione = 31,
+            Trasferte =
+            [
+                new AgricolturaEndpoints.TrasfertaBatchInput(7m, 3m),
+                new AgricolturaEndpoints.TrasfertaBatchInput(5m, 1m),
+            ],
+        };
+        using var archiviazione = await client.PostAsJsonAsync(
+            $"/api/agricoltura/rapporti/{rapportoId}/cedolino/archivia", dati);
+        Assert.Equal(HttpStatusCode.OK, archiviazione.StatusCode);
+        using var esito = JsonDocument.Parse(await archiviazione.Content.ReadAsStringAsync());
+        Assert.Contains(esito.RootElement.GetProperty("segnalazioni").EnumerateArray(),
+            s => s.GetProperty("codice").GetString() == "TRASFERTE_OLTRE_GIORNATE"
+                && s.GetProperty("livello").GetString() == "ERRORE");
+
+        Guid aziendaId;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            aziendaId = db.Rapporti.Single(r => r.Id == rapportoId).AziendaId;
+        }
+
+        // ...ma con un ERRORE aperto la validazione dell'elaborazione mensile deve fallire.
+        using var valida = await client.PostAsJsonAsync(
+            $"/api/aziende/{aziendaId}/agricoltura/elaborazioni/2025/10/valida",
+            new AgricolturaEndpoints.ValidaElaborazioneInput("Luigi Verdi - Consulente del Lavoro"));
+        Assert.Equal(HttpStatusCode.BadRequest, valida.StatusCode);
+        using var esitoValida = JsonDocument.Parse(await valida.Content.ReadAsStringAsync());
+        Assert.Contains(esitoValida.RootElement.GetProperty("errori").EnumerateArray(),
+            e => e.GetProperty("codice").GetString() == "TRASFERTE_OLTRE_GIORNATE");
+
+        await using var verifica = _factory.Services.CreateAsyncScope();
+        var contesto = verifica.ServiceProvider.GetRequiredService<PagheDbContext>();
+        Assert.DoesNotContain(contesto.ElaborazioniAgricole.ToList(),
+            e => e.Stato == ElaborazioneAgricolaEntity.StatoValidata);
     }
 
     // ---- Denuncia PosAgri (UniEmens agricolo) ------------------------------------------
@@ -499,7 +605,7 @@ public sealed class AgricolturaApiTests : IDisposable
         RedditoPresuntoAnnuo: 6000m);
 
     private async Task<Guid> CreaRapportoAgricoloAsync(
-        Guid tenantId, string tipoContratto = "Tempo determinato")
+        Guid tenantId, string tipoContratto = "Tempo determinato", string qualifica = "Operaio")
     {
         await using var scope = _factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
@@ -515,6 +621,8 @@ public sealed class AgricolturaApiTests : IDisposable
             Comune = "Cuneo",
             Provincia = "CN",
             HaDipendenti = true,
+            // La matricola INPS è obbligatoria per validare l'elaborazione mensile.
+            MatricolaInps = "5100123456",
             // Serve alla denuncia PosAgri: il tracciato vuole la persona fisica mittente.
             LegaleRappresentanteCodiceFiscale = "VRDLGI90A01F205J",
         };
@@ -536,7 +644,7 @@ public sealed class AgricolturaApiTests : IDisposable
             DipendenteId = dipendente.Id,
             CodiceCcnl = "AGRICOLTURA_OPERAI",
             Livello = "COMUNE",
-            Qualifica = "Operaio",
+            Qualifica = qualifica,
             TipoContratto = tipoContratto,
             ProvinciaLavoro = "CN",
             DataAssunzione = new DateOnly(2025, 10, 1),

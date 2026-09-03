@@ -108,7 +108,9 @@ public sealed class AnagraficheLavoroService
         decimal? ExFestivitaResidueIniziali = null,
         decimal? NettoConcordatoMensile = null,
         DateOnly? NettoConcordatoDecorrenza = null,
-        bool? RimuoviNettoConcordato = null);
+        bool? RimuoviNettoConcordato = null,
+        decimal? RedditoPresuntoAnnuo = null,
+        bool? RimuoviRedditoPresuntoAnnuo = null);
 
     /// <summary>
     /// Corregge i dati di un dipendente/rapporto (isolato per tenant). Pensato per rivedere ciò che
@@ -170,6 +172,18 @@ public sealed class AnagraficheLavoroService
                     + "retroattivo: le buste dei mesi passati restano calcolate dal lordo.");
             r.NettoConcordatoMensile = nettoConcordato;
             r.NettoConcordatoDecorrenza = decorrenza;
+        }
+        // Reddito annuo presunto (agricoli): guida aliquota media, detrazioni e trattamento
+        // integrativo. Un valore assurdo qui produce un'IRPEF sbagliata su tutte le buste.
+        if (c.RimuoviRedditoPresuntoAnnuo == true)
+        {
+            r.RedditoPresuntoAnnuo = null;
+        }
+        else if (c.RedditoPresuntoAnnuo is { } redditoPresunto)
+        {
+            if (redditoPresunto <= 0m)
+                throw new ArgumentException("Il reddito annuo presunto deve essere un importo positivo.");
+            r.RedditoPresuntoAnnuo = redditoPresunto;
         }
         if (c.Regione is not null) r.Regione = c.Regione.Trim();
         if (c.CodiceCatastaleComune is not null) r.CodiceCatastaleComune = c.CodiceCatastaleComune.Trim().ToUpperInvariant();

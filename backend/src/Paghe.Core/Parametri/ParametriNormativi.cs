@@ -138,6 +138,16 @@ public sealed class ParametriNormativi
     /// <summary>Reddito dell'anno precedente oltre il quale il premio non è agevolabile: 80.000 €.</summary>
     public decimal PremioRisultatoRedditoMassimo { get; init; } = 80000m;
 
+    /// <summary>
+    /// Trattamento integrativo (art. 1 DL 3/2020, «ex bonus 100 €»): importo annuo pieno,
+    /// 1.200 €. Spetta solo se l'IRPEF lorda annua supera la detrazione annua art. 13 c.1
+    /// (capienza) e si rapporta ai giorni di detrazione.
+    /// </summary>
+    public decimal TrattamentoIntegrativoAnnuo { get; init; } = 1200m;
+
+    /// <summary>Reddito complessivo entro cui spetta il trattamento integrativo pieno: 15.000 €.</summary>
+    public decimal TrattamentoIntegrativoSogliaReddito { get; init; } = 15000m;
+
     public AliquotaInps AliquotaInps(Qualifica qualifica) =>
         AliquoteInps.TryGetValue(qualifica, out var a)
             ? a

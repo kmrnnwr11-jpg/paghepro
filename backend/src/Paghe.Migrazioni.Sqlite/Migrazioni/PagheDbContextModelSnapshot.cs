@@ -811,6 +811,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("RedditoPresuntoAgricoloAnnuo")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("RegimeFiscale")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -1272,6 +1275,10 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.Property<DateTime>("ArchiviatoIl")
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("ArrotondamentoDelMese")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("ArrotondamentoRiportato")
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
@@ -1336,6 +1343,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasPrecision(15, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OrigineRedditoPresunto")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PdfProtetto")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -1353,6 +1363,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
 
                     b.Property<decimal>("RimborsiSpeseDocumentate")
                         .HasPrecision(15, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SegnalazioniJson")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("TenantId")
@@ -1854,6 +1867,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("DeducibileIrpef")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Descrizione")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -2026,6 +2042,44 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.HasIndex("TenantId", "AziendaId", "DataScadenza");
 
                     b.ToTable("Durc");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.ElaborazioneAgricolaEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Anno")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("AziendaId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Mese")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Stato")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ValidataDa")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ValidataIl")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AziendaId", "Anno", "Mese")
+                        .IsUnique();
+
+                    b.ToTable("ElaborazioniAgricole");
                 });
 
             modelBuilder.Entity("Paghe.Persistence.Entities.EsecuzioneRetentionEntity", b =>
@@ -3144,6 +3198,9 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                         .HasColumnType("TEXT");
 
                     b.Property<string>("QualificaProfessionaleIstat")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("RedditoPresuntoAnnuo")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Regione")

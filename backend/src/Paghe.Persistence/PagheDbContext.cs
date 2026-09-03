@@ -74,6 +74,7 @@ public class PagheDbContext : DbContext
     public DbSet<PraticaF24Entity> PraticheF24 => Set<PraticaF24Entity>();
     // Buste agricole archiviate: tabella separata dai cedolini ordinari, vedi l'entità.
     public DbSet<CedolinoAgricoloEntity> CedoliniAgricoli => Set<CedolinoAgricoloEntity>();
+    public DbSet<ElaborazioneAgricolaEntity> ElaborazioniAgricole => Set<ElaborazioneAgricolaEntity>();
     public DbSet<PreferenzaUtenteEntity> PreferenzeUtenti => Set<PreferenzaUtenteEntity>();
     public DbSet<PraticaInailEntity> PraticheInail => Set<PraticaInailEntity>();
     public DbSet<AvvisoPagamentoEntity> AvvisiPagamento => Set<AvvisoPagamentoEntity>();
@@ -733,8 +734,18 @@ public class PagheDbContext : DbContext
                 nameof(CedolinoAgricoloEntity.ImponibileIrpef),
                 nameof(CedolinoAgricoloEntity.IrpefNetta),
                 nameof(CedolinoAgricoloEntity.NettoInBusta),
+                nameof(CedolinoAgricoloEntity.ArrotondamentoDelMese),
             })
                 e.Property(importo).HasPrecision(15, 2);
+        });
+
+        mb.Entity<ElaborazioneAgricolaEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            // Un solo stato per azienda e periodo: è l'elaborazione mensile, non la busta.
+            e.HasIndex(x => new { x.TenantId, x.AziendaId, x.Anno, x.Mese }).IsUnique();
+            e.Property(x => x.Stato).HasMaxLength(20);
+            e.Property(x => x.ValidataDa).HasMaxLength(200);
         });
 
         mb.Entity<PraticaF24Entity>(e =>

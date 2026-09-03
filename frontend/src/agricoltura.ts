@@ -52,10 +52,12 @@ export function validaDatiCedolinoAgricolo(dati: DatiMensiliCedolinoAgricolo): s
     errori.push("Le detrazioni gia godute non possono essere negative.");
   if (!Number.isFinite(dati.arrotondamentoRiportato))
     errori.push("Il riporto arrotondamenti non e valido.");
-  if (dati.redditoPresuntoAnnuo === null
-      || !Number.isFinite(dati.redditoPresuntoAnnuo)
-      || dati.redditoPresuntoAnnuo <= 0)
-    errori.push("Indica il reddito annuo presunto reale del rapporto.");
+  // Il reddito presunto può restare vuoto: il server lo prende dalla scheda del rapporto,
+  // dal default aziendale o lo stima dal contratto (tracciandone l'origine). Se però viene
+  // digitato, deve essere un numero positivo.
+  if (dati.redditoPresuntoAnnuo !== null
+      && (!Number.isFinite(dati.redditoPresuntoAnnuo) || dati.redditoPresuntoAnnuo <= 0))
+    errori.push("Il reddito annuo presunto, se indicato, deve essere un importo positivo.");
   return errori;
 }
 

@@ -67,9 +67,15 @@ test("giornate e giorni detrazione non possono superare il mese", () => {
   assert.ok(errori.every((errore) => errore.includes("28")));
 });
 
-test("il reddito presunto e obbligatorio per non annualizzare un mese stagionale", () => {
-  const errori = validaDatiCedolinoAgricolo({ ...validi, redditoPresuntoAnnuo: null });
-  assert.deepEqual(errori, ["Indica il reddito annuo presunto reale del rapporto."]);
+test("il reddito presunto puo restare vuoto (lo deriva il server), ma se digitato deve essere positivo", () => {
+  // Vuoto: il server lo prende da scheda/default aziendale o lo stima dal contratto.
+  assert.deepEqual(validaDatiCedolinoAgricolo({ ...validi, redditoPresuntoAnnuo: null }), []);
+  assert.deepEqual(
+    validaDatiCedolinoAgricolo({ ...validi, redditoPresuntoAnnuo: -1 }),
+    ["Il reddito annuo presunto, se indicato, deve essere un importo positivo."]);
+  assert.deepEqual(
+    validaDatiCedolinoAgricolo({ ...validi, redditoPresuntoAnnuo: Number.NaN }),
+    ["Il reddito annuo presunto, se indicato, deve essere un importo positivo."]);
 });
 
 test("le ore al giorno vengono dal contratto: 30 h/sett. su 6 giorni = 5", () => {

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Paghe.Core.Calcolo;
 using Paghe.Core.Domain;
 using Paghe.Core.Parametri;
 using QuestPDF.Fluent;
@@ -16,13 +17,15 @@ public static class CedolinoAgricoloPdf
 {
     private static readonly CultureInfo It = CultureInfo.GetCultureInfo("it-IT");
 
-    private const string Verde = "#1F5B45";
-    private const string VerdeChiaro = "#DCEDE5";
-    private const string Testo = "#17352B";
-    private const string Secondario = "#62766E";
-    private const string Bordo = "#C9DAD2";
-    private const string Fondo = "#F4F8F6";
-    private const string Avviso = "#A33A16";
+    // Stampa in bianco e nero: la busta va bene su qualunque stampante da ufficio, quindi
+    // niente sfondi o testi colorati — solo nero e toni di grigio.
+    private const string Verde = "#1A1A1A";
+    private const string VerdeChiaro = "#EFEFEF";
+    private const string Testo = "#000000";
+    private const string Secondario = "#4A4A4A";
+    private const string Bordo = "#B5B5B5";
+    private const string Fondo = "#F4F4F4";
+    private const string Avviso = "#000000";
     private const string Bianco = "#FFFFFF";
 
     public static byte[] Genera(
@@ -34,7 +37,8 @@ public static class CedolinoAgricoloPdf
         string fontFamily = "Lato",
         string? dicituraStudio = null,
         string? validataDa = null,
-        DateOnly? validataIl = null)
+        DateOnly? validataIl = null,
+        IReadOnlyList<SegnalazioneBustaAgricola>? segnalazioni = null)
     {
         ArgumentNullException.ThrowIfNull(cedolino);
         ArgumentNullException.ThrowIfNull(intestazione);
@@ -45,7 +49,7 @@ public static class CedolinoAgricoloPdf
         DocumentiConfig.Inizializza();
         return Document.Create(documento => documento.Page(pagina =>
             Pagina(pagina, cedolino, intestazione, rapporto, cartellino, parametri, fontFamily,
-                dicituraStudio, validataDa, validataIl))).GeneratePdf();
+                dicituraStudio, validataDa, validataIl, segnalazioni))).GeneratePdf();
     }
 
     private static void Pagina(
@@ -58,7 +62,8 @@ public static class CedolinoAgricoloPdf
         string fontFamily,
         string? dicituraStudio,
         string? validataDa,
-        DateOnly? validataIl)
+        DateOnly? validataIl,
+        IReadOnlyList<SegnalazioneBustaAgricola>? segnalazioni)
     {
         pagina.Size(PageSizes.A4);
         pagina.MarginHorizontal(0.9f, Unit.Centimetre);
@@ -77,6 +82,10 @@ public static class CedolinoAgricoloPdf
             colonna.Item().Element(c => Voci(c, cedolino));
             colonna.Item().ShowEntire().Element(c => Quadri(c, cedolino, rapporto, cartellino, parametri));
             colonna.Item().ShowEntire().Element(c => NotaAgricola(c, parametri));
+            // In bozza le segnalazioni del validatore compaiono in calce, sotto la nota
+            // «come leggere»: chi controlla la busta deve vederle sul documento stesso.
+            if (string.IsNullOrWhiteSpace(validataDa) && segnalazioni is { Count: > 0 })
+                colonna.Item().ShowEntire().Element(c => BoxSegnalazioni(c, segnalazioni));
             colonna.Item().ShowEntire().Element(c => Fonte(c, parametri.Fonte));
         });
 
@@ -296,7 +305,8 @@ public static class CedolinoAgricoloPdf
             {
                 ("Imponibile contributivo", Euro(cedolino.ImponibileInps)),
                 ("Contributi c/lavoratore", Euro(cedolino.ContributiDipendente)),
-                ("Aliquota totale c/lavoratore", Percentuale(parametri.AliquotaTotaleDipendente)),
+                ("Aliquota totale c/lavoratore",
+                    FormatoAliquota.Percentuale(parametri.AliquotaTotaleDipendente)),
                 ("Giornate lavorate", cartellino.GiornateLavorate.ToString(It)),
             });
             riga.ConstantItem(5);
@@ -310,7 +320,8 @@ public static class CedolinoAgricoloPdf
                 ("Giorni di detrazione", cartellino.GiorniDetrazione.ToString(It)),
                 ("Detrazioni gia godute", Euro(cartellino.DetrazioniGiaGoduteAnno)),
                 ("Detrazioni del mese", Euro(cedolino.DetrazioniLavoroDipendente)),
-                ("Contributi deducibili", Percentuale(parametri.AliquotaContributiDeducibili)),
+                ("Contributi deducibili",
+                    FormatoAliquota.Percentuale(parametri.AliquotaDeducibileEffettiva)),
                 ("IRPEF netta", Euro(cedolino.IrpefNetta)),
             });
             riga.ConstantItem(5);
@@ -335,10 +346,25 @@ public static class CedolinoAgricoloPdf
                     + "destinato alla denuncia UniEmens/PosAgri. Il terzo elemento e gia compreso nella "
                     + "paga oraria. I contributi definitivi a carico dell'azienda sono calcolati "
                     + "dall'INPS dopo la denuncia e non sono certificati da questo prospetto. "
-                    + $"La quota deducibile del {Percentuale(parametri.AliquotaContributiDeducibili)} "
+                    + $"La quota deducibile del {FormatoAliquota.Percentuale(parametri.AliquotaDeducibileEffettiva)} "
                     + "e il livello tariffario osservato devono essere "
                     + "confermati dal professionista.")
                     .FontSize(6.2f).FontColor(Testo);
+            });
+
+    private static void BoxSegnalazioni(
+        IContainer contenitore, IReadOnlyList<SegnalazioneBustaAgricola> segnalazioni) =>
+        contenitore.Border(0.7f).BorderColor(Testo).PaddingVertical(5).PaddingHorizontal(7)
+            .Column(colonna =>
+            {
+                colonna.Item().Text("CONTROLLI DEL VALIDATORE SU QUESTA BUSTA (BOZZA)")
+                    .FontSize(6.2f).SemiBold().FontColor(Testo);
+                foreach (var s in segnalazioni)
+                    colonna.Item().PaddingTop(1.5f).Text(testo =>
+                    {
+                        testo.Span($"{s.Livello}  ").FontSize(6f).SemiBold().FontColor(Testo);
+                        testo.Span(s.Messaggio).FontSize(6f).FontColor(Secondario);
+                    });
             });
 
     private static void Fonte(IContainer contenitore, string fonte) =>
@@ -355,7 +381,7 @@ public static class CedolinoAgricoloPdf
             .DefaultTextStyle(stile => stile.FontSize(6.4f))
             .Text(testo =>
             {
-                testo.Span($"{numero}   ").FontColor("#A9D2BE");
+                testo.Span($"{numero}   ").FontColor("#BBBBBB");
                 testo.Span(titolo.ToUpperInvariant()).SemiBold().FontColor(Bianco).LetterSpacing(0.08f);
             });
 
@@ -440,7 +466,6 @@ public static class CedolinoAgricoloPdf
     private static string Euro(decimal valore) => valore.ToString("N2", It);
     private static string Numero(decimal valore, int decimali = 2) =>
         valore.ToString($"N{decimali}", It);
-    private static string Percentuale(decimal valore) => valore.ToString("P2", It);
     private static string ImportoInformativo(CedolinoRiga voce) =>
         string.Equals(voce.Codice, "AGR_ARROT", StringComparison.OrdinalIgnoreCase)
             ? voce.Importo > 0m

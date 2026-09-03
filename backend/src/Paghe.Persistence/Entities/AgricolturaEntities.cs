@@ -46,6 +46,12 @@ public class ContributoAgricoloEntity
     public decimal Aliquota { get; set; }
     public bool ACaricoDipendente { get; set; }
 
+    /// <summary>
+    /// True se la trattenuta riduce l'imponibile IRPEF (FAP sì, assistenza contrattuale di
+    /// regola no). Configurazione da confermare col Consulente del Lavoro, non codice.
+    /// </summary>
+    public bool DeducibileIrpef { get; set; }
+
     /// <summary>Ordine di esposizione in busta: le buste reali hanno un ordine preciso.</summary>
     public int Ordine { get; set; }
 }

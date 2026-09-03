@@ -83,6 +83,40 @@ public sealed class CedoliniAgricoliService
         return esistente ?? busta;
     }
 
+    /// <summary>
+    /// Busta archiviata del mese precedente a quello indicato, se esiste: serve al recupero
+    /// automatico dell'arrotondamento anticipato (voce AGR_ARROT_REC del mese successivo).
+    /// </summary>
+    public async Task<CedolinoAgricoloEntity?> BustaMesePrecedenteAsync(
+        Guid tenantId, Guid rapportoId, int anno, int mese, CancellationToken ct = default)
+    {
+        int annoPrecedente = mese == 1 ? anno - 1 : anno;
+        int mesePrecedente = mese == 1 ? 12 : mese - 1;
+        return await _db.CedoliniAgricoli.AsNoTracking().FirstOrDefaultAsync(
+            c => c.TenantId == tenantId && c.RapportoLavoroId == rapportoId
+                && c.Anno == annoPrecedente && c.Mese == mesePrecedente, ct);
+    }
+
+    /// <summary>
+    /// Sostituisce il PDF conservato di una busta (ristampa con lo stato dell'elaborazione
+    /// validato): il contenuto numerico non cambia, la versione sale perché il documento
+    /// consegnabile è un altro.
+    /// </summary>
+    public async Task AggiornaPdfAsync(
+        Guid tenantId, Guid id, byte[] pdf, CancellationToken ct = default)
+    {
+        if (pdf is not { Length: > 0 }) throw new ArgumentException("PDF mancante.", nameof(pdf));
+        var busta = await _db.CedoliniAgricoli.FirstOrDefaultAsync(
+            c => c.Id == id && c.TenantId == tenantId, ct)
+            ?? throw new ArgumentException("Busta agricola archiviata non trovata.");
+        busta.HashPdfSha256 = CedolinoSnapshotCodec.Hash(pdf);
+        busta.PdfProtetto = _db.Protettore.ProteggiConContesto(
+            Convert.ToBase64String(pdf),
+            ContestoDatiProtetti.PdfCedolinoAgricolo(tenantId, busta.Id))!;
+        busta.Versione += 1;
+        await _db.SaveChangesAsync(ct);
+    }
+
     /// <summary>Buste archiviate di un'azienda, dalla più recente; filtrabili per periodo.</summary>
     public async Task<List<CedolinoAgricoloEntity>> ElencoAsync(
         Guid tenantId, Guid aziendaId, int? anno = null, int? mese = null,

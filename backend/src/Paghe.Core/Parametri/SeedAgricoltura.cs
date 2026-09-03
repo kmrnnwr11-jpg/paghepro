@@ -32,11 +32,14 @@ public static class SeedAgricoltura
         {
             new ContributoAgricolo("32300", "Contributo FAVLA Cuneo", 0.0030m, ACaricoDipendente: true),
             new ContributoAgricolo("32301", "CAC provinciale Cuneo", 0.0020m, ACaricoDipendente: true),
-            new ContributoAgricolo("40000", "Contributo FAP (IVS) zona normale", 0.0884m, ACaricoDipendente: true),
+            new ContributoAgricolo("40000", "Contributo FAP (IVS) zona normale", 0.0884m,
+                ACaricoDipendente: true, DeducibileIrpef: true),
             new ContributoAgricolo("45000", "CAC nazionale", 0.0020m, ACaricoDipendente: true),
             new ContributoAgricolo("32301A", "CAC provinciale Cuneo c/azienda", 0.0044m, ACaricoDipendente: false),
         },
 
+        // Valore OSSERVATO sulle buste reali (7,80%): finché il consulente non spiega lo
+        // scarto dal FAP 8,84%, vince sui flag DeducibileIrpef (vedi ParametriAgricoli).
         AliquotaContributiDeducibili = 0.0780m,
     };
 }

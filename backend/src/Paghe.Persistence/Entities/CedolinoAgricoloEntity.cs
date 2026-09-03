@@ -40,6 +40,19 @@ public sealed class CedolinoAgricoloEntity
     public bool UltimoCedolino { get; set; }
     public decimal RedditoPresuntoAnnuo { get; set; }
 
+    /// <summary>Da dove viene il reddito presunto usato: richiesta | anagrafica | default | calcolato.</summary>
+    public string? OrigineRedditoPresunto { get; set; }
+
+    /// <summary>
+    /// Arrotondamento del netto anticipato in QUESTA busta: la busta del mese successivo lo
+    /// recupera in automatico con la voce AGR_ARROT_REC. Se il lavoratore cessa senza un'altra
+    /// busta, resta a carico dell'azienda e il riepilogo mensile lo segnala.
+    /// </summary>
+    public decimal ArrotondamentoDelMese { get; set; }
+
+    /// <summary>Segnalazioni del validatore al momento dell'archiviazione (JSON), per il riepilogo.</summary>
+    public string? SegnalazioniJson { get; set; }
+
     // --- Risultato del calcolo: elenchi e riscontri senza riaprire il PDF ---
     public decimal TotaleCompetenze { get; set; }
     public decimal TotaleTrattenute { get; set; }

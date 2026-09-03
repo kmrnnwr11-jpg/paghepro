@@ -162,6 +162,12 @@ public class AziendaEntity
     /// </summary>
     public bool AderisceFondiContrattuali { get; set; } = true;
 
+    /// <summary>
+    /// Default aziendale del reddito annuo presunto degli operai agricoli OTD: vale per i
+    /// rapporti che non lo indicano in scheda. Null = nessun default, si stima dal contratto.
+    /// </summary>
+    public decimal? RedditoPresuntoAgricoloAnnuo { get; set; }
+
     /// <summary>"Artigiano", "Commerciante", "Professionista", "Societa".</summary>
     public string? TipoContribuente { get; set; }
     public bool AssoggettataIva { get; set; } = true;

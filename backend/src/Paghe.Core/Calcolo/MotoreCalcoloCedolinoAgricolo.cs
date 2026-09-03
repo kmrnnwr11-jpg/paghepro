@@ -65,6 +65,12 @@ public sealed class MotoreCalcoloCedolinoAgricolo
                 ? [new TrasfertaGiorniAgricola(
                     cartellino.GiorniTrasferta, cartellino.IndennitaTrasfertaGiornaliera)]
                 : [];
+        // Gruppi con lo stesso importo giornaliero → una sola riga in busta (es. 4 g + 1 g
+        // a 20 € diventano 5 g × 20 €): stessa aritmetica, lettura più onesta.
+        gruppiTrasferta = gruppiTrasferta
+            .GroupBy(g => g.ImportoGiorno)
+            .Select(g => new TrasfertaGiorniAgricola(g.Sum(x => x.Giorni), g.Key))
+            .ToList();
         foreach (var gruppo in gruppiTrasferta)
         {
             var trasferta = CalcoloElementiAgevolati.Trasferta(
@@ -110,27 +116,30 @@ public sealed class MotoreCalcoloCedolinoAgricolo
             decimal importo = Arrotondamento.Euro(imponibileContributivo * contributo.Aliquota);
             if (importo == 0m) continue;
 
+            // L'etichetta stampa l'aliquota con TUTTI i decimali significativi: la stessa
+            // costante configurata guida calcolo e dicitura, mai due percentuali diverse.
+            string etichetta =
+                $"{contributo.Descrizione} ({FormatoAliquota.Percentuale(contributo.Aliquota)})";
             if (contributo.ACaricoDipendente)
             {
-                AggiungiRiga(cedolino, contributo.Codice,
-                    $"{contributo.Descrizione} ({contributo.Aliquota:P2})", TipoVoce.Trattenuta,
+                AggiungiRiga(cedolino, contributo.Codice, etichetta, TipoVoce.Trattenuta,
                     @base: imponibileContributivo, importo: -importo);
                 contributiDipendente += importo;
             }
             else
             {
-                AggiungiRiga(cedolino, contributo.Codice,
-                    $"{contributo.Descrizione} ({contributo.Aliquota:P2})", TipoVoce.Figurativa,
+                AggiungiRiga(cedolino, contributo.Codice, etichetta, TipoVoce.Figurativa,
                     @base: imponibileContributivo, importo: importo);
                 contributiDatore += importo;
             }
         }
 
         // ---- 3. IRPEF ------------------------------------------------------------------
-        // Solo una parte dei contributi trattenuti riduce l'imponibile fiscale: i contributi
-        // di assistenza contrattuale non sono oneri deducibili.
+        // Solo una parte dei contributi trattenuti riduce l'imponibile fiscale: decide il
+        // flag DeducibileIrpef di ogni contributo (di regola: FAP sì, assistenza contrattuale
+        // no), salvo il valore osservato sulle buste reali quando configurato.
         decimal contributiDeducibili = Arrotondamento.Euro(
-            imponibileContributivo * _agricoli.AliquotaContributiDeducibili);
+            imponibileContributivo * _agricoli.AliquotaDeducibileEffettiva);
         decimal imponibileFiscale = Arrotondamento.Euro(
             totaleCompetenze - sommeEsenti - contributiDeducibili);
 
@@ -150,6 +159,31 @@ public sealed class MotoreCalcoloCedolinoAgricolo
             AggiungiRiga(cedolino, "IRPEF", "IRPEF netta del mese", TipoVoce.Trattenuta,
                 @base: imponibileFiscale, importo: -irpefNetta);
 
+        // Trattamento integrativo (art. 1 DL 3/2020): spetta entro la soglia di reddito e
+        // SOLO con capienza, cioè se l'IRPEF lorda annua presunta supera la detrazione annua
+        // art. 13 c.1 dell'intero anno. Quota del mese rapportata ai giorni di detrazione.
+        // Non è retribuzione: resta fuori da imponibile contributivo e fiscale (già calcolati).
+        decimal trattamentoIntegrativo = 0m;
+        if (rapporto.DetrazioniLavoroDipendente
+            && redditoPresunto > 0m
+            && redditoPresunto <= _parametri.TrattamentoIntegrativoSogliaReddito
+            && cartellino.GiorniDetrazione > 0)
+        {
+            decimal irpefLordaAnnua = CalcoloIrpef.IrpefLordaAnnua(
+                redditoPresunto, _parametri.ScaglioniIrpef);
+            decimal detrazioneAnnuaIntera = CalcoloIrpef.DetrazioneLavoroDipendenteAnnua(
+                redditoPresunto, 365, MinimoDetrazione(rapporto.Tipo));
+            if (irpefLordaAnnua > detrazioneAnnuaIntera)
+            {
+                trattamentoIntegrativo = Arrotondamento.Euro(
+                    _parametri.TrattamentoIntegrativoAnnuo * cartellino.GiorniDetrazione / 365m);
+                AggiungiRiga(cedolino, "TRATT_INTEGR",
+                    "Trattamento integrativo (art. 1 DL 3/2020)", TipoVoce.Competenza,
+                    importo: trattamentoIntegrativo);
+                totaleCompetenze += trattamentoIntegrativo;
+            }
+        }
+
         // ---- 4. Addizionali ------------------------------------------------------------
         // Ripartite sulla quota di reddito annuo maturata nel mese. Restano a zero finché non
         // si conosce il comune di residenza: inventare un'aliquota qui è una trattenuta finta.
@@ -167,6 +201,13 @@ public sealed class MotoreCalcoloCedolinoAgricolo
                 importo: -addComunale);
 
         // ---- 5. Netto e arrotondamento -------------------------------------------------
+        // L'arrotondamento anticipato nel mese precedente si recupera SUBITO nella busta
+        // successiva, come voce esplicita, prima di calcolare il nuovo arrotondamento.
+        if (cartellino.ArrotondamentoRiportato != 0m)
+            AggiungiRiga(cedolino, "AGR_ARROT_REC", "Recupero arrotondamento mese precedente",
+                TipoVoce.Trattenuta,
+                importo: -Arrotondamento.Euro(cartellino.ArrotondamentoRiportato));
+
         decimal totaleTrattenute = Somma(cedolino, TipoVoce.Trattenuta);
         decimal nettoEsatto = Arrotondamento.Euro(totaleCompetenze - totaleTrattenute);
 
@@ -174,13 +215,12 @@ public sealed class MotoreCalcoloCedolinoAgricolo
         // sulle buste reali 599,12 diventa 600,00 — e la differenza anticipata si trascina.
         // L'ultimo cedolino paga l'esatto e chiude il conto degli arrotondamenti.
         decimal netto = cartellino.UltimoCedolino
-            ? Arrotondamento.Euro(nettoEsatto - cartellino.ArrotondamentoRiportato)
+            ? nettoEsatto
             : Math.Ceiling(nettoEsatto);
         decimal arrotondamento = Arrotondamento.Euro(netto - nettoEsatto);
 
         if (arrotondamento != 0m)
-            AggiungiRiga(cedolino, "AGR_ARROT",
-                cartellino.UltimoCedolino ? "Recupero arrotondamenti precedenti" : "Arrotondamento del netto",
+            AggiungiRiga(cedolino, "AGR_ARROT", "Arrotondamento del netto",
                 TipoVoce.Figurativa, importo: arrotondamento);
 
         cedolino.TotaleCompetenze = totaleCompetenze;

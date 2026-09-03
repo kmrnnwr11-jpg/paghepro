@@ -292,7 +292,7 @@ public sealed class ParametriNormativiService
                 .ToList(),
             Contributi = contributi
                 .Select(c => new ContributoAgricolo(
-                    c.Codice, c.Descrizione, c.Aliquota, c.ACaricoDipendente))
+                    c.Codice, c.Descrizione, c.Aliquota, c.ACaricoDipendente, c.DeducibileIrpef))
                 .ToList(),
         };
     }
@@ -340,7 +340,8 @@ public sealed class ParametriNormativiService
             {
                 Id = Guid.NewGuid(), Anno = parametri.Anno, Provincia = provincia,
                 Codice = c.Codice, Descrizione = c.Descrizione, Aliquota = c.Aliquota,
-                ACaricoDipendente = c.ACaricoDipendente, Ordine = ordine++,
+                ACaricoDipendente = c.ACaricoDipendente, DeducibileIrpef = c.DeducibileIrpef,
+                Ordine = ordine++,
             });
 
         await _db.SaveChangesAsync(ct);

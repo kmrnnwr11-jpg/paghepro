@@ -45,11 +45,11 @@ export type SectionKey =
  * (`AiChatEndpoints.SezioniApribili`).
  */
 export const SEZIONI_APRIBILI_DA_AURORA: readonly SectionKey[] = [
-  "dashboard", "aziende", "dipendenti", "presenze", "cedolini", "calcolo", "f24",
-  "adempimenti", "scadenzario", "fatture", "pagamenti", "contabilita", "lipe",
-  "iva-annuale", "bilancio", "documenti", "elaborazioni", "fine-anno", "cu", "mod770",
-  "redditi-pf", "irap", "ires", "imu", "intrastat", "pratiche", "moduli", "firma",
-  "posta", "agricoltura",
+  "dashboard", "aziende", "dipendenti", "presenze", "controllo-mese", "cedolini",
+  "calcolo", "f24", "adempimenti", "scadenzario", "fatture", "pagamenti", "contabilita",
+  "lipe", "iva-annuale", "bilancio", "documenti", "elaborazioni", "fine-anno", "cu",
+  "mod770", "redditi-pf", "irap", "ires", "imu", "intrastat", "pratiche", "moduli",
+  "firma", "posta", "agricoltura",
 ];
 
 export function sezioneApribileDaAurora(sezione: string): SectionKey | null {

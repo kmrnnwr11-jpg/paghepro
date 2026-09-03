@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Gauge } from "lucide-react";
-import { api, type CruscottoMese, type StatoCruscottoRapporto } from "../api";
+import { ChevronDown, ChevronRight, Gauge, Play } from "lucide-react";
+import {
+  api,
+  type CruscottoMese,
+  type EsitoElaborazioneMassiva,
+  type StatoCruscottoRapporto,
+} from "../api";
 
 const oggi = new Date();
 const MESI = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -27,6 +32,9 @@ export function ControlloMese() {
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
   const [aperte, setAperte] = useState<Record<string, boolean>>({});
+  const [elaborando, setElaborando] = useState<string | null>(null);
+  const [esitiBatch, setEsitiBatch] = useState<Record<string, EsitoElaborazioneMassiva>>({});
+  const [versione, setVersione] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -41,7 +49,30 @@ export function ControlloMese() {
       })
       .finally(() => { if (!controller.signal.aborted) setCaricamento(false); });
     return () => controller.abort();
-  }, [anno, mese]);
+  }, [anno, mese, versione]);
+
+  // Cambiando periodo gli esiti dell'ultima elaborazione non descrivono più ciò che si vede.
+  useEffect(() => { setEsitiBatch({}); }, [anno, mese]);
+
+  async function elaboraPronti(aziendaId: string, quanti: number) {
+    if (elaborando) return;
+    const conferma = window.confirm(
+      `Elaborare adesso i ${quanti} cedolini pronti di questa azienda? `
+      + "Ogni dipendente passa dagli stessi controlli dell'elaborazione manuale.",
+    );
+    if (!conferma) return;
+    setElaborando(aziendaId);
+    try {
+      const esito = await api.elaboraPronti(aziendaId, anno, mese);
+      setEsitiBatch((e) => ({ ...e, [aziendaId]: esito }));
+      setAperte((a) => ({ ...a, [aziendaId]: true }));
+      setVersione((v) => v + 1);
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Elaborazione non riuscita.");
+    } finally {
+      setElaborando(null);
+    }
+  }
 
   const totali = (cruscotto?.aziende ?? []).reduce(
     (somma, azienda) => ({
@@ -144,6 +175,35 @@ export function ControlloMese() {
                       <span className="status-pill red">{azienda.bloccati}</span>
                     )}
                   </button>
+                  {azienda.pronti > 0 && (
+                    <button
+                      type="button"
+                      className="btn primary compact"
+                      disabled={elaborando !== null}
+                      onClick={() => void elaboraPronti(azienda.aziendaId, azienda.pronti)}
+                    >
+                      <Play size={14} aria-hidden="true" />
+                      {elaborando === azienda.aziendaId
+                        ? "Elaborazione in corso…"
+                        : `Elabora i ${azienda.pronti} pronti`}
+                    </button>
+                  )}
+                  {esitiBatch[azienda.aziendaId] && (
+                    <div className="muto" role="status">
+                      <strong>Elaborazione completata:</strong>{" "}
+                      {esitiBatch[azienda.aziendaId].elaborati} riusciti,{" "}
+                      {esitiBatch[azienda.aziendaId].falliti} da sistemare.
+                      <ul>
+                        {esitiBatch[azienda.aziendaId].esiti.map((r) => (
+                          <li key={r.rapportoId}>
+                            {r.nominativo}: {r.riuscita
+                              ? `elaborato, netto ${(r.netto ?? 0).toLocaleString("it-IT", { minimumFractionDigits: 2 })} €`
+                              : r.errore}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {aperta && azienda.rapporti.length > 0 && (
                     <div className="table-wrap">
                       <table className="data-table">

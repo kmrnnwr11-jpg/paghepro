@@ -412,6 +412,14 @@ export interface CruscottoMese {
   anno: number; mese: number; aziendeTotali: number; elencoTagliato: boolean;
   aziende: AziendaCruscotto[];
 }
+export interface EsitoElaborazioneRapporto {
+  rapportoId: string; nominativo: string; riuscita: boolean;
+  netto: number | null; errore: string | null;
+}
+export interface EsitoElaborazioneMassiva {
+  anno: number; mese: number; elaborati: number; falliti: number;
+  esiti: EsitoElaborazioneRapporto[];
+}
 export interface RedditiPfInputReq {
   altriRedditi: number; oneriDeducibili: number; oneriDetraibili19: number; acconti: number;
 }
@@ -918,6 +926,10 @@ export const api = {
 
   cruscottoMese: (anno: number, mese: number, signal?: AbortSignal) =>
     req<CruscottoMese>(`/api/cruscotto-mese/${anno}/${mese}`, { signal }),
+
+  elaboraPronti: (aziendaId: string, anno: number, mese: number) =>
+    req<EsitoElaborazioneMassiva>(
+      `/api/aziende/${aziendaId}/elabora-pronti/${anno}/${mese}`, { method: "POST" }),
 
   // --- Fine anno: conguaglio IRPEF, rivalutazione TFR, autoliquidazione INAIL ---
   conguaglioAnnuale: (rapportoId: string, anno: number) =>

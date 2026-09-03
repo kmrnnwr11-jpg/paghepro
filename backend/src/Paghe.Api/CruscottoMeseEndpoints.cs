@@ -28,6 +28,23 @@ public static class CruscottoMeseEndpoints
             }
         }).RequireAuthorization();
 
+        // «Elabora i pronti»: i rapporti col cartellino salvato e senza cedolino passano
+        // uno per uno dal percorso di elaborazione verificato; gli esiti tornano per riga.
+        app.MapPost("/api/aziende/{aziendaId:guid}/elabora-pronti/{anno:int}/{mese:int}", async (
+            Guid aziendaId, int anno, int mese, ClaimsPrincipal user,
+            ElaborazioneMassivaService servizio, CancellationToken ct) =>
+        {
+            try
+            {
+                return Results.Ok(await servizio.ElaboraProntiAsync(
+                    Tenant(user), aziendaId, anno, mese, ct));
+            }
+            catch (ArgumentException e)
+            {
+                return Results.BadRequest(new { errore = e.Message });
+            }
+        }).RequireAuthorization();
+
         return app;
     }
 }

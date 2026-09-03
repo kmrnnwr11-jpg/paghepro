@@ -17,6 +17,13 @@ public sealed class PreferenzeUtenteService
     public const string DicituraStudio = "dicitura_studio";
     public const string ColoreAccento = "colore_accento";
     public const string RisposteBreviAurora = "risposte_brevi_aurora";
+
+    /// <summary>
+    /// «Autorizzazione completa»: col consenso pieno e la strada A3 attiva, Aurora applica
+    /// da sola le modifiche reversibili appena preparate (stessa catena firmata del
+    /// protocollo A3: quota, audit, annullo 24 ore) invece di fermarsi alla card.
+    /// </summary>
+    public const string AutoApplicaAurora = "auto_applica_aurora";
     public const string ScalaTesto = "scala_testo";
     public const string FontInterfaccia = "font_ui";
     public const string Densita = "densita";
@@ -37,6 +44,7 @@ public sealed class PreferenzeUtenteService
                 ? null
                 : "Colore non in palette.",
             [RisposteBreviAurora] = Scelta("0", "1"),
+            [AutoApplicaAurora] = Scelta("0", "1"),
             [ScalaTesto] = Scelta("normale", "grande", "molto-grande"),
             [FontInterfaccia] = Scelta("sistema", "lato"),
             [Densita] = Scelta("comoda", "compatta"),

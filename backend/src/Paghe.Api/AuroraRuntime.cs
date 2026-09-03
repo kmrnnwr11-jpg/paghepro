@@ -61,7 +61,9 @@ public sealed record PropostaAurora(
     string? PrecondizioneHash = null,
     string? PostcondizioneHash = null);
 
-/// <summary>Proposta firmata come arriva alla SPA: il browser rimanda soltanto il token.</summary>
+/// <summary>Proposta firmata come arriva alla SPA: il browser rimanda soltanto il token.
+/// Con <c>GiaApplicata</c> la modifica è stata eseguita dall'«Autorizzazione completa»:
+/// la card mostra l'esito e il pulsante Annulla col <c>TokenUndo</c> (finestra 24 ore).</summary>
 public sealed record PropostaAzioneAurora(
     string? Token,
     string Strumento,
@@ -70,7 +72,9 @@ public sealed record PropostaAzioneAurora(
     string ResaUi,
     DateTime ScadeUtc,
     Guid? PropostaId = null,
-    bool Confermabile = true);
+    bool Confermabile = true,
+    bool GiaApplicata = false,
+    string? TokenUndo = null);
 
 /// <summary>
 /// Uno strumento del runtime. Le letture dichiarano soltanto il descrittore e passano

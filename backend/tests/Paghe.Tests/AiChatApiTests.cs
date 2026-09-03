@@ -754,6 +754,72 @@ public sealed class AiChatApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Chat_ConAutorizzazioneCompleta_IlModelloRiceveLaRegolaDellaCatena()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        var tenant = _tenantCorrente;
+        var aziendaId = Guid.NewGuid();
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            using var _ = AmbientContestoAudit.Imposta(tenant, Guid.NewGuid());
+            var db = scope.ServiceProvider.GetRequiredService<PagheDbContext>();
+            db.Aziende.Add(new AziendaEntity
+            {
+                Id = aziendaId,
+                TenantId = tenant,
+                RagioneSociale = "Azienda autorizzazione completa",
+            });
+            await db.SaveChangesAsync();
+        }
+        using (var concessione = await client.PostAsync("/api/ai/consenso", null))
+            Assert.Equal(HttpStatusCode.OK, concessione.StatusCode);
+
+        // Interruttore spento (default): il modello riceve la regola della card da
+        // confermare, non quella della catena automatica.
+        using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Com'è messo il mese?",
+            storia = Array.Empty<object>(),
+            aziendaId,
+            contestoSelezionato = (object?)null,
+            sezioneUi = "Cedolini",
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+            using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+            string istruzioni = inviato.RootElement
+                .GetProperty("messages")[0].GetProperty("content").GetString()!;
+            Assert.DoesNotContain("AUTORIZZAZIONE COMPLETA attiva", istruzioni);
+            Assert.Contains("produce una proposta", istruzioni);
+        }
+
+        // L'utente accende «Autorizzazione completa» (preferenza sul server, whitelist).
+        using (var salva = await client.PutAsJsonAsync("/api/preferenze", new
+        {
+            chiave = "auto_applica_aurora",
+            valore = "1",
+        }))
+            Assert.Equal(HttpStatusCode.OK, salva.StatusCode);
+
+        using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Prepara il mese, per favore.",
+            storia = Array.Empty<object>(),
+            aziendaId,
+            contestoSelezionato = (object?)null,
+            sezioneUi = "Cedolini",
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+            using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+            string istruzioni = inviato.RootElement
+                .GetProperty("messages")[0].GetProperty("content").GetString()!;
+            Assert.Contains("AUTORIZZAZIONE COMPLETA attiva", istruzioni);
+            Assert.Contains("annullabile per 24 ore", istruzioni);
+        }
+    }
+
+    [Fact]
     public async Task Chat_ConConsensoSenzaClienteSelezionato_RestaConversazioneLibera()
     {
         using var client = await NuovoClientAutenticatoAsync();

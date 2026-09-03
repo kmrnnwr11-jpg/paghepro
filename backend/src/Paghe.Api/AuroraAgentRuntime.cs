@@ -7,8 +7,12 @@ using Paghe.Persistence.Ai;
 
 namespace Paghe.Api;
 
-/// <summary>Esito di un turno del runtime: testo per l'utente e, se preparata, la proposta.</summary>
-public sealed record EsitoTurnoAurora(string Testo, PropostaAzioneAurora? Proposta, bool Ok);
+/// <summary>Esito di un turno del runtime: testo per l'utente e, se preparata, la proposta.
+/// <c>Applicate</c> sono le modifiche già eseguite nel turno con l'«Autorizzazione
+/// completa»: la SPA le mostra come card fatte, ciascuna col suo Annulla (undo 24 ore).</summary>
+public sealed record EsitoTurnoAurora(
+    string Testo, PropostaAzioneAurora? Proposta, bool Ok,
+    IReadOnlyList<PropostaAzioneAurora>? Applicate = null);
 
 /// <summary>
 /// AuroraAgentRuntime (fase A2): il loop del modello con gli strumenti governati. Ogni
@@ -41,10 +45,15 @@ public sealed class AuroraAgentRuntime(
 
     public async Task<EsitoTurnoAurora> TurnoAsync(
         ContestoAurora contesto, List<MessaggioChatAi> messaggi, string? sezioneUi,
-        CancellationToken ct)
+        CancellationToken ct, bool autoApplica = false)
     {
         var manifest = contesto.Manifest
             ?? throw new ArgumentException("Il runtime richiede un mandato risolto.", nameof(contesto));
+
+        // «Autorizzazione completa»: le modifiche reversibili preparate dagli strumenti
+        // vengono applicate subito (stessa catena firmata del protocollo A3) e raccolte
+        // qui; ogni card mostra l'esito e il suo Annulla. Il turno prosegue in catena.
+        var applicate = new List<PropostaAzioneAurora>();
 
         // Non ci fidiamo del manifest già risolto dall'endpoint: tra quella verifica e questo
         // metodo il mandato può essere stato revocato, scadere o cambiare policy. Senza una
@@ -65,13 +74,18 @@ public sealed class AuroraAgentRuntime(
         int ripetizioni = 0, ordine = 0, giri = 0;
         int? tokenTotali = null;
 
+        // Qualunque uscita del turno porta con sé le modifiche già applicate: il lavoro
+        // fatto non sparisce se una guardia o un diniego fermano il resto della catena.
+        EsitoTurnoAurora ConApplicate(EsitoTurnoAurora esito) =>
+            applicate.Count == 0 ? esito : esito with { Applicate = [.. applicate] };
+
         try
         {
             for (int giro = 1; giro <= MassimoGiri; giro++)
             {
                 var stopPrimaDelModello = await FermaSeMandatoNonSpendibileAsync(
                     contesto, manifest.GrantId, run, giri, tokenTotali, messaggi, ct);
-                if (stopPrimaDelModello is not null) return stopPrimaDelModello;
+                if (stopPrimaDelModello is not null) return ConApplicate(stopPrimaDelModello);
 
                 // Il contatore misura le chiamate reali al provider, non i soli turni HTTP:
                 // un loop con più giri consuma quindi una unità per ciascun invio effettivo.
@@ -83,7 +97,7 @@ public sealed class AuroraAgentRuntime(
                         + "chiedi all'amministratore di rinnovare il checkpoint.";
                     await ChiudiAsync(run, "Checkpoint", "Quota mensile provider esaurita.",
                         giri, tokenTotali, messaggi, ct);
-                    return new(testoQuota, null, false);
+                    return ConApplicate(new(testoQuota, null, false));
                 }
 
                 giri = giro;
@@ -95,7 +109,7 @@ public sealed class AuroraAgentRuntime(
                 // chiesto strumenti: nessun testo prodotto dopo la revoca viene restituito.
                 var stopDopoIlModello = await FermaSeMandatoNonSpendibileAsync(
                     contesto, manifest.GrantId, run, giri, tokenTotali, messaggi, ct);
-                if (stopDopoIlModello is not null) return stopDopoIlModello;
+                if (stopDopoIlModello is not null) return ConApplicate(stopDopoIlModello);
 
                 if (risposta.Chiamate.Count == 0)
                 {
@@ -109,8 +123,8 @@ public sealed class AuroraAgentRuntime(
                     // arrivata mentre il SessionLog veniva chiuso.
                     var stopPrimaDelRitorno = await FermaSeMandatoNonSpendibileAsync(
                         contesto, manifest.GrantId, run, giri, tokenTotali, messaggi, ct);
-                    if (stopPrimaDelRitorno is not null) return stopPrimaDelRitorno;
-                    return new(testo, null, true);
+                    if (stopPrimaDelRitorno is not null) return ConApplicate(stopPrimaDelRitorno);
+                    return ConApplicate(new(testo, null, true));
                 }
 
                 messaggi.Add(new MessaggioChatAi
@@ -183,7 +197,7 @@ public sealed class AuroraAgentRuntime(
                             const string testo = "Mi fermo: stavo ripetendo la stessa ricerca. "
                                 + "Riformula la domanda o restringi il periodo.";
                             await ChiudiAsync(run, "Guardia", "Anti-ripetizione.", giri, tokenTotali, messaggi, ct);
-                            return new(testo, null, false);
+                            return ConApplicate(new(testo, null, false));
                         }
                         RispondiAlModello(messaggi, chiamata.Id, new
                         {
@@ -196,22 +210,22 @@ public sealed class AuroraAgentRuntime(
                     {
                         var esitoTurno = await PreparaPropostaAsync(
                             contesto, run, strumento, chiamata, hashArgomenti, ordine,
-                            giri, tokenTotali, messaggi, ct);
-                        if (esitoTurno is not null) return esitoTurno;
+                            giri, tokenTotali, messaggi, autoApplica, applicate, ct);
+                        if (esitoTurno is not null) return ConApplicate(esitoTurno);
                         continue;
                     }
 
                     var (fermati, esitoStop) = await EseguiLetturaAsync(
                         contesto, run, strumento, chiamata, hashArgomenti, ordine,
                         giri, tokenTotali, messaggi, ct);
-                    if (fermati) return esitoStop!;
+                    if (fermati) return ConApplicate(esitoStop!);
                 }
             }
 
             const string limite = "Mi fermo qui: ho fatto già molte ricerche in questo turno. "
                 + "Chiedimi il passo successivo con una domanda più mirata.";
             await ChiudiAsync(run, "Guardia", "Massimo giri raggiunto.", giri, tokenTotali, messaggi, ct);
-            return new(limite, null, false);
+            return ConApplicate(new(limite, null, false));
         }
         catch
         {
@@ -276,7 +290,8 @@ public sealed class AuroraAgentRuntime(
     private async Task<EsitoTurnoAurora?> PreparaPropostaAsync(
         ContestoAurora contesto, Paghe.Persistence.Entities.AiRunEntity run,
         IStrumentoAurora strumento, ChiamataStrumentoAi chiamata, string hashArgomenti,
-        int ordine, int giri, int? tokenTotali, List<MessaggioChatAi> messaggi, CancellationToken ct)
+        int ordine, int giri, int? tokenTotali, List<MessaggioChatAi> messaggi,
+        bool autoApplica, List<PropostaAzioneAurora> applicate, CancellationToken ct)
     {
         var proposta = await strumento.PreparaAsync(contesto, chiamata.ArgomentiJson, ct);
         if (!proposta.PuoProcedere)
@@ -353,6 +368,54 @@ public sealed class AuroraAgentRuntime(
         }
 
         var (entita, token) = creata;
+
+        // «Autorizzazione completa»: la proposta appena firmata viene applicata subito
+        // dalla stessa catena della conferma (gate, riverifica grant, quota effetto,
+        // dominio e audit in una transazione). Il turno NON si ferma: il modello riceve
+        // l'esito e prosegue col passo successivo; la card «fatto» con l'Annulla si
+        // accumula per la risposta finale.
+        if (autoApplica && confermabile && token is not null)
+        {
+            var esitoConferma = await AiChatEndpoints.ConfermaGovernataAsync(
+                store, registry, governor, contesto.TenantId, contesto.UtenteId,
+                contesto.Ruolo, token, ct);
+            if (esitoConferma.Stato is "Applicata" or "GiaApplicata")
+            {
+                await store.RegistraToolCallAsync(run, ordine, chiamata.Nome, hashArgomenti,
+                    "Applicata", null, 0, 0, ct);
+                RispondiAlModello(messaggi, chiamata.Id, new
+                {
+                    applicata = true,
+                    titolo = proposta.Titolo,
+                    annullabile = esitoConferma.TokenUndo is not null,
+                });
+                applicate.Add(new PropostaAzioneAurora(
+                    null, strumento.Descrittore.Nome, proposta.Titolo, proposta.Diff,
+                    strumento.Descrittore.ResaUi, entita.ScadeUtc, entita.Id,
+                    Confermabile: false, GiaApplicata: true,
+                    TokenUndo: esitoConferma.TokenUndo));
+                return null;
+            }
+
+            // Applicazione negata (quota effetti, conflitto, revoca…): la proposta
+            // pendente viene annullata per non bloccare il mandato, e il modello
+            // riferisce il motivo senza inventare esiti.
+            await store.AnnullaAsync(
+                contesto.TenantId, contesto.UtenteId, token,
+                (meta, c) => governor.RegistraEventoPropostaAsync(
+                    contesto.TenantId, contesto.UtenteId, meta.GrantId, meta.PropostaId,
+                    "PropostaAnnullata", null, c),
+                ct);
+            await store.RegistraToolCallAsync(run, ordine, chiamata.Nome, hashArgomenti,
+                "Negato", esitoConferma.Messaggio, 0, 0, ct);
+            RispondiAlModello(messaggi, chiamata.Id, new
+            {
+                applicataFallita = true,
+                motivo = esitoConferma.Messaggio,
+            });
+            return null;
+        }
+
         await store.RegistraToolCallAsync(run, ordine, chiamata.Nome, hashArgomenti,
             "Proposta", null, 0, 0, ct);
 

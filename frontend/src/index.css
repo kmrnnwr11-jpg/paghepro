@@ -6222,6 +6222,21 @@ details[open] > summary .au-freccia {
   cursor: not-allowed;
 }
 
+.au-autoapplica {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.au-autoapplica input {
+  margin-top: 2px;
+  flex: none;
+}
+
 .au-rapidi .au-brevi-attivo {
   border-color: var(--blue-strong);
   background: var(--blue);

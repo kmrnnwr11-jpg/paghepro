@@ -44,6 +44,23 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Autorizzazione completa: Aurora lavora in catena come un collaboratore (3 settembre
+  2026, sera)**: richiesta del fondatore («deve fare tutto come un agente umano, conferma
+  solo alla fine, e la possibilità di autorizzare completamente»). Nuovo interruttore
+  **«Autorizzazione completa»** nel pannello del consenso (preferenza server
+  `auto_applica_aurora` in whitelist, default spento): quando è acceso — e solo con
+  consenso pieno + strada A3 attiva — il runtime applica subito ogni proposta appena
+  firmata usando la **stessa catena della conferma** (helper condiviso
+  `AiChatEndpoints.ConfermaGovernataAsync`: gate, riverifica grant, quota effetto, dominio
+  e audit in una transazione) e **il turno prosegue in catena** invece di fermarsi alla
+  prima card; un'applicazione negata annulla la proposta pendente e il modello riferisce.
+  Ogni uscita del turno porta le `Applicate` (card «già fatta» con diff e **Annulla**
+  per 24 ore via `TokenUndo`); la SPA le accumula nella conversazione e l'annullo passa
+  da `/api/ai/chat/undo`. Con l'interruttore spento non cambia nulla: card con conferma
+  come prima. Istruzioni del modello dedicate («porta a termine per intero, riassumi alla
+  fine»). Test: chat 26/26 (regola della catena nel prompt, default invariato), gate
+  A3/Governor 78/78, frontend 100/100.
+
 - **Strada A3 del consenso: Aurora propone modifiche dalla chat (3 settembre 2026)**:
   richiesta del fondatore («Aurora deve fare tutto»). Col consenso pieno la coppia
   tenant:utente entra nel rollout A3 senza coppie di collaudo in config:

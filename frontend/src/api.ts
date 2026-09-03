@@ -278,12 +278,17 @@ export interface DatiMensiliCedolinoAgricolo {
   anno: number; mese: number; oreOrdinarie: number; giornateLavorate: number;
   giorniDetrazione: number; unaTantum: number; detrazioniGiaGoduteAnno: number;
   arrotondamentoRiportato: number; ultimoCedolino: boolean;
+  /** Vuoto = il server usa la scheda del rapporto, il default aziendale o la stima dal contratto. */
   redditoPresuntoAnnuo: number | null;
   giorniTrasferta: number; indennitaTrasfertaGiornaliera: number;
   rimborsiSpeseDocumentate: number;
   trasferte?: { giorni: number; importoGiorno: number }[];
-  /** Chi dichiara di aver controllato la busta: col nominativo il PDF perde «BOZZA DA VALIDARE». */
+  /** Deprecato: la validazione è dell'elaborazione mensile, non della singola busta. */
   validataDa?: string;
+}
+/** Esito di un controllo del validatore pre-generazione della busta agricola. */
+export interface SegnalazioneBustaAgricola {
+  livello: "ERRORE" | "AVVISO"; codice: string; messaggio: string;
 }
 export interface BustaAgricolaArchiviata {
   id: string; rapportoLavoroId: string; nominativo: string;
@@ -294,6 +299,8 @@ export interface BustaAgricolaArchiviata {
 export interface EsitoArchiviazioneAgricola {
   id: string; anno: number; mese: number; nettoInBusta: number;
   versione: number; hashPdfSha256: string; archiviatoIl: string; avviso: string;
+  segnalazioni?: SegnalazioneBustaAgricola[]; origineRedditoPresunto?: string;
+  statoElaborazione?: string; validazioneDecaduta?: boolean;
 }
 export interface CedolinoAgricolo extends Cedolino {
   anno: number; mese: number; imponibileInps: number; contributiDipendente: number;
@@ -304,6 +311,9 @@ export interface CedolinoAgricolo extends Cedolino {
 export interface AnteprimaCedolinoAgricolo {
   cedolino: CedolinoAgricolo; fonteTabelle: string; provinciaCpl: string;
   tipoOperaio: "OTD" | "OTI"; livelloTariffa: string;
+  qualifica?: string; giorniDetrazione?: number;
+  redditoPresuntoAnnuo?: number; origineRedditoPresunto?: string;
+  segnalazioni?: SegnalazioneBustaAgricola[]; statoElaborazione?: string;
   bozzaDaValidare: boolean; archiviato: boolean; avvertenza: string;
 }
 export interface CedolinoArchiviato {
@@ -1680,6 +1690,9 @@ export interface PropostaAzioneAurora {
   scadeUtc: string;
   propostaId: string | null;
   confermabile: boolean;
+  /** Applicata dall'«Autorizzazione completa»: card già eseguita, annullabile 24 ore. */
+  giaApplicata?: boolean;
+  tokenUndo?: string | null;
 }
 
 /** Esito di conferma/annullo/ripristino; tokenUndo consente il ripristino finché è valido. */
@@ -1728,6 +1741,9 @@ export interface RispostaChatAi {
    *  consenso pieno): schermata da aprire e/o cliente da selezionare in alto. */
   apriSezione?: string | null;
   selezionaCliente?: { id: string; ragioneSociale: string } | null;
+  /** Modifiche già applicate nel turno con l'«Autorizzazione completa»: card fatte,
+   *  ciascuna con il proprio tokenUndo per l'annullo entro 24 ore. */
+  applicate?: PropostaAzioneAurora[] | null;
 }
 
 export interface StatoChatAi {

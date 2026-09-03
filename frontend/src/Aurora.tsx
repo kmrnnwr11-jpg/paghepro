@@ -276,6 +276,14 @@ export function AuroraPanel({
   const [esitoProposta, setEsitoProposta] = useState<EsitoPropostaAurora | null>(null);
   const [scopeProposta, setScopeProposta] = useState<string | null>(null);
   const [propostaInCorso, setPropostaInCorso] = useState(false);
+  // «Autorizzazione completa»: modifiche già applicate nei turni della conversazione,
+  // ognuna con il suo Annulla; l'interruttore è una preferenza salvata sul server.
+  const [applicate, setApplicate] = useState<{
+    scope: string;
+    voci: { azione: PropostaAzioneAurora; esito: EsitoPropostaAurora | null }[];
+  }>({ scope: "", voci: [] });
+  const [applicataInCorso, setApplicataInCorso] = useState(false);
+  const [autoApplica, setAutoApplica] = useState(false);
   const [scopeEsito, setScopeEsito] = useState<string | null>(null);
   const [scopeTrasparenza, setScopeTrasparenza] = useState<string | null>(null);
   const [quotaConfermata, setQuotaConfermata] = useState<{
@@ -336,6 +344,7 @@ export function AuroraPanel({
   const bolleCorrenti = scopeChat === scopeConversazione ? bolle : [];
   const propostaCorrente = scopeProposta === scopeConversazione ? proposta : null;
   const esitoPropostaCorrente = scopeProposta === scopeConversazione ? esitoProposta : null;
+  const applicateCorrenti = applicate.scope === scopeConversazione ? applicate.voci : [];
   const quotaCorrenteConfermata = Boolean(mandatoCorrente
     && quotaConfermata?.grantId === mandatoCorrente.manifest.grantId
     && quotaConfermata.scopeMandato === scopeMandato);
@@ -575,6 +584,43 @@ export function AuroraPanel({
     salvaPreferenzaOvunque("risposte_brevi_aurora", nuovo ? "1" : "0");
   };
 
+  // L'interruttore «Autorizzazione completa» vive sul server (vale su tutti i
+  // dispositivi): si carica quando il consenso è attivo, si salva alla commutazione.
+  useEffect(() => {
+    if (!consenso?.attivo) return;
+    let attuale = true;
+    void api.preferenze()
+      .then((p) => {
+        if (attuale && montato.current) setAutoApplica(p["auto_applica_aurora"] === "1");
+      })
+      .catch(() => { /* resta lo stato locale: il server decide comunque a ogni turno */ });
+    return () => { attuale = false; };
+  }, [consenso?.attivo]);
+
+  const commutaAutoApplica = () => {
+    const nuovo = !autoApplica;
+    setAutoApplica(nuovo);
+    salvaPreferenzaOvunque("auto_applica_aurora", nuovo ? "1" : "0");
+  };
+
+  const annullaApplicata = async (indice: number) => {
+    const voce = applicate.voci[indice];
+    if (!voce?.azione.tokenUndo || voce.esito || applicataInCorso) return;
+    setApplicataInCorso(true);
+    const aggiorna = (esito: EsitoPropostaAurora) =>
+      setApplicate((prima) => ({
+        ...prima,
+        voci: prima.voci.map((v, i) => (i === indice ? { ...v, esito } : v)),
+      }));
+    try {
+      aggiorna(await api.aiPropostaUndo(voce.azione.tokenUndo));
+    } catch (e) {
+      aggiorna(esitoPropostaDaErrore(e));
+    } finally {
+      if (montato.current) setApplicataInCorso(false);
+    }
+  };
+
   const concediConsenso = async () => {
     if (consensoInCorso) return;
     setConsensoInCorso(true);
@@ -676,6 +722,15 @@ export function AuroraPanel({
         setProposta(r.azione);
         setEsitoProposta(null);
         setScopeProposta(scopeRichiesto);
+      }
+      // Card «fatto» dell'Autorizzazione completa: si accumulano nella conversazione,
+      // ciascuna resta annullabile finché il suo tokenUndo è valido.
+      if (r.applicate && r.applicate.length > 0) {
+        const nuove = r.applicate.map((azione) => ({ azione, esito: null }));
+        setApplicate((prima) => ({
+          scope: scopeRichiesto,
+          voci: prima.scope === scopeRichiesto ? [...prima.voci, ...nuove] : nuove,
+        }));
       }
       // Card di registrazione riconosciute dal server nei messaggi dell'utente: la prima
       // resta finché l'utente decide; una proposta scartata o registrata non torna. Il
@@ -1274,6 +1329,18 @@ export function AuroraPanel({
               presenze e cedolini bozza dalla chat. Ogni modifica resta una card da
               confermare con un tocco, con annulla e ripristino.
             </span>
+            <label className="au-autoapplica">
+              <input
+                type="checkbox"
+                checked={autoApplica}
+                onChange={commutaAutoApplica}
+              />
+              <span>
+                <b>Autorizzazione completa</b>: Aurora applica da sola le modifiche che
+                prepara e lavora in catena fino alla fine; ogni modifica resta annullabile
+                per 24 ore dalla sua card. Spenta, ti chiede conferma su ogni card.
+              </span>
+            </label>
             <div className="au-azioni">
               <button
                 className="au-chip stop"
@@ -1607,6 +1674,51 @@ export function AuroraPanel({
                 </>
               )
             ) : null}
+          </div>
+        )}
+
+        {applicateCorrenti.length > 0 && (
+          <div aria-label="Modifiche applicate con l’Autorizzazione completa">
+            {applicateCorrenti.map((voce, indice) => (
+              <div key={voce.azione.propostaId ?? indice} className="au-proposta">
+                <div className="au-proposta-testa">
+                  <Check size={14} aria-hidden="true" />
+                  <strong>{voce.azione.titolo}</strong>
+                </div>
+                <span className="au-proposta-tag">
+                  Applicata con l’Autorizzazione completa
+                </span>
+                {voce.azione.diff.length > 0 && (
+                  <dl className="au-diff">
+                    {voce.azione.diff.map((riga, i) => (
+                      <div key={i}>
+                        <dt>{riga.etichetta}</dt>
+                        <dd>
+                          {riga.da != null && riga.da !== "" && <>{riga.da} → </>}
+                          {riga.a ?? "—"}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                {voce.esito ? (
+                  <div className={`au-stato${esitoRassicurante(voce.esito) ? " ok" : " avviso"}`}>
+                    <span>{voce.esito.messaggio}</span>
+                  </div>
+                ) : voce.azione.tokenUndo ? (
+                  <div className="au-proposta-bottoni">
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={applicataInCorso}
+                      onClick={() => void annullaApplicata(indice)}
+                    >
+                      <Undo2 size={14} aria-hidden="true" /> Annulla questa modifica
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
           </div>
         )}
 

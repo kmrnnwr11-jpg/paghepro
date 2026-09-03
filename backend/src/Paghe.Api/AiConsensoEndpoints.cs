@@ -32,7 +32,9 @@ public static class AiConsensoEndpoints
             });
         });
 
-        gruppo.MapPost("", async (PagheDbContext db, ClaimsPrincipal user, CancellationToken ct) =>
+        gruppo.MapPost("", async (
+            PagheDbContext db, AiRolloutPolicy rollout, ClaimsPrincipal user,
+            CancellationToken ct) =>
         {
             var (tenantId, utenteId) = Identita(user);
             if (tenantId == Guid.Empty || utenteId == Guid.Empty)
@@ -52,14 +54,19 @@ public static class AiConsensoEndpoints
             consenso.ConcessoUtc = DateTime.UtcNow;
             consenso.RevocatoUtc = null;
             await db.SaveChangesAsync(ct);
+            // La coppia entra subito nella strada A3 del consenso (proposte con conferma).
+            rollout.RegistraConsenso(tenantId, utenteId);
             return Results.Ok(new { attivo = true, concessoUtc = consenso.ConcessoUtc });
         }).RequireRateLimiting("sensibili");
 
         gruppo.MapDelete("", async (
-            PagheDbContext db, AiGrantService governor, ClaimsPrincipal user,
-            CancellationToken ct) =>
+            PagheDbContext db, AiGrantService governor, AiRolloutPolicy rollout,
+            ClaimsPrincipal user, CancellationToken ct) =>
         {
             var (tenantId, utenteId) = Identita(user);
+            // La strada A3 del consenso si chiude per prima: nessuna nuova proposta o
+            // conferma mentre revochiamo i mandati.
+            rollout.RimuoviConsenso(tenantId, utenteId);
             var consenso = await db.ConsensiAurora.SingleOrDefaultAsync(
                 c => c.TenantId == tenantId && c.UtenteId == utenteId, ct);
             if (consenso is not null && consenso.RevocatoUtc is null)

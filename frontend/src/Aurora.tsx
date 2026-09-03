@@ -48,7 +48,7 @@ import {
   ambitoControlloCedolini,
   contaStatiCedolini,
   DIMENSIONE_LOTTO_CEDOLINI_AURORA,
-  mandatoSoloLettura,
+  mandatoAutomaticoAurora,
   richiestaControlloCedolini,
   richiestaPreparazioneMese,
   stessoAmbitoControlloCedolini,
@@ -360,10 +360,10 @@ export function AuroraPanel({
       const attivi = mandatiAttiviUnici(grants);
       if (montato.current) {
         const grantCorrenteId = mandatoRef.current?.manifest.grantId;
-        // I mandati di sola lettura emessi dal server col consenso pieno non sono
-        // «residui» da segnalare: scadono da soli e non occupano lo slot A3.
+        // I mandati automatici della chat (consenso pieno) non sono «residui» da
+        // segnalare: il pannello li revoca da sé prima di un nuovo controllo.
         setMandatiResidui(attivi.filter((grant) =>
-          grant.grantId !== grantCorrenteId && !mandatoSoloLettura(grant)));
+          grant.grantId !== grantCorrenteId && !mandatoAutomaticoAurora(grant)));
         setInventarioCaricato(true);
       }
       return attivi;
@@ -898,9 +898,9 @@ export function AuroraPanel({
     try {
       const attivi = await riconciliaMandati();
       if (!richiesta.attiva() || scopeMandatoRef.current !== scopeRichiesto) return;
-      // I mandati di sola lettura del consenso pieno non bloccano: vengono revocati
-      // all'avvio del controllo, prima di emettere il mandato nuovo.
-      if (attivi.some((grant) => !mandatoSoloLettura(grant))) {
+      // I mandati automatici della chat (consenso pieno) non bloccano: vengono
+      // revocati all'avvio del controllo, prima di emettere il mandato nuovo.
+      if (attivi.some((grant) => !mandatoAutomaticoAurora(grant))) {
         setErroreControllo("Revoca tutti i mandati attivi prima di iniziare un nuovo controllo.");
         return;
       }
@@ -941,18 +941,18 @@ export function AuroraPanel({
     try {
       const attiviPrima = await riconciliaMandati();
       if (!richiestaAvvio.attiva() || scopeMandatoRef.current !== scopeAvvio) return;
-      if (attiviPrima.some((grant) => !mandatoSoloLettura(grant))) {
+      if (attiviPrima.some((grant) => !mandatoAutomaticoAurora(grant))) {
         setErroreControllo("Esistono già mandati attivi: revocali prima di emetterne uno nuovo.");
         return;
       }
-      // I mandati di sola lettura del consenso pieno vengono chiusi qui: il controllo
-      // parte pulito e il server ne riemetterà uno alla prossima chat, se serve.
-      for (const soloLettura of attiviPrima.filter(mandatoSoloLettura)) {
+      // I mandati automatici della chat vengono chiusi qui: il controllo parte
+      // pulito e il server ne riemetterà uno alla prossima chat, se serve.
+      for (const soloLettura of attiviPrima.filter(mandatoAutomaticoAurora)) {
         try {
           await api.aiRevocaGrant(soloLettura.grantId);
         } catch {
           setErroreControllo(
-            "Un mandato di lettura automatico non è revocabile in questo momento: riprova.");
+            "Un mandato automatico della chat non è revocabile in questo momento: riprova.");
           return;
         }
       }
@@ -1270,8 +1270,9 @@ export function AuroraPanel({
               <Lock size={13} aria-hidden="true" /> Consenso pieno attivo
             </strong>
             <span>
-              Aurora legge da sola l’archivio del cliente selezionato, senza chiederti il
-              mandato. Le modifiche restano sempre da confermare con un tocco.
+              Aurora legge da sola l’archivio del cliente selezionato e può preparare
+              presenze e cedolini bozza dalla chat. Ogni modifica resta una card da
+              confermare con un tocco, con annulla e ripristino.
             </span>
             <div className="au-azioni">
               <button

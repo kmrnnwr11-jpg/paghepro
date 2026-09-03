@@ -140,7 +140,8 @@ builder.Configuration.GetSection("Ai").Bind(aiOptions);
 aiOptions.ValidaProfiloLocale();
 builder.Services.AddSingleton(aiOptions);
 builder.Services.AddSingleton(new AiRolloutPolicy(
-    aiOptions.GateAurora, aiOptions.ModalitaA3, aiOptions.CoppieShadowA3));
+    aiOptions.GateAurora, aiOptions.ModalitaA3, aiOptions.CoppieShadowA3,
+    aiOptions.A3ConConsensoPieno));
 HttpMessageHandler CreaHandlerAi() => new SocketsHttpHandler
 {
     // Ogni profilo AI usa egress esplicito: proxy e redirect potrebbero aggirare la allowlist.
@@ -409,6 +410,16 @@ using (var scope = app.Services.CreateScope())
         // Schema gestito dalle migrazioni EF versionate (un assembly per provider).
         // I database creati prima delle migrazioni vengono adottati con una baseline.
         app.Logger.LogInformation("Schema database: {Esito}.", SchemaDatabase.Applica(db));
+
+        // Consenso pieno Aurora: le coppie con consenso attivo entrano nel rollout
+        // (strada A3 del consenso). Gli endpoint del consenso tengono poi allineato
+        // il registro a ogni concessione o revoca.
+        var rolloutAvvio = app.Services.GetRequiredService<AiRolloutPolicy>();
+        foreach (var coppia in db.ConsensiAurora.AsNoTracking()
+                     .Where(c => c.RevocatoUtc == null)
+                     .Select(c => new { c.TenantId, c.UtenteId })
+                     .ToList())
+            rolloutAvvio.RegistraConsenso(coppia.TenantId, coppia.UtenteId);
 
         if (eseguiMigrazioneGdpr)
         {

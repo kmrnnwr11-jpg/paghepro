@@ -62,6 +62,20 @@ public static class AiUsagePolicyStore
                 // l'operatore deve revocare consapevolmente il mandato e rifare il preflight.
                 QuotaEffettiDefault: 1, QuotaEffettiMassima: 1),
 
+            // Mandato automatico della chat col consenso pieno: stesse risorse e operazioni
+            // di PREPARAZIONE_MESE_PAGHE, ma quote adatte a una sessione di lavoro in chat
+            // (ogni effetto resta una card confermata a mano dall'utente, con undo).
+            ["ASSISTENTE_CHAT"] = new(
+                "ASSISTENTE_CHAT",
+                "Assistere in chat col consenso pieno: leggere il mese e proporre modifiche reversibili.",
+                ScopeMassimo: "S2", AutonomiaMassima: "A3",
+                ["Aziende", "Dipendenti", "Rapporti", "Cartellini", "Cedolini",
+                    "PraticheF24", "ParametriNormativi", "Ccnl"],
+                ["read", "search", "draft", "apply_reversible"],
+                TtlMassimoMinuti: 120, QuotaLettureDefault: 250, QuotaLettureMassima: 1000,
+                QuotaProposteDefault: 10, QuotaProposteMassima: 50,
+                QuotaEffettiDefault: 10, QuotaEffettiMassima: 25),
+
             ["LETTURA_DOCUMENTO"] = new(
                 "LETTURA_DOCUMENTO",
                 "Leggere un documento importato e proporre i campi (l'euristica vince).",

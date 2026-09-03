@@ -66,6 +66,13 @@ public sealed class AiOptions
     public string ModalitaA3 { get; set; } = "Off";
 
     /// <summary>
+    /// Strada A3 del consenso pieno: chi ha concesso il consenso ad Aurora (tabella
+    /// ConsensiAurora, sempre revocabile) può ricevere proposte di modifica con conferma
+    /// e undo anche senza coppie di collaudo in configurazione. False = kill-switch.
+    /// </summary>
+    public bool A3ConConsensoPieno { get; set; } = true;
+
+    /// <summary>
     /// Host HTTPS ammessi per Provider=Compatibile. I provider conosciuti hanno una allowlist
     /// incorporata; una BaseUrl configurabile non diventa mai un canale egress arbitrario.
     /// </summary>

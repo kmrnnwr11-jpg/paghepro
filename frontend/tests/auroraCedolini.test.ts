@@ -5,6 +5,7 @@ import {
   DIMENSIONE_LOTTO_CEDOLINI_AURORA,
   contaStatiCedolini,
   LETTURE_PREPARAZIONE_MESE,
+  mandatoAutomaticoAurora,
   mandatoSoloLettura,
   richiestaControlloCedolini,
   richiestaPreparazioneMese,
@@ -102,4 +103,24 @@ test("solo un mandato in pura lettura non blocca il pannello", () => {
   assert.equal(mandatoSoloLettura({ operazioni: ["read", "draft", "apply_reversible"] }), false);
   assert.equal(mandatoSoloLettura({ operazioni: ["draft"] }), false);
   assert.equal(mandatoSoloLettura({ operazioni: [] }), false);
+});
+
+test("i mandati automatici della chat non bloccano il pannello", () => {
+  // ASSISTENTE_CHAT è la finalità dei mandati emessi da soli in chat: anche con
+  // le scritture (proposte confermabili) il pannello li revoca da sé all'avvio.
+  assert.equal(mandatoAutomaticoAurora({
+    operazioni: ["read", "draft", "apply_reversible"], purposeCode: "ASSISTENTE_CHAT",
+  }), true);
+  assert.equal(mandatoAutomaticoAurora({
+    operazioni: ["read"], purposeCode: "ASSISTENTE_CHAT",
+  }), true);
+  // Il vecchio mandato automatico read-only resta riconosciuto anche con altra finalità.
+  assert.equal(mandatoAutomaticoAurora({
+    operazioni: ["read"], purposeCode: "PREPARAZIONE_MESE_PAGHE",
+  }), true);
+  // Il mandato «Prepara il mese» del pannello (con scritture) blocca come prima.
+  assert.equal(mandatoAutomaticoAurora({
+    operazioni: ["read", "draft", "apply_reversible"],
+    purposeCode: "PREPARAZIONE_MESE_PAGHE",
+  }), false);
 });

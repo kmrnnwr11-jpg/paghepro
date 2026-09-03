@@ -82,6 +82,19 @@ export function mandatoSoloLettura(grant: { operazioni: string[] }): boolean {
   return grant.operazioni.length === 1 && grant.operazioni[0] === "read";
 }
 
+/**
+ * Mandato emesso in automatico dalla chat col consenso pieno: finalità dedicata
+ * ASSISTENTE_CHAT (di sola lettura o con proposte confermabili) oppure il vecchio
+ * mandato read-only. Non è un «residuo» da segnalare: il pannello lo revoca da sé
+ * prima di emettere il mandato «Prepara il mese», e la chat ne riemetterà uno
+ * alla prossima domanda, se serve.
+ */
+export function mandatoAutomaticoAurora(
+  grant: { operazioni: string[]; purposeCode: string },
+): boolean {
+  return grant.purposeCode === "ASSISTENTE_CHAT" || mandatoSoloLettura(grant);
+}
+
 export function contaStatiCedolini(righe: RigaCedolinoMeseAi[]) {
   return righe.reduce<Record<RigaCedolinoMeseAi["stato"], number>>(
     (totali, riga) => ({ ...totali, [riga.stato]: totali[riga.stato] + 1 }),

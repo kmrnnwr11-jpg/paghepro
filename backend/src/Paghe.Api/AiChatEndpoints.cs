@@ -101,6 +101,7 @@ public static class AiChatEndpoints
             RichiestaChatAi richiesta, AiChatClient chat,
             AiOptions opzioni,
             AiGrantService governor, AuroraAgentRuntime runtime, ConsumoAiService consumi,
+            Paghe.Persistence.Ai.AiRolloutPolicy rollout,
             PagheDbContext db, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var selezione = NormalizzaContesto(richiesta.ContestoSelezionato);
@@ -217,7 +218,10 @@ public static class AiChatEndpoints
             else if (richiesta.AziendaId is Guid aziendaConsenso && consensoAttivo)
             {
                 var automatico = await MandatoAutomaticoAsync(
-                    governor, tenantId, utenteId, aziendaConsenso, RuoloCorrente(user), ct);
+                    governor, tenantId, utenteId, aziendaConsenso, RuoloCorrente(user),
+                    // Col consenso pieno la strada A3 è abilitata dal rollout: il mandato
+                    // chiede anche draft/apply (le card di conferma), non solo la lettura.
+                    conScritture: rollout.EffettiAbilitati(tenantId, utenteId), ct);
                 if (automatico is not null)
                     (lease, manifest) = automatico.Value;
                 // Emissione non riuscita: si prosegue in conversazione libera, senza errore.
@@ -1004,13 +1008,17 @@ public static class AiChatEndpoints
         MandatiAutomatici = new();
 
     /// <summary>
-    /// Con il consenso pieno la chat si procura da sola il mandato di lettura Guidata/S2
-    /// sul cliente selezionato e il mese corrente — stesso Governor, stesse policy, stesso
-    /// audit del pannello. Solo lettura: le scritture restano sul protocollo A3.
+    /// Con il consenso pieno la chat si procura da sola il mandato Guidata/S2 sul cliente
+    /// selezionato e il mese corrente — stesso Governor, stesse policy, stesso audit del
+    /// pannello, finalità dedicata ASSISTENTE_CHAT. Quando la strada A3 del consenso è
+    /// abilitata il mandato chiede anche draft/apply_reversible su Cartellini e Cedolini:
+    /// ogni modifica resta una proposta firmata con card di conferma e undo. Se il mandato
+    /// con scritture non è emettibile (per esempio lo slot A3 è occupato dal pannello) si
+    /// ripiega senza errori sulla sola lettura.
     /// </summary>
     private static async Task<(string Lease, ManifestGrant Manifest)?> MandatoAutomaticoAsync(
         AiGrantService governor, Guid tenantId, Guid utenteId, Guid aziendaId, string? ruolo,
-        CancellationToken ct)
+        bool conScritture, CancellationToken ct)
     {
         string periodo = DateTime.UtcNow.ToString("yyyy-MM");
         var chiave = (tenantId, utenteId, aziendaId, periodo);
@@ -1018,21 +1026,43 @@ public static class AiChatEndpoints
         {
             var (manifest, _) = await governor.RisolviSessioneAsync(
                 tenantId, utenteId, esistente, ct);
-            if (manifest is not null) return (esistente, manifest);
+            if (manifest is not null)
+            {
+                // Un mandato di sola lettura in cache non basta più quando le scritture
+                // sono abilitate: si revoca e se ne emette uno con draft/apply.
+                if (!conScritture || manifest.Operazioni.Contains("apply_reversible"))
+                    return (esistente, manifest);
+                await governor.RevocaAsync(tenantId, utenteId, manifest.GrantId, ct);
+            }
             MandatiAutomatici.TryRemove(chiave, out _);
         }
-        var (grant, _) = await governor.EmettiAsync(
-            tenantId, utenteId,
-            new RichiestaGrant(
-                "PREPARAZIONE_MESE_PAGHE", "Guidata", "S2", aziendaId, periodo,
-                LettureConsensoPieno, ["read"], DurataMinuti: 60),
-            ct, ruolo);
-        if (grant is null) return null;
-        var (nuovoManifest, _) = await governor.RisolviSessioneAsync(
-            tenantId, utenteId, grant.Lease, ct);
-        if (nuovoManifest is null) return null;
-        MandatiAutomatici[chiave] = grant.Lease;
-        return (grant.Lease, nuovoManifest);
+        var richiesteInOrdine = new List<RichiestaGrant>();
+        if (conScritture)
+            richiesteInOrdine.Add(new RichiestaGrant(
+                "ASSISTENTE_CHAT", "Guidata", "S2", aziendaId, periodo,
+                LettureConsensoPieno, ["read", "draft", "apply_reversible"],
+                DurataMinuti: 60,
+                Permessi:
+                [
+                    .. LettureConsensoPieno.Select(r => new RichiestaPermessoAi(r, "read")),
+                    new("Cartellini", "draft"), new("Cartellini", "apply_reversible"),
+                    new("Cedolini", "draft"), new("Cedolini", "apply_reversible"),
+                ]));
+        richiesteInOrdine.Add(new RichiestaGrant(
+            "ASSISTENTE_CHAT", "Guidata", "S2", aziendaId, periodo,
+            LettureConsensoPieno, ["read"], DurataMinuti: 60));
+        foreach (var richiesta in richiesteInOrdine)
+        {
+            var (grant, _) = await governor.EmettiAsync(
+                tenantId, utenteId, richiesta, ct, ruolo);
+            if (grant is null) continue;
+            var (nuovoManifest, _) = await governor.RisolviSessioneAsync(
+                tenantId, utenteId, grant.Lease, ct);
+            if (nuovoManifest is null) return null;
+            MandatiAutomatici[chiave] = grant.Lease;
+            return (grant.Lease, nuovoManifest);
+        }
+        return null;
     }
 
     /// <summary>

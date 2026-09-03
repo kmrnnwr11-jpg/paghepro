@@ -44,6 +44,24 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Strada A3 del consenso: Aurora propone modifiche dalla chat (3 settembre 2026)**:
+  richiesta del fondatore («Aurora deve fare tutto»). Col consenso pieno la coppia
+  tenant:utente entra nel rollout A3 senza coppie di collaudo in config:
+  `AiRolloutPolicy` tiene un registro dei consensi (caricato all'avvio dal DB, aggiornato
+  dagli endpoint del consenso; kill-switch `Ai:A3ConConsensoPieno=false`), così emissione,
+  effetti, conferma e runtime si abilitano dai controlli già esistenti. Il mandato
+  automatico della chat usa la finalità dedicata **ASSISTENTE_CHAT** (stesse risorse di
+  PREPARAZIONE_MESE_PAGHE, quote da sessione di lavoro: 10 proposte/10 effetti default,
+  max 50/25) e chiede anche draft/apply su Cartellini e Cedolini quando la strada A3 è
+  attiva, con ripiego automatico in sola lettura (per esempio se lo slot A3 è occupato dal
+  pannello); un mandato read-only in cache viene sostituito quando arrivano le scritture.
+  **Ogni modifica resta una proposta firmata con card di conferma e undo** — il consenso
+  vale come Confirmed, mai applicazione silenziosa. Il pannello riconosce i mandati
+  automatici dalla finalità (`mandatoAutomaticoAurora` in `auroraCedolini.ts`) e li revoca
+  da sé prima di «Prepara il mese». Test: chat 25/25 (strumenti di modifica offerti,
+  mandato ASSISTENTE_CHAT con `read,draft,apply_reversible`), gate A3/Governor 77/77,
+  frontend 100/100.
+
 - **Netto concordato con conguaglio + trasferta nel motore agricolo (1 settembre 2026)**:
   due incrementi nati da un caso cliente reale. (1) **Netto concordato**
   (docs/NETTO-CONCORDATO-CONGUAGLIO.md): sul rapporto si fissa il netto mensile pattuito e a

@@ -27,32 +27,32 @@ public static class AiCapabilityRegistry
 
         new("controllo.durc_f24", "Adempimenti", "read",
             ["strict", "guided"], ["Durc", "PraticheF24"],
-            ["SCADENZE_PROMEMORIA", "CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE"],
+            ["SCADENZE_PROMEMORIA", "CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE", "ASSISTENTE_CHAT"],
             EffettiEsterni: false, GateRichiesto: "G2"),
 
         new("controllo.anagrafica.azienda", "Anagrafiche", "read",
             ["strict", "guided"], ["Aziende"],
-            ["CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE"],
+            ["CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE", "ASSISTENTE_CHAT"],
             EffettiEsterni: false, GateRichiesto: "G2"),
 
         new("controllo.dipendenti.inquadramento", "Paghe", "read",
             ["strict", "guided"], ["Dipendenti"],
-            ["CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE"],
+            ["CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE", "ASSISTENTE_CHAT"],
             EffettiEsterni: false, GateRichiesto: "G2"),
 
         new("controllo.presenze.mese", "Paghe", "read",
             ["guided"], ["Cartellini", "Rapporti", "Cedolini", "Ccnl", "ParametriNormativi"],
-            ["CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE"],
+            ["CONTROLLO_ANOMALIE_PAGHE", "PREPARAZIONE_MESE_PAGHE", "ASSISTENTE_CHAT"],
             EffettiEsterni: false, GateRichiesto: "G2"),
 
         new("compila.presenze.assenza_non_retribuita", "Paghe", "reversible_write",
             ["guided"], ["Dipendenti", "Rapporti", "Cartellini", "Cedolini", "PraticheF24"],
-            ["PREPARAZIONE_MESE_PAGHE"],
+            ["PREPARAZIONE_MESE_PAGHE", "ASSISTENTE_CHAT"],
             EffettiEsterni: false, GateRichiesto: "A3"),
 
         new("elabora.cedolino.bozza_mese", "Paghe", "reversible_write",
             ["guided"], ["Dipendenti", "Rapporti", "Cartellini", "Cedolini", "PraticheF24"],
-            ["PREPARAZIONE_MESE_PAGHE"],
+            ["PREPARAZIONE_MESE_PAGHE", "ASSISTENTE_CHAT"],
             EffettiEsterni: false, GateRichiesto: "A3"),
 
         // Richiedono un modello: restano spente finché l'isolamento G1 e il gate G3 non sono provati.

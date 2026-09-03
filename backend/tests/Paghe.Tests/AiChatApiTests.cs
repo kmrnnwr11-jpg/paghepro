@@ -693,7 +693,9 @@ public sealed class AiChatApiTests : IDisposable
             Assert.Equal(HttpStatusCode.OK, concessione.StatusCode);
 
         // Primo turno: nessuna lease dal browser, ma il server emette da solo il mandato
-        // di lettura e il modello riceve gli strumenti del runtime governato.
+        // ASSISTENTE_CHAT e il modello riceve gli strumenti del runtime governato —
+        // compresi quelli di modifica (strada A3 del consenso): ogni modifica resta una
+        // proposta firmata con card di conferma e undo.
         using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
         {
             messaggio = "Com'è messo il mese?",
@@ -706,7 +708,12 @@ public sealed class AiChatApiTests : IDisposable
             Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
             using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
             Assert.True(inviato.RootElement.TryGetProperty("tools", out var tools));
-            Assert.True(tools.GetArrayLength() > 0);
+            var nomi = tools.EnumerateArray()
+                .Select(t => t.GetProperty("function").GetProperty("name").GetString())
+                .ToArray();
+            Assert.Contains("compila_presenze", nomi);
+            Assert.Contains("elabora_cedolino", nomi);
+            Assert.Contains("stato_cedolini_mese", nomi);
         }
 
         // Secondo turno: la lease emessa al primo giro viene riusata, niente doppio grant.
@@ -726,7 +733,9 @@ public sealed class AiChatApiTests : IDisposable
             var grants = await dbVerifica.AiScopeGrants.AsNoTracking()
                 .Where(g => g.TenantId == tenant).ToListAsync();
             Assert.Single(grants);
-            Assert.Equal("read", grants[0].OperazioniAmmesse);
+            Assert.Equal("ASSISTENTE_CHAT", grants[0].PurposeCode);
+            Assert.Equal("read,draft,apply_reversible", grants[0].OperazioniAmmesse);
+            Assert.Contains("compila_presenze", grants[0].StrumentiAmmessi);
             Assert.Equal(aziendaId, grants[0].AziendaId);
         }
 

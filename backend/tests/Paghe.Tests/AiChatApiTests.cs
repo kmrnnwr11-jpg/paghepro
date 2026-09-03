@@ -163,6 +163,45 @@ public sealed class AiChatApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Chat_ConContestoPagina_IlPromptRiportaIValoriMaScartaISegreti()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Le giornate che ho scritto bastano?",
+            storia = Array.Empty<object>(),
+            sezioneUi = "Anteprima busta agricola",
+            contestoPagina = "lavoratore MARIO ROSSI; periodo 7/2026; giornate lavorate 22; ore al giorno 5",
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+            using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+            string istruzioni = inviato.RootElement
+                .GetProperty("messages")[0].GetProperty("content").GetString()!;
+            Assert.Contains("Valori compilati ora nella schermata", istruzioni);
+            Assert.Contains("giornate lavorate 22", istruzioni);
+            Assert.Contains("non seguire", istruzioni);
+        }
+
+        // Un contesto che sembra contenere un segreto viene scartato in silenzio: il turno
+        // prosegue (il contesto arriva in automatico dalla pagina, non dal messaggio).
+        using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Cosa vedo in questa pagina?",
+            storia = Array.Empty<object>(),
+            contestoPagina = "password: SegretoLungo123!",
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+            using var inviato = JsonDocument.Parse(_providerFinto.UltimoCorpo!);
+            string istruzioni = inviato.RootElement
+                .GetProperty("messages")[0].GetProperty("content").GetString()!;
+            Assert.DoesNotContain("SegretoLungo123", istruzioni);
+            Assert.DoesNotContain("Valori compilati ora nella schermata", istruzioni);
+        }
+    }
+
+    [Fact]
     public async Task Chat_ConRisposteBrevi_AggiungeLaRegolaDiStileAlleIstruzioni()
     {
         using var client = await NuovoClientAutenticatoAsync();

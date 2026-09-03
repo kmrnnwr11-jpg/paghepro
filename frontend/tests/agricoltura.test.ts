@@ -7,6 +7,7 @@ import {
   giorniDetrazioneNelMese,
   oreDaGiornate,
   oreGiornaliereDaContratto,
+  riassuntoPaginaAgricola,
 } from "../src/agricoltura.ts";
 import type { DatiMensiliCedolinoAgricolo } from "../src/api.ts";
 
@@ -103,4 +104,39 @@ test("i gruppi di trasferta passano se validi e vengono fermati se sforano il me
   assert.deepEqual(
     validaDatiCedolinoAgricolo({ ...validi, trasferte: [{ giorni: 30, importoGiorno: 15 }, { giorni: 5, importoGiorno: 20 }] }),
     ["I giorni di trasferta dei gruppi superano i 31 giorni del mese."]);
+});
+
+test("riassuntoPaginaAgricola descrive solo i campi compilati", () => {
+  const testo = riassuntoPaginaAgricola({
+    lavoratore: "MARIO ROSSI",
+    anno: "2026",
+    mese: "7",
+    giornate: "22",
+    oreMese: "110",
+    oreGiorno: "5",
+    redditoPresuntoAnnuo: "9000",
+    trasferte: [{ giorni: "10", importo: "15" }, { giorni: "5", importo: "20" }],
+    rimborsiDocumentati: "0",
+    netto: 812.5,
+  });
+  assert.ok(testo.includes("lavoratore MARIO ROSSI"));
+  assert.ok(testo.includes("periodo 7/2026"));
+  assert.ok(testo.includes("giornate lavorate 22"));
+  assert.ok(testo.includes("trasferte 10 giorni a 15 EUR + 5 giorni a 20 EUR"));
+  assert.ok(testo.includes("netto calcolato in anteprima 812.50 EUR"));
+  // I default a zero e i campi vuoti non entrano nel riassunto.
+  assert.ok(!testo.includes("rimborsi"));
+
+  const minimo = riassuntoPaginaAgricola({
+    anno: "2026",
+    mese: "8",
+    giornate: "",
+    oreMese: "",
+    oreGiorno: "",
+    redditoPresuntoAnnuo: "",
+    trasferte: [],
+    giorniTrasferta: "0",
+    indennitaTrasferta: "0",
+  });
+  assert.equal(minimo, "periodo 8/2026.");
 });

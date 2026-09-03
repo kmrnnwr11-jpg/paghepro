@@ -94,3 +94,42 @@ export function giorniDetrazioneNelMese(anno: number, mese: number, dataAssunzio
   if (a < da) return 0;
   return Math.round((a - da) / 86_400_000) + 1;
 }
+
+/**
+ * Riassunto leggibile dei valori compilati nella pagina agricola, pubblicato come contesto
+ * di schermata per Aurora (dato non fidato lato server). Solo i campi compilati entrano
+ * nel testo: niente zeri di default, niente valori inventati.
+ */
+export function riassuntoPaginaAgricola(dati: {
+  lavoratore?: string | null;
+  anno: string;
+  mese: string;
+  giornate: string;
+  oreMese: string;
+  oreGiorno: string;
+  redditoPresuntoAnnuo: string;
+  trasferte: { giorni: string; importo: string }[];
+  giorniTrasferta?: string;
+  indennitaTrasferta?: string;
+  rimborsiDocumentati?: string;
+  netto?: number | null;
+}): string {
+  const num = (valore?: string) => Number((valore ?? "").replace(",", "."));
+  const parti: string[] = [];
+  if (dati.lavoratore?.trim()) parti.push(`lavoratore ${dati.lavoratore.trim()}`);
+  parti.push(`periodo ${dati.mese}/${dati.anno}`);
+  if (dati.giornate.trim()) parti.push(`giornate lavorate ${dati.giornate}`);
+  if (dati.oreMese.trim()) parti.push(`ore del mese ${dati.oreMese}`);
+  if (dati.oreGiorno.trim()) parti.push(`ore al giorno ${dati.oreGiorno}`);
+  if (dati.redditoPresuntoAnnuo.trim())
+    parti.push(`reddito annuo presunto ${dati.redditoPresuntoAnnuo} EUR`);
+  const gruppi = dati.trasferte.filter((g) => num(g.giorni) > 0 && num(g.importo) > 0);
+  if (gruppi.length > 0)
+    parti.push(`trasferte ${gruppi.map((g) => `${g.giorni} giorni a ${g.importo} EUR`).join(" + ")}`);
+  else if (num(dati.giorniTrasferta) > 0 && num(dati.indennitaTrasferta) > 0)
+    parti.push(`trasferta ${dati.giorniTrasferta} giorni a ${dati.indennitaTrasferta} EUR`);
+  if (num(dati.rimborsiDocumentati) > 0)
+    parti.push(`rimborsi spese documentati ${dati.rimborsiDocumentati} EUR`);
+  if (dati.netto != null) parti.push(`netto calcolato in anteprima ${dati.netto.toFixed(2)} EUR`);
+  return `${parti.join("; ")}.`;
+}

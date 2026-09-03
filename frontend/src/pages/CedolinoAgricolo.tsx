@@ -20,8 +20,10 @@ import {
   giorniDetrazioneNelMese,
   oreDaGiornate,
   oreGiornaliereDaContratto,
+  riassuntoPaginaAgricola,
   GIORNI_SETTIMANA_AGRICOLA,
 } from "../agricoltura";
+import { pubblicaContestoPagina } from "../contestoPagina";
 
 const mesi = [
   "", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -152,6 +154,27 @@ export function CedolinoAgricolo() {
       giorniDetrazione: detrazione === null ? corrente.giorniDetrazione : String(detrazione),
     }));
   }, [rapporto, form.anno, form.mese]);
+
+  // Contesto per Aurora: la pagina pubblica i valori compilati (lavoratore, giornate, ore,
+  // trasferte, netto in anteprima) così la chat risponde su ciò che l'utente ha davanti.
+  useEffect(() => {
+    const lavoratore = dipendenti.find((d) => d.rapportoId === rapportoId)?.nominativo ?? null;
+    pubblicaContestoPagina(riassuntoPaginaAgricola({
+      lavoratore,
+      anno: form.anno,
+      mese: form.mese,
+      giornate: form.giornateLavorate,
+      oreMese: form.oreOrdinarie,
+      oreGiorno: form.oreGiorno,
+      redditoPresuntoAnnuo: form.redditoPresuntoAnnuo,
+      trasferte: gruppiTrasferta,
+      giorniTrasferta: form.giorniTrasferta,
+      indennitaTrasferta: form.indennitaTrasfertaGiornaliera,
+      rimborsiDocumentati: form.rimborsiSpeseDocumentate,
+      netto: anteprima?.cedolino.nettoInBusta ?? null,
+    }));
+  }, [dipendenti, rapportoId, form, gruppiTrasferta, anteprima]);
+  useEffect(() => () => pubblicaContestoPagina(null), []);
 
   const provinciaRapporto = (rapporto?.provinciaLavoro || azienda?.provincia || "").toUpperCase();
   const anno = Number(form.anno);

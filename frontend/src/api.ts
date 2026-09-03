@@ -1410,6 +1410,7 @@ export const api = {
     contestoSelezionato?: ContestoSelezionatoAi | null,
     sezioneUi?: string | null,
     rispostaBreve?: boolean,
+    contestoPagina?: string | null,
     signal?: AbortSignal,
   ) =>
     req<RispostaChatAi>("/api/ai/chat", {
@@ -1423,6 +1424,7 @@ export const api = {
         contestoSelezionato: contestoSelezionato ?? null,
         sezioneUi: sezioneUi ?? null,
         rispostaBreve: rispostaBreve ?? false,
+        contestoPagina: contestoPagina ?? null,
       }),
     }),
 

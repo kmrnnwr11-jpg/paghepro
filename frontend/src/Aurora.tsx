@@ -71,6 +71,7 @@ import {
   salvaConversazione,
   type ConversazioneSalvata,
 } from "./auroraCronologia";
+import { contestoPaginaCorrente } from "./contestoPagina";
 import { creaSequenziatoreRichieste } from "./ultimaRichiesta";
 import { preferenzaLocale, salvaPreferenzaOvunque } from "./preferenze";
 
@@ -666,6 +667,7 @@ export function AuroraPanel({
           : null,
         sezione,
         risposteBrevi,
+        contestoPaginaCorrente(),
         richiesta.signal,
       );
       if (!richiesta.attiva() || scopeConversazioneRef.current !== scopeRichiesto) return;

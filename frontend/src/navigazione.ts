@@ -32,6 +32,7 @@ export const MONDI: Mondo[] = [
     titolo: "Paghe",
     voci: [
       { key: "presenze", label: "Presenze", detail: "Cartellino del mese: ferie, malattia, straordinari", sinonimi: ["cartellino", "ferie", "malattia", "straordinari"] },
+      { key: "controllo-mese", label: "Controllo del mese", detail: "Semafori di tutte le aziende: chi è pronto, chi manca, chi è bloccato", sinonimi: ["cruscotto", "semafori", "anomalie", "controllo"] },
       { key: "cedolini", label: "Buste paga", detail: "Archivio dei cedolini e PDF da consegnare", sinonimi: ["cedolini", "busta", "paga", "pdf"] },
       { key: "agricoltura", label: "Agricoltura OTD", detail: "Anteprima OTD; OTI bloccato finche non e validato", sinonimi: ["agricola", "agricoltura", "otd", "oti", "bracciante", "cpl", "posagri"] },
       { key: "elaborazioni", label: "Elabora il mese", detail: "Calcolo dei cedolini di tutti i dipendenti", sinonimi: ["calcolo", "elaborazione"] },

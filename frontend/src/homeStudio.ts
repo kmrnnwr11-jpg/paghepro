@@ -7,6 +7,7 @@ export type SectionKey =
   | "dipendenti"
   | "dipendente"
   | "presenze"
+  | "controllo-mese"
   | "cedolini"
   | "agricoltura"
   | "calcolo"

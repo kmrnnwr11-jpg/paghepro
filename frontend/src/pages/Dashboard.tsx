@@ -93,6 +93,7 @@ import { Imu } from "./Imu";
 import { Intrastat } from "./Intrastat";
 import { IvaAnnuale } from "./IvaAnnuale";
 import { Presenze } from "./Presenze";
+import { ControlloMese } from "./ControlloMese";
 import { Cedolini } from "./Cedolini";
 import { CedolinoAgricolo } from "./CedolinoAgricolo";
 import { Elaborazione } from "./Elaborazione";
@@ -128,6 +129,7 @@ const sectionTitle: Record<SectionKey, string> = {
   dipendenti: "Dipendenti",
   dipendente: "Scheda dipendente",
   presenze: "Cartellino presenze",
+  "controllo-mese": "Controllo del mese",
   cedolini: "Cedolini",
   agricoltura: "Anteprima busta agricola",
   calcolo: "Calcolo cedolino",
@@ -1633,6 +1635,7 @@ function ModuleScreen({
   if (active === "dipendenti") return <Dipendenti onApri={onApriDipendente} />;
   if (active === "dipendente") return <Dipendente rapportoId={rapportoSel} onPayslip={() => onNavigate("cedolini")} onBack={() => onNavigate("dipendenti")} />;
   if (active === "presenze") return <Presenze />;
+  if (active === "controllo-mese") return <ControlloMese />;
   if (active === "elaborazioni") return <Elaborazione onApriSezione={onNavigate} />;
   if (active === "adempimenti") return <DeadlinesPanel onNavigate={onNavigate} />;
   if (active === "fatture") return <Fatture />;

@@ -396,6 +396,22 @@ export interface PresenzaRiga {
 export interface PresenzeMese {
   anno: number; mese: number; totale: number; elaborati: number; righe: PresenzaRiga[];
 }
+// Cruscotto del mese multi-azienda: stessa tassonomia di stati del broker Aurora.
+export type StatoCruscottoRapporto =
+  | "protetto" | "gia_elaborato" | "agricolo"
+  | "bloccato" | "da_compilare" | "cartellino_presente";
+export interface RigaCruscottoRapporto {
+  rapportoId: string; nominativo: string; stato: StatoCruscottoRapporto; motivo: string;
+}
+export interface AziendaCruscotto {
+  aziendaId: string; ragioneSociale: string;
+  elaborati: number; pronti: number; daCompilare: number; bloccati: number; agricoli: number;
+  rapporti: RigaCruscottoRapporto[];
+}
+export interface CruscottoMese {
+  anno: number; mese: number; aziendeTotali: number; elencoTagliato: boolean;
+  aziende: AziendaCruscotto[];
+}
 export interface RedditiPfInputReq {
   altriRedditi: number; oneriDeducibili: number; oneriDetraibili19: number; acconti: number;
 }
@@ -899,6 +915,9 @@ export const api = {
     }),
   presenzeMese: (aziendaId: string, anno: number, mese: number, signal?: AbortSignal) =>
     req<PresenzeMese>(`/api/aziende/${aziendaId}/presenze/${anno}/${mese}`, { signal }),
+
+  cruscottoMese: (anno: number, mese: number, signal?: AbortSignal) =>
+    req<CruscottoMese>(`/api/cruscotto-mese/${anno}/${mese}`, { signal }),
 
   // --- Fine anno: conguaglio IRPEF, rivalutazione TFR, autoliquidazione INAIL ---
   conguaglioAnnuale: (rapportoId: string, anno: number) =>

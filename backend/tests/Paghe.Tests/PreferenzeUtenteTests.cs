@@ -109,4 +109,32 @@ public sealed class PreferenzeUtenteTests : IDisposable
             tenantA, utenteA, PreferenzeUtenteService.StileBusta,
             CatalogoStiliCedolino.ChiavePredefinita));
     }
+
+    [Fact]
+    public async Task TemaEAccentoInterfaccia_AccettanoSoloIlCatalogo()
+    {
+        var (tenant, utente) = (Guid.NewGuid(), Guid.NewGuid());
+        await using var db = NuovoContesto();
+        var svc = new PreferenzeUtenteService(db);
+
+        foreach (string tema in PreferenzeUtenteService.TemiInterfaccia)
+        {
+            await svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.TemaInterfaccia, tema);
+            Assert.Equal(tema, await svc.LeggiAsync(
+                tenant, utente, PreferenzeUtenteService.TemaInterfaccia, "chiaro"));
+        }
+        foreach (string accento in PreferenzeUtenteService.AccentiInterfaccia)
+        {
+            await svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.AccentoInterfaccia, accento);
+            Assert.Equal(accento, await svc.LeggiAsync(
+                tenant, utente, PreferenzeUtenteService.AccentoInterfaccia, "salvia"));
+        }
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.TemaInterfaccia, "notte"));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.AccentoInterfaccia, "#ff0000"));
+        // Il tema resta una scelta dell'utente: nessuna preferenza cambia i numeri dei documenti.
+        Assert.Equal("automatico", (await svc.LeggiTutteAsync(tenant, utente))[PreferenzeUtenteService.TemaInterfaccia]);
+    }
 }

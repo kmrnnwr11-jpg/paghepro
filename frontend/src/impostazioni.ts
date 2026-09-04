@@ -12,7 +12,7 @@ export const SEZIONI_IMPOSTAZIONI = [
     id: "interfaccia",
     gruppo: "Preferenze",
     titolo: "Interfaccia",
-    descrizione: "Testo, carattere e densità",
+    descrizione: "Tema, colore, testo e densità",
   },
   {
     id: "aurora",

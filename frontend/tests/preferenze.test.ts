@@ -2,18 +2,25 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  ACCENTO_PREDEFINITO,
+  accentoInterfacciaPreferito,
   ambitoPreferenzeCorrente,
   aggiornaCachePreferenzeDalServer,
   applicaAspetto,
+  CATALOGO_ACCENTI,
   CATALOGO_STILI_BUSTA,
+  CATALOGO_TEMI,
   haPreferenzeDaSincronizzare,
   preferenzaLocale,
   pulisciCachePreferenzeCorrenti,
   salvaPreferenzaConEsito,
   salvaPreferenzaOvunque,
   salvaStileBusta,
+  risolviTema,
   STILE_BUSTA_PREDEFINITO,
   stileBustaPreferito,
+  TEMA_PREDEFINITO,
+  temaInterfacciaPreferito,
 } from "../src/preferenze.ts";
 
 function memoria(): Storage {
@@ -202,4 +209,58 @@ test("una modifica offline non viene sovrascritta e diventa pulita dopo il retry
   assert.equal(haPreferenzeDaSincronizzare(store), false);
   aggiornaCachePreferenzeDalServer({ densita: "comoda" }, store);
   assert.equal(preferenzaLocale("densita", "", store), "comoda");
+});
+
+// ---- Tema e accento dell'interfaccia --------------------------------------------------
+
+test("il catalogo dei temi e degli accenti resta allineato alla whitelist backend", () => {
+  const sorgenteBackend = readFileSync(new URL(
+    "../../backend/src/Paghe.Persistence/PreferenzeUtenteService.cs",
+    import.meta.url,
+  ), "utf8");
+  const lista = (nome: string) => [...(sorgenteBackend.match(
+    new RegExp(`${nome} =\\s*\\[([^\\]]+)\\]`),
+  )?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(lista("TemiInterfaccia"), CATALOGO_TEMI.map((tema) => tema.id));
+  assert.deepEqual(lista("AccentiInterfaccia"), CATALOGO_ACCENTI.map((accento) => accento.id));
+  assert.equal(TEMA_PREDEFINITO, "chiaro");
+  assert.equal(ACCENTO_PREDEFINITO, "salvia");
+});
+
+test("automatico segue il dispositivo, chiaro e scuro restano fissi", () => {
+  assert.equal(risolviTema("automatico", true), "scuro");
+  assert.equal(risolviTema("automatico", false), "chiaro");
+  assert.equal(risolviTema("scuro", false), "scuro");
+  assert.equal(risolviTema("chiaro", true), "chiaro");
+});
+
+test("tema e accento si rileggono dalla cache della sessione e un valore corrotto torna al default", () => {
+  const store = memoria();
+  store.setItem("tenant_corrente", "tenant-a");
+  store.setItem("utente_corrente", "utente-a");
+  assert.equal(temaInterfacciaPreferito(store), "chiaro");
+  assert.equal(accentoInterfacciaPreferito(store), "salvia");
+  aggiornaCachePreferenzeDalServer({ tema_interfaccia: "scuro", accento_interfaccia: "bordeaux" }, store);
+  assert.equal(temaInterfacciaPreferito(store), "scuro");
+  assert.equal(accentoInterfacciaPreferito(store), "bordeaux");
+  store.setItem("paghepro_preferenza:tenant-a:utente-a:tema_interfaccia", "notte");
+  store.setItem("paghepro_preferenza:tenant-a:utente-a:accento_interfaccia", "#ff0000");
+  assert.equal(temaInterfacciaPreferito(store), "chiaro");
+  assert.equal(accentoInterfacciaPreferito(store), "salvia");
+});
+
+test("senza sessione vale l'ultimo aspetto ricordato sul dispositivo, mai la cache di un altro utente", () => {
+  const store = memoria();
+  assert.equal(temaInterfacciaPreferito(store), "chiaro");
+  store.setItem("paghepro_aspetto_dispositivo", JSON.stringify({ tema: "scuro", accento: "oceano" }));
+  assert.equal(temaInterfacciaPreferito(store), "scuro");
+  assert.equal(accentoInterfacciaPreferito(store), "oceano");
+  store.setItem("paghepro_aspetto_dispositivo", "{non-json");
+  assert.equal(temaInterfacciaPreferito(store), "chiaro");
+  // Con una sessione attiva la cache isolata prevale sul promemoria del dispositivo.
+  store.setItem("paghepro_aspetto_dispositivo", JSON.stringify({ tema: "scuro", accento: "oceano" }));
+  store.setItem("tenant_corrente", "tenant-b");
+  store.setItem("utente_corrente", "utente-b");
+  assert.equal(temaInterfacciaPreferito(store), "chiaro");
+  assert.equal(accentoInterfacciaPreferito(store), "salvia");
 });

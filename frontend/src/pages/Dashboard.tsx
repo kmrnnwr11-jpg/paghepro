@@ -52,6 +52,7 @@ import {
   leggiTestoSelezionatoAurora,
   type ContestoAurora,
 } from "../auroraContext";
+import { sincronizzaPreferenzeDalServer } from "../preferenze";
 
 // Email dell'utente loggato, letta dal token (per mostrare il vero account, non un nome finto).
 function emailDalToken(): string {
@@ -231,6 +232,23 @@ export function Dashboard() {
   const contestoCatturato = useRef<ContestoAurora | null>(null);
   const triggerAurora = useRef<HTMLElement | null>(null);
   const auroraFab = useRef<HTMLButtonElement>(null);
+  const areaContenuto = useRef<HTMLElement>(null);
+
+  // Tema, accento e aspetto scelti su un altro dispositivo arrivano appena si entra:
+  // la sincronizzazione riapplica le preferenze (offline restano quelle in cache).
+  useEffect(() => { void sincronizzaPreferenzeDalServer(); }, []);
+
+  // Ogni cambio di sezione rientra con una breve dissolvenza dal basso. La classe viene
+  // tolta e rimessa (con un reflow in mezzo) per riavviare l'animazione senza rimontare
+  // le pagine, che conservano così stato e dati già caricati.
+  useEffect(() => {
+    const area = areaContenuto.current;
+    if (!area) return;
+    area.classList.remove("pagina-transizione");
+    void area.offsetWidth;
+    area.classList.add("pagina-transizione");
+  }, [active]);
+
   const apriDipendente = (rapportoId: string) => {
     setRapportoSel(rapportoId);
     setActive("dipendente");
@@ -505,7 +523,7 @@ export function Dashboard() {
           />
         )}
 
-        <main className="content-area" data-aurora-selectable>
+        <main className="content-area" data-aurora-selectable ref={areaContenuto}>
           {aziendeInCaricamento ? (
             <section className="glass-card home-loading" aria-live="polite">Caricamento aziende…</section>
           ) : !aziendaCorrente && sezioneRichiedeAzienda(active) ? (

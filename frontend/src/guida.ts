@@ -481,9 +481,10 @@ export const aiutoPerSezione: Record<string, SchedaAiuto> = {
   impostazioni: {
     titolo: "Impostazioni",
     aCosaServe:
-      "Qui trovi cinque aree ordinate: Documenti, Interfaccia, Aurora, Sicurezza e Gestione studio. Puoi scegliere uno dei 15 stili di busta, regolare la leggibilità, proteggere l'account e raggiungere le configurazioni consentite dal tuo ruolo. Le buste già chiuse non cambiano.",
+      "Qui trovi cinque aree ordinate: Documenti, Interfaccia, Aurora, Sicurezza e Gestione studio. Puoi scegliere uno dei 15 stili di busta, il tema del software (chiaro, scuro o automatico) con sei colori d'accento, regolare la leggibilità, proteggere l'account e raggiungere le configurazioni consentite dal tuo ruolo. Le buste già chiuse non cambiano.",
     passi: [
       "Scegli una categoria dal menu laterale; sul telefono scorri le categorie in orizzontale.",
+      "In Interfaccia tocca una tessera del tema o un colore: l'aspetto cambia subito, su tutte le pagine, e ti segue sugli altri dispositivi.",
       "Le preferenze si sincronizzano con il tuo account quando il server è disponibile; offline restano salvate sul dispositivo.",
       "Per i dati condivisi, apri Gestione studio e poi la pagina dedicata.",
     ],

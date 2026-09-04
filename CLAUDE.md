@@ -44,6 +44,31 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Tema del software e finitura animata (4 settembre 2026, /goal)**: richiesta del fondatore
+  («ognuno sceglie stile della busta e tema del software, deve essere bello, comodo, fluido»).
+  In Impostazioni → Interfaccia si scelgono il **tema** (Chiaro / Scuro / Automatico dal
+  dispositivo, tessere con miniatura della finestra) e il **colore d'accento** (Salvia, Oceano,
+  Indaco, Bordeaux, Rame, Grafite): preferenze server `tema_interfaccia` e
+  `accento_interfaccia` in whitelist (`PreferenzeUtenteService.TemiInterfaccia/AccentiInterfaccia`,
+  catalogo chiuso identico a `CATALOGO_TEMI`/`CATALOGO_ACCENTI` in `preferenze.ts`, allineamento
+  coperto da test). `applicaAspetto()` mette `data-tema`/`data-accento` sull'html prima del primo
+  disegno (cache isolata tenant+utente; sulla schermata di accesso vale l'ultimo aspetto del
+  dispositivo, così niente lampo bianco), aggiorna il `theme-color` della PWA e in «automatico»
+  segue il dispositivo dal vivo; il cambio usa le View Transitions (dissolvenza) con ripiego a
+  transizione CSS e rispetto di «riduci movimento»; la Dashboard sincronizza le preferenze
+  all'ingresso, così il tema segue l'utente tra dispositivi. **CSS tokenizzato**: ~450 colori
+  cablati di `index.css` (marchio teal, bordi, ombre, vetri, superfici, stati) sono diventati
+  token nel `:root` unico in testa al file (il secondo `:root` del layer «vetro» è stato
+  assorbito); la sezione «TEMI» in fondo ridefinisce SOLO token per i sei accenti e per il tema
+  scuro (neutri, vetri, campi, intestazioni tabella, stati). Movimento: ingresso di pagina a ogni
+  cambio sezione (classe riavviata sul `main`, senza rimontare le pagine), pannello Impostazioni
+  a cascata, tessere e swatch con «pop» di selezione. Nel giro di verifica in browser (chiaro e
+  scuro, desktop e 390 px, 16 pagine) sono emersi e stati corretti: campi e intestazioni tabella
+  chiari nel tema scuro, testata «Controllo del mese» senza stile (ora filtri compatti e pillole)
+  e il **dataset demo che falliva** per checksum errati di CF e P.IVA (`DemoDatasetService`,
+  test `DemoDatasetTests`). Test: frontend 104/104, backend suite completa verde, lint invariato
+  (8 avvisi preesistenti), build SPA ok.
+
 - **Autorizzazione completa: Aurora lavora in catena come un collaboratore (3 settembre
   2026, sera)**: richiesta del fondatore («deve fare tutto come un agente umano, conferma
   solo alla fine, e la possibilità di autorizzare completamente»). Nuovo interruttore

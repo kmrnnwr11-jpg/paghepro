@@ -13,10 +13,12 @@ import {
   FileText,
   KeyRound,
   Monitor,
+  Palette,
   RotateCcw,
   Settings2,
   ShieldCheck,
   Sparkles,
+  SunMoon,
   type LucideIcon,
 } from "lucide-react";
 import { api, getRuolo } from "../api";
@@ -32,7 +34,12 @@ import {
 } from "../impostazioni";
 import { SceltaStileBusta } from "../SceltaStileBusta";
 import {
+  ACCENTO_PREDEFINITO,
+  accentoInterfacciaPreferito,
   applicaAspetto,
+  applicaAspettoConTransizione,
+  CATALOGO_ACCENTI,
+  CATALOGO_TEMI,
   dettaglioStileBusta,
   haPreferenzeDaSincronizzare,
   preferenzaLocale,
@@ -40,8 +47,12 @@ import {
   STILE_BUSTA_PREDEFINITO,
   stileBustaPreferito,
   sincronizzaPreferenzeDalServer,
+  TEMA_PREDEFINITO,
+  temaInterfacciaPreferito,
+  type AccentoInterfaccia,
   type EsitoSincronizzazionePreferenze,
   type StileBusta,
+  type TemaInterfaccia,
 } from "../preferenze";
 
 type StatoSincronizzazione = "caricamento" | "salvataggio" | EsitoSincronizzazionePreferenze;
@@ -146,6 +157,27 @@ function GruppoScelte({
   );
 }
 
+/**
+ * Miniatura di una finestra dell'app nel tema indicato: barra alta, due schede e un
+ * pulsante con l'accento scelto. «Automatico» mostra giorno e notte divisi in diagonale.
+ */
+function AnteprimaTema({ variante }: { variante: TemaInterfaccia }) {
+  const lati = variante === "automatico" ? ["chiaro", "scuro"] : [variante];
+  return (
+    <span className={`settings-theme-mock ${variante}`} aria-hidden="true">
+      {lati.map((lato) => (
+        <span className="settings-theme-mock-lato" key={lato}>
+          <span className="settings-theme-mock-barra"><i /><b /></span>
+          <span className="settings-theme-mock-corpo">
+            <span className="settings-theme-mock-scheda"><i /><i /><i /><em /></span>
+            <span className="settings-theme-mock-scheda"><i /><i /><i /></span>
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function StatoPreferenze({ stato }: { stato: StatoSincronizzazione }) {
   const contenuto = stato === "caricamento"
     ? ["Caricamento preferenze", "Recupero delle tue impostazioni"]
@@ -183,6 +215,8 @@ export function Impostazioni() {
   const [scala, setScala] = useState("normale");
   const [fontUi, setFontUi] = useState("sistema");
   const [densita, setDensita] = useState("comoda");
+  const [tema, setTema] = useState<TemaInterfaccia>(TEMA_PREDEFINITO);
+  const [accento, setAccento] = useState<AccentoInterfaccia>(ACCENTO_PREDEFINITO);
   const [ai, setAi] = useState<{ provider: string; attivo: boolean; consumoMese: number; limiteMensile: number } | null>(null);
 
   const [pwAttuale, setPwAttuale] = useState("");
@@ -225,6 +259,8 @@ export function Impostazioni() {
       setScala(preferenzaLocale("scala_testo", "normale") || "normale");
       setFontUi(preferenzaLocale("font_ui", "sistema") || "sistema");
       setDensita(preferenzaLocale("densita", "comoda") || "comoda");
+      setTema(temaInterfacciaPreferito());
+      setAccento(accentoInterfacciaPreferito());
       setStatoSincronizzazione(esito);
       setPronto(true);
       api.statoAi().then((stato) => { if (attivo) setAi(stato); }).catch(() => { /* informativo */ });
@@ -235,10 +271,15 @@ export function Impostazioni() {
     return () => { attivo = false; };
   }, []);
 
-  async function aggiornaPreferenza(chiave: string, valore: string, applica = false) {
+  async function aggiornaPreferenza(
+    chiave: string,
+    valore: string,
+    applica: false | "subito" | "transizione" = false,
+  ) {
     setStatoSincronizzazione(coordinatoreSincronizzazione.current.inizia());
     const salvataggio = salvaPreferenzaConEsito(chiave, valore);
-    if (applica) applicaAspetto();
+    if (applica === "transizione") applicaAspettoConTransizione();
+    else if (applica === "subito") applicaAspetto();
     const esito = await salvataggio;
     const statoAggregato = coordinatoreSincronizzazione.current.completa(esito);
     setStatoSincronizzazione(
@@ -260,16 +301,33 @@ export function Impostazioni() {
       : { tipo: "avviso", testo: "Dicitura salvata su questo dispositivo; sincronizzazione non disponibile." });
   }
 
+  function scegliTema(nuovo: TemaInterfaccia) {
+    if (nuovo === tema) return;
+    setTema(nuovo);
+    void aggiornaPreferenza("tema_interfaccia", nuovo, "transizione");
+  }
+
+  function scegliAccento(nuovo: AccentoInterfaccia) {
+    if (nuovo === accento) return;
+    setAccento(nuovo);
+    void aggiornaPreferenza("accento_interfaccia", nuovo, "transizione");
+  }
+
   async function ripristinaAspetto() {
     setScala("normale");
     setFontUi("sistema");
     setDensita("comoda");
-    await Promise.all([
+    setTema(TEMA_PREDEFINITO);
+    setAccento(ACCENTO_PREDEFINITO);
+    const salvataggi = Promise.all([
       aggiornaPreferenza("scala_testo", "normale"),
       aggiornaPreferenza("font_ui", "sistema"),
       aggiornaPreferenza("densita", "comoda"),
+      aggiornaPreferenza("tema_interfaccia", TEMA_PREDEFINITO),
+      aggiornaPreferenza("accento_interfaccia", ACCENTO_PREDEFINITO),
     ]);
-    applicaAspetto();
+    applicaAspettoConTransizione();
+    await salvataggi;
   }
 
   async function inviaPassword(evento: FormEvent) {
@@ -438,6 +496,7 @@ export function Impostazioni() {
           aria-live="polite"
           aria-label={SEZIONI_IMPOSTAZIONI.find((sezione) => sezione.id === sezioneAttiva)?.titolo}
         >
+          <div className="settings-panel-corpo" key={sezioneAttiva}>
           {sezioneAttiva === "documenti" && (
             <>
               <IntestazionePannello
@@ -551,25 +610,80 @@ export function Impostazioni() {
                 icona={<Monitor size={20} />}
                 soprattitolo="Preferenza personale"
                 titolo="Aspetto e accessibilità"
-                descrizione="Adatta l’interfaccia alla tua vista e alla quantità di informazioni che vuoi vedere."
+                descrizione="Scegli tema e colore del software, poi adatta testo e spaziatura alla tua vista."
               />
               <div className="settings-card-stack">
+                <article className="settings-surface-card settings-surface-card-wide">
+                  <div className="settings-control-heading">
+                    <strong><SunMoon size={16} aria-hidden="true" /> Tema del software</strong>
+                    <span>Chiaro, scuro o automatico: cambia subito, su ogni pagina, e ti segue sugli altri dispositivi.</span>
+                  </div>
+                  <div className="settings-theme-grid" role="radiogroup" aria-label="Tema del software">
+                    {CATALOGO_TEMI.map((opzione) => {
+                      const attivo = tema === opzione.id;
+                      return (
+                        <button
+                          key={opzione.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={attivo}
+                          className={`settings-theme-option ${attivo ? "active" : ""}`}
+                          onClick={() => scegliTema(opzione.id)}
+                        >
+                          {attivo && (
+                            <span className="settings-theme-check" aria-hidden="true"><Check size={13} strokeWidth={3} /></span>
+                          )}
+                          <AnteprimaTema variante={opzione.id} />
+                          <span><strong>{opzione.nome}</strong><small>{opzione.descrizione}</small></span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </article>
+                <article className="settings-surface-card settings-surface-card-wide">
+                  <div className="settings-control-heading">
+                    <strong><Palette size={16} aria-hidden="true" /> Colore d’accento</strong>
+                    <span>Pulsanti, menu ed evidenziazioni prendono questa tinta; i documenti non cambiano.</span>
+                  </div>
+                  <div className="settings-accent-row" role="radiogroup" aria-label="Colore d’accento">
+                    {CATALOGO_ACCENTI.map((opzione) => {
+                      const attivo = accento === opzione.id;
+                      return (
+                        <button
+                          key={opzione.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={attivo}
+                          className={`settings-accent-swatch ${attivo ? "active" : ""}`}
+                          style={{ "--swatch": opzione.colore } as CSSProperties}
+                          title={opzione.descrizione}
+                          onClick={() => scegliAccento(opzione.id)}
+                        >
+                          <span>{attivo && <Check size={16} strokeWidth={3} aria-hidden="true" />}</span>
+                          <span>{opzione.nome}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </article>
                 <article className="settings-surface-card">
                   <GruppoScelte etichetta="Dimensione del testo" descrizione="Ingrandisce testi e controlli in tutto il software." valore={scala} opzioni={OPZIONI_SCALA}
-                    onChange={(valore) => { setScala(valore); void aggiornaPreferenza("scala_testo", valore, true); }} />
+                    onChange={(valore) => { setScala(valore); void aggiornaPreferenza("scala_testo", valore, "subito"); }} />
                 </article>
                 <article className="settings-surface-card">
                   <GruppoScelte etichetta="Carattere dell’interfaccia" descrizione="Scegli il carattere usato nei menu, moduli e tabelle." valore={fontUi} opzioni={OPZIONI_FONT_UI}
-                    onChange={(valore) => { setFontUi(valore); void aggiornaPreferenza("font_ui", valore, true); }} />
+                    onChange={(valore) => { setFontUi(valore); void aggiornaPreferenza("font_ui", valore, "subito"); }} />
                 </article>
                 <article className="settings-surface-card">
                   <GruppoScelte etichetta="Spaziatura" descrizione="La modalità compatta mostra più righe mantenendo gli stessi dati." valore={densita} opzioni={OPZIONI_DENSITA}
-                    onChange={(valore) => { setDensita(valore); void aggiornaPreferenza("densita", valore, true); }} />
+                    onChange={(valore) => { setDensita(valore); void aggiornaPreferenza("densita", valore, "subito"); }} />
                 </article>
               </div>
               <div className="settings-interface-preview">
                 <div><span>Anteprima immediata</span><strong>Testo chiaro, controlli ordinati</strong><p>Le modifiche sono già applicate a questa pagina.</p></div>
                 <div className="settings-interface-tags" aria-label="Scelte correnti">
+                  <span>{CATALOGO_TEMI.find((opzione) => opzione.id === tema)?.nome}</span>
+                  <span>{CATALOGO_ACCENTI.find((opzione) => opzione.id === accento)?.nome}</span>
                   <span>{OPZIONI_SCALA.find((opzione) => opzione.valore === scala)?.titolo}</span>
                   <span>{OPZIONI_FONT_UI.find((opzione) => opzione.valore === fontUi)?.titolo}</span>
                   <span>{OPZIONI_DENSITA.find((opzione) => opzione.valore === densita)?.titolo}</span>
@@ -715,6 +829,7 @@ export function Impostazioni() {
               <div className="settings-info-strip"><ShieldCheck size={17} aria-hidden="true" /><span><strong>Accessi rispettati.</strong> Vedi soltanto le aree consentite dal tuo ruolo.</span></div>
             </>
           )}
+          </div>
         </section>
       </div>
     </div>

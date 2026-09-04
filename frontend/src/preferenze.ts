@@ -34,6 +34,88 @@ function stileBustaValido(valore: string | null | undefined): valore is StileBus
   return CATALOGO_STILI_BUSTA.some((stile) => stile.id === valore);
 }
 
+// ---- Tema dell'interfaccia ----------------------------------------------------------------
+// Catalogo chiuso, identico alla whitelist del server (`PreferenzeUtenteService`): un valore
+// fuori lista non si applica e non si salva. Le tinte servono solo alle anteprime: i colori
+// veri vivono nei token CSS (`:root[data-tema]` / `:root[data-accento]` in index.css).
+
+export const CATALOGO_TEMI = [
+  { id: "chiaro", nome: "Chiaro", descrizione: "Scrivania luminosa, la più adatta di giorno." },
+  { id: "scuro", nome: "Scuro", descrizione: "Riposa la vista nelle ore serali e con poca luce." },
+  { id: "automatico", nome: "Automatico", descrizione: "Segue il dispositivo: giorno chiaro, notte scuro." },
+] as const;
+
+export const CATALOGO_ACCENTI = [
+  { id: "salvia", nome: "Salvia", colore: "#0e7268", descrizione: "Il verde-azzurro di PaghePro." },
+  { id: "oceano", nome: "Oceano", colore: "#1d5fa8", descrizione: "Blu istituzionale." },
+  { id: "indaco", nome: "Indaco", colore: "#5b3fb8", descrizione: "Viola contemporaneo." },
+  { id: "bordeaux", nome: "Bordeaux", colore: "#8c2f42", descrizione: "Rosso caldo da studio." },
+  { id: "rame", nome: "Rame", colore: "#9c4e2c", descrizione: "Terracotta e carta." },
+  { id: "grafite", nome: "Grafite", colore: "#3b4a5a", descrizione: "Neutro, sobrio, in scala di grigi." },
+] as const;
+
+export type TemaInterfaccia = (typeof CATALOGO_TEMI)[number]["id"];
+export type AccentoInterfaccia = (typeof CATALOGO_ACCENTI)[number]["id"];
+export type TemaEffettivo = Exclude<TemaInterfaccia, "automatico">;
+export const TEMA_PREDEFINITO: TemaInterfaccia = "chiaro";
+export const ACCENTO_PREDEFINITO: AccentoInterfaccia = "salvia";
+
+export function temaValido(valore: string | null | undefined): valore is TemaInterfaccia {
+  return CATALOGO_TEMI.some((tema) => tema.id === valore);
+}
+
+export function accentoValido(valore: string | null | undefined): valore is AccentoInterfaccia {
+  return CATALOGO_ACCENTI.some((accento) => accento.id === valore);
+}
+
+/** «Automatico» diventa chiaro o scuro in base a ciò che dichiara il dispositivo. */
+export function risolviTema(tema: TemaInterfaccia, dispositivoScuro: boolean): TemaEffettivo {
+  if (tema === "automatico") return dispositivoScuro ? "scuro" : "chiaro";
+  return tema;
+}
+
+/**
+ * Ultimo aspetto applicato su QUESTO dispositivo, fuori dall'ambito tenant+utente: serve
+ * soltanto alla schermata di accesso e al primo disegno dopo il logout, così chi usa il
+ * tema scuro non riceve un lampo bianco. Non è un dato personale e non torna al server.
+ */
+const CHIAVE_ASPETTO_DISPOSITIVO = "paghepro_aspetto_dispositivo";
+
+function aspettoDispositivo(store: Storage | null): { tema: TemaInterfaccia; accento: AccentoInterfaccia } {
+  try {
+    const grezzo = store?.getItem(CHIAVE_ASPETTO_DISPOSITIVO);
+    const letto = grezzo ? JSON.parse(grezzo) as { tema?: unknown; accento?: unknown } : {};
+    return {
+      tema: typeof letto.tema === "string" && temaValido(letto.tema) ? letto.tema : TEMA_PREDEFINITO,
+      accento: typeof letto.accento === "string" && accentoValido(letto.accento) ? letto.accento : ACCENTO_PREDEFINITO,
+    };
+  } catch {
+    return { tema: TEMA_PREDEFINITO, accento: ACCENTO_PREDEFINITO };
+  }
+}
+
+function ricordaAspettoDispositivo(
+  tema: TemaInterfaccia,
+  accento: AccentoInterfaccia,
+  store: Storage | null,
+): void {
+  try {
+    store?.setItem(CHIAVE_ASPETTO_DISPOSITIVO, JSON.stringify({ tema, accento }));
+  } catch { /* promemoria facoltativo */ }
+}
+
+export function temaInterfacciaPreferito(store: Storage | null = storagePredefinito()): TemaInterfaccia {
+  if (!ambitoPreferenzeCorrente(store)) return aspettoDispositivo(store).tema;
+  const valore = preferenzaLocale("tema_interfaccia", TEMA_PREDEFINITO, store);
+  return temaValido(valore) ? valore : TEMA_PREDEFINITO;
+}
+
+export function accentoInterfacciaPreferito(store: Storage | null = storagePredefinito()): AccentoInterfaccia {
+  if (!ambitoPreferenzeCorrente(store)) return aspettoDispositivo(store).accento;
+  const valore = preferenzaLocale("accento_interfaccia", ACCENTO_PREDEFINITO, store);
+  return accentoValido(valore) ? valore : ACCENTO_PREDEFINITO;
+}
+
 const CHIAVE_STILE_BUSTA = "preferenza_stile_busta";
 const PREFISSO_CACHE_ISOLATA = "paghepro_preferenza";
 const SUFFISSO_CACHE_SPORCA = ":da_sincronizzare";
@@ -109,6 +191,8 @@ const CACHE_LOCALE: Record<string, string> = {
   scala_testo: "preferenza_scala_testo",
   font_ui: "preferenza_font_ui",
   densita: "preferenza_densita",
+  tema_interfaccia: "preferenza_tema_interfaccia",
+  accento_interfaccia: "preferenza_accento_interfaccia",
 };
 
 export type EsitoSincronizzazionePreferenze = "server" | "locale";
@@ -287,7 +371,7 @@ export async function sincronizzaPreferenzeDalServer(): Promise<EsitoSincronizza
   }
 }
 
-/** Applica le preferenze d'aspetto (taglia, font, densità) alle classi del body. */
+/** Applica le preferenze d'aspetto (taglia, font, densità, tema e accento) al documento. */
 export function applicaAspetto(): void {
   if (typeof document === "undefined") return;
   const body = document.body;
@@ -296,4 +380,69 @@ export function applicaAspetto(): void {
   body.classList.toggle("scala-molto-grande", scala === "molto-grande");
   body.classList.toggle("font-lato", preferenzaLocale("font_ui", "sistema") === "lato");
   body.classList.toggle("densita-compatta", preferenzaLocale("densita", "comoda") === "compatta");
+  applicaTema();
+}
+
+/**
+ * Cambio d'aspetto con dissolvenza: con le View Transitions il browser fonde la pagina
+ * intera, altrimenti colori e ombre scivolano per mezzo secondo. Chi ha chiesto meno
+ * movimento riceve il cambio secco.
+ */
+export function applicaAspettoConTransizione(): void {
+  if (typeof document === "undefined") return;
+  const documento = document as Document & { startViewTransition?: (aggiorna: () => void) => unknown };
+  const riduciMovimento = (() => {
+    try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
+  })();
+  if (riduciMovimento) {
+    applicaAspetto();
+    return;
+  }
+  if (typeof documento.startViewTransition === "function") {
+    documento.startViewTransition(() => applicaAspetto());
+    return;
+  }
+  const radice = document.documentElement;
+  radice.classList.add("tema-in-transizione");
+  applicaAspetto();
+  window.setTimeout(() => radice.classList.remove("tema-in-transizione"), 500);
+}
+
+let ascoltoTemaDispositivo: MediaQueryList | null = null;
+
+function dispositivoPreferisceScuro(): boolean {
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  } catch {
+    return false;
+  }
+}
+
+function applicaTema(): void {
+  const radice = document.documentElement;
+  const store = storagePredefinito();
+  const tema = temaInterfacciaPreferito(store);
+  const accento = accentoInterfacciaPreferito(store);
+  radice.dataset.tema = risolviTema(tema, dispositivoPreferisceScuro());
+  radice.dataset.accento = accento;
+  if (ambitoPreferenzeCorrente(store)) ricordaAspettoDispositivo(tema, accento, store);
+  aggiornaColoreBarraSistema();
+  // In «automatico» il tema segue il dispositivo anche mentre l'app resta aperta.
+  try {
+    if (tema === "automatico" && !ascoltoTemaDispositivo) {
+      ascoltoTemaDispositivo = window.matchMedia("(prefers-color-scheme: dark)");
+      ascoltoTemaDispositivo.addEventListener("change", applicaTema);
+    } else if (tema !== "automatico" && ascoltoTemaDispositivo) {
+      ascoltoTemaDispositivo.removeEventListener("change", applicaTema);
+      ascoltoTemaDispositivo = null;
+    }
+  } catch { /* matchMedia assente: il tema resta quello scelto */ }
+}
+
+/** La barra di sistema (PWA, telefono) prende il colore della scrivania del tema attivo. */
+function aggiornaColoreBarraSistema(): void {
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta) return;
+  const colore = getComputedStyle(document.documentElement).getPropertyValue("--pwa-colore").trim();
+  if (colore) meta.setAttribute("content", colore);
 }

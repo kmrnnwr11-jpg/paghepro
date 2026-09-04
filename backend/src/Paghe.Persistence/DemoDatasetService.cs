@@ -32,19 +32,19 @@ public sealed class DemoDatasetService
     {
         new("DEMO Trasporti Nord Srl", "99000000101", "Milano", "MI", "20121", "F205",
             "Trasporti e logistica", "49.41.00", "TRASPORTI_LOGISTICA", "C3",
-            "Luca", "Bianchi", "BNCLCU90A01F205A", "Operaio", "Lombardia", 14),
-        new("DEMO Pulizie Italia Srl", "99000000102", "Bologna", "BO", "40121", "A944",
+            "Luca", "Bianchi", "BNCLCU90A01F205V", "Operaio", "Lombardia", 14),
+        new("DEMO Pulizie Italia Srl", "99000000119", "Bologna", "BO", "40121", "A944",
             "Pulizie e multiservizi", "81.21.00", "MULTISERVIZI_PULIZIE", "3",
-            "Sara", "Verdi", "VRDSRA92B41A944B", "Operaio", "Emilia-Romagna", 14),
-        new("DEMO Edil Casa Srl", "99000000103", "Torino", "TO", "10121", "L219",
+            "Sara", "Verdi", "VRDSRA92B41A944R", "Operaio", "Emilia-Romagna", 14),
+        new("DEMO Edil Casa Srl", "99000000127", "Torino", "TO", "10121", "L219",
             "Edilizia", "41.20.00", "EDILIZIA_INDUSTRIA", "3",
-            "Paolo", "Romano", "RMNPLA88C15L219C", "Operaio", "Piemonte", 13),
-        new("DEMO Metal Tech Srl", "99000000104", "Brescia", "BS", "25121", "B157",
+            "Paolo", "Romano", "RMNPLA88C15L219N", "Operaio", "Piemonte", 13),
+        new("DEMO Metal Tech Srl", "99000000135", "Brescia", "BS", "25121", "B157",
             "Metalmeccanica", "25.62.00", "METALMECCANICI_INDUSTRIA", "C2",
-            "Elena", "Gallo", "GLLLNE95D52B157D", "Operaio", "Lombardia", 13),
-        new("DEMO Hotel Mare Srl", "99000000105", "Rimini", "RN", "47921", "H294",
+            "Elena", "Gallo", "GLLLNE95D52B157B", "Operaio", "Lombardia", 13),
+        new("DEMO Hotel Mare Srl", "99000000143", "Rimini", "RN", "47921", "H294",
             "Turismo e ospitalita", "55.10.00", "TURISMO_PUBBLICI_ESERCIZI", "4",
-            "Marco", "Conti", "CNTMRC87E10H294E", "Impiegato", "Emilia-Romagna", 14),
+            "Marco", "Conti", "CNTMRC87E10H294R", "Impiegato", "Emilia-Romagna", 14),
     };
 
     public async Task<Esito> CreaSeMancanteAsync(Guid tenantId, CancellationToken ct = default)

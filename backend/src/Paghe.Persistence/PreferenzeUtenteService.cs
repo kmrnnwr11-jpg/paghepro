@@ -28,6 +28,16 @@ public sealed class PreferenzeUtenteService
     public const string FontInterfaccia = "font_ui";
     public const string Densita = "densita";
 
+    /// <summary>
+    /// Tema dell'interfaccia (chiaro, scuro o automatico dal dispositivo) e tinta d'accento:
+    /// catalogo chiuso, identico a quello della SPA (`CATALOGO_TEMI`/`CATALOGO_ACCENTI`).
+    /// </summary>
+    public const string TemaInterfaccia = "tema_interfaccia";
+    public const string AccentoInterfaccia = "accento_interfaccia";
+    public static readonly IReadOnlyList<string> TemiInterfaccia = ["chiaro", "scuro", "automatico"];
+    public static readonly IReadOnlyList<string> AccentiInterfaccia =
+        ["salvia", "oceano", "indaco", "bordeaux", "rame", "grafite"];
+
     /// <summary>Tinte ammesse per l'accento dei documenti: palette verificata, niente colori liberi.</summary>
     public static readonly IReadOnlyList<string> PaletteAccento =
         ["#12395E", "#1F5B45", "#7C2D12", "#4C1D95", "#0F766E", "#334155"];
@@ -48,6 +58,8 @@ public sealed class PreferenzeUtenteService
             [ScalaTesto] = Scelta("normale", "grande", "molto-grande"),
             [FontInterfaccia] = Scelta("sistema", "lato"),
             [Densita] = Scelta("comoda", "compatta"),
+            [TemaInterfaccia] = Scelta(TemiInterfaccia.ToArray()),
+            [AccentoInterfaccia] = Scelta(AccentiInterfaccia.ToArray()),
         };
 
     private readonly PagheDbContext _db;

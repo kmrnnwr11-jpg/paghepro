@@ -36,8 +36,8 @@ la porta a sistema completo, per fasi, ognuna consegnabile da sola.
   Il catalogo offre **15 stili**: Classico, Modulare ed Editoriale in cinque temi ciascuno;
   **Modulare Blu è il predefinito** per gli account senza una scelta salvata. Le preferenze
   esplicite restano valide; la busta agricola mantiene uno stile dedicato e separato.
-- Interfaccia: 41 variabili CSS già in uso, ma `font-family` del corpo **cablato**
-  (`system-ui`) e tema scuro assente (design glass non tokenizzato per il dark).
+- Interfaccia: token CSS unici in `:root` (accento, neutri, vetri, campi, stati), tema chiaro /
+  scuro / automatico e sei accenti scelti in Impostazioni → Interfaccia (dal 4/9/2026).
 - Server: tabella e API preferenze utente/studio con whitelist e isolamento tenant.
 
 ## Fase 1 — Preferenze sul server (fondazione)
@@ -78,17 +78,21 @@ Le preferenze del dispositivo non seguono l'utente tra computer e telefono.
 
 ## Fase 3 — Aspetto dell'interfaccia
 
-**Stato: completata senza tema scuro; il tema scuro resta un progetto separato.**
+**Stato: completata, tema scuro e accenti compresi (4 settembre 2026).**
 
 - **Dimensione del testo**: tre taglie (Normale / Grande / Molto grande) via
   `--scala-testo` sulle variabili esistenti — accessibilità prima di tutto.
 - **Font dell'interfaccia**: variabile `--font-ui` (Sistema / Lato / le famiglie della
   Fase 2 servite come webfont locali, niente CDN).
 - **Densità** (Comoda / Compatta): spaziature via variabile.
-- **Tema scuro**: progetto a sé — il glass design va tokenizzato per il dark (contrasti,
-  vetri, ombre su ~6.000 righe di CSS). Non si promette «gratis»: entra come fase
-  dedicata solo se il fondatore la vuole davvero. Stima onesta: 2-3 giornate + revisione
-  visiva completa.
+- **Tema e accento (fatto il 4/9/2026)**: `index.css` è stato tokenizzato (un solo `:root`
+  in testa al file, sezione «TEMI» in fondo che ridefinisce solo token). Preferenze server
+  `tema_interfaccia` (chiaro / scuro / automatico) e `accento_interfaccia` (Salvia, Oceano,
+  Indaco, Bordeaux, Rame, Grafite), catalogo chiuso identico tra `PreferenzeUtenteService` e
+  `preferenze.ts`. Applicazione prima del primo disegno, `theme-color` PWA aggiornato,
+  «automatico» segue il dispositivo dal vivo, cambio con dissolvenza (View Transitions, ripiego
+  CSS, «riduci movimento» rispettato). Verifica visiva su 16 pagine in chiaro e scuro, desktop e
+  telefono. I documenti PDF non cambiano: il tema riguarda solo l'interfaccia.
 - Stima (senza tema scuro): mezza giornata.
 
 ## Fase 4 — Notifiche e promemoria
@@ -117,7 +121,7 @@ Le preferenze del dispositivo non seguono l'utente tra computer e telefono.
 
 ## Ordine consigliato e criterio di uscita
 
-1 → 2 → 3 (senza tema scuro) → 4 → 5; il tema scuro si decide dopo la Fase 3.
+1 → 2 → 3 (tema scuro compreso) → 4 → 5.
 Ogni fase esce solo con: suite backend e frontend verdi, lint pulito, guida in-app
 aggiornata, voce in CLAUDE.md. Le preferenze nuove compaiono SOLO in Impostazioni:
 la pagina resta l'unico posto da imparare.

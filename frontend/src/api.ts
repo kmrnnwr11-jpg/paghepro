@@ -1424,6 +1424,39 @@ export const api = {
   aiConcediConsenso: () => req<ConsensoAuroraAi>("/api/ai/consenso", { method: "POST" }),
   aiRevocaConsenso: () => req<ConsensoAuroraAi>("/api/ai/consenso", { method: "DELETE" }),
 
+  // Workspace recente Aurora: source of truth server, cifrato e isolato per tenant+utente.
+  auroraCronologiaImpostazione: (signal?: AbortSignal) =>
+    req<ImpostazioneCronologiaAurora>("/api/ai/conversazioni/impostazioni", { signal }),
+  auroraImpostaCronologia: (attiva: boolean) =>
+    req<ImpostazioneCronologiaAurora>("/api/ai/conversazioni/impostazioni", {
+      method: "PUT",
+      body: JSON.stringify({ attiva }),
+    }),
+  auroraConversazioni: (archiviate = false, signal?: AbortSignal) =>
+    req<ConversazioneAurora[]>(
+      `/api/ai/conversazioni${archiviate ? "?archiviate=true" : ""}`,
+      { signal },
+    ),
+  auroraConversazione: (id: string, signal?: AbortSignal) =>
+    req<DettaglioConversazioneAurora>(`/api/ai/conversazioni/${id}`, { signal }),
+  auroraCreaConversazione: (dati: CreaConversazioneAurora) =>
+    req<ConversazioneAurora>("/api/ai/conversazioni", {
+      method: "POST",
+      body: JSON.stringify(dati),
+    }),
+  auroraRinominaConversazione: (id: string, titolo: string) =>
+    req<ConversazioneAurora>(`/api/ai/conversazioni/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ titolo }),
+    }),
+  auroraArchiviaConversazione: (id: string, archiviata: boolean) =>
+    req<ConversazioneAurora>(`/api/ai/conversazioni/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ archiviata }),
+    }),
+  auroraEliminaConversazione: (id: string) =>
+    req<void>(`/api/ai/conversazioni/${id}`, { method: "DELETE" }),
+
   aiChat: (
     messaggio: string,
     storia: MessaggioChatAi[],
@@ -1434,6 +1467,7 @@ export const api = {
     rispostaBreve?: boolean,
     contestoPagina?: string | null,
     signal?: AbortSignal,
+    workspace?: TurnoWorkspaceAurora | null,
   ) =>
     req<RispostaChatAi>("/api/ai/chat", {
       method: "POST",
@@ -1447,6 +1481,10 @@ export const api = {
         sezioneUi: sezioneUi ?? null,
         rispostaBreve: rispostaBreve ?? false,
         contestoPagina: contestoPagina ?? null,
+        conversazioneId: workspace?.conversazioneId ?? null,
+        clientTurnId: workspace?.clientTurnId ?? null,
+        versioneConversazione: workspace?.versioneConversazione ?? null,
+        periodo: workspace?.periodo ?? null,
       }),
     }),
 
@@ -1633,6 +1671,56 @@ export interface MessaggioChatAi {
   chiamataId?: string | null;
 }
 
+export interface ImpostazioneCronologiaAurora {
+  attiva: boolean;
+  oreRetention: number;
+}
+
+export interface CreaConversazioneAurora {
+  titolo?: string | null;
+  aziendaId?: string | null;
+  rapportoId?: string | null;
+  progetto?: string | null;
+  periodo?: string | null;
+}
+
+export interface ConversazioneAurora {
+  id: string;
+  titolo: string;
+  tipoContesto: "Generale" | "Azienda" | "Rapporto" | "Progetto";
+  aziendaId: string | null;
+  rapportoId: string | null;
+  progetto: string | null;
+  periodo: string | null;
+  creataUtc: string;
+  aggiornataUtc: string;
+  scadeUtc: string;
+  archiviataUtc: string | null;
+  versione: number;
+}
+
+export interface MessaggioWorkspaceAurora {
+  id: string;
+  turnoId: string;
+  sequenza: number;
+  ruolo: "user" | "assistant";
+  contenuto: string;
+  statoTurno: "InCorso" | "Completato" | "Fallito";
+  creatoUtc: string;
+}
+
+export interface DettaglioConversazioneAurora {
+  conversazione: ConversazioneAurora;
+  messaggi: MessaggioWorkspaceAurora[];
+}
+
+export interface TurnoWorkspaceAurora {
+  conversazioneId: string;
+  clientTurnId: string;
+  versioneConversazione: number;
+  periodo?: string | null;
+}
+
 /** Contesto esplicito e monouso: non è concatenato al messaggio e non concede permessi. */
 export interface ContestoSelezionatoAi {
   testo: string;
@@ -1744,6 +1832,10 @@ export interface RispostaChatAi {
   /** Modifiche già applicate nel turno con l'«Autorizzazione completa»: card fatte,
    *  ciascuna con il proprio tokenUndo per l'annullo entro 24 ore. */
   applicate?: PropostaAzioneAurora[] | null;
+  conversazioneId?: string | null;
+  versioneConversazione?: number | null;
+  cronologiaSalvata?: boolean;
+  motivoCronologia?: string | null;
 }
 
 export interface StatoChatAi {

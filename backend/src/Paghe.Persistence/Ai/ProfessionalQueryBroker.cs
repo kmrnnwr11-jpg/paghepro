@@ -19,7 +19,7 @@ public sealed record RigaAzienda(
 public sealed record RigaDipendente(
     Guid RapportoId, string Nominativo, string? CodiceCcnl, string? Livello);
 
-public sealed record RigaCartellino(string Nominativo, bool Elaborato);
+public sealed record RigaCartellino(Guid RapportoId, string Nominativo, bool Elaborato);
 
 /// <summary>
 /// Stato operativo minimo del mese: nessun importo e nessun dato sanitario. Il limite di dieci
@@ -297,7 +297,8 @@ public sealed class ProfessionalQueryBroker(
                 && rapportoIds.Contains(c.RapportoLavoroId))
             .Select(c => c.RapportoLavoroId)
             .ToListAsync(ct)).ToHashSet();
-        var righe = rapporti.Select(r => new RigaCartellino(r.Nominativo, compilati.Contains(r.Id))).ToList();
+        var righe = rapporti.Select(r => new RigaCartellino(
+            r.Id, r.Nominativo, compilati.Contains(r.Id))).ToList();
         return new("Cartellini", righe.Cast<object>().ToList(), totale, null);
     }
 

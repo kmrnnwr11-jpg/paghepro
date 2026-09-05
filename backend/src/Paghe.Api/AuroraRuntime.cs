@@ -33,7 +33,9 @@ public sealed record ContestoAurora(
     string? Lease,
     ManifestGrant? Manifest,
     Guid? AziendaIdProposta = null,
-    string? PeriodoProposta = null);
+    string? PeriodoProposta = null,
+    Guid? RapportoIdWorkspace = null,
+    string? ProgettoWorkspace = null);
 
 /// <summary>Risultato di una lettura: il JSON per il modello più i dati per il SessionLog.</summary>
 public sealed record RisultatoStrumentoAurora(

@@ -41,15 +41,29 @@ public sealed class EsecutoreLettureAurora(
         if (string.Equals(descrittore.Nome, "sintesi_uniemens", StringComparison.Ordinal))
             return await SintesiUniemensAsync(contesto, ct);
 
+        var righe = contesto.RapportoIdWorkspace is { } rapportoId
+            ? esito.Righe.Where(riga => RigaNelRapporto(riga, rapportoId)).ToArray()
+            : [.. esito.Righe];
+
         return new(
             JsonSerializer.Serialize(new
             {
-                righe = esito.Righe,
-                totale = esito.Totale,
+                righe,
+                totale = contesto.RapportoIdWorkspace is null ? esito.Totale : righe.Length,
                 lettureRimanenti = esito.LettureRimanenti,
             }, Json),
-            Negato: false, null, esito.Righe.Count);
+            Negato: false, null, righe.Length);
     }
+
+    private static bool RigaNelRapporto(object riga, Guid rapportoId) => riga switch
+    {
+        RigaDipendente dipendente => dipendente.RapportoId == rapportoId,
+        RigaCartellino cartellino => cartellino.RapportoId == rapportoId,
+        RigaCedolinoMese cedolino => cedolino.RapportoId == rapportoId,
+        // Risorse intrinsecamente aziendali (anagrafica, scadenze, UniEmens aggregato)
+        // restano disponibili perché non rappresentano un altro lavoratore.
+        _ => true,
+    };
 
     /// <summary>
     /// Sintesi minimizzata della denuncia UniEmens: al modello arrivano soltanto conteggi ed
@@ -147,7 +161,8 @@ public sealed class StrumentoCompilaPresenzeAurora(
             try
             {
                 var proposta = await servizio.PreparaAsync(
-                    contesto.TenantId, aziendaId, periodo, argomentiJson, ct);
+                    contesto.TenantId, aziendaId, periodo, argomentiJson,
+                    ct, contesto.RapportoIdWorkspace);
                 return new(
                     proposta.Titolo,
                     proposta.Diff,
@@ -231,7 +246,8 @@ public sealed class StrumentoElaboraCedolinoAurora(
             try
             {
                 var proposta = await servizio.PreparaAsync(
-                    contesto.TenantId, aziendaId, periodo, argomentiJson, ct);
+                    contesto.TenantId, aziendaId, periodo, argomentiJson,
+                    ct, contesto.RapportoIdWorkspace);
                 return new(
                     proposta.Titolo,
                     proposta.Diff,

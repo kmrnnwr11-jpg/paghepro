@@ -114,6 +114,12 @@ public class PagheDbContext : DbContext
     // Consenso pieno ad Aurora: auto-mandato di lettura in chat, revocabile dal pannello
     public DbSet<ConsensoAuroraEntity> ConsensiAurora => Set<ConsensoAuroraEntity>();
 
+    // Workspace recente Aurora: opt-in per utente, transcript cifrato e TTL assoluto di 24 ore.
+    public DbSet<AuroraCronologiaPreferenzaEntity> AuroraCronologiaPreferenze => Set<AuroraCronologiaPreferenzaEntity>();
+    public DbSet<AuroraConversazioneEntity> AuroraConversazioni => Set<AuroraConversazioneEntity>();
+    public DbSet<AuroraTurnoEntity> AuroraTurni => Set<AuroraTurnoEntity>();
+    public DbSet<AuroraMessaggioEntity> AuroraMessaggi => Set<AuroraMessaggioEntity>();
+
     // Archivio persone fisiche (rappresentanti, soci): riusate per compilare i moduli ufficiali
     public DbSet<PersonaEntity> Persone => Set<PersonaEntity>();
     public DbSet<ConsumoAiEntity> ConsumiAi => Set<ConsumoAiEntity>();
@@ -263,6 +269,58 @@ public class PagheDbContext : DbContext
             e.HasIndex(x => new { x.TenantId, x.GrantId, x.SlotAttivo }).IsUnique();
             // Una proposta non si applica due volte: reclamo con token di concorrenza.
             e.Property(x => x.Versione).IsConcurrencyToken();
+        });
+
+        // --- Workspace conversazioni Aurora (ADR-006): contenuti cifrati dal servizio ---
+        mb.Entity<AuroraCronologiaPreferenzaEntity>(e =>
+        {
+            e.HasKey(x => new { x.TenantId, x.UtenteId });
+            e.Property(x => x.Versione).IsConcurrencyToken();
+        });
+
+        mb.Entity<AuroraConversazioneEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasAlternateKey(x => new { x.TenantId, x.UtenteId, x.Id });
+            e.HasIndex(x => new { x.TenantId, x.UtenteId, x.AggiornataUtc });
+            e.HasIndex(x => new { x.TenantId, x.UtenteId, x.ScadeUtc });
+            e.Property(x => x.TipoContesto).HasMaxLength(16).IsRequired();
+            e.Property(x => x.Periodo).HasMaxLength(7);
+            e.Property(x => x.TitoloProtetto).IsRequired();
+            e.Property(x => x.Versione).IsConcurrencyToken();
+        });
+
+        mb.Entity<AuroraTurnoEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasAlternateKey(x => new { x.TenantId, x.UtenteId, x.ConversazioneId, x.Id });
+            e.HasIndex(x => new
+            {
+                x.TenantId, x.UtenteId, x.ConversazioneId, x.ClientTurnId,
+            }).IsUnique();
+            e.Property(x => x.Stato).HasMaxLength(16).IsRequired();
+            e.Property(x => x.Versione).IsConcurrencyToken();
+            e.HasOne<AuroraConversazioneEntity>()
+                .WithMany()
+                .HasForeignKey(x => new { x.TenantId, x.UtenteId, x.ConversazioneId })
+                .HasPrincipalKey(x => new { x.TenantId, x.UtenteId, x.Id })
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        mb.Entity<AuroraMessaggioEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new
+            {
+                x.TenantId, x.UtenteId, x.ConversazioneId, x.Sequenza,
+            }).IsUnique();
+            e.Property(x => x.Ruolo).HasMaxLength(10).IsRequired();
+            e.Property(x => x.ContenutoProtetto).IsRequired();
+            e.HasOne<AuroraTurnoEntity>()
+                .WithMany()
+                .HasForeignKey(x => new { x.TenantId, x.UtenteId, x.ConversazioneId, x.TurnoId })
+                .HasPrincipalKey(x => new { x.TenantId, x.UtenteId, x.ConversazioneId, x.Id })
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         mb.Entity<AziendaEntity>(e =>

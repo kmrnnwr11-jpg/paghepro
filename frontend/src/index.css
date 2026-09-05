@@ -7407,6 +7407,30 @@ details[open] > summary .au-freccia {
   line-height: 17px;
 }
 
+/* La destra della barra non è più una fila di icone sciolte: due gruppi
+   (lavoro / comandi del programma) separati da un filetto, poi l'account. */
+.barra-gruppo {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.barra-filetto {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+}
+
+/* La pagina aperta si riconosce anche fra le icone (per esempio Impostazioni). */
+.barra-icona.attiva {
+  color: var(--blue-strong);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.12);
+  box-shadow: var(--incavo);
+}
+
 .barra-conto {
   flex: 0 0 auto;
   display: inline-flex;
@@ -7420,6 +7444,11 @@ details[open] > summary .au-freccia {
   font: inherit;
   color: var(--muted);
   cursor: pointer;
+}
+
+.barra-conto.aperto {
+  border-color: rgba(var(--accent-rgb), 0.6);
+  box-shadow: var(--incavo);
 }
 
 .barra-conto > span {
@@ -7443,7 +7472,8 @@ details[open] > summary .au-freccia {
 }
 
 .tendina-mondo,
-.tendina-azienda {
+.tendina-azienda,
+.tendina-conto {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
@@ -7455,6 +7485,78 @@ details[open] > summary .au-freccia {
   /* Fondo pieno: una tendina che lascia leggere la pagina sotto non si legge. */
   background: var(--panel-strong);
   box-shadow: var(--shadow), 0 26px 64px -28px rgba(var(--shadow-rgb), 0.6);
+}
+
+.tendina-conto {
+  left: auto;
+  right: 0;
+  width: max(230px, min(290px, calc(100vw - 32px)));
+  transform-origin: top right;
+}
+
+.conto-testa {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 2px 2px 5px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.conto-sigla {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 11.5px;
+  font-weight: 850;
+  color: var(--blue-strong);
+  background: rgba(var(--accent-rgb), 0.18);
+}
+
+.conto-nome {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.conto-nome strong {
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.conto-nome small,
+.tendina-voce.esci small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.conto-nome strong,
+.conto-nome small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* L'uscita è l'ultima voce, staccata da un filetto: non si preme per sbaglio. */
+.tendina-voce.esci {
+  margin-top: 4px;
+  border-top: 1px solid var(--line-soft);
+  border-radius: 0 0 10px 10px;
+  color: var(--red);
+}
+
+.tendina-voce.esci strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tendina-voce.esci:hover {
+  background: var(--errore-vetro);
 }
 
 /* Vicino al bordo destro la tendina si allinea a destra invece di uscire. */
@@ -7952,7 +8054,8 @@ details[open] > summary .au-freccia {
      il backdrop-filter della barra ne fa il contenitore. Perciò ancoro
      dall'alto — con «bottom» la tendina finirebbe sopra lo schermo. */
   .tendina-mondo,
-  .tendina-azienda {
+  .tendina-azienda,
+  .tendina-conto {
     position: fixed;
     top: calc(100% + 6px);
     left: 6px;
@@ -8011,7 +8114,8 @@ details[open] > summary .au-freccia {
   .workspace { padding: 12px 12px 84px; }
 
   .tendina-mondo,
-  .tendina-azienda {
+  .tendina-azienda,
+  .tendina-conto {
     left: 12px;
     right: 12px;
     width: auto;
@@ -8026,6 +8130,9 @@ details[open] > summary .au-freccia {
   .barra-cliente { flex: 1 1 auto; max-width: none; padding: 6px 8px; }
   .barra-cliente strong { font-size: 12.5px; }
   .barra-icona { width: 32px; height: 32px; }
+  .barra-filetto { display: none; }
+  .barra-gruppo { gap: 5px; }
+  .barra-conto { padding: 4px 6px 4px 4px; }
 
   /* La riga di bottoni dell'avviso DURC deve stare dentro lo schermo: la regola
      globale .btn a larghezza piena la faceva debordare. */
@@ -10054,7 +10161,8 @@ html.tema-in-transizione *::after {
 }
 
 .tendina-mondo,
-.tendina-azienda {
+.tendina-azienda,
+.tendina-conto {
   transform-origin: top left;
   animation: tendina-in 0.18s cubic-bezier(0.22, 0.9, 0.3, 1) both;
 }

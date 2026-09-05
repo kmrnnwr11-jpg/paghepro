@@ -111,6 +111,7 @@ builder.Services.AddScoped<CasellaEmailService>();
 builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddScoped<RetentionService>();
 builder.Services.AddScoped<AiGrantService>();
+builder.Services.AddScoped<AuroraConversazioniService>();
 builder.Services.AddScoped<ProfessionalQueryBroker>();
 builder.Services.AddAurora(); // runtime A2: registry a plugin, SessionLog, proposte firmate
 builder.Services.AddSingleton(TimeProvider.System);
@@ -216,6 +217,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<SessioniRefreshService>();
 builder.Services.AddHostedService<PuliziaSessioniRefreshWorker>();
+builder.Services.AddHostedService<PuliziaConversazioniAuroraWorker>();
 builder.Services.AddScoped<PiattaformaAdminService>();
 // La chiave si valuta SUBITO (non nella lambda, che è lazy): in produzione senza una chiave
 // robusta l'avvio si blocca qui con un errore esplicito, non al primo login.
@@ -2831,6 +2833,7 @@ app.MapPosta();
 app.MapCertificazioneUnica();
 app.MapAi();
 app.MapAiChat();           // Chat esplicativa senza strumenti; i dati passano solo dal Governor.
+app.MapAuroraConversazioni(); // Workspace chat recente cifrato, isolato per tenant e utente.
 app.MapAiConsenso();       // Consenso pieno ad Aurora: auto-mandato di lettura in chat, revocabile.
 app.MapAiDocumento();      // Allegato della chat: legge il testo del documento, non lo conserva.
 app.MapLipe();

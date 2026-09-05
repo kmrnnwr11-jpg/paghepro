@@ -51,9 +51,13 @@ public sealed class ElaboraCedolinoAuroraService(
         Guid aziendaId,
         string periodo,
         string argomentiModelloJson,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? rapportoIdVincolato = null)
     {
         var rapportoId = LeggiArgomentiModello(argomentiModelloJson);
+        if (rapportoIdVincolato is { } vincolo && rapportoId != vincolo)
+            throw new OperazioneAuroraNonConsentitaException(
+                "La scheda Aurora è vincolata a un altro lavoratore.");
         var (anno, mese) = LeggiPeriodo(periodo);
         var (nominativo, entita) = await CaricaBaseAsync(tenantId, aziendaId, rapportoId, anno, mese, ct);
         await VerificaNessunCedolinoAsync(tenantId, rapportoId, anno, mese, ct);

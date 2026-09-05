@@ -405,6 +405,12 @@ public sealed class AiChatTests : IDisposable
     [InlineData("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.firmaMoltoLunga123")]
     [InlineData("AKIAIOSFODNN7EXAMPLE")]
     [InlineData("aB3dE5fG7hJ9kLmN2pQrS4tUvW6xY8zA1cD")]
+    [InlineData("PIN=1234")]
+    [InlineData("TOTP: 123456")]
+    [InlineData("Authorization: Bearer abcdefghijklmnop")]
+    [InlineData("refresh_token=valoreRiservato")]
+    [InlineData("Cookie: session_token=abc123segreto")]
+    [InlineData("pass\u200Bword=corta")]
     public void FiltroSegreti_BloccaCredenzialiPrimaDelModello(string testo) =>
         Assert.True(LocalSecretBoundaryFilter.DeveBloccare(testo));
 

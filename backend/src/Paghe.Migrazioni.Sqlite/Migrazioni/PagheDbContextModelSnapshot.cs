@@ -605,6 +605,172 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.ToTable("AuditLog");
                 });
 
+            modelBuilder.Entity("Paghe.Persistence.Entities.AuroraConversazioneEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AggiornataUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ArchiviataUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AziendaId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreataUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Periodo")
+                        .HasMaxLength(7)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProgettoProtetto")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("RapportoId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ScadeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TipoContesto")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TitoloProtetto")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Versione")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UtenteId", "AggiornataUtc");
+
+                    b.HasIndex("TenantId", "UtenteId", "ScadeUtc");
+
+                    b.ToTable("AuroraConversazioni");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.AuroraCronologiaPreferenzaEntity", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AggiornataUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Attiva")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Versione")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("TenantId", "UtenteId");
+
+                    b.ToTable("AuroraCronologiaPreferenze");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.AuroraMessaggioEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContenutoProtetto")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ConversazioneId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatoUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Ruolo")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Sequenza")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TurnoId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UtenteId", "ConversazioneId", "Sequenza")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "UtenteId", "ConversazioneId", "TurnoId");
+
+                    b.ToTable("AuroraMessaggi");
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.AuroraTurnoEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClientTurnId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletatoUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ConversazioneId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatoUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Stato")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UtenteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Versione")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UtenteId", "ConversazioneId", "ClientTurnId")
+                        .IsUnique();
+
+                    b.ToTable("AuroraTurni");
+                });
+
             modelBuilder.Entity("Paghe.Persistence.Entities.AvvisoPagamentoEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3778,6 +3944,26 @@ namespace Paghe.Migrazioni.Sqlite.Migrazioni
                     b.HasOne("Paghe.Persistence.Entities.PraticaAperturaPartitaIvaEntity", null)
                         .WithMany("Adempimenti")
                         .HasForeignKey("PraticaAperturaPartitaIvaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.AuroraMessaggioEntity", b =>
+                {
+                    b.HasOne("Paghe.Persistence.Entities.AuroraTurnoEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "UtenteId", "ConversazioneId", "TurnoId")
+                        .HasPrincipalKey("TenantId", "UtenteId", "ConversazioneId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Paghe.Persistence.Entities.AuroraTurnoEntity", b =>
+                {
+                    b.HasOne("Paghe.Persistence.Entities.AuroraConversazioneEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "UtenteId", "ConversazioneId")
+                        .HasPrincipalKey("TenantId", "UtenteId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

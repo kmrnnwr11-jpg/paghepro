@@ -82,6 +82,9 @@ function etichettaAccount(): { iniziali: string; nome: string; dettaglio: string
   return { iniziali: email.slice(0, 2).toUpperCase(), nome: email.split("@")[0], dettaglio: email };
 }
 
+/** Cosa può essere aperto nella barra alta: un mondo, il cliente o l'account. */
+type TendinaBarra = ChiaveMondo | "azienda" | "conto";
+
 function inizialiAzienda(nome: string): string {
   const parole = nome.trim().split(/\s+/).filter(Boolean);
   if (parole.length === 0) return "AZ";
@@ -220,7 +223,7 @@ export function Dashboard() {
   const [aiutoAperto, setAiutoAperto] = useState(false);
   const [auroraAperta, setAuroraAperto] = useState(false);
   const [contestoAurora, setContestoAurora] = useState<ContestoAurora | null>(null);
-  const [tendinaAperta, setTendinaAperta] = useState<ChiaveMondo | "azienda" | null>(null);
+  const [tendinaAperta, setTendinaAperta] = useState<TendinaBarra | null>(null);
   const [commandAperta, setCommandAperta] = useState(false);
   const [aziende, setAziende] = useState<Azienda[]>([]);
   const [aziendaCorrente, setAziendaCorrente] = useState<Azienda | null>(null);
@@ -793,6 +796,64 @@ function TendinaAzienda({
   );
 }
 
+/**
+ * Menu dell'account. Prima il pallino con le iniziali usciva subito dalla sessione al
+ * primo clic: un tocco per sbaglio e si perdeva il lavoro aperto. Ora apre un menu con
+ * chi sei, le impostazioni, la guida e l'uscita come ultima voce dichiarata.
+ */
+function TendinaConto({
+  account,
+  onNavigate,
+  onEsci,
+  onChiudi,
+}: {
+  account: { iniziali: string; nome: string; dettaglio: string };
+  onNavigate: (key: SectionKey) => void;
+  onEsci: () => void;
+  onChiudi: () => void;
+}) {
+  return (
+    <div className="tendina-conto" role="menu" aria-label="Account">
+      <div className="conto-testa">
+        <span className="conto-sigla">{account.iniziali}</span>
+        <span className="conto-nome">
+          <strong>{account.nome}</strong>
+          <small>{account.dettaglio}</small>
+        </span>
+      </div>
+
+      <button
+        className="tendina-voce"
+        type="button"
+        role="menuitem"
+        onClick={() => { onNavigate("impostazioni"); onChiudi(); }}
+      >
+        <strong>Impostazioni</strong>
+        <small>Tema, stile della busta, sicurezza e dati dello studio</small>
+      </button>
+      <button
+        className="tendina-voce"
+        type="button"
+        role="menuitem"
+        onClick={() => { apriGuida(); onChiudi(); }}
+      >
+        <strong>Guida illustrata</strong>
+        <small>Il manuale del programma, con le figure</small>
+      </button>
+
+      <button
+        className="tendina-voce esci"
+        type="button"
+        role="menuitem"
+        onClick={() => { onChiudi(); onEsci(); }}
+      >
+        <strong><LogOut size={14} aria-hidden="true" /> Esci</strong>
+        <small>Chiude la sessione su questo dispositivo</small>
+      </button>
+    </div>
+  );
+}
+
 /** L'unica barra dell'app: marchio, cliente, i cinque mondi, ricerca e strumenti. */
 function BarraAlta({
   active,
@@ -817,8 +878,8 @@ function BarraAlta({
   ruolo: string | null;
   aziende: Azienda[];
   aziendaCorrente: Azienda | null;
-  aperto: ChiaveMondo | "azienda" | null;
-  onApri: (che: ChiaveMondo | "azienda" | null) => void;
+  aperto: TendinaBarra | null;
+  onApri: (che: TendinaBarra | null) => void;
   onNavigate: (key: SectionKey) => void;
   onScegliAzienda: (azienda: Azienda) => void;
   onCreaAzienda: () => void;
@@ -915,30 +976,71 @@ function BarraAlta({
           <kbd>⌘K</kbd>
         </button>
 
-        <BottoneTema />
-        <button
-          className="barra-icona aurora"
-          type="button"
-          aria-label={auroraAperta ? "Porta in primo piano Aurora" : "Apri Aurora"}
-          aria-controls="aurora-panel"
-          aria-expanded={auroraAperta}
-          onPointerDown={onAuroraPointerDown}
-          onClick={(evento) => onAurora(evento.currentTarget)}
-          title="Aurora: seleziona un testo e premi qui per fartelo spiegare"
-        >
-          <Sparkles size={18} aria-hidden="true" />
-        </button>
-        <button className="barra-icona" type="button" aria-label="Scadenze da gestire" title="Scadenze da gestire" onClick={onNotifiche}>
-          <Bell size={18} aria-hidden="true" />
-          {notifiche > 0 && <b>{notifiche}</b>}
-        </button>
-        <button className="barra-icona" type="button" aria-label="Aiuto su questa pagina" title="Aiuto su questa pagina" onClick={onAiuto}>
-          <HelpCircle size={18} aria-hidden="true" />
-        </button>
-        <button className="barra-conto" type="button" title={`${account.nome} — ${account.dettaglio}`} onClick={onEsci}>
-          <span>{account.iniziali}</span>
-          <LogOut size={15} aria-hidden="true" />
-        </button>
+        {/* Lavoro: l'assistente e le cose che chiedono attenzione oggi. */}
+        <div className="barra-gruppo">
+          <button
+            className="barra-icona aurora"
+            type="button"
+            aria-label={auroraAperta ? "Porta in primo piano Aurora" : "Apri Aurora"}
+            aria-controls="aurora-panel"
+            aria-expanded={auroraAperta}
+            onPointerDown={onAuroraPointerDown}
+            onClick={(evento) => onAurora(evento.currentTarget)}
+            title="Aurora: seleziona un testo e premi qui per fartelo spiegare"
+          >
+            <Sparkles size={18} aria-hidden="true" />
+          </button>
+          <button className="barra-icona" type="button" aria-label="Scadenze da gestire" title="Scadenze da gestire" onClick={onNotifiche}>
+            <Bell size={18} aria-hidden="true" />
+            {notifiche > 0 && <b>{notifiche}</b>}
+          </button>
+        </div>
+
+        <span className="barra-filetto" aria-hidden="true" />
+
+        {/* Comandi del programma: tema, impostazioni e aiuto sono tre bottoni veri,
+            non voci sepolte dentro un menu. */}
+        <div className="barra-gruppo">
+          <BottoneTema />
+          <button
+            className={`barra-icona ${active === "impostazioni" ? "attiva" : ""}`}
+            type="button"
+            aria-label="Impostazioni"
+            aria-current={active === "impostazioni" ? "page" : undefined}
+            title="Impostazioni"
+            onClick={() => onNavigate("impostazioni")}
+          >
+            <Settings size={18} aria-hidden="true" />
+          </button>
+          <button className="barra-icona" type="button" aria-label="Aiuto su questa pagina" title="Aiuto su questa pagina" onClick={onAiuto}>
+            <HelpCircle size={18} aria-hidden="true" />
+          </button>
+        </div>
+
+        <span className="barra-filetto" aria-hidden="true" />
+
+        <div className="barra-ancora">
+          <button
+            className={`barra-conto ${aperto === "conto" ? "aperto" : ""}`}
+            type="button"
+            aria-expanded={aperto === "conto"}
+            aria-haspopup="menu"
+            aria-label={`Account: ${account.nome}`}
+            title={`${account.nome} — ${account.dettaglio}`}
+            onClick={() => onApri(aperto === "conto" ? null : "conto")}
+          >
+            <span>{account.iniziali}</span>
+            <ChevronDown size={14} aria-hidden="true" />
+          </button>
+          {aperto === "conto" && (
+            <TendinaConto
+              account={account}
+              onNavigate={onNavigate}
+              onEsci={onEsci}
+              onChiudi={() => onApri(null)}
+            />
+          )}
+        </div>
       </header>
 
     </div>
@@ -982,8 +1084,8 @@ function BarraMobile({
   onHome,
 }: {
   active: SectionKey;
-  aperto: ChiaveMondo | "azienda" | null;
-  onApri: (che: ChiaveMondo | "azienda" | null) => void;
+  aperto: TendinaBarra | null;
+  onApri: (che: TendinaBarra | null) => void;
   onHome: () => void;
 }) {
   const mondoAttivo = mondoDiSezione(active);

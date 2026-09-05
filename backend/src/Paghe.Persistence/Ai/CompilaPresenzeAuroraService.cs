@@ -76,9 +76,13 @@ public sealed class CompilaPresenzeAuroraService(
         Guid aziendaId,
         string periodo,
         string argomentiModelloJson,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? rapportoIdVincolato = null)
     {
         var (rapportoId, date) = LeggiArgomentiModello(argomentiModelloJson);
+        if (rapportoIdVincolato is { } vincolo && rapportoId != vincolo)
+            throw new OperazioneAuroraNonConsentitaException(
+                "La scheda Aurora è vincolata a un altro lavoratore.");
         var (anno, mese, inizio, fine) = LeggiPeriodo(periodo);
         var (rapporto, entita, baseCorrente) = await CaricaBaseAsync(
             tenantId, aziendaId, rapportoId, anno, mese, inizio, fine, ct);

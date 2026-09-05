@@ -1,0 +1,278 @@
+/* Workspace Aurora: isolato dal tema globale per ridurre conflitti con modifiche concorrenti. */
+.au-workspace-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 39px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(var(--panel-rgb), .72);
+  scrollbar-width: thin;
+}
+
+.au-workspace-tab-wrap {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  max-width: 190px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: var(--panel-strong);
+}
+
+.au-workspace-tab-wrap.attiva {
+  border-color: rgba(var(--accent-rgb), .6);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .12);
+}
+
+.au-workspace-tab,
+.au-workspace-tab-chiudi,
+.au-workspace-nuova {
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.au-workspace-tab {
+  min-width: 0;
+  max-width: 150px;
+  padding: 6px 5px 6px 9px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.au-workspace-tab-chiudi {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 27px;
+  padding: 0;
+  border-radius: 7px;
+}
+
+.au-workspace-tab-chiudi:hover,
+.au-workspace-tab-chiudi:focus-visible {
+  color: var(--text);
+  background: rgba(var(--ink-rgb), .08);
+}
+
+.au-workspace-nuova {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+}
+
+.au-workspace-tabs button:focus-visible,
+.au-workspace-crea button:focus-visible,
+.au-cronologia button:focus-visible,
+.au-cronologia input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.au-workspace-crea {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 9px;
+  max-height: min(430px, 60vh);
+  padding: 12px 14px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel);
+}
+
+.au-workspace-crea-testa,
+.au-workspace-azioni,
+.au-cronologia-comandi,
+.au-cronologia-policy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.au-workspace-crea-testa strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.au-workspace-crea > label,
+.au-workspace-griglia label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 750;
+}
+
+.au-workspace-griglia {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.au-workspace-crea input,
+.au-workspace-crea select,
+.au-cronologia-cerca input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--panel-strong);
+  font: inherit;
+  font-size: 12px;
+}
+
+.au-workspace-crea small,
+.au-cronologia-policy {
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.au-workspace-azioni {
+  justify-content: flex-end;
+}
+
+.au-workspace-azioni .btn {
+  width: auto;
+  min-height: 33px;
+  padding: 6px 11px;
+  font-size: 11.5px;
+}
+
+.au-cronologia-comandi {
+  position: sticky;
+  top: -10px;
+  z-index: 1;
+  padding: 2px 0 7px;
+  background: var(--panel);
+}
+
+.au-cronologia-cerca {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.au-cronologia-cerca input {
+  min-width: 0;
+  padding: 5px 8px;
+}
+
+.au-cronologia-nuova {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.au-cronologia li.attiva .au-cronologia-voce {
+  border-color: rgba(var(--accent-rgb), .62);
+  background: rgba(var(--accent-rgb), .08);
+}
+
+.au-cronologia-azioni {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 3px;
+}
+
+.au-cronologia-azioni .au-icona {
+  width: 27px;
+  height: 27px;
+}
+
+.au-cronologia-policy {
+  align-items: flex-start;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.au-cronologia-policy span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.au-cronologia-policy button {
+  padding: 0;
+  border: 0;
+  color: var(--danger, #a23b3b);
+  background: transparent;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.au-cronologia-optin {
+  display: grid;
+  gap: 8px;
+  padding: 7px 2px;
+}
+
+.au-cronologia-optin strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.au-cronologia-optin p,
+.au-workspace-avviso {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.au-cronologia-optin .btn {
+  width: fit-content;
+  min-height: 34px;
+  padding: 7px 12px;
+  font-size: 11.5px;
+}
+
+.au-workspace-avviso {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(var(--accent-rgb), .25);
+  border-radius: 8px;
+  background: rgba(var(--accent-rgb), .07);
+}
+
+@media (max-width: 520px) {
+  .au-workspace-griglia {
+    grid-template-columns: 1fr;
+  }
+
+  .au-cronologia-azioni {
+    flex-direction: column;
+  }
+
+  .au-cronologia-policy {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .au-workspace-tabs *,
+  .au-workspace-crea *,
+  .au-cronologia * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -129,6 +129,25 @@ sono deterministici e già limitati (magic/MIME, dimensioni).
 | Backup DB (`scripts/backup-db.sh`) | come DB | cifrati `age`, fail-closed, `0600` |
 | LocalStorage frontend (token JWT, email demo, azienda corrente) | `D4`/`CP` | mai risorsa AI |
 
+### 3.3.1 Delta autorizzato — conversazioni recenti Aurora (4 settembre 2026)
+
+La richiesta esplicita dell'utente del 4 settembre 2026 autorizza il solo workspace di
+conversazioni recenti descritto in `ADR-006-CRONOLOGIA-AURORA-24H.md`. La risorsa è separata da
+`AiRun`, che resta esclusivamente un registro tecnico a digest e non contiene transcript.
+
+| Risorsa | Classe | Finalità e limiti |
+|---|---|---|
+| Preferenza cronologia Aurora | `CP` | opt-in per tenant+utente; disattivata per default; la revoca elimina immediatamente le conversazioni dell'utente |
+| Conversazione Aurora | `D0-D2` | titolo, scope immutabile (azienda/rapporto/progetto/periodo) e messaggi cifrati AEAD; TTL assoluto massimo 24 ore |
+| Turno Aurora | `CP` | ID idempotente, stato e sequenza; nessun prompt, token, lease o payload di tool |
+
+Vincoli: isolamento congiunto `TenantId + UtenteId`; nessun import automatico dal vecchio
+`localStorage`; `D3A`, `D3B` e `D4` restano effimeri e non sono inseriti; non si conservano
+selezioni di pagina, allegati, system prompt, tool output, token di proposta/undo o
+`thought_signature`; cancellazione e opt-out sono hard-delete. Le API usano `Cache-Control:
+no-store`. Un TTL maggiore o una memoria duratura richiedono un nuovo gate: le sintesi permanenti
+restano normali record professionali, visibili e confermati dall'utente.
+
 ### 3.4 Strumenti esterni e supply chain
 
 | Strumento | Ruolo | Nota licenza/fiducia |

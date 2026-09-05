@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
+  Archive,
   Check,
   ChevronDown,
   History,
   Lock,
   Paperclip,
+  Pencil,
+  Plus,
+  Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -19,10 +23,13 @@ import {
   type CampoDaCompletare,
   type ConsensoAuroraAi,
   type CosaVedeAi,
+  type ConversazioneAurora,
+  type DipendenteRapporto,
   type EsitoPreflightAi,
   type EsitoPropostaAurora,
   type EsitoQueryAi,
   type GrantAiEmesso,
+  type ImpostazioneCronologiaAurora,
   type LavoratoreRiconosciutoAi,
   type ManifestGrantAi,
   type MessaggioChatAi,
@@ -65,15 +72,17 @@ import {
   mandatiDaRevocare,
 } from "./auroraScope";
 import {
-  conversazionePerScope,
-  elencoConversazioni,
-  eliminaConversazione,
-  salvaConversazione,
-  type ConversazioneSalvata,
-} from "./auroraCronologia";
+  apriSchedaAurora,
+  chiudiSchedaAurora,
+  eliminaCronologiaAuroraLegacy,
+  leggiSchedeAurora,
+  salvaSchedeAurora,
+  type StatoSchedeAurora,
+} from "./auroraWorkspace";
 import { contestoPaginaCorrente } from "./contestoPagina";
 import { creaSequenziatoreRichieste } from "./ultimaRichiesta";
 import { preferenzaLocale, salvaPreferenzaOvunque } from "./preferenze";
+import "./auroraWorkspace.css";
 
 // Chat e strumenti usano esclusivamente il mandato visibile dello scope azienda-periodo corrente.
 
@@ -265,10 +274,26 @@ export function AuroraPanel({
   const [erroreControllo, setErroreControllo] = useState<string | null>(null);
   const [controlloInCorso, setControlloInCorso] = useState(false);
   const [scopeChat, setScopeChat] = useState<string | null>(null);
-  // Cronologia delle chat: salvata nel browser, si cancella solo a mano.
+  // Workspace recente: il server conserva ciphertext per 24 ore; nel browser restano solo
+  // gli ID opachi delle schede aperte, separati per tenant e utente.
   const [cronologiaAperta, setCronologiaAperta] = useState(false);
-  const [conversazioni, setConversazioni] = useState<ConversazioneSalvata[]>([]);
-  const conversazioneCorrente = useRef<{ id: string; scope: string } | null>(null);
+  const [impostazioneCronologia, setImpostazioneCronologia] =
+    useState<ImpostazioneCronologiaAurora | null>(null);
+  const [conversazioni, setConversazioni] = useState<ConversazioneAurora[]>([]);
+  const [schedeStato, setSchedeStato] = useState<StatoSchedeAurora>(leggiSchedeAurora);
+  const [schede, setSchede] = useState<ConversazioneAurora[]>([]);
+  const [ricercaCronologia, setRicercaCronologia] = useState("");
+  const [mostraArchiviate, setMostraArchiviate] = useState(false);
+  const [workspaceInCorso, setWorkspaceInCorso] = useState(false);
+  const [erroreWorkspace, setErroreWorkspace] = useState<string | null>(null);
+  const [creazioneChatAperta, setCreazioneChatAperta] = useState(false);
+  const [aziendeWorkspace, setAziendeWorkspace] = useState<Azienda[]>([]);
+  const [aziendaNuovaChat, setAziendaNuovaChat] = useState(azienda?.id ?? "");
+  const [rapportiWorkspace, setRapportiWorkspace] = useState<DipendenteRapporto[]>([]);
+  const [rapportoNuovaChat, setRapportoNuovaChat] = useState("");
+  const [progettoNuovaChat, setProgettoNuovaChat] = useState("");
+  const [titoloNuovaChat, setTitoloNuovaChat] = useState("");
+  const conversazioneCorrente = useRef<ConversazioneAurora | null>(null);
   // Rollout A3 per l'utente corrente (dal catalogo del Governor) e tipo di mandato scelto.
   const [a3Disponibile, setA3Disponibile] = useState(false);
   const [tipoMandato, setTipoMandato] = useState<"controllo" | "preparazione">("controllo");
@@ -309,6 +334,7 @@ export function AuroraPanel({
   const richiesteAvvio = useRef(creaSequenziatoreRichieste());
   const richiesteQuota = useRef(creaSequenziatoreRichieste());
   const richiesteProposta = useRef(creaSequenziatoreRichieste());
+  const richiesteWorkspace = useRef(creaSequenziatoreRichieste());
   const ambitoCorrente = azienda ? ambitoControlloCedolini(azienda.id, periodo) : null;
   const ambitoCorrenteRef = useRef<AmbitoControlloCedolini | null>(ambitoCorrente);
   ambitoCorrenteRef.current = ambitoCorrente;
@@ -341,10 +367,10 @@ export function AuroraPanel({
     : null;
   const esitoCorrente = scopeEsito === scopeMandato ? esitoCedolini : null;
   const trasparenzaCorrente = scopeTrasparenza === scopeMandato ? trasparenza : null;
-  const bolleCorrenti = scopeChat === scopeConversazione ? bolle : [];
-  const propostaCorrente = scopeProposta === scopeConversazione ? proposta : null;
-  const esitoPropostaCorrente = scopeProposta === scopeConversazione ? esitoProposta : null;
-  const applicateCorrenti = applicate.scope === scopeConversazione ? applicate.voci : [];
+  const bolleCorrenti = bolle;
+  const propostaCorrente = scopeProposta === scopeChat ? proposta : null;
+  const esitoPropostaCorrente = scopeProposta === scopeChat ? esitoProposta : null;
+  const applicateCorrenti = applicate.scope === scopeChat ? applicate.voci : [];
   const quotaCorrenteConfermata = Boolean(mandatoCorrente
     && quotaConfermata?.grantId === mandatoCorrente.manifest.grantId
     && quotaConfermata.scopeMandato === scopeMandato);
@@ -356,6 +382,23 @@ export function AuroraPanel({
       : null,
     [aziendaProposta],
   );
+  const conversazioniFiltrate = useMemo(() => {
+    const ricerca = ricercaCronologia.trim().toLocaleLowerCase("it-IT");
+    const nelloScaffale = conversazioni.filter(
+      (c) => Boolean(c.archiviataUtc) === mostraArchiviate,
+    );
+    if (!ricerca) return nelloScaffale;
+    return nelloScaffale.filter((c) => [
+      c.titolo,
+      c.progetto,
+      c.periodo,
+      c.tipoContesto,
+      aziendeWorkspace.find((a) => a.id === c.aziendaId)?.ragioneSociale,
+    ].some((valore) => valore?.toLocaleLowerCase("it-IT").includes(ricerca)));
+  }, [aziendeWorkspace, conversazioni, mostraArchiviate, ricercaCronologia]);
+  const conversazioneAttiva = conversazioni.find(
+    (c) => c.id === conversazioneCorrente.current?.id,
+  ) ?? conversazioneCorrente.current;
 
   const riconciliaMandati = useCallback(async (): Promise<ManifestGrantAi[]> => {
     const richiesta = richiesteMandati.current.apri();
@@ -458,69 +501,177 @@ export function AuroraPanel({
     if (!mandatoRef.current && !avvioInCorsoRef.current) setControlloInCorso(false);
   }, [scopeMandato]);
 
-  // Rimette in chat una conversazione salvata (cronologia o riapertura del pannello):
-  // le risposte tornano visibili e le prossime domande continuano quel filo.
-  const ripristinaConversazione = useCallback((salvata: ConversazioneSalvata) => {
-    // Una risposta ancora in viaggio apparteneva al filo precedente: non va mescolata.
-    richiesteChat.current.invalida();
-    setInCorso(false);
-    const ripristinate: Bolla[] = salvata.bolle.map((b) => ({
-      id: prossimoId.current++,
-      chi: b.chi,
-      testo: b.testo,
-      ...(b.citazione ? { citazione: b.citazione } : {}),
-    }));
-    conversazioneCorrente.current = { id: salvata.id, scope: scopeConversazioneRef.current };
-    setBolle(ripristinate);
-    setStoria(salvata.storia);
-    setScopeChat(scopeConversazioneRef.current);
-    setCronologiaAperta(false);
+  const scopeDiConversazione = useCallback((c: ConversazioneAurora) =>
+    chiaveScopeConversazioneAurora(c.aziendaId ?? undefined, c.periodo ?? periodo), [periodo]);
+
+  const aggiornaElencoWorkspace = useCallback(async (signal?: AbortSignal) => {
+    const [attive, archiviate] = await Promise.all([
+      api.auroraConversazioni(false, signal),
+      api.auroraConversazioni(true, signal),
+    ]);
+    const elenco = [...attive, ...archiviate];
+    if (signal?.aborted) return elenco;
+    setConversazioni(elenco);
+    setSchedeStato((precedente) => {
+      const validi = new Set(elenco.map((c) => c.id));
+      const ids = precedente.ids.filter((id) => validi.has(id));
+      return {
+        ids,
+        attiva: precedente.attiva && validi.has(precedente.attiva)
+          ? precedente.attiva
+          : ids[0] ?? null,
+      };
+    });
+    return elenco;
   }, []);
+
+  // Riapre il contenuto autorevole dal server. Le proposte e gli allegati sono monouso e vengono
+  // sempre azzerati al cambio filo; una risposta tardiva è invalidata dal sequenziatore.
+  const ripristinaConversazione = useCallback(async (
+    salvata: ConversazioneAurora,
+    chiudiCronologia = true,
+  ) => {
+    richiesteChat.current.invalida();
+    const richiestaWorkspace = richiesteWorkspace.current.apri();
+    setInCorso(false);
+    setWorkspaceInCorso(true);
+    setErroreWorkspace(null);
+    try {
+      const dettaglio = await api.auroraConversazione(salvata.id, richiestaWorkspace.signal);
+      if (!richiestaWorkspace.attiva()) return;
+      const conversazione = dettaglio.conversazione;
+      const periodoConversazione = conversazione.periodo ?? periodo;
+      const scopeSalvato = chiaveScopeConversazioneAurora(
+        conversazione.aziendaId ?? undefined,
+        periodoConversazione,
+      );
+      conversazioneCorrente.current = conversazione;
+      setPeriodo(periodoConversazione);
+      setBolle(dettaglio.messaggi.map((m) => ({
+        id: prossimoId.current++,
+        chi: m.ruolo === "assistant" ? "aurora" : "utente",
+        testo: m.contenuto,
+      })));
+      setStoria(dettaglio.messaggi
+        .filter((m) => m.statoTurno === "Completato")
+        .map((m) => ({ ruolo: m.ruolo, contenuto: m.contenuto })));
+      setScopeChat(scopeSalvato);
+      setBozza("");
+      setAllegati([]);
+      setAziendaProposta(null);
+      setLavoratoreProposto(null);
+      setChecklistDipendente(null);
+      setProposta(null);
+      setEsitoProposta(null);
+      setApplicate({ scope: "", voci: [] });
+      scopeContesto.current = null;
+      onRimuoviContesto();
+      setSchedeStato((precedente) => apriSchedaAurora(precedente, conversazione.id));
+      setConversazioni((precedenti) => [
+        conversazione,
+        ...precedenti.filter((c) => c.id !== conversazione.id),
+      ]);
+      if (conversazione.aziendaId && conversazione.aziendaId !== azienda?.id
+          && onSelezionaCliente) {
+        let elencoAziende = aziendeWorkspace;
+        if (elencoAziende.length === 0) {
+          elencoAziende = await api.aziende(richiestaWorkspace.signal);
+          if (!richiestaWorkspace.attiva()) return;
+          setAziendeWorkspace(elencoAziende);
+        }
+        const scelta = elencoAziende.find((a) => a.id === conversazione.aziendaId);
+        if (scelta) onSelezionaCliente({ id: scelta.id, ragioneSociale: scelta.ragioneSociale });
+      }
+      if (chiudiCronologia) setCronologiaAperta(false);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      if (richiestaWorkspace.attiva())
+        setErroreWorkspace(e instanceof Error ? e.message : "Conversazione non disponibile.");
+    } finally {
+      if (richiestaWorkspace.attiva()) setWorkspaceInCorso(false);
+    }
+  }, [azienda?.id, aziendeWorkspace, onRimuoviContesto, onSelezionaCliente, periodo]);
+
+  // Avvio workspace: recupera impostazione e soli ID delle tab; nessun dato della vecchia
+  // cronologia tenant-only viene importato dal localStorage.
+  useEffect(() => {
+    eliminaCronologiaAuroraLegacy();
+    const richiestaWorkspace = richiesteWorkspace.current.apri();
+    setWorkspaceInCorso(true);
+    Promise.all([
+      api.auroraCronologiaImpostazione(richiestaWorkspace.signal),
+      api.aziende(richiestaWorkspace.signal),
+    ])
+      .then(async ([impostazione, elencoAziende]) => {
+        if (!richiestaWorkspace.attiva()) return;
+        setImpostazioneCronologia(impostazione);
+        setAziendeWorkspace(elencoAziende);
+        if (!impostazione.attiva) return;
+        const elenco = await aggiornaElencoWorkspace(richiestaWorkspace.signal);
+        if (!richiestaWorkspace.attiva()) return;
+        const locale = leggiSchedeAurora();
+        const daAprire = elenco.find((c) => c.id === locale.attiva)
+          ?? elenco.find((c) => locale.ids.includes(c.id)
+            && scopeDiConversazione(c) === scopeConversazioneRef.current);
+        if (daAprire) await ripristinaConversazione(daAprire, false);
+      })
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        if (richiestaWorkspace.attiva())
+          setErroreWorkspace("Non riesco a caricare la cronologia recente.");
+      })
+      .finally(() => {
+        if (richiestaWorkspace.attiva()) setWorkspaceInCorso(false);
+      });
+    return () => richiestaWorkspace.invalida();
+    // Il workspace va inizializzato una sola volta all'apertura del pannello.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    salvaSchedeAurora(schedeStato);
+    const perId = new Map(conversazioni.map((c) => [c.id, c]));
+    setSchede(schedeStato.ids.map((id) => perId.get(id)).filter((c): c is ConversazioneAurora => !!c));
+  }, [conversazioni, schedeStato]);
+
+  useEffect(() => {
+    if (!creazioneChatAperta || !aziendaNuovaChat) {
+      setRapportiWorkspace([]);
+      setRapportoNuovaChat("");
+      return;
+    }
+    const controller = new AbortController();
+    api.dipendenti(aziendaNuovaChat, controller.signal)
+      .then(setRapportiWorkspace)
+      .catch((e) => {
+        if (!(e instanceof DOMException && e.name === "AbortError")) setRapportiWorkspace([]);
+      });
+    return () => controller.abort();
+  }, [aziendaNuovaChat, creazioneChatAperta]);
 
   useEffect(() => {
     if (scopeConversazionePrecedente.current === scopeConversazione) return;
     scopeConversazionePrecedente.current = scopeConversazione;
+    const corrente = conversazioneCorrente.current;
+    // La scheda esplicitamente aperta resta autorevole anche se la selezione globale cambia:
+    // titolo e badge rendono visibile lo scope e il server impedisce ogni rietichettatura.
+    if (corrente) return;
     richiesteChat.current.invalida();
     setInCorso(false);
     setBozza("");
     scopeContesto.current = null;
     onRimuoviContesto();
-    // Cambio cliente o mese: la chat riprende dall'ultima conversazione salvata di quel
-    // cliente, altrimenti riparte vuota. Le conversazioni non vengono mai perse.
-    const salvata = conversazionePerScope(scopeConversazione);
-    if (salvata) {
-      ripristinaConversazione(salvata);
-    } else {
-      conversazioneCorrente.current = null;
-      setBolle([]);
-      setStoria([]);
-      setScopeChat(null);
+    const scheda = schede.find((c) => scopeDiConversazione(c) === scopeConversazione);
+    if (scheda) {
+      void ripristinaConversazione(scheda, false);
+      return;
     }
-  }, [onRimuoviContesto, ripristinaConversazione, scopeConversazione]);
-
-  // Alla riapertura del pannello la chat del cliente-mese corrente riprende da dov'era.
-  useEffect(() => {
-    const salvata = conversazionePerScope(scopeConversazioneRef.current);
-    if (salvata) ripristinaConversazione(salvata);
-  }, [ripristinaConversazione]);
-
-  // Ogni turno viene salvato nel browser: chiudere il pannello non perde la chat.
-  useEffect(() => {
-    const corrente = conversazioneCorrente.current;
-    if (!corrente || scopeChat !== corrente.scope || bolle.length === 0) return;
-    salvaConversazione({
-      id: corrente.id,
-      scope: corrente.scope,
-      titolo: "",
-      aggiornataIl: new Date().toISOString(),
-      bolle: bolle.map((b) => ({
-        chi: b.chi,
-        testo: b.testo,
-        ...(b.citazione ? { citazione: b.citazione } : {}),
-      })),
-      storia,
-    });
-  }, [bolle, storia, scopeChat]);
+    conversazioneCorrente.current = null;
+    setBolle([]);
+    setStoria([]);
+    setScopeChat(null);
+    setSchedeStato((precedente) => ({ ...precedente, attiva: null }));
+  }, [onRimuoviContesto, ripristinaConversazione, schede, scopeConversazione, scopeDiConversazione]);
 
   useEffect(() => {
     if (!mandato || mandatoPerScope(mandato, azienda?.id, periodo)) return;
@@ -572,10 +723,12 @@ export function AuroraPanel({
     richiesteAvvio.current.invalida();
     richiesteQuota.current.invalida();
     richiesteProposta.current.invalida();
+    richiesteWorkspace.current.invalida();
   }, []);
 
   useEffect(() => {
-    fondo.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const riduciMovimento = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    fondo.current?.scrollIntoView({ behavior: riduciMovimento ? "auto" : "smooth", block: "end" });
   }, [bolle, inCorso]);
 
   const commutaRisposteBrevi = () => {
@@ -646,68 +799,236 @@ export function AuroraPanel({
     }
   };
 
-  const commutaCronologia = () => {
-    setConversazioni(elencoConversazioni());
-    setCronologiaAperta((prima) => !prima);
-  };
-
-  const eliminaDallaCronologia = (id: string) => {
-    eliminaConversazione(id);
-    setConversazioni(elencoConversazioni());
-    // Se era la chat aperta, il pannello riparte pulito: eliminata vuol dire eliminata.
-    if (conversazioneCorrente.current?.id === id) {
-      conversazioneCorrente.current = null;
-      setBolle([]);
-      setStoria([]);
-      setScopeChat(null);
-    }
-  };
-
-  const nuovaConversazione = () => {
+  const azzeraFiloCorrente = () => {
     richiesteChat.current.invalida();
     conversazioneCorrente.current = null;
     setInCorso(false);
     setBolle([]);
     setStoria([]);
     setScopeChat(null);
+    setBozza("");
+    setAllegati([]);
+    setAziendaProposta(null);
+    setLavoratoreProposto(null);
+    setChecklistDipendente(null);
+    setProposta(null);
+    setEsitoProposta(null);
+    setApplicate({ scope: "", voci: [] });
+    scopeContesto.current = null;
+    onRimuoviContesto();
+  };
+
+  const commutaCronologia = () => {
+    const apertura = !cronologiaAperta;
+    setCronologiaAperta(apertura);
+    if (apertura && impostazioneCronologia?.attiva) {
+      setWorkspaceInCorso(true);
+      void aggiornaElencoWorkspace()
+        .catch((e) => setErroreWorkspace(
+          e instanceof Error ? e.message : "Cronologia non disponibile.",
+        ))
+        .finally(() => setWorkspaceInCorso(false));
+    }
+  };
+
+  const abilitaCronologia = async () => {
+    if (workspaceInCorso) return;
+    setWorkspaceInCorso(true);
+    setErroreWorkspace(null);
+    try {
+      const impostazione = await api.auroraImpostaCronologia(true);
+      setImpostazioneCronologia(impostazione);
+      setCreazioneChatAperta(true);
+    } catch (e) {
+      setErroreWorkspace(e instanceof Error ? e.message : "Attivazione non riuscita.");
+    } finally {
+      setWorkspaceInCorso(false);
+    }
+  };
+
+  const disabilitaCronologia = async () => {
+    if (workspaceInCorso || !window.confirm(
+      "Disattivare la cronologia? Tutte le conversazioni Aurora recenti verranno eliminate subito.",
+    )) return;
+    setWorkspaceInCorso(true);
+    try {
+      const impostazione = await api.auroraImpostaCronologia(false);
+      setImpostazioneCronologia(impostazione);
+      setConversazioni([]);
+      setSchede([]);
+      setSchedeStato({ ids: [], attiva: null });
+      azzeraFiloCorrente();
+    } catch (e) {
+      setErroreWorkspace(e instanceof Error ? e.message : "Disattivazione non riuscita.");
+    } finally {
+      setWorkspaceInCorso(false);
+    }
+  };
+
+  const eliminaDallaCronologia = async (id: string) => {
+    const voce = conversazioni.find((c) => c.id === id);
+    if (!window.confirm(`Eliminare definitivamente «${voce?.titolo ?? "questa conversazione"}»?`))
+      return;
+    setWorkspaceInCorso(true);
+    try {
+      await api.auroraEliminaConversazione(id);
+      const nuovoStato = chiudiSchedaAurora(schedeStato, id);
+      setSchedeStato(nuovoStato);
+      setConversazioni((precedenti) => precedenti.filter((c) => c.id !== id));
+      if (conversazioneCorrente.current?.id === id) {
+        azzeraFiloCorrente();
+        const successiva = schede.find((c) => c.id === nuovoStato.attiva);
+        if (successiva) await ripristinaConversazione(successiva, false);
+      }
+    } catch (e) {
+      setErroreWorkspace(e instanceof Error ? e.message : "Eliminazione non riuscita.");
+    } finally {
+      setWorkspaceInCorso(false);
+    }
+  };
+
+  const rinominaConversazione = async (conversazione: ConversazioneAurora) => {
+    const titolo = window.prompt("Nuovo titolo della conversazione", conversazione.titolo)?.trim();
+    if (!titolo || titolo === conversazione.titolo) return;
+    try {
+      const aggiornata = await api.auroraRinominaConversazione(conversazione.id, titolo);
+      setConversazioni((precedenti) => precedenti.map((c) => c.id === aggiornata.id ? aggiornata : c));
+      if (conversazioneCorrente.current?.id === aggiornata.id)
+        conversazioneCorrente.current = aggiornata;
+    } catch (e) {
+      setErroreWorkspace(e instanceof Error ? e.message : "Rinomina non riuscita.");
+    }
+  };
+
+  const archiviaConversazione = async (
+    conversazione: ConversazioneAurora,
+    archiviata = true,
+  ) => {
+    try {
+      const aggiornata = await api.auroraArchiviaConversazione(conversazione.id, archiviata);
+      const nuovoStato = chiudiSchedaAurora(schedeStato, conversazione.id);
+      setSchedeStato(nuovoStato);
+      setConversazioni((precedenti) => precedenti.map(
+        (c) => c.id === aggiornata.id ? aggiornata : c,
+      ));
+      if (conversazioneCorrente.current?.id === conversazione.id) {
+        azzeraFiloCorrente();
+        const successiva = schede.find((c) => c.id === nuovoStato.attiva);
+        if (successiva) await ripristinaConversazione(successiva, false);
+      }
+    } catch (e) {
+      setErroreWorkspace(e instanceof Error ? e.message : "Aggiornamento archivio non riuscito.");
+    }
+  };
+
+  const chiudiScheda = (id: string) => {
+    const nuovoStato = chiudiSchedaAurora(schedeStato, id);
+    setSchedeStato(nuovoStato);
+    if (conversazioneCorrente.current?.id !== id) return;
+    const successiva = schede.find((c) => c.id === nuovoStato.attiva);
+    if (successiva) void ripristinaConversazione(successiva, false);
+    else azzeraFiloCorrente();
+  };
+
+  const nuovaConversazione = () => {
+    if (impostazioneCronologia?.attiva) {
+      setAziendaNuovaChat(azienda?.id ?? "");
+      setRapportoNuovaChat("");
+      setProgettoNuovaChat("");
+      setTitoloNuovaChat("");
+      setCreazioneChatAperta(true);
+      return;
+    }
+    azzeraFiloCorrente();
     setCronologiaAperta(false);
+  };
+
+  const creaNuovaConversazione = async () => {
+    if (workspaceInCorso) return;
+    setWorkspaceInCorso(true);
+    setErroreWorkspace(null);
+    try {
+      const creata = await api.auroraCreaConversazione({
+        titolo: titoloNuovaChat.trim() || null,
+        aziendaId: aziendaNuovaChat || null,
+        rapportoId: rapportoNuovaChat || null,
+        progetto: progettoNuovaChat.trim() || null,
+        periodo,
+      });
+      azzeraFiloCorrente();
+      conversazioneCorrente.current = creata;
+      setConversazioni((precedenti) => [creata, ...precedenti.filter((c) => c.id !== creata.id)]);
+      setSchedeStato((precedente) => apriSchedaAurora(precedente, creata.id));
+      setScopeChat(scopeDiConversazione(creata));
+      setCreazioneChatAperta(false);
+      setCronologiaAperta(false);
+      if (creata.aziendaId && creata.aziendaId !== azienda?.id && onSelezionaCliente) {
+        const scelta = aziendeWorkspace.find((a) => a.id === creata.aziendaId);
+        if (scelta) onSelezionaCliente({ id: scelta.id, ragioneSociale: scelta.ragioneSociale });
+      }
+      window.setTimeout(() => campoMessaggio.current?.focus(), 0);
+    } catch (e) {
+      setErroreWorkspace(e instanceof Error ? e.message : "Creazione non riuscita.");
+    } finally {
+      setWorkspaceInCorso(false);
+    }
   };
 
   const invia = async (testo: string) => {
     // Con un documento allegato la domanda può mancare: vale «spiegamelo».
     const messaggio = testo.trim() || (allegati.length > 0 ? BOZZA_DOCUMENTO : "");
     if (!messaggio || inCorso) return;
-    const scopeRichiesto = scopeConversazione;
     const scopeQuotaRichiesto = scopeMandato;
-    const lease = leaseCorrente;
+    const leaseDisponibile = leaseCorrente;
     const grantIdQuota = mandatoCorrente?.manifest.grantId ?? null;
     const contestoDaInviare = contestoCorrente;
-    const storiaDaInviare = scopeChat === scopeRichiesto ? storiaRef.current : [];
-    // Una nuova conversazione nasce col primo messaggio; altrimenti si continua quella
-    // corrente e il salvataggio in cronologia la aggiorna.
-    if (conversazioneCorrente.current?.scope !== scopeRichiesto || scopeChat !== scopeRichiesto)
-      conversazioneCorrente.current = { id: crypto.randomUUID(), scope: scopeRichiesto };
-    const bollaUtente: Bolla = {
-      id: prossimoId.current++,
-      chi: "utente",
-      testo: messaggio,
-      citazione: contestoDaInviare ? anteprimaContestoAurora(contestoDaInviare, 240) : undefined,
-    };
-    setBolle((prima) => scopeChat === scopeRichiesto ? [...prima, bollaUtente] : [bollaUtente]);
-    setScopeChat(scopeRichiesto);
-    setBozza("");
-    // Senza mandato Aurora conversa liberamente (nessuno strumento, nessuna lettura
-    // d'archivio): il server applica comunque i suoi limiti. Il mandato serve per i dati veri.
     const richiesta = richiesteChat.current.apri();
     richiesteQuota.current.invalida();
     setQuotaConfermata(null);
     setInCorso(true);
+    let conversazione = conversazioneCorrente.current;
+    let scopeRichiesto = scopeConversazione;
     try {
+      // Con la cronologia attiva il primo invio apre automaticamente un filo nello scope
+      // corrente. Se lo scope è cambiato, nasce un nuovo filo: quello vecchio non viene
+      // mai rietichettato o trasmesso sotto l'altra azienda.
+      if (impostazioneCronologia?.attiva
+          && (!conversazione || scopeDiConversazione(conversazione) !== scopeConversazione)) {
+        conversazione = await api.auroraCreaConversazione({
+          aziendaId: azienda?.id ?? null,
+          periodo,
+        });
+        if (!richiesta.attiva()) return;
+        conversazioneCorrente.current = conversazione;
+        setConversazioni((precedenti) => [
+          conversazione!,
+          ...precedenti.filter((c) => c.id !== conversazione!.id),
+        ]);
+        setSchedeStato((precedente) => apriSchedaAurora(precedente, conversazione!.id));
+      }
+      scopeRichiesto = conversazione ? scopeDiConversazione(conversazione) : scopeConversazione;
+      const leaseTurno = conversazione && scopeRichiesto !== scopeMandato
+        ? null
+        : leaseDisponibile;
+      const storiaDaInviare = conversazione
+        ? []
+        : scopeChat === scopeRichiesto ? storiaRef.current : [];
+      const idConversazioneRichiesta = conversazione?.id ?? null;
+      const bollaUtente: Bolla = {
+        id: prossimoId.current++,
+        chi: "utente",
+        testo: messaggio,
+        citazione: contestoDaInviare ? anteprimaContestoAurora(contestoDaInviare, 240) : undefined,
+      };
+      setBolle((prima) => scopeChat === scopeRichiesto ? [...prima, bollaUtente] : [bollaUtente]);
+      setScopeChat(scopeRichiesto);
+      setBozza("");
+
       const r = await api.aiChat(
         messaggio,
         storiaDaInviare,
-        lease,
-        azienda?.id ?? null,
+        leaseTurno,
+        conversazione ? conversazione.aziendaId : azienda?.id ?? null,
         contestoDaInviare
           ? { testo: contestoDaInviare.testo, sezione: contestoDaInviare.sezione }
           : null,
@@ -715,9 +1036,33 @@ export function AuroraPanel({
         risposteBrevi,
         contestoPaginaCorrente(),
         richiesta.signal,
+        conversazione ? {
+          conversazioneId: conversazione.id,
+          clientTurnId: crypto.randomUUID(),
+          versioneConversazione: conversazione.versione,
+          periodo: conversazione.periodo,
+        } : null,
       );
-      if (!richiesta.attiva() || scopeConversazioneRef.current !== scopeRichiesto) return;
+      if (!richiesta.attiva()
+          || (idConversazioneRichiesta
+            ? conversazioneCorrente.current?.id !== idConversazioneRichiesta
+            : scopeConversazioneRef.current !== scopeRichiesto)) return;
       setBolle((prima) => [...prima, { id: prossimoId.current++, chi: "aurora", testo: r.testo }]);
+      if (conversazione && r.versioneConversazione != null) {
+        const aggiornata: ConversazioneAurora = {
+          ...conversazione,
+          versione: r.versioneConversazione,
+          aggiornataUtc: r.cronologiaSalvata ? new Date().toISOString() : conversazione.aggiornataUtc,
+        };
+        conversazione = aggiornata;
+        conversazioneCorrente.current = aggiornata;
+        setConversazioni((precedenti) => [
+          aggiornata,
+          ...precedenti.filter((c) => c.id !== aggiornata.id),
+        ]);
+        setSchedeStato((precedente) => apriSchedaAurora(precedente, aggiornata.id));
+      }
+      setErroreWorkspace(r.motivoCronologia ?? null);
       if (r.azione) {
         setProposta(r.azione);
         setEsitoProposta(null);
@@ -755,25 +1100,19 @@ export function AuroraPanel({
         // Il provider spento risponde in modo controllato: conserva testo e domanda per il retry.
         setBozza(messaggio);
       }
-      // Azioni d'interfaccia già validate dal server (solo col consenso pieno). La
-      // selezione del cliente migra la conversazione al nuovo scope senza azzerarla:
-      // l'utente deve continuare a vedere la risposta appena ricevuta.
+      // L'azione UI cambia la selezione globale, ma non rietichetta mai il filo corrente:
+      // il cambio scope aprirà una scheda distinta e quella vecchia resta nella barra.
       if (r.selezionaCliente && onSelezionaCliente
         && r.selezionaCliente.id !== azienda?.id) {
-        const nuovoScope = chiaveScopeConversazioneAurora(r.selezionaCliente.id, periodo);
-        scopeConversazionePrecedente.current = nuovoScope;
-        if (conversazioneCorrente.current)
-          conversazioneCorrente.current = {
-            ...conversazioneCorrente.current,
-            scope: nuovoScope,
-          };
-        setScopeChat(nuovoScope);
         onSelezionaCliente(r.selezionaCliente);
       }
       if (r.apriSezione && onVaiA) onVaiA(r.apriSezione);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
-      if (!richiesta.attiva() || scopeConversazioneRef.current !== scopeRichiesto) return;
+      if (!richiesta.attiva()
+          || (conversazione
+            ? conversazioneCorrente.current?.id !== conversazione.id
+            : scopeConversazioneRef.current !== scopeRichiesto)) return;
       setBozza(messaggio);
       setBolle((prima) => [...prima, {
         id: prossimoId.current++,
@@ -1268,55 +1607,218 @@ export function AuroraPanel({
         </button>
       </header>
 
+      <div className="au-workspace-tabs" role="tablist" aria-label="Conversazioni Aurora aperte">
+        {schede.map((scheda, indice) => {
+          const attiva = conversazioneCorrente.current?.id === scheda.id;
+          return (
+            <div className={`au-workspace-tab-wrap${attiva ? " attiva" : ""}`} key={scheda.id}>
+              <button
+                type="button"
+                className="au-workspace-tab"
+                role="tab"
+                aria-selected={attiva}
+                aria-controls="aurora-thread"
+                tabIndex={attiva ? 0 : -1}
+                title={scheda.titolo}
+                onClick={() => void ripristinaConversazione(scheda, false)}
+                onKeyDown={(e) => {
+                  let prossima = indice;
+                  if (e.key === "ArrowRight") prossima = (indice + 1) % schede.length;
+                  else if (e.key === "ArrowLeft") prossima = (indice - 1 + schede.length) % schede.length;
+                  else if (e.key === "Home") prossima = 0;
+                  else if (e.key === "End") prossima = schede.length - 1;
+                  else return;
+                  e.preventDefault();
+                  void ripristinaConversazione(schede[prossima], false);
+                }}
+              >
+                {scheda.titolo}
+              </button>
+              <button
+                type="button"
+                className="au-workspace-tab-chiudi"
+                aria-label={`Chiudi la scheda «${scheda.titolo}» senza eliminarla`}
+                onClick={() => chiudiScheda(scheda.id)}
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          className="au-workspace-nuova"
+          aria-label="Apri una nuova conversazione"
+          title="Nuova conversazione"
+          onClick={nuovaConversazione}
+        >
+          <Plus size={15} aria-hidden="true" />
+        </button>
+      </div>
+
+      {creazioneChatAperta && impostazioneCronologia?.attiva && (
+        <section className="au-workspace-crea" aria-label="Nuova conversazione Aurora">
+          <div className="au-workspace-crea-testa">
+            <strong>Nuova scheda di lavoro</strong>
+            <button type="button" className="au-icona" aria-label="Annulla nuova conversazione"
+              onClick={() => setCreazioneChatAperta(false)}>
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
+          <label>
+            Titolo (facoltativo)
+            <input value={titoloNuovaChat} maxLength={120}
+              placeholder="Es. Chiusura paghe settembre"
+              onChange={(e) => setTitoloNuovaChat(e.target.value)} />
+          </label>
+          <div className="au-workspace-griglia">
+            <label>
+              Azienda
+              <select value={aziendaNuovaChat} onChange={(e) => {
+                setAziendaNuovaChat(e.target.value);
+                setRapportoNuovaChat("");
+              }}>
+                <option value="">Generale / nessuna azienda</option>
+                {aziendeWorkspace.map((a) => <option key={a.id} value={a.id}>{a.ragioneSociale}</option>)}
+              </select>
+            </label>
+            <label>
+              Lavoratore (facoltativo)
+              <select value={rapportoNuovaChat} disabled={!aziendaNuovaChat}
+                onChange={(e) => {
+                  setRapportoNuovaChat(e.target.value);
+                  if (e.target.value) setProgettoNuovaChat("");
+                }}>
+                <option value="">Tutta l'azienda</option>
+                {rapportiWorkspace.map((r) => <option key={r.rapportoId} value={r.rapportoId}>{r.nominativo}</option>)}
+              </select>
+            </label>
+            <label>
+              Progetto (facoltativo)
+              <input value={progettoNuovaChat} maxLength={80} disabled={!!rapportoNuovaChat}
+                placeholder="Es. Onboarding nuovo cliente"
+                onChange={(e) => setProgettoNuovaChat(e.target.value)} />
+            </label>
+            <label>
+              Periodo
+              <input type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} />
+            </label>
+          </div>
+          <div className="au-workspace-azioni">
+            <button type="button" className="btn secondary" onClick={() => setCreazioneChatAperta(false)}>
+              Annulla
+            </button>
+            <button type="button" className="btn primary" disabled={workspaceInCorso || !periodo}
+              onClick={() => void creaNuovaConversazione()}>
+              {workspaceInCorso ? "Apro…" : "Apri scheda"}
+            </button>
+          </div>
+          <small>Scope bloccato per questa scheda · contenuti cifrati · cancellazione automatica dopo 24 ore.</small>
+        </section>
+      )}
+
       {cronologiaAperta && (
         <section className="au-cronologia" aria-label="Cronologia delle chat">
-          <button type="button" className="au-cronologia-nuova" onClick={nuovaConversazione}>
-            Nuova chat
-          </button>
-          {conversazioni.length === 0 ? (
-            <p className="au-hint">Nessuna conversazione salvata su questo dispositivo.</p>
+          {impostazioneCronologia?.attiva ? (
+            <>
+              <div className="au-cronologia-comandi">
+                <label className="au-cronologia-cerca">
+                  <Search size={14} aria-hidden="true" />
+                  <span className="sr-only">Cerca nella cronologia</span>
+                  <input value={ricercaCronologia} placeholder="Cerca titolo, progetto, azienda…"
+                    onChange={(e) => setRicercaCronologia(e.target.value)} />
+                </label>
+                <button type="button" className="au-cronologia-nuova" onClick={nuovaConversazione}>
+                  <Plus size={14} aria-hidden="true" /> Nuova
+                </button>
+                <button type="button" className="au-cronologia-nuova"
+                  aria-pressed={mostraArchiviate}
+                  onClick={() => setMostraArchiviate((corrente) => !corrente)}>
+                  <Archive size={14} aria-hidden="true" />
+                  {mostraArchiviate ? "Attive" : "Archiviate"}
+                </button>
+              </div>
+              {workspaceInCorso ? <p className="au-hint" aria-live="polite">Aggiorno la cronologia…</p>
+                : conversazioniFiltrate.length === 0 ? (
+                  <p className="au-hint">Nessuna conversazione recente corrisponde alla ricerca.</p>
+                ) : (
+                  <ul>
+                    {conversazioniFiltrate.map((c) => {
+                      const nomeAzienda = aziendeWorkspace.find((a) => a.id === c.aziendaId)?.ragioneSociale;
+                      return (
+                        <li key={c.id} className={conversazioneCorrente.current?.id === c.id ? "attiva" : ""}>
+                          <button type="button" className="au-cronologia-voce"
+                            aria-current={conversazioneCorrente.current?.id === c.id ? "true" : undefined}
+                            onClick={() => void ripristinaConversazione(c)}>
+                            <strong>{c.titolo}</strong>
+                            <small>{[nomeAzienda, c.progetto, c.periodo].filter(Boolean).join(" · ") || "Generale"}</small>
+                            <small>
+                              Aggiornata {new Date(c.aggiornataUtc).toLocaleString("it-IT", {
+                                day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+                              })}
+                            </small>
+                          </button>
+                          <div className="au-cronologia-azioni">
+                            <button type="button" className="au-icona" title="Rinomina"
+                              aria-label={`Rinomina «${c.titolo}»`} onClick={() => void rinominaConversazione(c)}>
+                              <Pencil size={13} aria-hidden="true" />
+                            </button>
+                            <button type="button" className="au-icona"
+                              title={mostraArchiviate ? "Ripristina" : "Archivia"}
+                              aria-label={`${mostraArchiviate ? "Ripristina" : "Archivia"} «${c.titolo}»`}
+                              onClick={() => void archiviaConversazione(c, !mostraArchiviate)}>
+                              {mostraArchiviate
+                                ? <Undo2 size={13} aria-hidden="true" />
+                                : <Archive size={13} aria-hidden="true" />}
+                            </button>
+                            <button type="button" className="au-icona" title="Elimina"
+                              aria-label={`Elimina la conversazione «${c.titolo}»`}
+                              onClick={() => void eliminaDallaCronologia(c.id)}>
+                              <X size={14} aria-hidden="true" />
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              <div className="au-cronologia-policy">
+                <span><Lock size={12} aria-hidden="true" /> Cifrata e separata per utente · massimo 24 ore</span>
+                <button type="button" onClick={() => void disabilitaCronologia()} disabled={workspaceInCorso}>
+                  Disattiva ed elimina tutto
+                </button>
+              </div>
+            </>
           ) : (
-            <ul>
-              {conversazioni.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    className="au-cronologia-voce"
-                    onClick={() => ripristinaConversazione(c)}
-                  >
-                    <strong>{c.titolo}</strong>
-                    <small>
-                      {new Date(c.aggiornataIl).toLocaleDateString("it-IT", {
-                        day: "2-digit", month: "2-digit", year: "numeric",
-                      })}
-                      {" · "}
-                      {new Date(c.aggiornataIl).toLocaleTimeString("it-IT", {
-                        hour: "2-digit", minute: "2-digit",
-                      })}
-                    </small>
-                  </button>
-                  <button
-                    type="button"
-                    className="au-icona"
-                    aria-label={`Elimina la conversazione «${c.titolo}»`}
-                    onClick={() => eliminaDallaCronologia(c.id)}
-                  >
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="au-cronologia-optin">
+              <strong>Riprendi il lavoro anche dopo un reload</strong>
+              <p>
+                Salva sul server le conversazioni recenti in forma cifrata, separate per il tuo
+                utente. Si eliminano automaticamente dopo 24 ore. Segreti, dati sanitari,
+                allegati e testo selezionato non vengono conservati.
+              </p>
+              <button type="button" className="btn primary" disabled={workspaceInCorso}
+                onClick={() => void abilitaCronologia()}>
+                {workspaceInCorso ? "Attivo…" : "Attiva cronologia 24 ore"}
+              </button>
+            </div>
           )}
-          <p className="au-hint">
-            Le chat restano salvate su questo dispositivo finché non le elimini tu.
-          </p>
+          {erroreWorkspace && <p className="au-workspace-avviso" role="status">{erroreWorkspace}</p>}
         </section>
       )}
 
       <section className="au-mandato" aria-label="Mandato e controllo governato">
         <div className="au-ambito">
           <span className="au-pill">{sezione}</span>
-          {azienda ? <span className="au-pill">{azienda.ragioneSociale}</span> : null}
+          {conversazioneAttiva ? (
+            <>
+              <span className="au-pill" title="Scope immutabile della scheda">
+                {conversazioneAttiva.tipoContesto}
+              </span>
+              {conversazioneAttiva.periodo ? <span className="au-pill">{conversazioneAttiva.periodo}</span> : null}
+              {conversazioneAttiva.progetto ? <span className="au-pill">{conversazioneAttiva.progetto}</span> : null}
+            </>
+          ) : azienda ? <span className="au-pill">{azienda.ragioneSociale}</span> : null}
         </div>
 
         {consenso?.attivo ? (
@@ -1512,7 +2014,8 @@ export function AuroraPanel({
         )}
       </section>
 
-      <div className="au-thread" role="log" aria-live="polite" aria-relevant="additions text">
+      <div id="aurora-thread" className="au-thread" role="log" aria-live="polite"
+        aria-relevant="additions text" aria-busy={inCorso || workspaceInCorso}>
         {bolleCorrenti.length === 0 && !inCorso && (
           <div className="au-benvenuto">
             <span className="au-avatar grande" aria-hidden="true"><Sparkles size={26} /></span>
@@ -1967,11 +2470,12 @@ export function AuroraPanel({
           )}
         </p>
         <p>
-          La chat invia al server mandato, messaggio, sezione, ID dell’azienda scelta e fino a 12 tue
-          domande precedenti; il testo selezionato è monouso. Ogni lettura passa dal Governor e resta
-          vincolata ad azienda, mese, risorse e quota del mandato visibile. Aurora non esegue mai
-          modifiche da sola: può solo prepararle, si applicano con la tua conferma e restano
-          annullabili.
+          Senza cronologia il server riceve al massimo le ultime 12 tue domande della scheda aperta.
+          Se attivi la cronologia 24 ore, il server ricostruisce invece il filo cifrato con domande e
+          risposte; selezioni, allegati, segreti e dati altamente sensibili restano monouso. Ogni
+          lettura passa dal Governor ed è vincolata ad azienda, mese, risorse e quota del mandato
+          visibile. Aurora prepara le modifiche: si applicano soltanto secondo l’autorizzazione che
+          hai scelto e restano annullabili.
         </p>
       </details>
     </aside>

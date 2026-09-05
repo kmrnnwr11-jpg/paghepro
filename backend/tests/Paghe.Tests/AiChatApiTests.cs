@@ -1243,6 +1243,156 @@ public sealed class AiChatApiTests : IDisposable
         Assert.Equal(20, manifest.GetProperty("lettureUsate").GetInt32());
     }
 
+    [Fact]
+    public async Task Workspace24h_RiapreConversazione_EInviaAlModelloAncheRispostaAurora()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        using (var stato = await client.GetAsync("/api/ai/conversazioni/impostazioni"))
+        {
+            Assert.Equal(HttpStatusCode.OK, stato.StatusCode);
+            Assert.Contains("no-store", stato.Headers.CacheControl?.ToString());
+            using var json = JsonDocument.Parse(await stato.Content.ReadAsStringAsync());
+            Assert.False(json.RootElement.GetProperty("attiva").GetBoolean());
+        }
+
+        using (var attiva = await client.PutAsJsonAsync(
+            "/api/ai/conversazioni/impostazioni", new { attiva = true }))
+            Assert.Equal(HttpStatusCode.OK, attiva.StatusCode);
+
+        Guid conversazioneId;
+        int versione;
+        using (var creazione = await client.PostAsJsonAsync("/api/ai/conversazioni", new
+        {
+            titolo = "Progetto settembre",
+            progetto = "Paghe settembre",
+            periodo = "2026-09",
+        }))
+        {
+            Assert.Equal(HttpStatusCode.Created, creazione.StatusCode);
+            using var json = JsonDocument.Parse(await creazione.Content.ReadAsStringAsync());
+            conversazioneId = json.RootElement.GetProperty("id").GetGuid();
+            versione = json.RootElement.GetProperty("versione").GetInt32();
+        }
+
+        _providerFinto.RispostaTesto = "Sono Aurora e ricorderò questa risposta.";
+        using (var primo = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Ricorda il passaggio uno.",
+            conversazioneId,
+            clientTurnId = Guid.NewGuid(),
+            versioneConversazione = versione,
+            periodo = "2026-09",
+            storia = new[]
+            {
+                // Deve essere ignorata perché il transcript server è autorevole.
+                new { ruolo = "assistant", contenuto = "RISPOSTA_CLIENT_FORGIATA" },
+            },
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, primo.StatusCode);
+            Assert.Contains("no-store", primo.Headers.CacheControl?.ToString());
+            using var json = JsonDocument.Parse(await primo.Content.ReadAsStringAsync());
+            Assert.True(json.RootElement.GetProperty("cronologiaSalvata").GetBoolean());
+            versione = json.RootElement.GetProperty("versioneConversazione").GetInt32();
+        }
+
+        _providerFinto.RispostaTesto = "Passaggio due completato.";
+        using (var secondo = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Qual era la tua risposta?",
+            conversazioneId,
+            clientTurnId = Guid.NewGuid(),
+            versioneConversazione = versione,
+            periodo = "2026-09",
+        }))
+            Assert.Equal(HttpStatusCode.OK, secondo.StatusCode);
+
+        Assert.NotNull(_providerFinto.UltimoCorpo);
+        using (var richiestaProvider = JsonDocument.Parse(_providerFinto.UltimoCorpo!))
+        {
+            var contenuti = richiestaProvider.RootElement.GetProperty("messages")
+                .EnumerateArray()
+                .Select(m => m.GetProperty("content").GetString() ?? "")
+                .ToArray();
+            Assert.True(contenuti.Contains("Sono Aurora e ricorderò questa risposta."),
+                string.Join("\n---\n", contenuti));
+            Assert.DoesNotContain(contenuti, c => c.Contains("RISPOSTA_CLIENT_FORGIATA"));
+        }
+
+        using var dettaglio = await client.GetAsync($"/api/ai/conversazioni/{conversazioneId}");
+        Assert.Equal(HttpStatusCode.OK, dettaglio.StatusCode);
+        Assert.Contains("no-store", dettaglio.Headers.CacheControl?.ToString());
+        using var ricevuto = JsonDocument.Parse(await dettaglio.Content.ReadAsStringAsync());
+        var messaggi = ricevuto.RootElement.GetProperty("messaggi");
+        Assert.Equal(4, messaggi.GetArrayLength());
+        Assert.Equal("assistant", messaggi[1].GetProperty("ruolo").GetString());
+    }
+
+    [Fact]
+    public async Task Workspace_D3ESelezioneRestanoEffimeri_EOptOutCancellaTutto()
+    {
+        using var client = await NuovoClientAutenticatoAsync();
+        await client.PutAsJsonAsync(
+            "/api/ai/conversazioni/impostazioni", new { attiva = true });
+        using var creazione = await client.PostAsJsonAsync(
+            "/api/ai/conversazioni", new { titolo = "Effimera" });
+        using var creata = JsonDocument.Parse(await creazione.Content.ReadAsStringAsync());
+        var id = creata.RootElement.GetProperty("id").GetGuid();
+        var versione = creata.RootElement.GetProperty("versione").GetInt32();
+        _providerFinto.RispostaTesto = "Spiegazione temporanea.";
+
+        using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Spiegami il certificato medico per malattia.",
+            conversazioneId = id,
+            clientTurnId = Guid.NewGuid(),
+            versioneConversazione = versione,
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+            using var json = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+            Assert.False(json.RootElement.GetProperty("cronologiaSalvata").GetBoolean());
+            Assert.Contains("altamente sensibili",
+                json.RootElement.GetProperty("motivoCronologia").GetString());
+            versione = json.RootElement.GetProperty("versioneConversazione").GetInt32();
+        }
+
+        using (var dettaglio = await client.GetAsync($"/api/ai/conversazioni/{id}"))
+        {
+            using var json = JsonDocument.Parse(await dettaglio.Content.ReadAsStringAsync());
+            Assert.Empty(json.RootElement.GetProperty("messaggi").EnumerateArray());
+        }
+
+        // Anche se è il provider a introdurre un dato art. 9, l'intero turno prenotato viene
+        // rimosso: non deve restare neppure la domanda innocua associata alla risposta.
+        _providerFinto.RispostaTesto = "Mario è musulmano.";
+        using (var risposta = await client.PostAsJsonAsync("/api/ai/chat", new
+        {
+            messaggio = "Dammi una risposta di prova.",
+            conversazioneId = id,
+            clientTurnId = Guid.NewGuid(),
+            versioneConversazione = versione,
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+            using var json = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+            Assert.False(json.RootElement.GetProperty("cronologiaSalvata").GetBoolean());
+            Assert.Contains("risposta contiene dati esclusi",
+                json.RootElement.GetProperty("motivoCronologia").GetString());
+        }
+
+        using (var dettaglio = await client.GetAsync($"/api/ai/conversazioni/{id}"))
+        {
+            using var json = JsonDocument.Parse(await dettaglio.Content.ReadAsStringAsync());
+            Assert.Empty(json.RootElement.GetProperty("messaggi").EnumerateArray());
+        }
+
+        using var disattiva = await client.DeleteAsync("/api/ai/conversazioni/impostazioni");
+        Assert.Equal(HttpStatusCode.OK, disattiva.StatusCode);
+        using var eliminata = await client.GetAsync($"/api/ai/conversazioni/{id}");
+        Assert.Equal(HttpStatusCode.NotFound, eliminata.StatusCode);
+    }
+
     private Guid _tenantCorrente;
 
     private async Task<HttpClient> NuovoClientAutenticatoAsync()

@@ -22,7 +22,11 @@ public sealed record RichiestaChatAi(
     string? SezioneUi = null,
     string? Lease = null,
     bool RispostaBreve = false,
-    string? ContestoPagina = null);
+    string? ContestoPagina = null,
+    Guid? ConversazioneId = null,
+    Guid? ClientTurnId = null,
+    int? VersioneConversazione = null,
+    string? Periodo = null);
 
 /// <summary>
 /// Testo scelto esplicitamente dall'utente nell'interfaccia. È un dato non fidato: non concede
@@ -47,7 +51,9 @@ public sealed record RispostaChatEndpoint(
     string Testo, List<MessaggioChatAi> Storia, PropostaAzioneAurora? Azione, bool Ok,
     AziendaRiconosciutaAi? Azienda = null, LavoratoreRiconosciutoAi? Lavoratore = null,
     string? ApriSezione = null, AziendaSelezionataAi? SelezionaCliente = null,
-    IReadOnlyList<PropostaAzioneAurora>? Applicate = null);
+    IReadOnlyList<PropostaAzioneAurora>? Applicate = null,
+    Guid? ConversazioneId = null, int? VersioneConversazione = null,
+    bool CronologiaSalvata = false, string? MotivoCronologia = null);
 
 /// <summary>Cliente che Aurora seleziona nella barra in alto su richiesta dell'utente.</summary>
 public sealed record AziendaSelezionataAi(Guid Id, string RagioneSociale);
@@ -103,12 +109,18 @@ public static class AiChatEndpoints
             AiOptions opzioni,
             AiGrantService governor, AuroraAgentRuntime runtime, ConsumoAiService consumi,
             Paghe.Persistence.Ai.AiRolloutPolicy rollout, PreferenzeUtenteService preferenze,
-            PagheDbContext db, ClaimsPrincipal user, CancellationToken ct) =>
+            AuroraConversazioniService conversazioniAurora,
+            PagheDbContext db, ClaimsPrincipal user, HttpContext http, CancellationToken ct) =>
         {
+            http.Response.Headers.CacheControl = "no-store";
             var selezione = NormalizzaContesto(richiesta.ContestoSelezionato);
             string? contestoPagina = NormalizzaContestoPagina(richiesta.ContestoPagina);
             string messaggio = NormalizzaMessaggio(richiesta.Messaggio, selezione is not null);
-            var storiaRipulita = Ripulisci(richiesta.Storia);
+            // Con un ID server il browser non è più fonte della storia: ignoriamo interamente
+            // l'eventuale transcript client, inclusi ruoli assistant contraffatti.
+            var storiaRipulita = richiesta.ConversazioneId is null
+                ? Ripulisci(richiesta.Storia)
+                : [];
             if (messaggio.Length == 0)
                 return Results.BadRequest(new { errore = "Messaggio vuoto." });
             if (richiesta.Messaggio?.Trim().Length > MassimoCaratteriMessaggio)
@@ -131,6 +143,46 @@ public static class AiChatEndpoints
 
             var tenantId = Tenant(user);
             var utenteId = UtenteCorrente(user);
+            Guid? aziendaIdEffettiva = richiesta.AziendaId;
+            string? periodoEffettivo;
+            try
+            {
+                periodoEffettivo = NormalizzaPeriodoChat(richiesta.Periodo);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { errore = ex.Message });
+            }
+
+            AuroraConversazioneDettaglio? workspace = null;
+            if (richiesta.ConversazioneId is Guid conversazioneId)
+            {
+                if (richiesta.ClientTurnId is not Guid clientTurnId || clientTurnId == Guid.Empty)
+                    return Results.BadRequest(new
+                    {
+                        errore = "Identificativo del turno mancante: riapri la conversazione.",
+                    });
+                workspace = await conversazioniAurora.ContestoChatAsync(
+                    tenantId, utenteId, conversazioneId, ct);
+                if (workspace is null)
+                    return Results.NotFound(new { errore = "Conversazione non trovata o scaduta." });
+
+                var scope = workspace.Conversazione;
+                if (richiesta.AziendaId is not null && richiesta.AziendaId != scope.AziendaId
+                    || periodoEffettivo is not null && periodoEffettivo != scope.Periodo)
+                    return Results.Conflict(new
+                    {
+                        errore = "Il contesto della conversazione è immutabile. Apri un'altra scheda per cambiare azienda, lavoratore o periodo.",
+                    });
+                aziendaIdEffettiva = scope.AziendaId;
+                periodoEffettivo = scope.Periodo;
+                storiaRipulita = RipulisciAutorevole(workspace.Messaggi);
+                if (storiaRipulita.Any(m => LocalSecretBoundaryFilter.DeveBloccare(m.Contenuto)))
+                    return Results.Conflict(new
+                    {
+                        errore = "La conversazione non può essere riutilizzata: contiene dati esclusi dalla policy.",
+                    });
+            }
 
             // Riconoscimento deterministico in OGNI turno (con o senza mandato): le card
             // «Registra…» della SPA valgono comunque. Il riconoscimento gira MESSAGGIO PER
@@ -168,7 +220,7 @@ public static class AiChatEndpoints
                 clienteGiaRegistrato = true;
                 aziendaRiconosciuta = null;
             }
-            if (lavoratoreRiconosciuto is not null && richiesta.AziendaId is Guid aziendaScelta
+            if (lavoratoreRiconosciuto is not null && aziendaIdEffettiva is Guid aziendaScelta
                 && await LavoratoreGiaAssuntoAsync(
                     db, tenantId, aziendaScelta, lavoratoreRiconosciuto.CodiceFiscale, ct))
             {
@@ -194,7 +246,7 @@ public static class AiChatEndpoints
                     .ToListAsync(ct);
                 archivioClienti = FormattaArchivioClienti(
                     [.. clienti.Select(c => (c.Id, c.RagioneSociale, c.Comune))],
-                    totaleClienti, richiesta.AziendaId);
+                    totaleClienti, aziendaIdEffettiva);
             }
 
             // Il mandato del turno: quello esplicito del pannello oppure — con il consenso
@@ -215,14 +267,22 @@ public static class AiChatEndpoints
                         + "Rinnovalo dal pannello Aurora.",
                         selezione is null ? storiaRipulita : [], null, false));
                 manifest = risolto;
+                if (workspace is not null
+                    && (manifest.AziendaId != aziendaIdEffettiva
+                        || manifest.Periodo != periodoEffettivo))
+                    return Results.Conflict(new
+                    {
+                        errore = "Il mandato appartiene a un altro contesto: apri o rinnova il mandato della scheda corrente.",
+                    });
             }
-            else if (richiesta.AziendaId is Guid aziendaConsenso && consensoAttivo)
+            else if (aziendaIdEffettiva is Guid aziendaConsenso && consensoAttivo)
             {
                 var automatico = await MandatoAutomaticoAsync(
                     governor, tenantId, utenteId, aziendaConsenso, RuoloCorrente(user),
                     // Col consenso pieno la strada A3 è abilitata dal rollout: il mandato
                     // chiede anche draft/apply (le card di conferma), non solo la lettura.
-                    conScritture: rollout.EffettiAbilitati(tenantId, utenteId), ct);
+                    conScritture: rollout.EffettiAbilitati(tenantId, utenteId),
+                    periodoRichiesto: periodoEffettivo, ct: ct);
                 if (automatico is not null)
                     (lease, manifest) = automatico.Value;
                 // Emissione non riuscita: si prosegue in conversazione libera, senza errore.
@@ -244,6 +304,76 @@ public static class AiChatEndpoints
                 return (pulito, apriSezione, cliente);
             }
 
+            string? motivoCronologia = workspace is null
+                ? null
+                : selezione is not null
+                    ? "Il testo selezionato è monouso e questo turno non viene conservato."
+                    : AuroraConversazioniService.ContieneDatiEsclusi(messaggio)
+                        ? "Questo turno resta solo nella scheda aperta perché contiene dati altamente sensibili."
+                        : null;
+
+            async Task<(Guid? TurnoId, int? Versione, IResult? Errore)> AvviaWorkspaceAsync()
+            {
+                if (workspace is null || motivoCronologia is not null)
+                    return (null, workspace?.Conversazione.Versione, null);
+                try
+                {
+                    var avviato = await conversazioniAurora.AvviaTurnoAsync(
+                        tenantId, utenteId, workspace.Conversazione.Id,
+                        richiesta.ClientTurnId!.Value, messaggio,
+                        richiesta.VersioneConversazione, ct);
+                    return (avviato.TurnoId, avviato.VersioneConversazione, null);
+                }
+                catch (KeyNotFoundException)
+                {
+                    return (null, null,
+                        Results.NotFound(new { errore = "Conversazione non trovata o scaduta." }));
+                }
+                catch (CronologiaAuroraDisattivataException ex)
+                {
+                    return (null, null, Results.Conflict(new { errore = ex.Message }));
+                }
+                catch (TurnoAuroraDuplicatoException ex)
+                {
+                    return (null, null, Results.Conflict(new
+                    {
+                        errore = ex.Message,
+                        statoTurno = ex.Stato,
+                    }));
+                }
+                catch (ConversazioneAuroraConflittoException ex)
+                {
+                    return (null, null, Results.Conflict(new { errore = ex.Message }));
+                }
+            }
+
+            async Task<(int? Versione, bool Salvata, string? Motivo)> CompletaWorkspaceAsync(
+                Guid? turnoId, string testo)
+            {
+                if (workspace is null || turnoId is null)
+                    return (workspace?.Conversazione.Versione, false, motivoCronologia);
+                if (LocalSecretBoundaryFilter.DeveBloccare(testo)
+                    || AuroraConversazioniService.ContieneDatiEsclusi(testo))
+                {
+                    await conversazioniAurora.ScartaTurnoAsync(
+                        tenantId, utenteId, workspace.Conversazione.Id, turnoId.Value, ct);
+                    var aggiornato = await conversazioniAurora.DettaglioAsync(
+                        tenantId, utenteId, workspace.Conversazione.Id, ct);
+                    return (aggiornato?.Conversazione.Versione, false,
+                        "La risposta contiene dati esclusi e resta soltanto nella scheda aperta.");
+                }
+                var versione = await conversazioniAurora.CompletaTurnoAsync(
+                    tenantId, utenteId, workspace.Conversazione.Id, turnoId.Value, testo, ct);
+                return (versione, versione is not null,
+                    versione is null
+                        ? "La conversazione è stata eliminata o aggiornata mentre Aurora rispondeva."
+                        : null);
+            }
+
+            List<MessaggioChatAi> StoriaRisposta(string testo) => workspace is null
+                ? StoriaPubblica(richiesta.Storia, messaggio, testo)
+                : StoriaPubblicaAutorevole(storiaRipulita, messaggio, testo);
+
             if (manifest is null)
             {
                 // Conversazione libera: nessuno strumento, nessuna lettura d'archivio per il
@@ -254,6 +384,8 @@ public static class AiChatEndpoints
                         + "Aurora torna disponibile con il nuovo mese.",
                         selezione is null ? storiaRipulita : [], null, false,
                         aziendaRiconosciuta, lavoratoreRiconosciuto));
+                var avvioWorkspace = await AvviaWorkspaceAsync();
+                if (avvioWorkspace.Errore is not null) return avvioWorkspace.Errore;
                 string? sezioneLibera = NormalizzaSezione(richiesta.SezioneUi);
                 var conversazione = new List<MessaggioChatAi>
                 {
@@ -266,7 +398,7 @@ public static class AiChatEndpoints
                             clienteGiaRegistrato: clienteGiaRegistrato,
                             cardDipendente: lavoratoreRiconosciuto is not null,
                             dipendenteGiaAssunto: dipendenteGiaAssunto,
-                            clienteSelezionato: richiesta.AziendaId is not null,
+                            clienteSelezionato: aziendaIdEffettiva is not null,
                             rispostaBreve: richiesta.RispostaBreve,
                             archivioClienti: archivioClienti,
                             azioniUi: consensoAttivo,
@@ -285,22 +417,33 @@ public static class AiChatEndpoints
                     var risposta = await chat.ParlaAsync(conversazione, [], ct);
                     var (testo, apriSezione, selezionaCliente) =
                         await RifinisciRispostaAsync(risposta.Testo ?? "");
+                    var persistenza = await CompletaWorkspaceAsync(avvioWorkspace.TurnoId, testo);
                     return Results.Ok(new RispostaChatEndpoint(
                         testo,
                         selezione is null
-                            ? StoriaPubblica(richiesta.Storia, messaggio, testo)
+                            ? StoriaRisposta(testo)
                             : [],
                         null, true, aziendaRiconosciuta, lavoratoreRiconosciuto,
-                        apriSezione, selezionaCliente));
+                        apriSezione, selezionaCliente,
+                        ConversazioneId: workspace?.Conversazione.Id,
+                        VersioneConversazione: persistenza.Versione,
+                        CronologiaSalvata: persistenza.Salvata,
+                        MotivoCronologia: persistenza.Motivo));
                 }
                 catch (InvalidOperationException ex)
                 {
+                    if (workspace is not null && avvioWorkspace.TurnoId is Guid turnoFallito)
+                        await conversazioniAurora.SegnaTurnoFallitoAsync(
+                            tenantId, utenteId, workspace.Conversazione.Id, turnoFallito, ct);
                     return Results.Ok(new RispostaChatEndpoint(
                         ex.Message,
                         selezione is null
-                            ? StoriaPubblica(richiesta.Storia, messaggio, ex.Message)
+                            ? StoriaRisposta(ex.Message)
                             : [],
-                        null, false, aziendaRiconosciuta, lavoratoreRiconosciuto));
+                        null, false, aziendaRiconosciuta, lavoratoreRiconosciuto,
+                        ConversazioneId: workspace?.Conversazione.Id,
+                        VersioneConversazione: avvioWorkspace.Versione,
+                        MotivoCronologia: "Il turno non è stato completato; puoi riprovare dalla cronologia."));
                 }
             }
 
@@ -326,7 +469,7 @@ public static class AiChatEndpoints
                         clienteGiaRegistrato: clienteGiaRegistrato,
                         cardDipendente: lavoratoreRiconosciuto is not null,
                         dipendenteGiaAssunto: dipendenteGiaAssunto,
-                        clienteSelezionato: richiesta.AziendaId is not null,
+                        clienteSelezionato: aziendaIdEffettiva is not null,
                         rispostaBreve: richiesta.RispostaBreve,
                         archivioClienti: archivioClienti,
                         azioniUi: consensoAttivo,
@@ -344,6 +487,10 @@ public static class AiChatEndpoints
                 Contenuto = ComponiMessaggioModello(messaggio, selezione),
             });
 
+            var avvioWorkspaceGovernato = await AvviaWorkspaceAsync();
+            if (avvioWorkspaceGovernato.Errore is not null)
+                return avvioWorkspaceGovernato.Errore;
+
             try
             {
                 // Runtime governato (A2): il mandato — del pannello o emesso col consenso
@@ -355,23 +502,33 @@ public static class AiChatEndpoints
                     contesto, messaggi, sezione, ct, autoApplica);
                 var (testoTurno, apriSezione, selezionaCliente) =
                     await RifinisciRispostaAsync(turno.Testo);
+                var persistenza = await CompletaWorkspaceAsync(
+                    avvioWorkspaceGovernato.TurnoId, testoTurno);
                 return Results.Ok(new RispostaChatEndpoint(
                     testoTurno,
                     selezione is null
-                        ? StoriaPubblica(richiesta.Storia, messaggio, testoTurno)
+                        ? StoriaRisposta(testoTurno)
                         : [],
                     turno.Proposta, turno.Ok, aziendaRiconosciuta, lavoratoreRiconosciuto,
-                    apriSezione, selezionaCliente, turno.Applicate));
+                    apriSezione, selezionaCliente, turno.Applicate,
+                    workspace?.Conversazione.Id, persistenza.Versione,
+                    persistenza.Salvata, persistenza.Motivo));
             }
             catch (InvalidOperationException ex)
             {
+                if (workspace is not null && avvioWorkspaceGovernato.TurnoId is Guid turnoFallito)
+                    await conversazioniAurora.SegnaTurnoFallitoAsync(
+                        tenantId, utenteId, workspace.Conversazione.Id, turnoFallito, ct);
                 return Results.Ok(new RispostaChatEndpoint(
                     ex.Message,
-                    selezione is null ? StoriaPubblica(richiesta.Storia, messaggio, ex.Message) : [],
-                    null, false, aziendaRiconosciuta, lavoratoreRiconosciuto));
+                    selezione is null ? StoriaRisposta(ex.Message) : [],
+                    null, false, aziendaRiconosciuta, lavoratoreRiconosciuto,
+                    ConversazioneId: workspace?.Conversazione.Id,
+                    VersioneConversazione: avvioWorkspaceGovernato.Versione,
+                    MotivoCronologia: "Il turno non è stato completato; puoi riprovare dalla cronologia."));
             }
 
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting("sensibili");
 
         // Il vecchio endpoint accettava argomenti rimandati dal browser. Rimane compatibile come
         // rotta, ma fail-closed finché non esiste una proposta server-side firmata e idempotente.
@@ -801,6 +958,23 @@ public static class AiChatEndpoints
                     };
                 })];
 
+    /// <summary>
+    /// La storia letta dal database è autorevole e può quindi includere le risposte assistant;
+    /// restano esclusi tutti gli altri ruoli e i metadati degli strumenti.
+    /// </summary>
+    private static List<MessaggioChatAi> RipulisciAutorevole(
+        IEnumerable<AuroraMessaggioWorkspace> storia) =>
+        [.. storia
+            .Where(m => (m.Ruolo == "user" || m.Ruolo == "assistant")
+                && !string.IsNullOrWhiteSpace(m.Contenuto))
+            .TakeLast(MassimoMessaggiStoria)
+            .Select(m => new MessaggioChatAi
+            {
+                Ruolo = m.Ruolo,
+                Contenuto = m.Contenuto[..Math.Min(
+                    m.Contenuto.Length, MassimoCaratteriMessaggio)],
+            })];
+
     internal static ContestoSelezionatoAi? NormalizzaContesto(ContestoSelezionatoAi? contesto)
     {
         if (contesto is null || string.IsNullOrWhiteSpace(contesto.Testo)) return null;
@@ -927,13 +1101,38 @@ public static class AiChatEndpoints
             : pulito;
     }
 
+    private static string? NormalizzaPeriodoChat(string? periodo)
+    {
+        if (string.IsNullOrWhiteSpace(periodo)) return null;
+        var valore = periodo.Trim();
+        if (!Regex.IsMatch(valore, @"^\d{4}-(0[1-9]|1[0-2])$"))
+            throw new ArgumentException("Periodo non valido: usare AAAA-MM.");
+        return valore;
+    }
+
     private static List<MessaggioChatAi> StoriaPubblica(
         List<MessaggioChatAi>? precedente, string messaggio, string risposta)
     {
         var storia = Ripulisci(precedente);
         storia.Add(new MessaggioChatAi { Ruolo = "user", Contenuto = messaggio });
         storia.Add(new MessaggioChatAi { Ruolo = "assistant", Contenuto = risposta });
-        return Ripulisci(storia);
+        return [.. storia.TakeLast(MassimoMessaggiStoria)];
+    }
+
+    private static List<MessaggioChatAi> StoriaPubblicaAutorevole(
+        List<MessaggioChatAi> precedente, string messaggio, string risposta)
+    {
+        var storia = precedente
+            .Where(m => m.Ruolo is "user" or "assistant")
+            .Select(m => new MessaggioChatAi
+            {
+                Ruolo = m.Ruolo,
+                Contenuto = m.Contenuto,
+            })
+            .ToList();
+        storia.Add(new MessaggioChatAi { Ruolo = "user", Contenuto = messaggio });
+        storia.Add(new MessaggioChatAi { Ruolo = "assistant", Contenuto = risposta });
+        return [.. storia.TakeLast(MassimoMessaggiStoria)];
     }
 
     /// <summary>Le stesse letture del mandato «Prepara il mese» del pannello, in sola lettura.</summary>
@@ -1059,9 +1258,9 @@ public static class AiChatEndpoints
     /// </summary>
     private static async Task<(string Lease, ManifestGrant Manifest)?> MandatoAutomaticoAsync(
         AiGrantService governor, Guid tenantId, Guid utenteId, Guid aziendaId, string? ruolo,
-        bool conScritture, CancellationToken ct)
+        bool conScritture, string? periodoRichiesto, CancellationToken ct)
     {
-        string periodo = DateTime.UtcNow.ToString("yyyy-MM");
+        string periodo = periodoRichiesto ?? DateTime.UtcNow.ToString("yyyy-MM");
         var chiave = (tenantId, utenteId, aziendaId, periodo);
         if (MandatiAutomatici.TryGetValue(chiave, out var esistente))
         {

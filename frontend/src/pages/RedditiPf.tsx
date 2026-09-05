@@ -153,7 +153,7 @@ export function RedditiPf() {
 
                 <div className="accounting-total" style={{ borderColor: b.saldoADebito > 0 ? "rgba(185,28,28,.2)" : "rgba(22,163,74,.2)" }}>
                   <span>{b.saldoADebito > 0 ? "Saldo IRPEF a debito" : "Saldo IRPEF a credito"}</span>
-                  <strong style={{ color: b.saldoADebito > 0 ? "var(--red)" : "#15803d" }}>
+                  <strong style={{ color: b.saldoADebito > 0 ? "var(--red)" : "var(--ok-testo)" }}>
                     {euro(b.saldoADebito > 0 ? b.saldoADebito : b.saldoACredito)} €
                   </strong>
                   <em>{b.numeroCedolini} cedolini · anno {b.anno}</em>

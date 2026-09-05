@@ -13,11 +13,13 @@ import {
   LayoutDashboard,
   LogOut,
   Megaphone,
+  Moon,
   Plus,
   ReceiptText,
   Search,
   Settings,
   Sparkles,
+  Sun,
   Users,
   X,
   type LucideIcon,
@@ -52,7 +54,12 @@ import {
   leggiTestoSelezionatoAurora,
   type ContestoAurora,
 } from "../auroraContext";
-import { sincronizzaPreferenzeDalServer } from "../preferenze";
+import {
+  commutaTemaRapido,
+  sincronizzaPreferenzeDalServer,
+  temaEffettivoCorrente,
+  type TemaEffettivo,
+} from "../preferenze";
 
 // Email dell'utente loggato, letta dal token (per mostrare il vero account, non un nome finto).
 function emailDalToken(): string {
@@ -908,6 +915,7 @@ function BarraAlta({
           <kbd>⌘K</kbd>
         </button>
 
+        <BottoneTema />
         <button
           className="barra-icona aurora"
           type="button"
@@ -934,6 +942,35 @@ function BarraAlta({
       </header>
 
     </div>
+  );
+}
+
+/**
+ * Interruttore giorno/notte: un tocco e il tema cambia con dissolvenza, salvato come da
+ * Impostazioni. Osserva l'attributo dell'html perché il tema può cambiare anche da lì o dal
+ * dispositivo (modalità automatica).
+ */
+function BottoneTema() {
+  const [tema, setTema] = useState<TemaEffettivo>(temaEffettivoCorrente);
+  useEffect(() => {
+    const osservatore = new MutationObserver(() => setTema(temaEffettivoCorrente()));
+    osservatore.observe(document.documentElement, { attributes: true, attributeFilter: ["data-tema"] });
+    return () => osservatore.disconnect();
+  }, []);
+  const scuro = tema === "scuro";
+  return (
+    <button
+      className="barra-icona barra-tema"
+      type="button"
+      aria-pressed={scuro}
+      aria-label={scuro ? "Passa al tema chiaro" : "Passa al tema scuro"}
+      title={scuro ? "Tema chiaro" : "Tema scuro"}
+      onClick={() => setTema(commutaTemaRapido())}
+    >
+      <span className="barra-tema-icona" key={tema}>
+        {scuro ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+      </span>
+    </button>
   );
 }
 

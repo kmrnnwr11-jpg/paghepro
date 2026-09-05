@@ -408,6 +408,24 @@ export function applicaAspettoConTransizione(): void {
   window.setTimeout(() => radice.classList.remove("tema-in-transizione"), 500);
 }
 
+/** Tema effettivamente disegnato adesso (chiaro o scuro), letto dal documento. */
+export function temaEffettivoCorrente(): TemaEffettivo {
+  if (typeof document === "undefined") return "chiaro";
+  return document.documentElement.dataset.tema === "scuro" ? "scuro" : "chiaro";
+}
+
+/**
+ * Interruttore rapido giorno/notte della barra alta: la scelta diventa esplicita (anche se
+ * prima valeva «automatico»), viene salvata come le altre preferenze e applicata con la
+ * stessa dissolvenza di Impostazioni.
+ */
+export function commutaTemaRapido(): TemaEffettivo {
+  const nuovo: TemaEffettivo = temaEffettivoCorrente() === "scuro" ? "chiaro" : "scuro";
+  void salvaPreferenzaConEsito("tema_interfaccia", nuovo);
+  applicaAspettoConTransizione();
+  return nuovo;
+}
+
 let ascoltoTemaDispositivo: MediaQueryList | null = null;
 
 function dispositivoPreferisceScuro(): boolean {

@@ -10037,3 +10037,96 @@ html.tema-in-transizione *::after {
     min-width: 0;
   }
 }
+
+/* ============================================================
+   MOVIMENTO 3 — menu, palette, pannelli e interruttore del tema
+   ============================================================ */
+
+@keyframes tendina-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tendina-mondo,
+.tendina-azienda {
+  transform-origin: top left;
+  animation: tendina-in 0.18s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+@keyframes velo-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.command-overlay,
+.consenso-aurora-overlay {
+  animation: velo-in 0.2s ease both;
+}
+
+@keyframes foglio-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.command-dialog {
+  animation: foglio-in 0.26s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+.consenso-aurora {
+  animation: foglio-in 0.3s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+@keyframes pannello-lato-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.aurora-panel {
+  animation: pannello-lato-in 0.32s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+/* L'icona del tema ruota entrando: sole di giorno, luna di notte. */
+@keyframes tema-icona-in {
+  from {
+    opacity: 0;
+    transform: rotate(-90deg) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+  }
+}
+
+.barra-tema-icona {
+  display: grid;
+  place-items: center;
+  animation: tema-icona-in 0.35s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+.barra-tema[aria-pressed="true"] {
+  color: var(--amber);
+}
+
+@media (max-width: 760px) {
+  .barra-tema {
+    display: none;
+  }
+}

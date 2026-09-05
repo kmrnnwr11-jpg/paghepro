@@ -100,9 +100,9 @@ function Campo({ label, errore, children, facoltativo }: {
 
 function inputStyle(errore?: string): React.CSSProperties {
   return {
-    border: errore ? "1.5px solid #e74c3c" : "1px solid rgba(95, 125, 120, 0.45)",
+    border: errore ? "1.5px solid #e74c3c" : "1px solid rgba(var(--ink-rgb), 0.45)",
     borderRadius: 8, padding: "8px 10px", fontSize: 14,
-    background: "#fbfdfc", boxShadow: "var(--incavo)",
+    background: "var(--campo)", boxShadow: "var(--incavo)",
     color: "var(--text)", width: "100%", boxSizing: "border-box",
   };
 }
@@ -747,7 +747,7 @@ export function Aziende({
           {logoUrl ? (
             <img src={logoUrl} alt="Logo aziendale"
               style={{ width: 64, height: 64, objectFit: "contain", borderRadius: 8,
-                background: "#fff", border: "1px solid var(--line)", padding: 4 }} />
+                background: "var(--panel-strong)", border: "1px solid var(--line)", padding: 4 }} />
           ) : (
             <span style={{ width: 64, height: 64, borderRadius: 8, display: "flex",
               alignItems: "center", justifyContent: "center", fontSize: 24,
@@ -779,7 +779,7 @@ export function Aziende({
           display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <span style={{ width: 64, height: 64, borderRadius: 8, display: "flex",
             alignItems: "center", justifyContent: "center", fontSize: 25,
-            color: firmaTimbroConfigurata ? "#197149" : "var(--text)",
+            color: firmaTimbroConfigurata ? "var(--ok-testo)" : "var(--text)",
             background: firmaTimbroConfigurata ? "rgba(46, 204, 113, 0.12)" : "var(--panel)",
             border: `1px ${firmaTimbroConfigurata ? "solid #2ecc71" : "dashed var(--line)"}` }}>
             {firmaTimbroConfigurata ? "✓" : "✍"}
@@ -835,7 +835,7 @@ export function Aziende({
             value={testoIncollato} onChange={e => setTestoIncollato(e.target.value)}
             rows={6} style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13,
               padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(95, 125, 120, 0.45)",
-              background: "#fbfdfc", boxShadow: "var(--incavo)", color: "var(--text)", boxSizing: "border-box" }} />
+              background: "var(--campo)", boxShadow: "var(--incavo)", color: "var(--text)", boxSizing: "border-box" }} />
           <button className="btn primary" type="button" style={{ marginTop: 8 }}
             disabled={!testoIncollato.trim()}
             onClick={() => {
@@ -885,7 +885,7 @@ export function Aziende({
             {daConfermare.ccnlDefault ? <> · CCNL {daConfermare.ccnlDefault} livello {daConfermare.livelloDefault}</> : null}
           </p>
           {datiContributiviProvvisori && (
-            <p style={{ marginTop: 8, fontSize: 13, color: "#b45309", fontWeight: 700 }}>
+            <p style={{ marginTop: 8, fontSize: 13, color: "var(--avviso-testo)", fontWeight: 700 }}>
               Modalità prova: i dati INPS/INAIL mancanti restano vuoti e devono essere completati
               prima di usare F24, UniEmens o altri adempimenti ufficiali.
             </p>
@@ -964,7 +964,7 @@ export function Aziende({
             </div>
             <div style={{ ...grigliaStyle, marginTop: 12 }}>
               <Campo label="Comune" errore={errori.comune}>
-                <div style={{ border: errori.comune ? "1.5px solid #e74c3c" : "1px solid rgba(160, 182, 178, 0.4)", borderRadius: 8 }}>
+                <div style={{ border: errori.comune ? "1.5px solid #e74c3c" : "1px solid var(--line)", borderRadius: 8 }}>
                   <ComuneAutocomplete
                     valore={form.comune}
                     onSelect={(c) => {

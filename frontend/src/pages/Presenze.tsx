@@ -1148,7 +1148,7 @@ export function Presenze() {
               {errore && <p className="errore">{errore}</p>}
               {avviso && (
                 <p style={{ marginTop: 10, padding: "10px 14px", borderRadius: 10, fontSize: 13,
-                  background: "rgba(243,156,18,0.14)", border: "1.5px solid #f39c12", color: "#b9770e" }}>
+                  background: "rgba(243,156,18,0.14)", border: "1.5px solid #f39c12", color: "var(--avviso-testo)" }}>
                   ⚠️ {avviso}
                 </p>
               )}

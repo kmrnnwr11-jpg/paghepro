@@ -67,7 +67,15 @@ dotnet run --project src/Paghe.Demo -c Release
   chiari nel tema scuro, testata «Controllo del mese» senza stile (ora filtri compatti e pillole)
   e il **dataset demo che falliva** per checksum errati di CF e P.IVA (`DemoDatasetService`,
   test `DemoDatasetTests`). Test: frontend 104/104, backend suite completa verde, lint invariato
-  (8 avvisi preesistenti), build SPA ok.
+  (8 avvisi preesistenti), build SPA ok. **Seconda passata (5 settembre, «continua»)**:
+  interruttore rapido **giorno/notte nella barra alta** (`BottoneTema` in Dashboard, icona
+  sole/luna che ruota, `commutaTemaRapido()` salva la scelta esplicita e la applica con
+  dissolvenza; osserva `data-tema` così segue anche Impostazioni e l'automatico; nascosto sotto
+  760 px dove resta Impostazioni); ingressi animati di tendine, palette comandi, dialogo del
+  consenso e pannello Aurora; rassegna in scuro di altre 27 pagine (Fisco, Studio, Clienti,
+  Documenti, schede azienda e dipendente, aiuto) con un solo residuo corretto: i colori cablati
+  negli `style` inline di Aziende/Presenze/CollegaProvider/RedditiPf (campi bianchi e verdi
+  scuri illeggibili di notte) ora usano i token `--campo`, `--ok-testo`, `--avviso-testo`.
 
 - **Autorizzazione completa: Aurora lavora in catena come un collaboratore (3 settembre
   2026, sera)**: richiesta del fondatore («deve fare tutto come un agente umano, conferma

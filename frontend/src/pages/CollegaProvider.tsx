@@ -182,9 +182,9 @@ export function CollegaProvider() {
           )}
         </div>
 
-        {salvato && <p style={{ color: "#15803d", fontWeight: 700, fontSize: 13 }}>✓ Configurazione salvata.</p>}
+        {salvato && <p style={{ color: "var(--ok-testo)", fontWeight: 700, fontSize: 13 }}>✓ Configurazione salvata.</p>}
         {verifica && (
-          <p style={{ color: verifica.ok ? "#15803d" : "var(--red)", fontWeight: 700, fontSize: 13 }}>
+          <p style={{ color: verifica.ok ? "var(--ok-testo)" : "var(--red)", fontWeight: 700, fontSize: 13 }}>
             {verifica.ok ? "✓ " : "✕ "}{verifica.messaggio}
           </p>
         )}

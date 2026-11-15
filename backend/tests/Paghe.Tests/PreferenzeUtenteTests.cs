@@ -137,4 +137,23 @@ public sealed class PreferenzeUtenteTests : IDisposable
         // Il tema resta una scelta dell'utente: nessuna preferenza cambia i numeri dei documenti.
         Assert.Equal("automatico", (await svc.LeggiTutteAsync(tenant, utente))[PreferenzeUtenteService.TemaInterfaccia]);
     }
+
+    [Fact]
+    public async Task StileInterfaccia_AccettaSoloModernoOClassico()
+    {
+        var (tenant, utente) = (Guid.NewGuid(), Guid.NewGuid());
+        await using var db = NuovoContesto();
+        var svc = new PreferenzeUtenteService(db);
+
+        foreach (string stile in PreferenzeUtenteService.StiliInterfaccia)
+        {
+            await svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.StileInterfaccia, stile);
+            Assert.Equal(stile, await svc.LeggiAsync(
+                tenant, utente, PreferenzeUtenteService.StileInterfaccia, "moderno"));
+        }
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            svc.SalvaAsync(tenant, utente, PreferenzeUtenteService.StileInterfaccia, "retro"));
+        Assert.Equal("moderno", await svc.LeggiAsync(
+            Guid.NewGuid(), utente, PreferenzeUtenteService.StileInterfaccia, "moderno"));
+    }
 }

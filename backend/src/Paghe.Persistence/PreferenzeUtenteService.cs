@@ -38,6 +38,13 @@ public sealed class PreferenzeUtenteService
     public static readonly IReadOnlyList<string> AccentiInterfaccia =
         ["salvia", "oceano", "indaco", "bordeaux", "rame", "grafite"];
 
+    /// <summary>
+    /// Stile dell'interfaccia: «moderno» (vetro satinato e rilievi) o «classico» (gestionale
+    /// desktop: superfici piene, bordi netti, niente ombre). Identico a `CATALOGO_STILI_INTERFACCIA`.
+    /// </summary>
+    public const string StileInterfaccia = "stile_interfaccia";
+    public static readonly IReadOnlyList<string> StiliInterfaccia = ["moderno", "classico"];
+
     /// <summary>Tinte ammesse per l'accento dei documenti: palette verificata, niente colori liberi.</summary>
     public static readonly IReadOnlyList<string> PaletteAccento =
         ["#12395E", "#1F5B45", "#7C2D12", "#4C1D95", "#0F766E", "#334155"];
@@ -60,6 +67,7 @@ public sealed class PreferenzeUtenteService
             [Densita] = Scelta("comoda", "compatta"),
             [TemaInterfaccia] = Scelta(TemiInterfaccia.ToArray()),
             [AccentoInterfaccia] = Scelta(AccentiInterfaccia.ToArray()),
+            [StileInterfaccia] = Scelta(StiliInterfaccia.ToArray()),
         };
 
     private readonly PagheDbContext _db;

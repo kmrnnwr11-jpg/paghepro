@@ -9,6 +9,7 @@ import {
   applicaAspetto,
   CATALOGO_ACCENTI,
   CATALOGO_STILI_BUSTA,
+  CATALOGO_STILI_INTERFACCIA,
   CATALOGO_TEMI,
   haPreferenzeDaSincronizzare,
   preferenzaLocale,
@@ -19,6 +20,8 @@ import {
   risolviTema,
   STILE_BUSTA_PREDEFINITO,
   stileBustaPreferito,
+  STILE_INTERFACCIA_PREDEFINITO,
+  stileInterfacciaPreferito,
   TEMA_PREDEFINITO,
   temaInterfacciaPreferito,
 } from "../src/preferenze.ts";
@@ -225,6 +228,19 @@ test("il catalogo dei temi e degli accenti resta allineato alla whitelist backen
   assert.deepEqual(lista("AccentiInterfaccia"), CATALOGO_ACCENTI.map((accento) => accento.id));
   assert.equal(TEMA_PREDEFINITO, "chiaro");
   assert.equal(ACCENTO_PREDEFINITO, "salvia");
+  assert.deepEqual(lista("StiliInterfaccia"), CATALOGO_STILI_INTERFACCIA.map((stile) => stile.id));
+  assert.equal(STILE_INTERFACCIA_PREDEFINITO, "moderno");
+});
+
+test("lo stile interfaccia letto dalla cache ricade su moderno se fuori catalogo", () => {
+  const store = memoria();
+  store.setItem("tenant_corrente", "t1");
+  store.setItem("utente_corrente", "u1");
+  assert.equal(stileInterfacciaPreferito(store), "moderno");
+  aggiornaCachePreferenzeDalServer({ stile_interfaccia: "classico" }, store);
+  assert.equal(stileInterfacciaPreferito(store), "classico");
+  aggiornaCachePreferenzeDalServer({ stile_interfaccia: "retro" }, store);
+  assert.equal(stileInterfacciaPreferito(store), "moderno");
 });
 
 test("automatico segue il dispositivo, chiaro e scuro restano fissi", () => {

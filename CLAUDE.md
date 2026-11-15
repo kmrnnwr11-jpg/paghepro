@@ -44,6 +44,20 @@ dotnet run --project src/Paghe.Demo -c Release
 
 ## Fatto
 
+- **Stile dell'interfaccia Moderno o Classico (15 novembre 2026)**: richiesta del fondatore
+  («voglio stile classico UI di software», da scegliere accanto all'attuale). In Impostazioni →
+  Interfaccia la scelta «Stile dell'interfaccia» alterna **Moderno** (vetro satinato, rilievi,
+  animazioni: default invariato) e **Classico** (gestionale desktop: piano grigio, pannelli
+  pieni, angoli a 2 px, barra dei menu piena, tabelle a griglia con righe alterne, carattere di
+  sistema, niente ombre/vetro/animazioni decorative; restano focus visibile e indicatori di
+  attesa). Preferenza server `stile_interfaccia` in whitelist
+  (`PreferenzeUtenteService.StiliInterfaccia`, identica a `CATALOGO_STILI_INTERFACCIA`,
+  allineamento coperto da test); `applicaAspetto()` mette `data-stile` sull'html e la sezione
+  «STILE CLASSICO» in fondo a `index.css` ridefinisce token e forme, compatibile con tema
+  chiaro/scuro e sei accenti. I documenti non cambiano. Verifiche: frontend 119/119, build SPA,
+  test preferenze backend 6/6, prova in browser (scelta, applicazione immediata, persistenza dopo
+  ricarica, ritorno a Moderno).
+
 - **Tema del software e finitura animata (4 settembre 2026, /goal)**: richiesta del fondatore
   («ognuno sceglie stile della busta e tema del software, deve essere bello, comodo, fluido»).
   In Impostazioni → Interfaccia si scelgono il **tema** (Chiaro / Scuro / Automatico dal

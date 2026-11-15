@@ -54,6 +54,23 @@ export const CATALOGO_ACCENTI = [
   { id: "grafite", nome: "Grafite", colore: "#3b4a5a", descrizione: "Neutro, sobrio, in scala di grigi." },
 ] as const;
 
+/** Stile dell'interfaccia: moderno (vetro e rilievi) o classico (gestionale desktop). */
+export const CATALOGO_STILI_INTERFACCIA = [
+  { id: "moderno", nome: "Moderno", descrizione: "Vetro satinato, rilievi e animazioni." },
+  { id: "classico", nome: "Classico", descrizione: "Gestionale desktop: grigio, bordi netti, niente ombre." },
+] as const;
+export type StileInterfaccia = (typeof CATALOGO_STILI_INTERFACCIA)[number]["id"];
+export const STILE_INTERFACCIA_PREDEFINITO: StileInterfaccia = "moderno";
+
+export function stileInterfacciaValido(valore: string | null | undefined): valore is StileInterfaccia {
+  return CATALOGO_STILI_INTERFACCIA.some((stile) => stile.id === valore);
+}
+
+export function stileInterfacciaPreferito(store: Storage | null = storagePredefinito()): StileInterfaccia {
+  const valore = preferenzaLocale("stile_interfaccia", STILE_INTERFACCIA_PREDEFINITO, store);
+  return stileInterfacciaValido(valore) ? valore : STILE_INTERFACCIA_PREDEFINITO;
+}
+
 export type TemaInterfaccia = (typeof CATALOGO_TEMI)[number]["id"];
 export type AccentoInterfaccia = (typeof CATALOGO_ACCENTI)[number]["id"];
 export type TemaEffettivo = Exclude<TemaInterfaccia, "automatico">;
@@ -193,6 +210,7 @@ const CACHE_LOCALE: Record<string, string> = {
   densita: "preferenza_densita",
   tema_interfaccia: "preferenza_tema_interfaccia",
   accento_interfaccia: "preferenza_accento_interfaccia",
+  stile_interfaccia: "preferenza_stile_interfaccia",
 };
 
 export type EsitoSincronizzazionePreferenze = "server" | "locale";
@@ -371,7 +389,7 @@ export async function sincronizzaPreferenzeDalServer(): Promise<EsitoSincronizza
   }
 }
 
-/** Applica le preferenze d'aspetto (taglia, font, densità, tema e accento) al documento. */
+/** Applica le preferenze d'aspetto (taglia, font, densità, stile, tema e accento) al documento. */
 export function applicaAspetto(): void {
   if (typeof document === "undefined") return;
   const body = document.body;
@@ -380,6 +398,7 @@ export function applicaAspetto(): void {
   body.classList.toggle("scala-molto-grande", scala === "molto-grande");
   body.classList.toggle("font-lato", preferenzaLocale("font_ui", "sistema") === "lato");
   body.classList.toggle("densita-compatta", preferenzaLocale("densita", "comoda") === "compatta");
+  document.documentElement.dataset.stile = stileInterfacciaPreferito();
   applicaTema();
 }
 

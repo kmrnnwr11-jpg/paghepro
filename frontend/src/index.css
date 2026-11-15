@@ -10238,3 +10238,200 @@ html.tema-in-transizione *::after {
     display: none;
   }
 }
+
+/* ============================================================
+   STILE CLASSICO — «gestionale desktop»
+   Scelto in Impostazioni → Interfaccia e applicato da `applicaAspetto()` come
+   data-stile="classico" sull'html. Superfici piene, bordi netti, angoli quasi squadrati,
+   niente vetro, grana, rilievi, ombre o animazioni decorative. Tema chiaro/scuro e
+   accento restano validi: qui cambia la forma, non la palette del marchio.
+   ============================================================ */
+
+:root[data-stile="classico"] {
+  --grana: none;
+  --shadow: none;
+  --inset: none;
+  --rilievo: none;
+  --incavo: none;
+  --font-mono: "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
+  font-family: "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
+}
+
+:root[data-stile="classico"]:not([data-tema="scuro"]) {
+  --ink-rgb: 90, 96, 104;
+  --shadow-rgb: 0, 0, 0;
+  --text: #1b1f24;
+  --muted: #4d5560;
+  --soft: #6f7782;
+  --line: #b9bec6;
+  --line-soft: #d6d9de;
+  --panel: #ffffff;
+  --panel-strong: #ffffff;
+  --panel-tinta: #f2f4f7;
+  --panel-tinta-forte: #e6e9ee;
+  --campo: #ffffff;
+  --campo-vetro: #ffffff;
+  --intestazione-tabella: #e9ecf0;
+  --vetro-tinta: #f2f4f7;
+  --scrivania: #dfe2e7;
+  --pwa-colore: #dfe2e7;
+  --bottone: linear-gradient(180deg, #fbfbfc 0%, #e8eaee 100%);
+}
+
+:root[data-stile="classico"][data-tema="scuro"] {
+  --panel: rgb(var(--panel-rgb));
+  --panel-strong: rgb(var(--panel-rgb));
+  --campo-vetro: var(--campo);
+  --line: rgba(var(--ink-rgb), 0.34);
+  --bottone: linear-gradient(180deg, #2b3734 0%, #222c2a 100%);
+}
+
+/* Piano di lavoro uniforme, niente vignettatura. */
+:root[data-stile="classico"] body {
+  background: var(--scrivania);
+  -webkit-font-smoothing: auto;
+}
+
+/* Forma: angoli da finestra di sistema, nessun effetto vetro o rilievo. */
+:root[data-stile="classico"] *,
+:root[data-stile="classico"] *::before,
+:root[data-stile="classico"] *::after {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:root[data-stile="classico"] *:not(input[type="radio"], .spin, .au-punti i, .settings-accent-swatch > span) {
+  border-radius: 2px !important;
+}
+
+/* Le superfici fluttuanti (menu, palette comandi, dialoghi, Aurora) restano separabili. */
+:root[data-stile="classico"] :is(.tendina-conto, .tendina-mondo, .command-overlay > *, .consenso-aurora,
+  .aurora-panel, .aiuto-overlay > *, .unilav-guida-overlay > *, [role="dialog"], [role="menu"], [role="listbox"]) {
+  border: 1px solid var(--line) !important;
+  box-shadow: 2px 3px 8px rgba(0, 0, 0, 0.22) !important;
+}
+
+/* Titoli nel carattere di sistema, compatti. */
+:root[data-stile="classico"] :is(h1, h2, h3, h4) {
+  letter-spacing: 0;
+}
+
+/* Focus sempre visibile al posto degli aloni. */
+:root[data-stile="classico"] :focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 1px;
+}
+
+:root[data-stile="classico"] :is(input, select, textarea) {
+  min-height: 30px;
+}
+
+/* Pulsanti da finestra: faccia grigia, bordo pieno, nessuno spostamento al passaggio. */
+:root[data-stile="classico"] .btn {
+  min-height: 30px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid #8f969f;
+  background: var(--bottone);
+  transform: none !important;
+  filter: none !important;
+}
+
+:root[data-stile="classico"] .btn.compact {
+  min-height: 26px;
+  padding: 0 10px;
+}
+
+:root[data-stile="classico"] .btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+:root[data-stile="classico"] :is(.btn.primary, .btn.danger, .btn.success) {
+  border-width: 1px !important;
+}
+
+:root[data-stile="classico"] .btn.primary {
+  background: var(--accent-strong) !important;
+  border-color: var(--accent-deep) !important;
+}
+
+:root[data-stile="classico"] .btn.primary:hover:not(:disabled) {
+  background: var(--accent) !important;
+}
+
+:root[data-stile="classico"] .btn.danger {
+  background: #b91c1c !important;
+}
+
+:root[data-stile="classico"] .btn.success {
+  background: #047857 !important;
+}
+
+/* Barra dei menu: striscia piena con voci a tendina, come la menubar di un programma. */
+:root[data-stile="classico"] .barra-alta {
+  padding: 4px 10px;
+  background: var(--panel-tinta);
+  border-bottom: 1px solid var(--line);
+}
+
+:root[data-stile="classico"] .barra-mondo {
+  padding: 4px 9px;
+  font-size: 13px;
+}
+
+/* Voci attive: blocco pieno nel colore d'accento, senza gradiente. */
+:root[data-stile="classico"] :is(.nav-item.active, .rail-item.active, .rail-item:hover, .mobile-bottom button.active) {
+  background: var(--accent-strong) !important;
+  border-color: var(--accent-deep) !important;
+}
+
+/* Pannelli e schede: fogli bianchi con bordo grigio. */
+:root[data-stile="classico"] :is(.glass-panel, .glass-card, .card, .page-card) {
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+/* Tabelle a griglia con intestazione grigia e righe alterne. */
+:root[data-stile="classico"] .data-table {
+  border: 1px solid var(--line);
+}
+
+:root[data-stile="classico"] .data-table th {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  background: var(--intestazione-tabella);
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:root[data-stile="classico"] .data-table td,
+:root[data-stile="classico"] .data-table.spacious td {
+  padding: 4px 8px;
+  border: 1px solid var(--line-soft);
+  font-weight: 400;
+}
+
+:root[data-stile="classico"] .data-table tbody tr:nth-child(even) td {
+  background: var(--panel-tinta);
+}
+
+:root[data-stile="classico"] .data-table tbody tr:hover td {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+/* Movimento: niente ingressi animati né rimbalzi; gli indicatori di attesa restano. */
+:root[data-stile="classico"] *:not(.spin, .au-punti i) {
+  animation: none !important;
+  transition: none !important;
+}
+
+:root[data-stile="classico"] ::view-transition-old(root),
+:root[data-stile="classico"] ::view-transition-new(root) {
+  animation: none;
+}

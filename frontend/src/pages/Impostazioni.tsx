@@ -39,6 +39,7 @@ import {
   applicaAspetto,
   applicaAspettoConTransizione,
   CATALOGO_ACCENTI,
+  CATALOGO_STILI_INTERFACCIA,
   CATALOGO_TEMI,
   dettaglioStileBusta,
   haPreferenzeDaSincronizzare,
@@ -47,6 +48,8 @@ import {
   STILE_BUSTA_PREDEFINITO,
   stileBustaPreferito,
   sincronizzaPreferenzeDalServer,
+  STILE_INTERFACCIA_PREDEFINITO,
+  stileInterfacciaPreferito,
   TEMA_PREDEFINITO,
   temaInterfacciaPreferito,
   type AccentoInterfaccia,
@@ -77,6 +80,10 @@ const OPZIONI_FONT_UI = [
   { valore: "sistema", titolo: "Sistema", descrizione: "Familiare e veloce" },
   { valore: "lato", titolo: "Lato", descrizione: "Coerente con i documenti" },
 ] as const;
+
+const OPZIONI_STILE_UI = CATALOGO_STILI_INTERFACCIA.map((stile) => ({
+  valore: stile.id, titolo: stile.nome, descrizione: stile.descrizione,
+}));
 
 const OPZIONI_DENSITA = [
   { valore: "comoda", titolo: "Comoda", descrizione: "Più spazio" },
@@ -215,6 +222,7 @@ export function Impostazioni() {
   const [scala, setScala] = useState("normale");
   const [fontUi, setFontUi] = useState("sistema");
   const [densita, setDensita] = useState("comoda");
+  const [stileUi, setStileUi] = useState<string>(STILE_INTERFACCIA_PREDEFINITO);
   const [tema, setTema] = useState<TemaInterfaccia>(TEMA_PREDEFINITO);
   const [accento, setAccento] = useState<AccentoInterfaccia>(ACCENTO_PREDEFINITO);
   const [ai, setAi] = useState<{ provider: string; attivo: boolean; consumoMese: number; limiteMensile: number } | null>(null);
@@ -259,6 +267,7 @@ export function Impostazioni() {
       setScala(preferenzaLocale("scala_testo", "normale") || "normale");
       setFontUi(preferenzaLocale("font_ui", "sistema") || "sistema");
       setDensita(preferenzaLocale("densita", "comoda") || "comoda");
+      setStileUi(stileInterfacciaPreferito());
       setTema(temaInterfacciaPreferito());
       setAccento(accentoInterfacciaPreferito());
       setStatoSincronizzazione(esito);
@@ -317,12 +326,14 @@ export function Impostazioni() {
     setScala("normale");
     setFontUi("sistema");
     setDensita("comoda");
+    setStileUi(STILE_INTERFACCIA_PREDEFINITO);
     setTema(TEMA_PREDEFINITO);
     setAccento(ACCENTO_PREDEFINITO);
     const salvataggi = Promise.all([
       aggiornaPreferenza("scala_testo", "normale"),
       aggiornaPreferenza("font_ui", "sistema"),
       aggiornaPreferenza("densita", "comoda"),
+      aggiornaPreferenza("stile_interfaccia", STILE_INTERFACCIA_PREDEFINITO),
       aggiornaPreferenza("tema_interfaccia", TEMA_PREDEFINITO),
       aggiornaPreferenza("accento_interfaccia", ACCENTO_PREDEFINITO),
     ]);
@@ -614,6 +625,10 @@ export function Impostazioni() {
               />
               <div className="settings-card-stack">
                 <article className="settings-surface-card settings-surface-card-wide">
+                  <GruppoScelte etichetta="Stile dell’interfaccia" descrizione="Moderno con vetro e rilievi, oppure Classico come un gestionale desktop. I documenti non cambiano." valore={stileUi} opzioni={OPZIONI_STILE_UI}
+                    onChange={(valore) => { setStileUi(valore); void aggiornaPreferenza("stile_interfaccia", valore, "transizione"); }} />
+                </article>
+                <article className="settings-surface-card settings-surface-card-wide">
                   <div className="settings-control-heading">
                     <strong><SunMoon size={16} aria-hidden="true" /> Tema del software</strong>
                     <span>Chiaro, scuro o automatico: cambia subito, su ogni pagina, e ti segue sugli altri dispositivi.</span>
@@ -682,6 +697,7 @@ export function Impostazioni() {
               <div className="settings-interface-preview">
                 <div><span>Anteprima immediata</span><strong>Testo chiaro, controlli ordinati</strong><p>Le modifiche sono già applicate a questa pagina.</p></div>
                 <div className="settings-interface-tags" aria-label="Scelte correnti">
+                  <span>{OPZIONI_STILE_UI.find((opzione) => opzione.valore === stileUi)?.titolo}</span>
                   <span>{CATALOGO_TEMI.find((opzione) => opzione.id === tema)?.nome}</span>
                   <span>{CATALOGO_ACCENTI.find((opzione) => opzione.id === accento)?.nome}</span>
                   <span>{OPZIONI_SCALA.find((opzione) => opzione.valore === scala)?.titolo}</span>

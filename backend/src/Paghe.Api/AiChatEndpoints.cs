@@ -364,7 +364,7 @@ public static class AiChatEndpoints
                 }
                 var versione = await conversazioniAurora.CompletaTurnoAsync(
                     tenantId, utenteId, workspace.Conversazione.Id, turnoId.Value, testo, ct);
-                return (versione, versione is not null,
+                return (versione?.VersioneConversazione, versione is not null,
                     versione is null
                         ? "La conversazione è stata eliminata o aggiornata mentre Aurora rispondeva."
                         : null);
